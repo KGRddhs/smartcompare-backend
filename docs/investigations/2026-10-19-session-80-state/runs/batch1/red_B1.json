@@ -1,0 +1,398 @@
+{
+ "unit": "B1 RESULT-STATUS + TELEMETRY (ENABLE_RESULT_STATUS_METADATA); worktree C:/Users/SynAckITPC/Documents/AI/sc-s80-b1 at base 81df2b641454e0301cca51a3ba01bf8ef3d7e649; agent model claude-fable-5-1",
+ "test_files": [
+  {
+   "path": "C:/Users/SynAckITPC/Documents/AI/sc-s80-b1/tests/test_s80_b1.py",
+   "sha256": "88130f327757d9e53feb47bbe877f9a065783b2e3a01f90c623360de46a35dfb",
+   "bytes": 59270
+  },
+  {
+   "path": "C:/Users/SynAckITPC/Documents/AI/sc-s80-b1/tests/test_s80_b1_feedback.py",
+   "sha256": "0bd1117880ac96cee0aee35832814ae7eee620b6bef09bba7b0513648ea59ab3",
+   "bytes": 7874
+  }
+ ],
+ "base_run": {
+  "failed": 191,
+  "passed": 23,
+  "every_failure_is_assertion_error": true,
+  "failed_node_ids": [
+   "tests/test_s80_b1.py::test_b1_r1_flag_reader_per_call [11 params]",
+   "tests/test_s80_b1.py::test_b1_r2_placeholder_identity [11 params]",
+   "tests/test_s80_b1.py::test_b1_r3_same_identity [9 params]",
+   "tests/test_s80_b1.py::test_b1_r4_identity_coherence [9 params]",
+   "tests/test_s80_b1.py::test_b1_r5_price_facts [8 params]",
+   "tests/test_s80_b1.py::test_b1_r6_real_spec_rows_excludes_na_and_tier3",
+   "tests/test_s80_b1.py::test_b1_r7_dim_facts [10 params]",
+   "tests/test_s80_b1.py::test_b1_r8_builder_stamps_manama_partial_no_winner [12,13,14]",
+   "tests/test_s80_b1.py::test_b1_r9_builder_stamps_lane1_supported [grocery,now_vs_solgar,tomford_vs_creed,iphone15_vs_galaxys24]",
+   "tests/test_s80_b1.py::test_b1_r9b_builder_lane1_stamped_prices_reach_coverage_4 [grocery,now_vs_solgar,iphone15_vs_galaxys24]",
+   "tests/test_s80_b1.py::test_b1_r10_builder_unknown_product_pair_needs_identification [brands0,brands1]",
+   "tests/test_s80_b1.py::test_b1_r10b_v09_shape_reasons_exact",
+   "tests/test_s80_b1.py::test_b1_r11_builder_same_identity_pair",
+   "tests/test_s80_b1.py::test_b1_r12_builder_category_conflict",
+   "tests/test_s80_b1.py::test_b1_r13_builder_june_rows_brand_empty_supported [15,16,17,18,19]",
+   "tests/test_s80_b1.py::test_b1_r14_builder_partial_rows",
+   "tests/test_s80_b1.py::test_b1_r15_orchestrator_rest_and_stream_stamp",
+   "tests/test_s80_b1.py::test_b1_r16_orchestrator_vision_pair_product_categories",
+   "tests/test_s80_b1.py::test_b1_r17_telemetry_text_post_get_stream",
+   "tests/test_s80_b1.py::test_b1_r17b_telemetry_non_supported_body_tags",
+   "tests/test_s80_b1.py::test_b1_r18_telemetry_camera_and_url",
+   "tests/test_s80_b1.py::test_b1_r19_telemetry_stream_client_gone_emits_nothing",
+   "tests/test_s80_b1.py::test_b1_r20_camera_timings_written_only_into_existing_dict[dict]",
+   "tests/test_s80_b1.py::test_b1_r20b_stamp_camera_stage_timings_skips_none",
+   "tests/test_s80_b1.py::test_b1_r21_sampler_flag_on_compare_paths [21 params]",
+   "tests/test_s80_b1.py::test_b1_r21b_init_sentry_installs_the_sampler",
+   "tests/test_s80_b1.py::test_b1_r22_home_savings_skips_stamped_non_supported_rows",
+   "tests/test_s80_b1.py::test_b1_r23_home_smart_pick_skips_stamped_non_supported_rows",
+   "tests/test_s80_b1.py::test_b1_p5_flag_off_sampler_is_the_sdk_rule [42 params; RED at base: the sampler attribute is absent]",
+   "tests/test_s80_b1.py::test_b1_p5b_sampler_off_branch_reads_the_live_client_option [3 params; RED at base]",
+   "tests/test_s80_b1.py::test_b1_p10_canonical_categories_and_na_tokens_match_the_sources",
+   "tests/test_s80_b1.py::test_b1_p11_result_gate_is_pure",
+   "tests/test_s80_b1.py::test_b1_p12_url_body_never_stamped",
+   "tests/test_s80_b1.py::test_b1_p13_stamp_failure_degrades_to_flag_off",
+   "tests/test_s80_b1.py::test_b1_c9c_assess_result_not_success_is_failed",
+   "tests/test_s80_b1.py::test_b1_c9d_product_categories_not_a_pair_key_omitted [4 params]",
+   "tests/test_s80_b1.py::test_b1_c9e_section_status_partial_when_one_side_empty",
+   "tests/test_s80_b1_feedback.py::test_b1_f1_new_mattered_most_values_accepted [6 params]",
+   "tests/test_s80_b1_feedback.py::test_b1_f2_new_event_types_accepted [6 params]",
+   "tests/test_s80_b1_feedback.py::test_b1_f3_correctness_fields_accepted_and_written [9 params]",
+   "tests/test_s80_b1_feedback.py::test_b1_f4_off_enum_value_422s [3 params]"
+  ],
+  "pyt_line": "[pyt] tag=b1red-unit-base2 start=2026-10-20 02:51:08 end=2026-10-20 02:51:20 elapsed=12s bound=600s status=FAIL rc=1 (tests/test_s80_b1.py: 167 failed / 20 passed, 167 AssertionError, 0 other) || [pyt] tag=b1red-unitfb-base start=2026-10-20 02:50:18 end=2026-10-20 02:50:22 elapsed=4s bound=600s status=FAIL rc=1 (tests/test_s80_b1_feedback.py: 24 failed / 3 passed, 24 AssertionError) || earlier run 1 [pyt] tag=b1red-unit-base start=2026-10-20 02:49:38 end=2026-10-20 02:49:50 elapsed=12s bound=600s status=FAIL rc=1 had 2 TypeErrors in the test's own stream-chunk helper (bytes needle on str chunks), fixed before run 2; PIN rows green at base: p1 x5, p2 x2, p3 x2, p4 x2, p5a, p6, p7, p8, r18b x3, r20[absent], r20[notdict], f5, f6, f7"
+ },
+ "prototype": {
+  "on_passed": 214,
+  "on_failed": 0,
+  "off_passed": 214,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=b1red-proto-on start=2026-10-20 02:54:49 end=2026-10-20 02:54:57 elapsed=9s bound=600s status=FAIL rc=1 (run 1: 213 passed / 1 failed: R15 explicit-pair product_categories are the keyword stubs ['other','other']; the test expectation was corrected, a measured deviation)",
+   "[pyt] tag=b1red-proto-on2 start=2026-10-20 02:56:42 end=2026-10-20 02:56:51 elapsed=9s bound=600s status=OK rc=0 (ENABLE_RESULT_STATUS_METADATA=true on the runner call: 214 passed)",
+   "[pyt] tag=b1red-proto-off start=2026-10-20 02:56:52 end=2026-10-20 02:57:00 elapsed=9s bound=600s status=OK rc=0 (flag unset: 214 passed; P1 digests and the nine FY25 digests equal, zero messages)",
+   "[pyt] tag=b1red-probe start=2026-10-20 02:37:56 end=2026-10-20 02:38:00 elapsed=4s bound=600s status=OK rc=0 (base measurement probe, scratch)",
+   "[pyt] tag=b1red-probe2 start=2026-10-20 02:43:19 end=2026-10-20 02:43:22 elapsed=3s bound=600s status=OK rc=0 (P1 base digests, built twice, stable)"
+  ],
+  "notes": "Prototype in the detached scratch worktree <scratchpad>/B1_scratch (removed afterwards): the spec change list 1-10 applied with exact-anchor edits (CRLF kept); kept for GREEN as text at <scratchpad>/B1_red/proto/result_gate.py and prototype_tracked.diff. Spec amendments the prototype needed: is_placeholder_identity compares norm(text) against the NORMALISED placeholder set (norm('n/a') == 'n a'); the variant/size/distinguishing_features veto applies to BOTH same_identity arms (the spec's own R3 100ml-vs-50ml row needs it on the identity-equality arm); price_is_present_literal needs a numeric non-bool amount ({'amount': True} -> False); telemetry_extras(vision_ms, compare_ms) is a new pure helper for B1-R10 (tags carry the bucket lower edge in ms as digit strings, 1000/5000-ms steps; raw ints ride extras); the sampler OFF branch reads sentry_sdk.get_client().options.get('traces_sample_rate') with the 0.1 fallback (B1-R1); the camera emitter is gated on result.get('success') is True (B1-R6), the stream emitter on complete_response.get('success') is True inside the M18 gate; the builder stamp sits between result['tier_context'] and _strip_inference_markers wrapped in try/except with ONE WARNING '[RESULT_STATUS] assess failed: <TypeName>'; scs captures product_categories before BOTH write-back loops and passes it to the three builds. Flag OFF byte-identical on every measured body."
+ },
+ "mutants": [
+  {
+   "id": "X1",
+   "description": "flag default true",
+   "survived": false,
+   "killed_by": "test_b1_p1_flag_off_builder_bodies_identical[None] (+p2,p3,p4); [pyt] tag=b1red-mut-X1 elapsed=7s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X2",
+   "description": "flag read once at import (module constant)",
+   "survived": false,
+   "killed_by": "test_b1_r1_flag_reader_per_call[ TRUE -True] and the other r1 params; [pyt] tag=b1red-mut-X2 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X3",
+   "description": "reader drops on / adds enabled",
+   "survived": false,
+   "killed_by": "test_b1_r1_flag_reader_per_call[on-True]; [pyt] tag=b1red-mut-X3 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X4",
+   "description": "placeholder test on the brand alone",
+   "survived": false,
+   "killed_by": "test_b1_r13_builder_june_rows_brand_empty_supported[15..19] + r2 rows; [pyt] tag=b1red-mut-X4 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X5",
+   "description": "same_identity ignores the brand (name Jaccard only)",
+   "survived": false,
+   "killed_by": "test_b1_r3_same_identity[p03-p13-False],[p04-p14-False], test_b1_r9_builder_stamps_lane1_supported[grocery]; [pyt] tag=b1red-mut-X5 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X6",
+   "description": "Jaccard threshold 0.5",
+   "survived": false,
+   "killed_by": "test_b1_r3_same_identity[p05-p15-False] (OUD VOYAGER vs OUD WOOD); [pyt] tag=b1red-mut-X6 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X7",
+   "description": "identity_coherence treats other as a conflict",
+   "survived": false,
+   "killed_by": "test_b1_r12_builder_category_conflict, test_b1_r4_identity_coherence[cats1-True]; [pyt] tag=b1red-mut-X7 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X8",
+   "description": "price_is_showable accepts estimated",
+   "survived": false,
+   "killed_by": "test_b1_r5_price_facts[price0-False-False]; [pyt] tag=b1red-mut-X8 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X9",
+   "description": "rating_is_real ignores rating_derived",
+   "survived": false,
+   "killed_by": "test_b1_r8_builder_stamps_manama_partial_no_winner[12,13,14]; [pyt] tag=b1red-mut-X9 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X10",
+   "description": "real_spec_rows counts N/A rows",
+   "survived": false,
+   "killed_by": "test_b1_r6_real_spec_rows_excludes_na_and_tier3, test_b1_r8[12,13,14]; [pyt] tag=b1red-mut-X10 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X10a",
+   "description": "NA check through norm (B1-R2)",
+   "survived": false,
+   "killed_by": "test_b1_r6_real_spec_rows_excludes_na_and_tier3; [pyt] tag=b1red-mut-X10a elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X11",
+   "description": "real_spec_rows ignores tier3_synthesis",
+   "survived": false,
+   "killed_by": "test_b1_r6_real_spec_rows_excludes_na_and_tier3; [pyt] tag=b1red-mut-X11 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X12",
+   "description": "dim_is_discriminating drops the margin test",
+   "survived": false,
+   "killed_by": "test_b1_r7_dim_facts[85-85-high-None-price-...], test_b1_r8[12,13,14]; [pyt] tag=b1red-mut-X12 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X13",
+   "description": "strict reading drops the sentinel / low checks",
+   "survived": false,
+   "killed_by": "test_b1_r7_dim_facts[65.0-50-medium-...], [88-82-low-...]; [pyt] tag=b1red-mut-X13 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X14",
+   "description": "status supported_result when coverage 0",
+   "survived": false,
+   "killed_by": "test_b1_r8_builder_stamps_manama_partial_no_winner[12,13,14]; [pyt] tag=b1red-mut-X14 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X15",
+   "description": "winner_index = None written on every body",
+   "survived": false,
+   "killed_by": "test_b1_r13_builder_june_rows_brand_empty_supported[15..19] (+r9, r15); [pyt] tag=b1red-mut-X15 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X16",
+   "description": "overview.winner.supported always True",
+   "survived": false,
+   "killed_by": "test_b1_r10_builder_unknown_product_pair_needs_identification[brands0,brands1], test_b1_r8; [pyt] tag=b1red-mut-X16 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X17",
+   "description": "section_status reports available on one side",
+   "survived": false,
+   "killed_by": "test_b1_c9e_section_status_partial_when_one_side_empty, test_b1_r9_builder_stamps_lane1_supported[now_vs_solgar]; [pyt] tag=b1red-mut-X17 elapsed=4s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X18",
+   "description": "product_categories captured AFTER the write-back (REST)",
+   "survived": false,
+   "killed_by": "test_b1_r16_orchestrator_vision_pair_product_categories; [pyt] tag=b1red-mut-X18 start=2026-10-20 03:00:42 end=2026-10-20 03:00:46 elapsed=4s bound=600s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X19",
+   "description": "stamp block placed before the chokepoint (reads raw prices) -- NOT MEASURED: a block move with no exact-string edit form within the budget",
+   "survived": false,
+   "killed_by": "NOT MEASURED (not applied)",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X20",
+   "description": "telemetry emitted with the flag OFF",
+   "survived": false,
+   "killed_by": "test_b1_p4_flag_off_no_message_on_any_exit[0],[None]; [pyt] tag=b1red-mut-X20 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X21",
+   "description": "telemetry tags carry the query / a product name",
+   "survived": false,
+   "killed_by": "test_b1_r17_telemetry_text_post_get_stream (grammar + token checks), test_b1_r10b_v09_shape_reasons_exact; [pyt] tag=b1red-mut-X21 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X22",
+   "description": "telemetry on the camera unsuccessful path",
+   "survived": false,
+   "killed_by": "test_b1_r18b_telemetry_camera_unsuccessful_emits_nothing[None-None] (metering OFF + envelope OFF, B1-R6); [pyt] tag=b1red-mut-X22 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X23",
+   "description": "telemetry outside the stream gate (client gone)",
+   "survived": false,
+   "killed_by": "test_b1_r19_telemetry_stream_client_gone_emits_nothing; [pyt] tag=b1red-mut-X23 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X24",
+   "description": "camera timings written when the flag is OFF",
+   "survived": false,
+   "killed_by": "test_b1_p3_flag_off_camera_timings_untouched[None],[false]; [pyt] tag=b1red-mut-X24 elapsed=5s status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X25",
+   "description": "camera timings create the dict when absent",
+   "survived": false,
+   "killed_by": "test_b1_r20_camera_timings_written_only_into_existing_dict[absent]; [pyt] tag=b1red-mut-X25 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X26",
+   "description": "sampler returns 1.0 with the flag OFF",
+   "survived": false,
+   "killed_by": "test_b1_p5_flag_off_sampler_is_the_sdk_rule[None-False-/api/v1/image/identify] and the other compare-path params; [pyt] tag=b1red-mut-X26 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X27",
+   "description": "sampler path set lacks /text/compare/stream",
+   "survived": false,
+   "killed_by": "test_b1_r21_sampler_flag_on_compare_paths[False-/api/v1/text/compare/stream] (+None/True); [pyt] tag=b1red-mut-X27 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X28",
+   "description": "sampler ignores parent_sampled OFF",
+   "survived": false,
+   "killed_by": "test_b1_p5_flag_off_sampler_is_the_sdk_rule[None-False-/api/v1/comparisons/history] and the other ps params; [pyt] tag=b1red-mut-X28 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X29",
+   "description": "init_sentry drops traces_sample_rate",
+   "survived": false,
+   "killed_by": "test_b1_p5a_init_sentry_kwargs_kept, test_b1_r21b_init_sentry_installs_the_sampler; [pyt] tag=b1red-mut-X29 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X30",
+   "description": "home skip keyed on winner_index is None",
+   "survived": false,
+   "killed_by": "test_b1_r22_home_savings_skips_stamped_non_supported_rows; [pyt] tag=b1red-mut-X30 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X31",
+   "description": "home skip when result_status is ABSENT",
+   "survived": false,
+   "killed_by": "test_b1_p8_home_savings_unstamped_rows_count_as_today; [pyt] tag=b1red-mut-X31 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X32",
+   "description": "FeedbackRequest field typed Optional[str]",
+   "survived": false,
+   "killed_by": "test_b1_f4_off_enum_value_422s[maybe]; [pyt] tag=b1red-mut-X32 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X33",
+   "description": "save_feedback writes the three keys when None",
+   "survived": false,
+   "killed_by": "test_b1_f5_four_field_body_record_identical; [pyt] tag=b1red-mut-X33 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X34",
+   "description": "one allowlist name misspelled",
+   "survived": false,
+   "killed_by": "test_b1_f1_new_mattered_most_values_accepted[unsure]; [pyt] tag=b1red-mut-X34 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "X35",
+   "description": "assess_result raise not caught in the builder",
+   "survived": false,
+   "killed_by": "test_b1_p13_stamp_failure_degrades_to_flag_off; [pyt] tag=b1red-mut-X35 status=FAIL rc=1",
+   "equivalent_by_ruling": false
+  }
+ ],
+ "comm_set": {
+  "files": 288,
+  "chunks": 12,
+  "base_failures": [
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_empty_product_fields_normalized",
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_malformed_response_returns_error",
+   "tests/test_camera_vision.py::TestIdentifyProductsMocked::test_successful_identification",
+   "tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest",
+   "tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction",
+   "tests/test_personalization_bundle_c.py::test_applied_shifts_list_is_default_empty_when_no_priorities",
+   "tests/test_personalization_bundle_c.py::test_full_response_payload_audit_no_magnitude_keys",
+   "(all seven are rows of tests/.pre_impl_failures.txt at base; the two test_prompt_truth.py tiktoken ERRORs did not occur; the unit's own 191 RED rows failed in chunks 00 and 08 and are not regressions)"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=b1red-comm-00 start=2026-10-20 03:02:33 end=2026-10-20 03:03:25 elapsed=52s bound=1200s status=FAIL rc=1 (25 files; failures = the unit RED rows only)",
+   "[pyt] tag=b1red-comm-01 start=2026-10-20 03:03:25 end=2026-10-20 03:04:25 elapsed=59s bound=1200s status=FAIL rc=1 (25 files; 3 camera_vision baseline nodes)",
+   "[pyt] tag=b1red-comm-02 start=2026-10-20 03:04:25 end=2026-10-20 03:04:50 elapsed=25s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-03 start=2026-10-20 03:05:37 end=2026-10-20 03:06:20 elapsed=43s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-04 start=2026-10-20 03:06:20 end=2026-10-20 03:07:02 elapsed=42s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-05 start=2026-10-20 03:07:02 end=2026-10-20 03:07:18 elapsed=16s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-06 start=2026-10-20 03:07:33 end=2026-10-20 03:08:05 elapsed=32s bound=1200s status=FAIL rc=1 (25 files; 4 baseline nodes: page_scraping x2, personalization_bundle_c x2)",
+   "[pyt] tag=b1red-comm-07 start=2026-10-20 03:08:06 end=2026-10-20 03:09:35 elapsed=90s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-08 start=2026-10-20 03:09:36 end=2026-10-20 03:11:22 elapsed=106s bound=1200s status=FAIL rc=1 (25 files; failures = the unit RED rows only, the slash-variant duplicate entry)",
+   "[pyt] tag=b1red-comm-09 start=2026-10-20 03:11:40 end=2026-10-20 03:12:44 elapsed=64s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-10 start=2026-10-20 03:12:44 end=2026-10-20 03:13:48 elapsed=65s bound=1200s status=OK rc=0",
+   "[pyt] tag=b1red-comm-11 start=2026-10-20 03:13:49 end=2026-10-20 03:14:10 elapsed=21s bound=1200s status=OK rc=0 (18 files)"
+  ],
+  "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B1_red/comm_files.txt (293 entries = 288 unique files, 5 slash-variant duplicates ran twice); reasons TSV beside it: comm_reasons.tsv (module-ref 270, source-scanning pins 8, CLAUDE.md readers 2, SmartCompareApp scanners 23, the 2 new unit files; the 2 test_precommit_hook*.py files excluded; the 4 NETWORK_FLAKY_EXCLUDE node ids deselected on every chunk)"
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "sc-s80-b1: HEAD 81df2b641454e0301cca51a3ba01bf8ef3d7e649 before and after; git status --short = '?? tests/test_s80_b1.py', '?? tests/test_s80_b1_feedback.py' only; git diff --stat empty (no tracked file touched); the scratch worktree <scratchpad>/B1_scratch (detached, no node_modules, no .env) was removed with git worktree remove --force, git worktree list shows no B1_scratch and the directory is gone; the mutation lock was removed by the driver; pytest processes alive after the last run: 0 (Get-CimInstance check); the prototype is kept only as text in <scratchpad>/B1_red/proto/"
+ },
+ "deviations_from_spec": [
+  "R15: metadata.product_categories on the EXPLICIT-PAIR path is ['other','other'] (the per-product keyword stubs for brand-only names), not ['electronics','electronics']; the parser path (q) and the stream carry the LLM per-product category electronics. Measured on the prototype; the test asserts the measured values per path (L2 / B1-R4).",
+  "R15 identity_confidence: rest_pair_full = medium (brand '' on the explicit pair); rest_q_full / stream = high.",
+  "R15 gather partial (cap 0.5, slow): coverage 1 (the stash's one real spec row on both sides) -> supported_result, partial_stage gather, no metadata.winner_index, product_categories ['electronics','electronics'] (the spec's own fallback sentence).",
+  "R3 row '100ml vs 50ml -> False' requires the variant/size/distinguishing_features veto on the identity-equality arm too (spec 2.2 put it on the brand+Jaccard arm only).",
+  "R2 row ('', 'n/a') -> True requires the placeholder set to be compared after norm on both sides (norm('n/a') == 'n a' is not in the literal set).",
+  "R5 row {'amount': True} -> literal False requires a numeric non-bool amount in price_is_present_literal (R0's 'not None' alone reads True).",
+  "R9 lane1 unstamped bodies: coverage 3 with the price section unavailable (grocery / iphone15 / tomford) or partial (now_vs_solgar); the B1-R5 stamped variant (r9b) reaches coverage 4 and price available on grocery / now_vs_solgar / iphone15 only (tomford's product-0 price pends even stamped).",
+  "R13 rows 15-19: supported_result, identity medium, coverage >= 1 (B1-R5), never >= 3.",
+  "R8: metadata.product_categories == ['other','other'] (B1-R5); reasons are asserted through assess_result (they ride telemetry, not metadata).",
+  "R19 carries a positive half (exactly one message when the client is present) and is therefore RED at base rather than the spec's PIN-shaped row; its zero-entries half kills X23.",
+  "P5 / P5b assert the sampler exists and are RED at base (the spec's split keeps only P5a green at base); P5b adds the B1-R1 live-option rows (1.0 / 0.25 / None -> 0.1).",
+  "B1-R10 representation: the vision_ms / compare_ms TAGS carry the bucket's lower edge in ms as a digit string (1000-ms / 5000-ms steps), the raw ints ride extras under the same keys through a new pure helper telemetry_extras; R17's grammar check covers extras.",
+  "P4's body-equality half (recorder present vs absent) is not implemented; P4 asserts zero entries and no stamp on all five exits (byte identity is P1 / P2 / P3's job).",
+  "The stream exits (R17 third leg, R19, P4) are driven by a direct text_compare_stream call with a fake request (the W4-13 idiom), not through TestClient.",
+  "Mutant X19 (stamp before the chokepoint) NOT MEASURED: a block move with no exact-string edit form within the budget.",
+  "The comm list carries 5 slash-variant duplicate entries (288 unique files); the five files ran twice, harmlessly."
+ ],
+ "open_questions": [
+  "Q1: accept the R15 explicit-pair per-product categories ['other','other'] as the measured contract (B2's cross-category rule cannot fire on an explicit pair of brand-only names; only a parser-path or vision pair carrying category words can)?",
+  "Q2 (B1-R10): is the lower-edge-in-ms digit string an acceptable bucket label for the vision_ms / compare_ms tags, or should GREEN emit a labelled enum (e.g. 5s_10s) with the test's grammar check unchanged?",
+  "Q3: keep R19's positive half (RED at base) or revert to the spec's PIN-only shape?",
+  "Q4: X19 -- accept NOT MEASURED, or have GREEN's adversary apply the block move by hand on the GREEN bytes?",
+  "Q5: the P1 literals are sha256 digests of the normalised bodies (the FY25 precedent), not the full JSON bodies -- acceptable as 'recorded as literals'?"
+ ],
+ "not_measured_alone": [
+  "Mutant X19 (not applied).",
+  "The spec 1.10 NOT-MEASURED files other than the four the task named -- tests/test_w4_13_measurement_truth.py, tests/test_comparison_id_echo.py, tests/test_camera_vision.py, tests/test_image_routes*.py, tests/test_url_* -- ran inside the comm chunks at base (green except the 3 camera_vision baseline nodes), not alone.",
+  "The flag-ON smoke of the spec 1.10 files (gate step 4) was not run (GREEN's step).",
+  "The P4 body-equality half (recorder present vs absent)."
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B1_RED_REPORT.md"
+}
