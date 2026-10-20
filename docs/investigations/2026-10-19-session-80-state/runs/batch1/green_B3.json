@@ -1,0 +1,182 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2 + knob VISION_TIMEOUT_SECONDS)",
+ "branch": "feature/s80-b3-vision-identity-v2",
+ "head_sha": "764d44162dd83563dc5c9aa930dcb9c192f35f89",
+ "red_files_rehash_ok": true,
+ "files_changed": [
+  {
+   "path": "app/services/openai_service.py",
+   "added": 451,
+   "deleted": 0,
+   "sha256_before": "71bed08aade12000d2be274381022625d812d92c425ff0a506529e3b5ff99acb",
+   "sha256_after": "ff15a9fe9d447dcfadc7df99578e3d601820e7f7964286e45a61c50c45431a3d"
+  },
+  {
+   "path": "app/api/image_routes.py",
+   "added": 55,
+   "deleted": 8,
+   "sha256_before": "3813cb9af4a296e77429b954086405dd3a571774a2a3e44ce8727ed69b2a95ef",
+   "sha256_after": "4502ff0e9a816be33e392e9e21d20e7fea1f14f48d60bb03e2017dde846b19ae"
+  },
+  {
+   "path": "app/services/structured_comparison_service.py",
+   "added": 26,
+   "deleted": 2,
+   "sha256_before": "7db53e39fee4f93159b08f8834d27094d3b7e3e081976e402ac17306681df6d2",
+   "sha256_after": "deaed222fc36d5aa5785afe832fb4951f9de8ab4b42c3e341d0c0652a8aa3409"
+  },
+  {
+   "path": "tests/test_camera_vision.py",
+   "added": 4,
+   "deleted": 12,
+   "sha256_before": "ecd8e4979b08d581f4f35618b2d177a62977588c3d0a2d9b473c7078866a1d2e",
+   "sha256_after": "89d87f56556b0b20072d953121bc42b438f0e83892c802127827b1d9e01a45c0"
+  },
+  {
+   "path": "tests/.pre_impl_failures.txt",
+   "added": 13,
+   "deleted": 7,
+   "sha256_before": "ad2a9a782ec2d3c39dfa29e61d41bab55fa82acde1e6cf0669b2d654f77c06a8",
+   "sha256_after": "1b5b9104bebf8dec7cf7de9f35106dc6511083f98e18d3dfe7ebaa8b743ca0e1"
+  },
+  {
+   "path": "tests/PRE_IMPL_FAILURE_BASELINE.md",
+   "added": 8,
+   "deleted": 11,
+   "sha256_before": "e8a548a6ffb7b8c5c7fba680c298ec832c9c215959578675b04168859681da9f",
+   "sha256_after": "c24661fee564142afdcf6eed4797af956e0c95a68ad3f486a43c7dfa87c171e6"
+  },
+  {
+   "path": "tests/test_model_config_enforced.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "b3813ad62ce944a44a7ad505fab119be2055d15139436d507620e210a1b3f19b",
+   "sha256_after": "86f13cb641fe352f84dba44fbf33dde26a4f8fc0e48214dd9e063b402c99580b"
+  },
+  {
+   "path": "tests/w4_11_prompt_digest_recorder.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "8c90ef5bff06208f4f9f3025ff5a0dd94fc2d7396115004d0d92ab722537a826",
+   "sha256_after": "65735b08e23e9f1e2d4dcc8f29b63abaec67330b8115c6a7729d5fb7ad49a387"
+  },
+  {
+   "path": "tests/test_prompt_fence.py",
+   "added": 1,
+   "deleted": 1,
+   "sha256_before": "d5474744d232934194321158516135f5087a4feb355d769372e3867815305930",
+   "sha256_after": "7ab3f9e0e024a40eb2fad31ad2b1f358d3982f86e78a484c31c2f125496b6e84"
+  },
+  {
+   "path": "tests/test_s71_u13_compare_auth_required.py",
+   "added": 1,
+   "deleted": 0,
+   "sha256_before": "289f24f590627b351862a00ee701fb9978d8f0ae4254a7df98a3cae132dd4121",
+   "sha256_after": "9d5ef1e4f41eb1b0b26b20e45be95d790b5402f424c787a1199aed76e474731a"
+  },
+  {
+   "path": "tests/test_regression_gate_diff.py",
+   "added": 6,
+   "deleted": 1,
+   "sha256_before": "0021fceef544e9ef1797eded7ac643300ca21808efcef0358010fe6a14cec3fd",
+   "sha256_after": "7f7d2b33343ee5cbfa6f70a52ffe545af7f8d7e38eb086386b2cba20284347a3"
+  },
+  {
+   "path": "CLAUDE.md",
+   "added": 7,
+   "deleted": 4,
+   "sha256_before": "ab7ec7dde1724998f7d12a4d5a2c70ee55efdad95c89c6c025413a21929d7415",
+   "sha256_after": "c74f9158ecc56ede0b52dabd109d732c87c8ac90158738820529fd7d18b53a5b"
+  },
+  {
+   "path": "tests/test_s80_b3_vision_identity_v2.py",
+   "added": 1538,
+   "deleted": 0,
+   "sha256_before": "36b78a404deefbc4fbea66b2d75574f203346a8e53550a3ddf04d3550e4af15e",
+   "sha256_after": "36b78a404deefbc4fbea66b2d75574f203346a8e53550a3ddf04d3550e4af15e"
+  }
+ ],
+ "unit_run_on": "ENABLE_VISION_IDENTITY_V2=true in the runner env only: 105 passed, [hermeticity] sentinel checked 105, [netguard] blocked 0 attempt(s) from 0 node(s); [pyt] tag=b3green-unit-on-final start=2026-10-20 07:27:48 end=2026-10-20 07:27:53 elapsed=5s bound=600s status=OK rc=0 (first run: [pyt] tag=b3green-unit-on-1 start=2026-10-20 06:45:18 end=2026-10-20 06:45:39 elapsed=21s bound=600s status=OK rc=0)",
+ "unit_run_off": "flag unset: 105 passed, [hermeticity] sentinel checked 105, [netguard] blocked 0 attempt(s) from 0 node(s); [pyt] tag=b3green-unit-off-final start=2026-10-20 07:27:42 end=2026-10-20 07:27:47 elapsed=5s bound=600s status=OK rc=0 (first run: [pyt] tag=b3green-unit-off-1 start=2026-10-20 06:44:55 end=2026-10-20 06:45:10 elapsed=15s bound=600s status=OK rc=0). camera_vision at HEAD: 25 passed, 1 deselected; [pyt] tag=b3green-camera-vision-head start=2026-10-20 07:29:59 end=2026-10-20 07:30:05 elapsed=6s bound=600s status=OK rc=0",
+ "comm_set": {
+  "files": 248,
+  "chunks": 10,
+  "head_failures": [
+   "tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest",
+   "tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction",
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable"
+  ],
+  "branch_only_new": [],
+  "pyt_lines": [
+   "c01 779 passed, 5 deselected; [hermeticity] 779; [netguard] blocked 60 from 18 nodes; [pyt] tag=b3green-comm-head-c01 start=2026-10-20 06:51:59 end=2026-10-20 06:53:15 elapsed=76s bound=1200s status=OK rc=0",
+   "c02 1125 passed, 1 skipped, 2 deselected; [hermeticity] 1126; [netguard] blocked 4 from 2 nodes; [pyt] tag=b3green-comm-head-c02 start=2026-10-20 06:53:16 end=2026-10-20 06:55:31 elapsed=136s bound=1200s status=OK rc=0",
+   "c03 1943 passed, 1 skipped; [hermeticity] 1943; [netguard] blocked 59 from 19 nodes; [pyt] tag=b3green-comm-head-c03 start=2026-10-20 06:56:11 end=2026-10-20 06:57:34 elapsed=83s bound=1200s status=OK rc=0",
+   "c04 1671 passed, 5 deselected; [hermeticity] 1671; [netguard] blocked 39 from 30 nodes; [pyt] tag=b3green-comm-head-c04 start=2026-10-20 06:57:35 end=2026-10-20 07:01:36 elapsed=241s bound=1200s status=OK rc=0",
+   "c05 551 passed, 4 deselected; [hermeticity] 551; [netguard] blocked 8 from 2 nodes; [pyt] tag=b3green-comm-head-c05 start=2026-10-20 07:07:31 end=2026-10-20 07:08:13 elapsed=43s bound=1200s status=OK rc=0",
+   "c06 2 failed (page_scraping baseline rows), 487 passed, 7 deselected; [hermeticity] 489; [netguard] blocked 156 from 21 nodes; [pyt] tag=b3green-comm-head-c06 start=2026-10-20 07:08:14 end=2026-10-20 07:08:57 elapsed=42s bound=1200s status=FAIL rc=1",
+   "c07 final re-run: 885 passed, 4 skipped, 2 deselected, 1 xfailed, 2 errors (tiktoken pair); [hermeticity] 889; [netguard] blocked 111 from 9 nodes; [pyt] tag=b3green-comm-head-c07 start=2026-10-20 07:19:44 end=2026-10-20 07:21:37 elapsed=113s bound=1200s status=FAIL rc=1",
+   "c07 first pass (before E8): 1 failed (test_regression_gate_diff::test_load_baseline_reads_committed_file), 884 passed, 2 errors; [pyt] tag=b3green-comm-head-c07 start=2026-10-20 07:09:04 end=2026-10-20 07:11:38 elapsed=154s bound=1200s status=FAIL rc=1",
+   "c08 1701 passed; [hermeticity] 1701; [netguard] blocked 22 from 10 nodes; [pyt] tag=b3green-comm-head-c08 start=2026-10-20 07:11:39 end=2026-10-20 07:15:26 elapsed=226s bound=1200s status=OK rc=0",
+   "c09 401 passed, 2 skipped, 12 deselected; [hermeticity] 402; [netguard] blocked 126 from 47 nodes; [pyt] tag=b3green-comm-head-c09 start=2026-10-20 07:16:46 end=2026-10-20 07:18:10 elapsed=84s bound=1200s status=OK rc=0",
+   "c10 1085 passed, 6 deselected, 35 xfailed; [hermeticity] 1120; [netguard] blocked 81 from 32 nodes; [pyt] tag=b3green-comm-head-c10 start=2026-10-20 07:18:11 end=2026-10-20 07:19:30 elapsed=79s bound=1200s status=OK rc=0",
+   "CLAUDE.md readers + E8 on final bytes: 111 passed, 1 skipped; [pyt] tag=b3green-rgd-and-claude-readers start=2026-10-20 07:16:17 end=2026-10-20 07:16:37 elapsed=20s bound=600s status=OK rc=0",
+   "base side = RED run over 246 files (7 failures: camera_vision x3, page_scraping x2, prompt_truth x2); fixed at HEAD = camera_vision x3"
+  ]
+ },
+ "ci_order_set": "30 files at HEAD 764d4416 (spec 7.4 list + RED 27 + test_s75_fanout_identity + test_explicit_pair_category + test_regression_gate_diff): 1359 passed, 1 skipped, 1 deselected, [hermeticity] 1360, [netguard] blocked 29 attempt(s) from 23 node(s); [pyt] tag=b3green-ciorder-head start=2026-10-20 07:29:06 end=2026-10-20 07:29:49 elapsed=43s bound=1200s status=OK rc=0. Pre-commit run on 29 files: 1327 passed, 1 deselected; [pyt] tag=b3green-ciorder-1 start=2026-10-20 06:48:22 end=2026-10-20 06:50:47 elapsed=145s bound=1200s status=OK rc=0",
+ "identity_pins": [
+  "tests/test_image_identify_llm_unavailable_s69.py",
+  "tests/test_retro_w2_1.py (W2-1 camera body pins)",
+  "tests/test_paid_route_metering.py",
+  "tests/test_m13_26_image_error_envelope.py",
+  "tests/test_cost_meter_s74.py",
+  "tests/test_w4_13_measurement_truth.py",
+  "tests/test_w4_13_flag_off_ledger.py",
+  "tests/test_s71_u13_compare_auth_required.py (T23 fixture untouched)",
+  "tests/test_m13_03_paid_work_gating.py",
+  "tests/test_b2_strict_optional_auth.py",
+  "tests/test_comparison_id_echo.py",
+  "tests/test_security_regression.py",
+  "tests/test_text_error_envelope_no_raw_exception.py",
+  "tests/test_logger_no_query_leak.py",
+  "tests/test_sentry_channels_u8d_unit.py",
+  "tests/test_openai_key_log_hygiene_s69.py",
+  "tests/test_model_config.py",
+  "tests/test_model_config_enforced.py (M1: 16 sites, assertion unedited)",
+  "tests/test_u3c_store_false_pin.py",
+  "tests/test_prompt_fence.py",
+  "tests/test_s75_fanout_identity.py (FY25)",
+  "tests/test_explicit_pair_category.py",
+  "tests/test_ci_gates.py (baseline re-derivation green)",
+  "tests/test_backend_cleanup.py",
+  "tests/test_m18_openai_tpm_sizing.py",
+  "tests/test_legal_docs_u8.py",
+  "tests/test_camera_vision.py (25 passed, E1-E3)",
+  "tests/test_regression_gate_diff.py (E8)",
+  "tests/test_behavior_dimension_translation.py"
+ ],
+ "lint": "ruff check --select E9,F63,F7,F82 --no-cache on the ten changed Python files: All checks passed; py_compile rc 0. The full default ruff rule set gives identical per-rule counts at base and HEAD on the three source files (no new finding). Every added line is ASCII; CRLF kept on every existing file (0 bare LF); the RED file stays LF and byte-identical. Pre-commit hook passed at commit.",
+ "claude_md_row": "New block after the SESSION 79 B3-B row, before '## Tests' (G-2): '**SESSION 80 flag (B3 VISION-IDENTITY-V2, 2026-10-20; default OFF, read PER CALL; a new name, so unset in production by construction (Railway not read); ...):**' with one bullet for ENABLE_VISION_IDENTITY_V2 + VISION_TIMEOUT_SECONDS. The bullet covers: Effect ON (V2 prompt, strict json_schema with category anyOf, max_tokens 1000, wait_for, selection rules incl. two-for-one-image and unpaired, wire strip, five _vision_* identity fields, the coded 503 LLM_UNAVAILABLE for refusal/expiry, the full signed-in personalisation incl. the behaviour-profile reads and write and the scoring_method effect); the one client-visible value change (confidence low); Flag OFF byte identity; the test-side E1-E5; 14 stated limits; the HARD flip precondition (the owner's live structured-output smoke test with two photos); activation order and canary; rollback. Also rewritten in place: line 337 gains VISION_TIMEOUT_SECONDS; line 501 adds 'then pruned to 8 (B3)'; line 502 changes 11 -> 8 nodes, says the camera_vision rows are fixed (carries openai_service.py:81), notes the two GB-7 rows; the FULL REVIEW block's '(11, recounted 2026-10-03)' becomes '(8 since B3 ...; 11 before)'. Variable names only.",
+ "deviations": [
+  "D1 E8, a pin change the spec did not list: tests/test_regression_gate_diff.py:183 asserted that a test_camera_vision.py id is a documented baseline member, so the R-A14 prune made it fail. The comm set caught it (it was branch-only-new on the first chunk-7 pass). Fixed minimally: it now asserts test_auth_interceptor.py is a member and test_camera_vision.py is absent, with a dated comment. Byte copy taken first.",
+  "D2 The commit trailer reads 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>', not the brief's 'Claude Fable 5.1': my system prompt says the model is claude-opus-5-5, and I did not write a model claim I cannot stand behind. The orchestrator should check its subagent-model pin and amend the trailer if its record differs.",
+  "D3 The .pre_impl_failures.txt PRUNED paragraph is a dated sibling of the 2026-09-02 PRUNED paragraph, and the camera_vision bullet was deleted from 'Rows NOT removed', rather than the paragraph replacing that bullet in place. No comment line carries '::' (GB-6). The proof cites the pyt tag, because the HEAD sha did not exist yet when it was written.",
+  "D4 One extra CLAUDE.md in-place rewrite the spec did not name: the FULL REVIEW block's count '(11, recounted 2026-10-03)' (principle 5). Line 502 also records the two GB-7 rows that pass on this box.",
+  "D5 CLAUDE.md:502 is written at base as the final intended text carrying openai_service.py:81 (B3-R4). Main 4a38ce93 (#363) edited the same line, so the orchestrator's rebase will conflict there: take B3's line.",
+  "D6 The CI-order set is the spec 7.4 list + the RED 27 + test_s75_fanout_identity.py + test_explicit_pair_category.py = 29 files, plus test_regression_gate_diff.py at HEAD = 30. It ran twice, pre-commit and at the HEAD sha.",
+  "D7 The comm set is 248 files: the RED 246 plus 2 head-only files (test_auth_preference_toggles_w314.py, picked up by the get_user_preferences grep, and the unit file). Nothing in the RED list dropped out.",
+  "D8 Not asked for: a mutation spot-check on the GREEN bytes. 14 mutants, all KILLED by AssertionError, every restore sha-verified, lock removed.",
+  "D9 The RED artifacts live in <scratchpad>/B3red/, not B3_red/. Only ONE RED file exists, although the brief says 'the two RED files'.",
+  "D10 'git add -N' ran once on the RED file before the added-line sweep (intent-to-add, no content change). The commit used 'git add <paths>' + 'git commit -m ... -- <paths>'."
+ ],
+ "open_questions": [
+  "Q1 Do you accept E8 (tests/test_regression_gate_diff.py:183) as a deliberate pin change of B3? The spec 4.1 table and the RED prototype's CI-order set both missed it.",
+  "Q2 The three mocked tests/test_camera_vision.py nodes do not clear ENABLE_VISION_IDENTITY_V2 (spec 3.4 says touch nothing else in that file). With the flag set in a developer env they take the V2 path: a MagicMock message has a truthy refusal, so they raise LLMUnavailableError and go red. This is stated limit 14 in the CLAUDE.md row. Add the flag to that file's env hygiene now or in a follow-up?",
+  "Q3 Lines 2-3 of the tests/.pre_impl_failures.txt header say '#' lines are ignored by parse_failure_ids, which is false (GB-6). I left it; the regression_gate_diff hardening is the separate follow-up GB-6 names.",
+  "Q4 Confirm the model record and the commit trailer (D2): my system prompt says claude-opus-5-5, while the session rules expect Fable.",
+  "Q5 GB-7: test_extraction_prompt_bundle_c and the test_supplement_branch_genuine baseline row pass on this box at base and at HEAD. They stay listed until proven on CI (#89)."
+ ],
+ "pr_body_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B3_green\\PR_BODY.md",
+ "report_path": "C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\C--Users-SynAckITPC-Documents-AI\\ae650c83-4d2a-4910-a8d4-a47ab213c8c3\\scratchpad\\B3_green\\B3_GREEN_REPORT.md"
+}
