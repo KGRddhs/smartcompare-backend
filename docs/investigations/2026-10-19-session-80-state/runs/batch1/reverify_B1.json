@@ -1,0 +1,121 @@
+{
+ "unit": "B1 RESULT-STATUS + TELEMETRY (ENABLE_RESULT_STATUS_METADATA), fix round 1",
+ "lens": "correctness (re-verifier)",
+ "head_sha_verified": "dacc919e897ebdd539f835686f2f077ebe29e289",
+ "verdict": "SOUND",
+ "blocking": [],
+ "major": [],
+ "minor": [
+  "CLAUDE.md row + PR body D1-5 sentence 'the only OFF-state work is ...' omits the UNFLAGGED home_routes._result_status_supported call that runs per stored row in both flag states on /home/savings (legacy path), /home/smart-pick and, since F1-2, the three profile readers (one dict lookup per row; unstamped -> True, behaviour unchanged). Wording only; follows D1-5's list verbatim.",
+  "CLAUDE.md row: 'partial_stage ... none when the body is not a partial' is incomplete: a partial body whose partial_stage is absent or not a str also tags 'none' (fix report deviation 6; the only writer, scs._build_partial_response :3814, always stamps one of the four str constants, so unreachable in production). Wording.",
+  "PR body 'Gates' block (GREEN era) is headed 'base = 81df2b64, HEAD = 2bbd58a9' and says 'RED frozen: tests/test_s80_b1.py sha256 88130f32...35dfb'; the current frozen sha 71a50e8e... appears only in the 'Fix round 1' section. Suggest titling the first block 'GREEN gates (2bbd58a9)'.",
+  "Stated-limit gap (consequence of F1-2, absent from row and PR body): /profile/recent-decisions selects .limit(3) rows BEFORE the skip, so after the flip a user whose three newest comparisons are all stamped non-supported gets empty_state true + cta_text_key profile.recent_decisions.empty_cta ('run your first comparison') although history exists; a mix shows fewer than three cards. Same mechanics as the pre-existing malformed-row skip; suggest one stated-limit sentence or a C1/B2 over-fetch item.",
+  "Carried for the orchestrator's model check: the fix commit trailer is 'Co-Authored-By: Claude Opus 5.5' (fix report deviation 1) while the session brief names Fable; this re-verifier also ran on Opus 5.5 (claude-opus-5-5). No effect on the bytes."
+ ],
+ "mutants_applied": [
+  {
+   "id": "RV1 F1-1 emitter drops stamped categories",
+   "survived": false,
+   "killed_by": "f1_1a, f1_1b, f1_1c, f1_1d, f1_4"
+  },
+  {
+   "id": "RV2 F1-1 reader keeps non-str elements",
+   "survived": false,
+   "killed_by": "f1_1a"
+  },
+  {
+   "id": "RV3 F1-1 telemetry_tags fallback drops categories",
+   "survived": false,
+   "killed_by": "f1_1a"
+  },
+  {
+   "id": "RV4 F1-2 names-site skip removed",
+   "survived": false,
+   "killed_by": "f1_2[names], f1_2b"
+  },
+  {
+   "id": "RV5 F1-2 images-site skip keyed on metadata.winner_index",
+   "survived": false,
+   "killed_by": "f1_2[images]"
+  },
+  {
+   "id": "RV6 F1-2 savings-site skips only unsupported_category (total form)",
+   "survived": false,
+   "killed_by": "f1_2[prices], f1_2b"
+  },
+  {
+   "id": "RV7 F1-3 training_data counts again",
+   "survived": false,
+   "killed_by": "f1_3"
+  },
+  {
+   "id": "RV8 F1-3 smart_fallback over-excluded",
+   "survived": false,
+   "killed_by": "f1_3"
+  },
+  {
+   "id": "RV9 F1-4 stream capture after the write-back (X18s)",
+   "survived": false,
+   "killed_by": "f1_1d, f1_4"
+  },
+  {
+   "id": "RV10 F1-5 finite guard removed",
+   "survived": false,
+   "killed_by": "f1_5"
+  },
+  {
+   "id": "RV11 F1-5 nan half of guard removed",
+   "survived": false,
+   "killed_by": "f1_5"
+  },
+  {
+   "id": "RV12 F1-5 emitter fallback back to int(elapsed_ms)",
+   "survived": false,
+   "killed_by": "f1_5"
+  },
+  {
+   "id": "RV13 F1-6 whitelist dropped",
+   "survived": false,
+   "killed_by": "f1_6"
+  },
+  {
+   "id": "RV14 F1-6 PARTIAL_STAGES drift (verdict missing)",
+   "survived": false,
+   "killed_by": "f1_6"
+  },
+  {
+   "id": "RV15 F1-6 unknown stage -> none instead of omitted",
+   "survived": false,
+   "killed_by": "f1_6"
+  },
+  {
+   "id": "RV16 M11 partial_stage tag ignores metadata.partial",
+   "survived": false,
+   "killed_by": "f1_6"
+  }
+ ],
+ "reruns": [
+  "[pyt] tag=b1rv-unit-off start=2026-10-20 08:47:26 end=2026-10-20 08:50:41 elapsed=194s bound=600s status=OK rc=0 (226 passed)",
+  "[pyt] tag=b1rv-unit-on start=2026-10-20 08:51:17 end=2026-10-20 08:52:02 elapsed=45s bound=600s status=OK rc=0 (226 passed, flag ON exported)",
+  "[pyt] tag=b1rv-ci-order start=2026-10-20 09:17:07 end=2026-10-20 09:29:02 elapsed=715s bound=1200s status=OK rc=0 (23 files, 1306 passed; netguard 16 attempts / 4 baseline nodes)",
+  "[pyt] tag=b1rv-hazard-off start=2026-10-20 09:30:59 end=2026-10-20 09:31:39 elapsed=39s bound=600s status=OK rc=0 (2 passed)",
+  "[pyt] tag=b1rv-hazard-on start=2026-10-20 09:31:40 end=2026-10-20 09:31:58 elapsed=18s bound=600s status=FAIL rc=1 (2 failed, {'supported': True} exact-dict: the stated local-.env hazard confirmed)",
+  "[pyt] tag=b1rv-comm-00 start=2026-10-20 09:32:18 end=2026-10-20 09:33:07 elapsed=48s bound=1200s status=OK rc=0 (798 passed)",
+  "[pyt] tag=b1rv-comm-01 start=2026-10-20 09:33:07 end=2026-10-20 09:39:06 elapsed=358s bound=1200s status=FAIL rc=1 (3 camera_vision baseline + 1 load flake test_conftest_env_safety end_to_end)",
+  "[pyt] tag=b1rv-envsafety-alone start=2026-10-20 09:40:13 end=2026-10-20 09:43:49 elapsed=216s bound=600s status=OK rc=0 (24 passed, 1 skipped: flake cleared)",
+  "[pyt] tag=b1rv-comm-02 start=2026-10-20 09:44:32 end=2026-10-20 09:46:36 elapsed=124s bound=1200s status=OK rc=0 (503 passed)",
+  "[pyt] tag=b1rv-comm-03 start=2026-10-20 09:46:42 end=2026-10-20 09:57:19 elapsed=637s bound=1200s status=OK rc=0 (2985 passed)",
+  "[pyt] tag=b1rv-comm-04 start=2026-10-20 09:58:59 end=2026-10-20 09:59:47 elapsed=48s bound=1200s status=OK rc=0 (612 passed)",
+  "[pyt] tag=b1rv-comm-05 start=2026-10-20 09:59:47 end=2026-10-20 10:00:16 elapsed=29s bound=1200s status=OK rc=0 (454 passed)",
+  "[pyt] tag=b1rv-comm-06 start=2026-10-20 10:00:26 end=2026-10-20 10:01:03 elapsed=37s bound=1200s status=FAIL rc=1 (4 .pre_impl_failures baseline nodes)",
+  "[pyt] tag=b1rv-comm-07 start=2026-10-20 10:01:04 end=2026-10-20 10:01:35 elapsed=31s bound=1200s status=FAIL rc=1 (2 cold-tiktoken test_prompt_truth ERRORs, environmental baseline)",
+  "[pyt] tag=b1rv-comm-08 start=2026-10-20 10:01:47 end=2026-10-20 10:04:46 elapsed=179s bound=1200s status=OK rc=0 (1476 passed)",
+  "[pyt] tag=b1rv-comm-09 start=2026-10-20 10:04:48 end=2026-10-20 10:06:39 elapsed=110s bound=1200s status=OK rc=0 (1390 passed)",
+  "[pyt] tag=b1rv-comm-10 start=2026-10-20 10:06:48 end=2026-10-20 10:07:39 elapsed=51s bound=1200s status=OK rc=0 (343 passed)",
+  "[pyt] tag=b1rv-comm-11 start=2026-10-20 10:07:42 end=2026-10-20 10:09:41 elapsed=119s bound=1200s status=OK rc=0 (1168 passed, 35 xfailed)",
+  "[pyt] tag=b1rv-comm-12 start=2026-10-20 10:09:41 end=2026-10-20 10:11:12 elapsed=90s bound=1200s status=OK rc=0 (97 passed); comm set 307 files, branch-only-NEW = EMPTY",
+  "[pyt] tag=b1rv-hook1-notdash start=2026-10-20 10:15:55 end=2026-10-20 10:34:54 elapsed=1139s bound=1800s status=OK rc=0 (test_precommit_hook.py not dash, 31 passed; remaining 296 hook nodes NOT MEASURED at 37 s/node)",
+  "mutants RV1-RV16: 17 runs (RV6 twice), each bound 600, all status=FAIL rc=1 with AssertionError-only kills; [pyt] lines in the report table"
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B1_fix1/REVERIFY_REPORT.md"
+}
