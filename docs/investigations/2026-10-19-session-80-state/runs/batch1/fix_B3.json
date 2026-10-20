@@ -1,0 +1,110 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2) fix round 1",
+ "head_sha": "7b1e3ecf81ef2bb24ce08e84d89c0069f98b386a",
+ "red_files": [
+  {
+   "path": "tests/test_s80_b3_vision_identity_v2.py",
+   "sha256": "e8b2c9c109679a0f4581c6c5441af000487f04158c1349aa0f99ee98c82f8642"
+  }
+ ],
+ "rows_added": [
+  "test_XB1_non_delivery_exits_never_read_preferences[refusal_503]",
+  "test_XB1_non_delivery_exits_never_read_preferences[none_content_503]",
+  "test_XB1_non_delivery_exits_never_read_preferences[expiry_503]",
+  "test_XB1_non_delivery_exits_never_read_preferences[bad_request_500]",
+  "test_XB1_non_delivery_exits_never_read_preferences[length_action_error]",
+  "test_XB1_non_delivery_exits_never_read_preferences[moderation_blocked]",
+  "test_XB1_non_delivery_exits_never_read_preferences[zero_products_action_error]",
+  "test_XB1_non_delivery_exits_never_read_preferences[need_second_product]",
+  "test_XB1b_delivery_reads_preferences_once_after_identify",
+  "test_XB2_length_reply_without_content_is_no_content",
+  "test_XB2b_route_length_reply_without_content_is_coded_503",
+  "test_XB3_each_image_encoded_once[true-1]",
+  "test_XB3_each_image_encoded_once[true-2]",
+  "test_XB3_each_image_encoded_once[true-3]",
+  "test_XB3_each_image_encoded_once[None-2]",
+  "test_Y1_v2_reply_logs_cache_telemetry_once",
+  "test_Y2_dispatch_errors_are_not_logged_as_timeouts[bad_request]",
+  "test_Y2_dispatch_errors_are_not_logged_as_timeouts[rate_limit]",
+  "test_Y2b_route_dispatch_errors_keep_their_classification[bad_request-500-SERVER_ERROR]",
+  "test_Y2b_route_dispatch_errors_keep_their_classification[rate_limit-503-LLM_UNAVAILABLE]",
+  "test_Y3_refusal_with_string_content_is_no_content",
+  "test_Z1_Z3_vision_prompt_v2_sha_pinned",
+  "test_Z1_Z3_vision_prompt_v2_rule_substrings[confidence_low]",
+  "test_Z1_Z3_vision_prompt_v2_rule_substrings[no_invention]",
+  "test_Z1_Z3_vision_prompt_v2_rule_substrings[numbered_from_0]",
+  "test_Z1_Z3_vision_prompt_v2_rule_substrings[zero_based]"
+ ],
+ "red_step": {
+  "new_rows_failed": 0,
+  "every_failure_is_assertion_error": true,
+  "existing_rows_passed": 131,
+  "pyt_line": "[pyt] tag=b3fix1-unit-off-1 start=2026-10-20 09:43:56 end=2026-10-20 09:45:17 elapsed=81s bound=600s status=OK rc=0 (131 passed; new_rows_failed 0 by design per F3-1: the 26 appended PIN nodes are GREEN at HEAD; each named mutant KILLED by AssertionError only: XB1, BM1, XB2, XB3, Y1, Y2, Y3, Z1, Z2, Z3 = 10/10)"
+ },
+ "files_changed": [
+  {
+   "path": "tests/test_s80_b3_vision_identity_v2.py",
+   "added": 352,
+   "deleted": 0,
+   "sha256_after": "e8b2c9c109679a0f4581c6c5441af000487f04158c1349aa0f99ee98c82f8642"
+  },
+  {
+   "path": "CLAUDE.md",
+   "added": 2,
+   "deleted": 2,
+   "sha256_after": "48643ee836ceb16baf18b315c2de04dcb88ce20b8efdab7d11fe23928ab7c534"
+  }
+ ],
+ "unit_run_on": "[pyt] tag=b3fix1-unit-on-1 start=2026-10-20 09:45:34 end=2026-10-20 09:46:21 elapsed=47s bound=600s status=OK rc=0 (131 passed, 10 warnings; [hermeticity] 131; [netguard] blocked 0 attempt(s) from 0 node(s))",
+ "unit_run_off": "[pyt] tag=b3fix1-unit-off-1 start=2026-10-20 09:43:56 end=2026-10-20 09:45:17 elapsed=81s bound=600s status=OK rc=0 (131 passed, 10 warnings; [hermeticity] 131; [netguard] blocked 0 attempt(s) from 0 node(s))",
+ "gates": [
+  "[pyt] tag=b3fix1-scratch-baseline start=2026-10-20 09:50:45 end=2026-10-20 09:51:37 elapsed=51s bound=600s status=OK rc=0 (scratch worktree at 764d4416 + new RED file, unmutated: 131 passed)",
+  "[pyt] tag=b3fix1-mut-XB1 start=2026-10-20 09:51:48 end=2026-10-20 09:52:54 elapsed=66s bound=600s status=FAIL rc=1 (KILLED: 11 failed = XB1 x8, XB1b, Y2b x2; AssertionError only; restore sha-equal)",
+  "[pyt] tag=b3fix1-mut-BM1 start=2026-10-20 09:52:57 end=2026-10-20 09:53:47 elapsed=50s bound=600s status=FAIL rc=1 (KILLED: 11 failed, same rows)",
+  "[pyt] tag=b3fix1-mut-XB2 start=2026-10-20 09:53:50 end=2026-10-20 09:54:44 elapsed=54s bound=600s status=FAIL rc=1 (KILLED: XB2, XB2b)",
+  "[pyt] tag=b3fix1-mut-XB3 start=2026-10-20 09:54:47 end=2026-10-20 09:56:04 elapsed=77s bound=600s status=FAIL rc=1 (KILLED: XB3[true-1/2/3])",
+  "[pyt] tag=b3fix1-mut-Y1 start=2026-10-20 09:56:11 end=2026-10-20 09:57:10 elapsed=59s bound=600s status=FAIL rc=1 (KILLED: Y1)",
+  "[pyt] tag=b3fix1-mut-Y2 start=2026-10-20 09:57:35 end=2026-10-20 09:58:11 elapsed=37s bound=600s status=FAIL rc=1 (KILLED: Y2 x2, Y2b x2)",
+  "[pyt] tag=b3fix1-mut-Y3 start=2026-10-20 09:58:13 end=2026-10-20 09:58:36 elapsed=23s bound=600s status=FAIL rc=1 (KILLED: Y3)",
+  "[pyt] tag=b3fix1-mut-Z1 start=2026-10-20 09:58:36 end=2026-10-20 09:58:54 elapsed=17s bound=600s status=FAIL rc=1 (KILLED: Z1_Z3 sha, substrings no_invention + confidence_low)",
+  "[pyt] tag=b3fix1-mut-Z2 start=2026-10-20 09:58:55 end=2026-10-20 09:59:05 elapsed=10s bound=600s status=FAIL rc=1 (KILLED: Z1_Z3 sha, substring numbered_from_0)",
+  "[pyt] tag=b3fix1-mut-Z3 start=2026-10-20 09:59:06 end=2026-10-20 09:59:12 elapsed=6s bound=600s status=FAIL rc=1 (KILLED: Z1_Z3 sha, substring zero_based)",
+  "[pyt] tag=b3fix1-pricefallback start=2026-10-20 10:04:45 end=2026-10-20 10:04:58 elapsed=12s bound=600s status=OK rc=0 (tests/test_price_fallback_may_decline.py, F3-2: 17 passed; [hermeticity] 17; [netguard] blocked 0)",
+  "[pyt] tag=b3fix1-ciorder start=2026-10-20 10:05:15 end=2026-10-20 10:06:19 elapsed=64s bound=1200s status=OK rc=0 (GREEN's 30-file CI-order set incl. the spec 4.2 identity pins: 1385 passed, 1 skipped, 1 deselected; [hermeticity] 1386; [netguard] blocked 29 attempt(s) from 23 node(s), all 23 in tests/.network_attempt_baseline.txt)",
+  "[pyt] tag=b3fix1-claude-readers start=2026-10-20 10:06:53 end=2026-10-20 10:06:58 elapsed=5s bound=600s status=OK rc=0 (tests/test_ci_gates.py + tests/test_behavior_dimension_translation.py on the final CLAUDE.md: 79 passed)",
+  "ruff --select E9,F63,F7,F82 --no-cache on tests/test_s80_b3_vision_identity_v2.py: All checks passed! (and --select F clean); py_compile rc 0",
+  "RED file append-only: the old 65,236 B are a byte prefix of the new 80,670 B; LF; 0 bytes > 127",
+  "CLAUDE.md: only lines 474-475 changed, CRLF kept (0 bare LF), high-byte count 3979 before and after",
+  "added-line sweep (354 lines): @gmail 0, +973 0, sk- 0, eyJ 0, PRIVATE KEY 0, AKIA 0, xox 0, credentialed URL 0, 8-digit runs 0",
+  "pre-commit hook on the commit: All checks passed!",
+  "scratch worktree removed with git worktree remove --force; absent from git worktree list; no .qa-mutation.lock left; worktree git status --short empty"
+ ],
+ "docs_applied": [
+  "F3-2: comm-set rule (edited test-support modules) stated in the PR body with the test_price_fallback_may_decline run; unit comm list = 249 files at <scratchpad>/B3_fix1/comm_head_list_fix1.txt (sha256 238a3d03...1ccc); importers of tests/w4_11_prompt_digest_recorder.py = test_model_config_enforced, test_prompt_fence, test_prompt_truth (already in) + test_price_fallback_may_decline (added)",
+  "F3-3: hard flip precondition rewritten in the CLAUDE.md row and PR-body owner step 1 as the off-route smoke (ENABLE_VISION_IDENTITY_V2=true python -c ... calling identify_products on a Railway shell on web; expected results; a 400 = do not flip, open an issue; the owner never flips to test); the activation sentence points at it",
+  "F3-4: the 'one client-visible value change' sentence replaced by the measured list (row + PR limit 10); confidence clause corrected (missing -> low vs V1 medium; unrecognised -> low vs V1 verbatim); limit 5 gains the placeholder-pair paid/delivered/billed clause + canary item; limit 14 (PR 15) widened to ~53 authed camera nodes reaching the real get_user_preferences; new limit (row 15 / PR 17) two products at image_index 0 keep one + need_second_product canary",
+  "F3-5: PR-body defect row for R12 x15; rebase note (merge-tree: CLAUDE.md only, base :501-:502 = branch :504-:505, take B3's two lines); _select_vision_products_v2 vs spec _select_best_per_image noted as internal; scs ruff per-rule list completed (SIM102/SIM103/SIM118 unchanged base vs HEAD); hook-file NOT MEASURED note + re-verifier instruction",
+  "CLAUDE.md header names RULINGS_FIX1_B3; row gains a Fix-round pins sentence (VISION_PROMPT_SHA_ON re-pinned in the same PR as any deliberate prompt edit) and the empty-tail timeout canary clause (correctness min-9)",
+  "PR body (<scratchpad>/B3_green/PR_BODY.md, sha256 45bdd567...8ecd) gains a 'Fix round 1' section: mutation table with 10 [pyt] lines, F3-2 rule + runs, fix-round gate [pyt] lines, F3-5 hook note; defect table rows extended with the new nodes; RED-file sha change recorded; fix commit sha 7b1e3ecf recorded"
+ ],
+ "deviations": [
+  "D1 Commit trailer is 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>': the rulings say 'naming your own model' and this agent runs on claude-opus-5-5, so it does not write the task text's 'Claude Fable 5.1' (same as GREEN's D2); the orchestrator records the model",
+  "D2 A fourth Z substring ('numbered from 0 in the order they are given (image_index 0 is the first image)') beyond the ruling's three, so Z2 is killed by a substring row as well as by the sha row",
+  "D3 BM1 (the engineering adversary's after-the-ledger-line block move) run in addition to XB1: 10 mutants, all KILLED",
+  "D4 XB1 also covers the moderation-blocked exit (exit 3) and both action-error exits (2 and 4), beyond the ruling's listed exits",
+  "D5 F3-4's 'a null brand reads Unknown' corrected to the measured case: the V1 normaliser is p.get('brand') or 'Unknown' / p.get('name') or 'Unknown Product', so a null brand/name reads the same default in both; the change is a whitespace-only brand/name and an empty size/price; 'V1 waited unbounded' written as 'no route-level bound, only the SDK client's 120 s per-attempt timeout and its retries'",
+  "D6 F3-3's 'image_index 0 and 1 ... category' written as _image_index / _category (the internal keys identify_products actually returns)",
+  "D7 The CLAUDE.md row also gained a one-sentence fix-round pin summary and the empty-tail timeout canary clause (correctness min-9); the header names RULINGS_FIX1_B3",
+  "D8 The unit's comm list is a new file <scratchpad>/B3_fix1/comm_head_list_fix1.txt (249); GREEN's comm_head_list.txt is untouched",
+  "D9 Limit numbering differs by document (row limits 1-15, PR limits 1-18); each cross-reference uses its own document's numbers",
+  "NOT MEASURED: the pre-commit hook test files (F3-5 assigns the not-dash set ALONE to the re-verifier; the fix commit passed the hook); the full comm set was not re-run (no app file changed; the CLAUDE.md readers and the one added comm file were run); live OpenAI structured-output behaviour (the owner's off-route smoke)"
+ ],
+ "open_questions": [
+  "Q1 Confirm the trailer / model record (D1: Opus 5.5 written, the task text named Fable 5.1)",
+  "Q2 Accept D5 (the measured correction of the ruling's 'null brand reads Unknown' item to the whitespace-only case, and the precise V1 timeout wording) and D6 (_image_index / _category in the smoke's expected results)",
+  "Q3 Accept D2 / D3 / D4 (the extra numbered_from_0 substring, the BM1 run, the wider XB1 exit coverage) as strengthening",
+  "Q4 The re-verifier still owes the not-dash pre-commit hook set ALONE (F3-5); a second TIMEOUT is NOT MEASURED, not a failure"
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B3_fix1/B3_FIX1_REPORT.md",
+ "pr_body_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B3_green/PR_BODY.md"
+}

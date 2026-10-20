@@ -1,0 +1,107 @@
+{
+ "unit": "B3 VISION-IDENTITY-V2 (ENABLE_VISION_IDENTITY_V2), fix round 1",
+ "lens": "correctness (re-verifier)",
+ "head_sha_verified": "7b1e3ecf81ef2bb24ce08e84d89c0069f98b386a",
+ "verdict": "SOUND",
+ "blocking": [],
+ "major": [],
+ "minor": [
+  "RV-min-1 (doc truth, CLAUDE.md row limit (14) and PR-body limit 15): 'the netguard ratchet would report about 50 new egress nodes' is wrong. The extra attempts go to neutralized.supabase.invalid, which is the sentinel class (scripts/netguard_ratchet.py _classify_target :41-:57, and both adversaries measured them as sentinel). A new sentinel-only node prints a WARNING and exits 0 (:13-:17, :116-:136). Suggested wording: 'about 50 new sentinel-only WARNING lines (not a CI failure)'. The wording came from correctness min-5 and was copied into F3-4. The limit itself still holds.",
+  "RV-min-2 (doc, PR-body defect table R12 row): 'R12 x15' lists only 13 of the 15 parameters ('true' and 'on' are missing; the test file :1082-:1087 has 15). Wording only.",
+  "RV-nit-1 (CLAUDE.md :505, not touched by this round): the 'TypeError at openai_service.py:81, the cached_tokens > 0 line' anchor is the line at base 81df2b64. At B3 HEAD that line is :84 because B3 added three imports. The sentence is past tense, B3-R4 required keeping :81, and the symbol is named. Optional fix: '(:81 at 81df2b64)'.",
+  "RV-nit-2 (record): the fix commit trailer reads 'Co-Authored-By: Claude Opus 5.5' (fix D1, GREEN D2). The agents ran on claude-opus-5-5, not the Fable pin the common brief names. This is a question for the model ledger, not a defect in the bytes.",
+  "NOT MEASURED: the pre-commit hook not-dash set was run alone twice and timed out at the 1800 s bound both times. Run 1 reached 51 of 167 nodes, all passed. The re-run reached 26 nodes: 19 passed and 7 failed in test_precommit_hook.py, and all 7 had passed in run 1 on the same bytes (slow process spawning on the box, about 1.75 s per sh spawn). The dash half was not run. B3 edits no .githooks file."
+ ],
+ "mutants_applied": [
+  {
+   "id": "XB1",
+   "survived": false,
+   "killed_by": "test_XB1_non_delivery_exits_never_read_preferences x8, test_XB1b_delivery_reads_preferences_once_after_identify, test_Y2b_route_dispatch_errors_keep_their_classification x2 (11 failed, AssertionError only)"
+  },
+  {
+   "id": "BM1",
+   "survived": false,
+   "killed_by": "same 11 rows as XB1"
+  },
+  {
+   "id": "XB1c (re-verifier extra: prefs block after vision_cost, before 0/1-product exits)",
+   "survived": false,
+   "killed_by": "test_XB1_non_delivery_exits_never_read_preferences[zero_products_action_error], [need_second_product]"
+  },
+  {
+   "id": "XB2",
+   "survived": false,
+   "killed_by": "test_XB2_length_reply_without_content_is_no_content, test_XB2b_route_length_reply_without_content_is_coded_503"
+  },
+  {
+   "id": "XB3",
+   "survived": false,
+   "killed_by": "test_XB3_each_image_encoded_once[true-1], [true-2], [true-3]"
+  },
+  {
+   "id": "Y1",
+   "survived": false,
+   "killed_by": "test_Y1_v2_reply_logs_cache_telemetry_once"
+  },
+  {
+   "id": "Y2",
+   "survived": false,
+   "killed_by": "test_Y2_dispatch_errors_are_not_logged_as_timeouts x2, test_Y2b_route_dispatch_errors_keep_their_classification x2"
+  },
+  {
+   "id": "Y3",
+   "survived": false,
+   "killed_by": "test_Y3_refusal_with_string_content_is_no_content"
+  },
+  {
+   "id": "Z1",
+   "survived": false,
+   "killed_by": "test_Z1_Z3_vision_prompt_v2_sha_pinned, rule_substrings[no_invention], [confidence_low]"
+  },
+  {
+   "id": "Z2",
+   "survived": false,
+   "killed_by": "test_Z1_Z3_vision_prompt_v2_sha_pinned, rule_substrings[numbered_from_0]"
+  },
+  {
+   "id": "Z3",
+   "survived": false,
+   "killed_by": "test_Z1_Z3_vision_prompt_v2_sha_pinned, rule_substrings[zero_based]"
+  },
+  {
+   "id": "Z4 (re-verifier extra: confidence to low -> medium)",
+   "survived": false,
+   "killed_by": "test_Z1_Z3_vision_prompt_v2_sha_pinned, rule_substrings[confidence_low]"
+  },
+  {
+   "id": "Z5 (re-verifier extra: do NOT invent -> you may infer)",
+   "survived": false,
+   "killed_by": "test_Z1_Z3_vision_prompt_v2_sha_pinned, rule_substrings[no_invention]"
+  }
+ ],
+ "reruns": [
+  "[pyt] tag=b3rv-unit-off start=2026-10-20 10:21:58 end=2026-10-20 10:22:31 elapsed=34s bound=600s status=OK rc=0 (131 passed; netguard 0)",
+  "[pyt] tag=b3rv-unit-on start=2026-10-20 10:22:41 end=2026-10-20 10:23:19 elapsed=37s bound=600s status=OK rc=0 (131 passed, ENABLE_VISION_IDENTITY_V2=true; netguard 0)",
+  "[pyt] tag=b3rv-scratch-baseline start=2026-10-20 10:31:25 end=2026-10-20 10:32:00 elapsed=35s bound=600s status=OK rc=0 (131 passed)",
+  "[pyt] tag=b3rv-mut-XB1 start=2026-10-20 10:32:21 end=2026-10-20 10:33:08 elapsed=47s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-BM1 start=2026-10-20 10:33:11 end=2026-10-20 10:34:02 elapsed=51s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-XB1c start=2026-10-20 10:34:06 end=2026-10-20 10:35:09 elapsed=63s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-XB2 start=2026-10-20 10:35:14 end=2026-10-20 10:35:25 elapsed=11s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-XB3 start=2026-10-20 10:35:39 end=2026-10-20 10:35:55 elapsed=16s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Y1 start=2026-10-20 10:35:57 end=2026-10-20 10:36:15 elapsed=19s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Y2 start=2026-10-20 10:36:17 end=2026-10-20 10:36:23 elapsed=6s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Y3 start=2026-10-20 10:36:23 end=2026-10-20 10:36:30 elapsed=7s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Z1 start=2026-10-20 10:38:20 end=2026-10-20 10:38:25 elapsed=6s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Z2 start=2026-10-20 10:38:27 end=2026-10-20 10:38:45 elapsed=18s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Z3 start=2026-10-20 10:38:47 end=2026-10-20 10:39:02 elapsed=15s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Z4 start=2026-10-20 10:39:02 end=2026-10-20 10:39:15 elapsed=12s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-mut-Z5 start=2026-10-20 10:39:16 end=2026-10-20 10:39:33 elapsed=17s bound=600s status=FAIL rc=1",
+  "[pyt] tag=b3rv-pricefallback start=2026-10-20 10:40:27 end=2026-10-20 10:40:42 elapsed=15s bound=600s status=OK rc=0 (17 passed; netguard 0)",
+  "[pyt] tag=b3rv-ciorder start=2026-10-20 10:41:14 end=2026-10-20 10:42:33 elapsed=79s bound=1200s status=OK rc=0 (31 files = GREEN's 30 + test_price_fallback_may_decline: 1402 passed, 1 skipped, 1 deselected; netguard 29 attempts from 23 nodes, all 23 in the baseline)",
+  "[pyt] tag=b3rv-claude-readers start=2026-10-20 10:43:35 end=2026-10-20 10:44:02 elapsed=27s bound=600s status=OK rc=0 (79 passed)",
+  "[pyt] tag=b3rv-hook-notdash start=2026-10-20 10:49:46 end=2026-10-20 11:19:52 elapsed=1806s bound=1800s status=TIMEOUT rc=124 (51 of 167 reached, 51 passed)",
+  "[pyt] tag=b3rv-hook-notdash-rerun start=2026-10-20 11:26:38 end=2026-10-20 11:56:45 elapsed=1807s bound=1800s status=TIMEOUT rc=124 (26 reached: 19 passed, 7 F that passed in run 1) -> NOT MEASURED",
+  "[pyt] tag=b3rv-hook-collect start=2026-10-20 11:58:14 end=2026-10-20 11:58:34 elapsed=20s bound=600s status=OK rc=0 (collect-only, to name the 7 F nodes)"
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/ae650c83-4d2a-4910-a8d4-a47ab213c8c3/scratchpad/B3_fix1/REVERIFY_REPORT.md"
+}
