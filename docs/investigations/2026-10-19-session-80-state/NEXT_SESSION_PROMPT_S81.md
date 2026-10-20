@@ -21,6 +21,7 @@ Resume the MYEZ session-80 QA/UX audit remediation lane under /synack-build-orch
 
 ## B4 at the 21:00 checkpoint (newest; supersedes the B4 bullets above)
 - Fix round 2 committed: HEAD 83daa8cb on feature/s80-b4-url-mode-v2 (worktree C:/Users/SynAckITPC/Documents/AI/sc-s80-b4, clean). Frozen RED file sha 1e8e28aeff8c7fbc9fc9bcf67e0a765ed151ad1f87b8cd9508da38ac54894e0a (335 rows). Report: specs/B4_FIX2_REPORT.md; PR body draft: specs/B4_PR_BODY_DRAFT_FIX2.md.
+- Before anything else in sc-s80-b4: `git worktree prune`, then `git status --short` (expect clean at 83daa8cb). The round-2 re-verifier was likely cut at the 21:30 shutdown.
 - Its re-verifier was running when the PC shut down (check the ledger for a later line; if none, it was cut). Workflow resume does not cross sessions, so do NOT try to resume wf_54a5c042-08b.
 - Next: write specs/RULINGS_FIX3_B4.md for the open defect (two DIFFERENT query-routed products on one store normalise equal in normalize_url_for_same_check and are refused same_url; keep the allow-listed product-route keys in the same-URL key) plus the two unpinned edges (upper-case route value, empty allow-listed key), run fix round 3 with scripts/wf_unit_fix.js and unit.round = 3, then BOTH adversaries (scripts/wf_unit_adv.js) on the round-3 HEAD; two SOUND verdicts, then rebase onto origin/main, post-rebase gates, PR.
 
