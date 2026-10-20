@@ -238,6 +238,18 @@ def flag_off(monkeypatch):
     return True
 
 
+# E6 (B4 fix round 1, RULINGS_FIX1_B4 F4-3): env names a developer .env may
+# carry that would move these pins (the url_compare stubs keep the base
+# extract_from_url(url) signature); cleared for every node, as CI runs them.
+_CLEAN_ENV = ("ENABLE_URL_MODE_V2",)
+
+
+@pytest.fixture(autouse=True)
+def _clean_env(monkeypatch):
+    for name in _CLEAN_ENV:
+        monkeypatch.delenv(name, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # camera harness
 # ---------------------------------------------------------------------------

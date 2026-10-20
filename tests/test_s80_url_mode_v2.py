@@ -1513,3 +1513,78 @@ def test_fetch_page_v2_keeps_status_and_final_url(monkeypatch):
                    "outcome": "ok", "error_type": None}, res
     res = _run(fetch_v2("https://x.example.test/f"))
     assert res["status"] == 403 and res["outcome"] == "ok" and res["error_type"] is None, res
+
+
+# ===========================================================================
+# Fix round 1 (RULINGS_FIX1_B4 F4-2): the normaliser-stage image coercion
+# ===========================================================================
+_NOON_PDP = "https://www.noon.com/uae-en/b4-probe-oud/N4B4PROBEA/p/"
+_AMAZON_PDP = "https://www.amazon.ae/b4-probe-parfum/dp/B0B4PROBE1"
+_LLM_PDP = "https://shop.example.test/p/llm-merged"
+_LLM_PAGE = _page("B4 Probe Musk - Shop", [_product("B4 Probe Musk", price=None)])
+# case -> (url, page, LLM answer or None for "no LLM call", the image_url that ships)
+_NORMALISER_IMAGE_CASES = {
+    # noon: the base extractor hands the RAW JSON-LD image list to the normaliser
+    "noon_jsonld_list": (
+        _NOON_PDP,
+        _page("B4 Probe Oud | noon", [_product(
+            "B4 Probe Oud 100ml", price="30",
+            image=["http://f.nooncdn.example.test/b4-http.jpg",
+                   "https://f.nooncdn.example.test/b4.jpg"])]),
+        None, "https://f.nooncdn.example.test/b4.jpg"),
+    # amazon: the base extractor's raw landingImage src (protocol-relative)
+    "amazon_raw_src": (
+        _AMAZON_PDP,
+        _page("Amazon.ae: B4 Probe Parfum", body=(
+            '<span id="productTitle">B4 Probe Parfum 100ml</span>'
+            '<span class="a-price-whole">12</span>'
+            '<img id="landingImage" src="//m.media.example.test/images/b4.jpg">')),
+        None, "https://m.media.example.test/images/b4.jpg"),
+    # generic page, a node without an image or a price: the LLM's image LIST is
+    # merged raw into raw_data (the v2 extractor found none)
+    "llm_merged_list": (
+        _LLM_PDP, _LLM_PAGE,
+        {"is_product_page": True, "price": 9.5, "currency": "USD",
+         "image_url": ["http://img.example.test/llm-http.jpg",
+                       "https://img.example.test/llm.jpg"]},
+        "https://img.example.test/llm.jpg"),
+    # the same with no https member: null, never a list or an http url
+    "llm_merged_http_only": (
+        _LLM_PDP, _LLM_PAGE,
+        {"is_product_page": True, "price": 9.5, "currency": "USD",
+         "image_url": ["http://img.example.test/llm-http.jpg"]},
+        None),
+}
+
+
+def test_normaliser_coerces_a_raw_image_list_flag_on(monkeypatch):
+    """PIN (fix round 1, RULINGS_FIX1_B4 F4-2; kills the GREEN mutant G10, the
+    normaliser-stage coercion removed): under url_mode_v2=True a product whose
+    image reaches normalize_product_data RAW (the noon extractor's JSON-LD list,
+    the amazon extractor's protocol-relative src, an LLM-merged list when the v2
+    extractor found none) ships image_url as ONE absolute https url string (the
+    first https member, joined against the final url), or None when no member is
+    https; never a list. Run in both ENABLE_PRICE_PARSE_OFFLOAD states. Green on
+    the GREEN bytes 9db99de9; at base 81df2b64 it fails on the _assert_kwarg
+    AssertionError (the R19 class)."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    seen = {}
+    for parse_flag in (None, "true"):
+        if parse_flag:
+            monkeypatch.setenv(PARSE, parse_flag)
+        else:
+            monkeypatch.delenv(PARSE, raising=False)
+        for case in sorted(_NORMALISER_IMAGE_CASES):
+            url, page, llm, want = _NORMALISER_IMAGE_CASES[case]
+            h = H()
+            _serve(monkeypatch, h, {url: ok(page)})
+            _ssrf(monkeypatch, h)
+            _llm(monkeypatch, h, content=json.dumps(llm) if llm is not None else "{}")
+            result = _run(ues.extract_from_url(url, url_mode_v2=True))
+            assert result.get("success") is True, (case, parse_flag, result)
+            value = result["product"]["image_url"]
+            assert isinstance(value, (str, type(None))), (case, parse_flag, value)
+            assert value == want, (case, parse_flag, value)
+            assert len(h.llm_calls) == (0 if llm is None else 1), (case, parse_flag, h.llm_calls)
+            seen[(case, parse_flag)] = value
+    assert len(seen) == 2 * len(_NORMALISER_IMAGE_CASES), seen

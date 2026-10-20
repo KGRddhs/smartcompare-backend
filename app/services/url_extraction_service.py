@@ -313,8 +313,11 @@ def _v2_code_message(code: Any) -> str:
 
 
 def _log_fetch_failed(url: str, reason: str, error_type: Optional[str]) -> None:
-    """GC-1: ONE WARNING per unreadable fetch (a typed non-delivery is not an ERROR),
-    the host, the reason word and the exception TYPE only (None when no exception)."""
+    """GC-1 as amended by RULINGS_FIX1_B4 F4-1: ONE WARNING per unreadable fetch that
+    is not a transport error (blocked hop, redirect cap, non-2xx, challenge), the
+    host, the reason word and the exception TYPE only (None when no exception). The
+    transport error logs the same template at ERROR inside _fetch_page_v2's except
+    arm."""
     logger.warning("[URL-V2] fetch failed host=%s reason=%s type=%s",
                    _host_only(url), reason, error_type)
 
@@ -430,8 +433,11 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
         result.update(outcome="redirect_cap", final_url=current)
         return result
     except Exception as e:
-        # GC-1: never the base ERROR template; one WARNING (host, reason, type).
-        _log_fetch_failed(url, "fetch_error", type(e).__name__)
+        # F4-1 (RULINGS_FIX1_B4, amends GC-1): the transport error is ONE ERROR line
+        # inside this except arm with the distinct [URL-V2] template (host, reason
+        # word, exception TYPE only), never the base 'Failed to fetch' template.
+        logger.error("[URL-V2] fetch failed host=%s reason=%s type=%s",
+                     _host_only(url), "fetch_error", type(e).__name__)
         result.update(outcome="error", error_type=type(e).__name__, final_url=current)
         return result
 
