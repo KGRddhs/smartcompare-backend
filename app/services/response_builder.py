@@ -17,6 +17,8 @@ from app.services.scoring_service import (
     count_missing_dim_cells,
 )
 from app.services.text_sanitize import has_score_internals, strip_score_internals, scrub_review_summary
+# B1 (S80, ENABLE_RESULT_STATUS_METADATA): the pure predicates; the flag is read per call.
+from app.services.result_gate import STATUS_SUPPORTED, assess_result, result_status_metadata_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -1474,6 +1476,7 @@ def build_comparison_response(
     cohort_summary: Optional[Dict[str, Any]] = None,
     openai_usage: Optional[Dict[str, Any]] = None,
     _single_margin: Optional[bool] = None,
+    product_categories: Optional[List[Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
 
@@ -1506,6 +1509,14 @@ def build_comparison_response(
     reads the flag ONCE per stream and routes the value here, so the SSE
     `verdict` frame and `complete` can never disagree on the margin. Tests may
     pass it.
+
+    B1 (S80) -- `product_categories` is the per-product category pair captured by
+    the orchestrator BEFORE the pair-category write-back (so a cross-category pair
+    is still visible here). It is read only under ENABLE_RESULT_STATUS_METADATA
+    (default OFF, read per call at the stamp below); with the flag OFF it is unused
+    and the body is byte-identical. The stamp writes additive `metadata` keys only
+    and never moves the crown (`winner_index`, `overview.winner.product_index`,
+    `scoring_v2.overall_score`); B2 (ENABLE_RESULT_GATE) decides refusals.
     """
     # Resolve product_data / products alias
     if products is not None and product_data is None:
@@ -2250,6 +2261,38 @@ def build_comparison_response(
         "price_tiers": scoring_result.get("price_tiers", {}),
         "is_cross_tier": scoring_result.get("is_cross_tier", False),
     }
+
+    # B1 (S80, ENABLE_RESULT_STATUS_METADATA; default OFF, read per call -- the FIRST
+    # statement of the predicate, so OFF reads no state): the honest machine-readable
+    # status of this body (R-A4 vocabulary, R0-5 AUDITABLE reading), stamped after
+    # every alias is in place and before the inference markers are stripped, so the
+    # tier-3 field markers are still readable. Additive keys only: the crown
+    # (winner_index, overview.winner.product_index, scoring_v2.overall_score,
+    # comparison.winner_index) never moves here (B2 decides refusals). A failure
+    # inside the stamp leaves the body exactly as with the flag OFF (2.12).
+    if result_status_metadata_enabled():
+        try:
+            _b1 = assess_result(result, product_categories=product_categories)
+            _b1_supported = _b1["status"] == STATUS_SUPPORTED
+            _b1_cats = None
+            if isinstance(product_categories, list) and len(product_categories) == 2:
+                _b1_cats = [c if isinstance(c, str) else None for c in product_categories]
+            _b1_md = result["metadata"]
+            _b1_md["result_status"] = _b1["status"]
+            _b1_md["identity_confidence"] = _b1["identity_confidence"]
+            _b1_md["data_coverage"] = _b1["data_coverage"]
+            _b1_md["data_coverage_literal"] = _b1["data_coverage_literal"]
+            _b1_md["section_status"] = _b1["section_status"]
+            if _b1_cats is not None:
+                _b1_md["product_categories"] = _b1_cats
+            result["overview"]["winner"]["supported"] = _b1_supported
+            if not _b1_supported:
+                # The first writer of metadata.winner_index (MYEZ-027): the History
+                # list renders such a row with no winner highlight; Home skips it by
+                # result_status, never by this key. Absent on a supported body.
+                _b1_md["winner_index"] = None
+        except Exception as _b1_exc:  # noqa: BLE001 -- the stamp never breaks a body
+            logger.warning("[RESULT_STATUS] assess failed: %s", type(_b1_exc).__name__)
 
     # M18 CD-ci-truth-11 — final serialization walk: the internal
     # fabrication-provenance marker (inference_source="model_knowledge",

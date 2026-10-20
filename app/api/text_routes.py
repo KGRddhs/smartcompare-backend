@@ -45,6 +45,8 @@ from app.services.usage_service import (
 )
 from app.utils.async_utils import fire_and_forget
 from app.services.extraction_service import normalize_output_lang
+# B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit.
+from app.services.sentry_service import capture_result_status
 
 logger = logging.getLogger(__name__)
 
@@ -765,6 +767,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
             label="record_lifetime.text.post",
         )
 
+    capture_result_status(result, "text")  # B1 (S80): flag read inside, per call
     return result
 
 
@@ -948,6 +951,7 @@ async def text_compare_get(
             label="record_lifetime.text.get",
         )
 
+    capture_result_status(result, "text")  # B1 (S80): flag read inside, per call
     return result
 
 
@@ -1295,6 +1299,12 @@ async def text_compare_stream(
                         record_lifetime_comparison(user_id, user.get("access_token", "")),
                         label="record_lifetime.text_stream",
                     )
+                # B1 (S80): the status message for a DELIVERED success terminal only --
+                # inside the M18 CD-interactions-01 gate above (a terminal the client
+                # never received is refunded, not delivered), never for a success:False
+                # terminal. Synchronous; no fire_and_forget label.
+                if isinstance(complete_response, dict) and complete_response.get("success") is True:
+                    capture_result_status(complete_response, "text_stream")
             elif had_error:
                 # Bundle D 2.B.6 WRAP: failure-path log on streaming.
                 if not _truth:

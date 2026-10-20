@@ -148,6 +148,19 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
 
 
+def _result_status_supported(full_response: Any) -> bool:
+    """B1 (S80, MYEZ-027; an UNFLAGGED reader keyed on the stored stamp, no flag read): a
+    row stamped `metadata.result_status` other than `supported_result` is not a decision;
+    an unstamped row (every row written before the flip, or a non-dict metadata) counts
+    exactly as today. Never keyed on `winner_index`."""
+    if not isinstance(full_response, dict):
+        return True
+    metadata = full_response.get("metadata")
+    if not isinstance(metadata, dict) or "result_status" not in metadata:
+        return True
+    return metadata.get("result_status") == "supported_result"
+
+
 def _extract_winner_loser_prices(full_response: dict) -> tuple[Optional[float], Optional[float]]:
     """Return (winner_price_bhd, loser_price_bhd) from a renderable v2 row.
 
@@ -157,6 +170,8 @@ def _extract_winner_loser_prices(full_response: dict) -> tuple[Optional[float], 
     """
     if not isinstance(full_response, dict):
         return (None, None)
+    if not _result_status_supported(full_response):
+        return (None, None)  # B1: a stamped non-supported row; never via winner_index
     products = full_response.get("products") or []
     if not isinstance(products, list) or len(products) < 2:
         return (None, None)
@@ -539,6 +554,8 @@ def _select_smart_pick(
         full = comparison.get("full_response") or {}
         if not isinstance(full, dict):
             continue
+        if not _result_status_supported(full):
+            continue  # B1 (Q5, MYEZ-027): a stamped non-supported row is never the smart pick
         winner_idx = full.get("winner_index")
         if winner_idx not in (0, 1):
             continue

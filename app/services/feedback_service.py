@@ -201,6 +201,9 @@ async def save_feedback(
     mattered_most: List[str],
     change_suggestion: Optional[str] = None,
     access_token: Optional[str] = None,
+    winner_correct: Optional[str] = None,
+    price_correct: Optional[str] = None,
+    specs_correct: Optional[str] = None,
 ) -> dict:
     """
     Save comparison feedback to Supabase. Fire-and-forget safe.
@@ -230,6 +233,14 @@ async def save_feedback(
             record["comparison_id"] = comparison_id
         if change_suggestion:
             record["change_suggestion"] = change_suggestion
+        # S80 B1 (R0-2): the three live 027 correctness columns, written only when sent
+        # (a 4-field call builds exactly today's record).
+        if winner_correct is not None:
+            record["winner_correct"] = winner_correct
+        if price_correct is not None:
+            record["price_correct"] = price_correct
+        if specs_correct is not None:
+            record["specs_correct"] = specs_correct
 
         # #115 — request-path write (POST /feedback); offload under
         # ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.

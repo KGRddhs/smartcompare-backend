@@ -17,6 +17,9 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Request
 
 from app.services.openai_service import identify_products
+# B1 (S80, ENABLE_RESULT_STATUS_METADATA): the camera timings stamp and the status message.
+from app.services.result_gate import stamp_camera_stage_timings
+from app.services.sentry_service import capture_result_status
 # COST-METER (#66) CM9 / G5: the camera identify call is recorded on the
 # route's OWN ledger and merged with the compare's summary.
 from app.services.openai_pricing import (
@@ -176,6 +179,8 @@ async def identify_and_compare(
     """
     logger.info(f"[IMAGE] Received {len(images)} image(s) for identification")
     start_time = time.time()
+    # B1 (S80): the three walls (clock reads only; written to the body under the flag).
+    vision_ms = vision_moderation_ms = compare_ms = None
 
     # M13-03: anonymous freemium gate (dark, ENABLE_ANON_USAGE_GATE default OFF).
     # /image/identify runs a paid Vision call + a full comparison for anonymous
@@ -307,7 +312,9 @@ async def identify_and_compare(
     # summaries into metadata.openai once the compare has returned.
     vision_ledger = start_openai_ledger()
     try:
+        _t_vision = time.perf_counter()
         vision_result = await identify_products(image_data_list)
+        vision_ms = int((time.perf_counter() - _t_vision) * 1000)
     except Exception as e:
         logger.error(f"[IMAGE] Vision call failed: {e}")
         # Non-delivery exit 1 of 6.
@@ -365,7 +372,9 @@ async def identify_and_compare(
     # is not covered; closing that needs a ~170-line re-indent of a live route,
     # which is not worth the regression risk inside a clean comm gate.)
     try:
+        _t_moderation = time.perf_counter()
         _l4 = await _safety.moderate_vision_output(vision_result)
+        vision_moderation_ms = int((time.perf_counter() - _t_moderation) * 1000)
     except Exception:
         _refund_reserved_credit("usage_refund.image.moderation_exception")
         raise
@@ -447,7 +456,9 @@ async def identify_and_compare(
     _syn = _search_log_synthetic_kwargs(request)
     try:
         service = StructuredComparisonService()
+        _t_compare = time.perf_counter()
         result = await service.compare_from_text(query, region=region, vision_products=products, nocache=nocache)
+        compare_ms = int((time.perf_counter() - _t_compare) * 1000)
 
         # R-METER (W2-1b): compare_from_text mostly RETURNS its failures
         # (`success: False` + TIMEOUT / INSUFFICIENT_DATA / LLM_UNAVAILABLE /
@@ -494,6 +505,11 @@ async def identify_and_compare(
             }
         if merged_openai is not None and recorded_openai:
             result["metadata"]["openai"] = merged_openai
+        # B1-TIMINGS (R0-6): flag first; then only into an EXISTING stage_timings_ms dict.
+        stamp_camera_stage_timings(
+            result, vision_ms=vision_ms, vision_moderation_ms=vision_moderation_ms,
+            compare_ms=compare_ms,
+        )
 
         result["action"] = "comparison"
 
@@ -577,6 +593,10 @@ async def identify_and_compare(
             # accounting above is today's (history + success log) by design --
             # the no-bill half belongs to ENABLE_PAID_ROUTE_METERING.
             return _camera_failure_envelope(result, request, products, vision_cost)
+        # B1 (S80, B1-R6): the status message on the DELIVERY exit only -- an unsuccessful
+        # body served here with metering and the envelope both OFF is not a delivery.
+        if result.get("success") is True:
+            capture_result_status(result, "camera", vision_ms=vision_ms, compare_ms=compare_ms)
         return result
 
     except Exception as e:

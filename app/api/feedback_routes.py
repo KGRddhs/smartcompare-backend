@@ -4,7 +4,7 @@ Feedback Routes - Comparison feedback and event tracking endpoints
 import json
 import logging
 import uuid
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -45,6 +45,8 @@ VALID_MATTERED_MOST = [
     "price", "specs", "reviews", "brand", "value", "warranty", "ratings",
     # FeedbackCard.tsx chips (the MATTERED_OPTIONS array) — on phones today.
     "accurate", "detailed", "fast",
+    # S80 C6 reason chips (MYEZ-023); a tap sends mattered_most: [chipKey]
+    "wrong_product", "missing_info", "unclear_reasons", "slow", "wrong_winner", "unsure",
 ]
 
 # Allowlist of event_type values accepted by POST /events. This MUST be a
@@ -85,6 +87,9 @@ VALID_EVENT_TYPES = [
     "spec_expand",      # user expanded the spec list past the 3-row preview (too_many_specs)
     "result_abandon",   # card unmounted before the verdict stage (abandonment mid-stream)
     "screenshot",       # user screenshotted the comparison (share-intent / decision-capture)
+    # S80 C7 camera loader stages + cancel (MYEZ-015) and the image failure signal
+    "scan_start", "scan_identity_resolved", "scan_comparison_ready", "scan_failed",
+    "scan_cancelled", "image_load_failed",
 ]
 
 MAX_BATCH_SIZE = 50
@@ -99,6 +104,11 @@ class FeedbackRequest(BaseModel):
     comparison_id: Optional[str] = None
     mattered_most: List[str] = Field(default_factory=list)
     change_suggestion: Optional[str] = Field(None, max_length=1000)
+    # S80 B1 (R0-2, unflagged, request-side): the live 027 correctness columns, written
+    # only when sent; an off-enum value is a 422 at the model.
+    winner_correct: Optional[Literal["correct", "wrong", "unsure"]] = None
+    price_correct: Optional[Literal["correct", "wrong", "unsure"]] = None
+    specs_correct: Optional[Literal["correct", "wrong", "unsure"]] = None
 
     @field_validator("comparison_id")
     @classmethod
@@ -181,6 +191,9 @@ async def submit_feedback(
             mattered_most=body.mattered_most,
             change_suggestion=body.change_suggestion,
             access_token=(user.get("access_token") if user else None),
+            winner_correct=body.winner_correct,
+            price_correct=body.price_correct,
+            specs_correct=body.specs_correct,
         ),
         label="save_feedback",
     )
