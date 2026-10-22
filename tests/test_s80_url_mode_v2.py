@@ -2776,3 +2776,131 @@ def test_extract_with_ai_error_line_carries_the_type_only(monkeypatch, caplog, v
         rec.getMessage() for rec in errors]
     assert errors[0].exc_info is None, errors[0].exc_info
     assert [rec.name for rec in caplog.records if sentinel in rec.getMessage()] == []
+
+
+# ===========================================================================
+# Rebase round (after RULINGS_FIX4_B4; the both-lens re-verifier's minors m-1
+# and m-2): test-only rows. m-1 pins the flag-OFF GET route for a link longer
+# than the pre-gate's 2,048-character bound: the base path, never a length
+# refusal (kills mutant B5, a length 400 in compare_urls_get that fires only
+# with the flag OFF). m-2 pins "each link's query is parsed ONCE per request"
+# for links whose product-route pairs are EMPTY (kills mutant V3,
+# classify_url_path re-parsing the query when url_pre_gate_view passes []).
+# ===========================================================================
+_RB_LONG_HEAD = FX_PDP + "?b4ref=offlong&b4pad="
+# The flag-OFF GET delivery of _rb_long_pdp() vs FX_PDP2, measured at origin/main
+# 95cf6f86 (no B4) through the offline fetch stub with the full configuration
+# (flag unset and 'false', two runs each, identical): status 200, these top-level
+# keys, and the sha256 of the canonical body JSON (request_id stripped;
+# sort_keys, ASCII, separators (",", ":")).
+_RB_M1_BASE_KEYS = ["category_used", "comparison", "key_differences", "products",
+                    "recommendation", "source_urls", "success", "winner_index"]
+_RB_M1_BASE_BODY_SHA = "06bd08d895ee6bce653365cab11dbd23320336744437f4d5edcbb7cef1593b82"
+
+
+def _rb_long_pdp(n=3000):
+    """A valid https product path padded with a long query to exactly n characters."""
+    assert n > len(_RB_LONG_HEAD), n
+    return _RB_LONG_HEAD + "a" * (n - len(_RB_LONG_HEAD))
+
+
+@pytest.mark.parametrize("value", [None, "false"], ids=["unset", "false"])
+def test_flag_off_get_over_long_url1_is_base_behaviour(monkeypatch, client, value):
+    """PIN (m-1 of the round-4 re-verifier; kills mutant B5, a length 400 in
+    compare_urls_get that fires only when the flag is OFF; green at origin/main
+    95cf6f86 and at the rebased HEAD): flag unset or 'false', the FULL
+    configuration and a RAISING pre-gate stand-in; GET /api/v1/url/compare with
+    a 3,000-character url1 (a product path padded with a long query, over the
+    2,048 bound) takes the base path exactly as at origin/main: never refused on
+    length, both links fetched, the base 200 delivery (its keys and canonical
+    body digest recorded at base), one consume, no refund, the lifetime bump,
+    the history row and the one success row."""
+    url1 = _rb_long_pdp()
+    assert len(url1) == 3000
+    h = _full(monkeypatch, H(), flag=value, pages={url1: ok(PDP), FX_PDP2: ok(PDP2)}, spy=False)
+    _raising_pregate(monkeypatch, h)
+    r = _call(client, "GET", url1, FX_PDP2)
+    body = _strip_rid(r.json())
+    assert r.status_code == 200, (r.status_code, body.get("code"), body.get("reason"))
+    assert body.get("success") is True and "code" not in body, sorted(body)
+    assert sorted(body) == _RB_M1_BASE_KEYS, sorted(body)
+    canon = json.dumps(body, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    digest = hashlib.sha256(canon.encode("ascii")).hexdigest()
+    assert digest == _RB_M1_BASE_BODY_SHA, digest
+    assert h.pregate_raised == []
+    assert h.events == ["ssrf", "ssrf", "ssrf", "ssrf"], h.events
+    n_fetched = len(h.pages.fetched)
+    assert sorted(h.pages.fetched) == sorted([url1, FX_PDP2]), n_fetched
+    led, uid = h.ledger, h.user["id"]
+    assert (led.consumes, led.refunds, led.lifetime, led.history) == ([uid], [], [uid], ["url"])
+    assert led.labels == ["save_comparison.url", "record_lifetime.url",
+                          "log_search.url.success"], led.labels
+    rows = [(row.get("success"), row.get("input_type"), row.get("products_found"))
+            for row in led.rows]
+    assert rows == [(True, "url", ["Christian Dior Sauvage Cologne",
+                                   "Calvin Klein Obsession Perfume"])], rows
+    assert (len(h.gen_calls), len(h.llm_calls)) == (1, 0)
+
+
+_RB_TRK_HOST = "https://www.b4trk5.example.test"
+_RB_TRK_ONE = _RB_TRK_HOST + "/products/b4-track-one?utm_source=x&gclid=y"
+_RB_TRK_TWO = _RB_TRK_HOST + "/products/b4-track-two?gclid=y2&utm_source=x"
+_RB_TRK_ROOT = _RB_TRK_HOST + "/?utm_source=x&gclid=y"
+_RB_TRK_QUERIES = sorted(["utm_source=x&gclid=y", "gclid=y2&utm_source=x"])
+
+
+def _record_route_pairs(monkeypatch):
+    """Records the query of every _product_route_pairs call (the one query parse
+    of the pre-gate helpers; _query_names_a_product_route goes through it too)."""
+    real = _fn(ues, "_product_route_pairs")
+    calls = []
+
+    def rec(query, *a, **kw):
+        calls.append(query)
+        return real(query, *a, **kw)
+    monkeypatch.setattr(ues, "_product_route_pairs", rec)
+    return calls
+
+
+def test_tracking_only_product_links_parse_once_and_reach_the_fetch(monkeypatch, client):
+    """PIN (m-2, the gate's shape; green at the rebased HEAD; at origin/main
+    95cf6f86, which has no B4, it fails on an AssertionError only:
+    _product_route_pairs is missing): flag ON, full configuration, real POST
+    route: two product-path links of one store whose queries carry ONLY
+    tracking keys (no product-route key) cost exactly ONE _product_route_pairs
+    call per link over the whole request (the view's parse; the same-url key
+    reuses the EMPTY pairs; the post-fetch check reads the path only), pass the
+    pre-gate, reach the fetch stub and deliver. A product path never reaches the
+    homepage exemption's query read, so this row alone does not kill V3
+    (measured in the rebase report); the root row below does."""
+    names = {_RB_TRK_ONE: "B4 Track Oud One", _RB_TRK_TWO: "B4 Track Oud Two"}
+    pages = {u: ok(_page(n + " - Store", [_product(n, price="9.5")])) for u, n in names.items()}
+    h = _full(monkeypatch, H(), pages=pages)
+    calls = _record_route_pairs(monkeypatch)
+    r = _call(client, "POST", _RB_TRK_ONE, _RB_TRK_TWO)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert [p.get("name") for p in body["products"]] == [names[_RB_TRK_ONE], names[_RB_TRK_TWO]]
+    assert sorted(calls) == _RB_TRK_QUERIES, calls
+    assert h.events[:3] == ["ssrf", "ssrf", "pregate"], h.events
+    assert sorted(h.pages.fetched) == sorted([_RB_TRK_ONE, _RB_TRK_TWO]), h.pages.fetched
+    assert h.ledger.consumes == [h.user["id"]] and h.ledger.refunds == []
+
+
+def test_tracking_only_root_link_parses_its_query_once(monkeypatch, client):
+    """PIN (m-2; kills mutant V3; green at the rebased HEAD; at origin/main
+    95cf6f86 it fails on an AssertionError only): flag ON, full configuration,
+    real POST route: a storefront-root link whose query carries ONLY tracking
+    keys, beside a tracking-only product link, is refused NOT_PRODUCT_PAGE url1
+    / homepage at $0 (nothing reserved, fetched or logged) with exactly ONE
+    _product_route_pairs call per link: the homepage exemption reuses the
+    view's EMPTY pairs instead of re-parsing the query (V3 makes it three)."""
+    h = _full(monkeypatch, H(), default=ok(PDP))
+    calls = _record_route_pairs(monkeypatch)
+    r = _call(client, "POST", _RB_TRK_ROOT, _RB_TRK_TWO)
+    assert r.status_code == 400, (r.status_code, r.json())
+    assert _strip_rid(r.json()) == _refusal("NOT_PRODUCT_PAGE", NPP_MSG, "url1", "homepage")
+    assert sorted(calls) == _RB_TRK_QUERIES, calls
+    assert h.events == ["ssrf", "ssrf", "pregate"], h.events
+    assert (h.ledger.consumes, h.pages.fetched, h.ledger.rows) == ([], [], [])
