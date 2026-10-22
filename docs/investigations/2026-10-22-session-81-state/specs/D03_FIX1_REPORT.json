@@ -1,0 +1,177 @@
+{
+ "unit": "D03 DENY-AND-GUARDS (ENABLE_DATA_GUARDS_V2), fix round 1 per specs/RULINGS_FIX1_D03.md (F1-1..F1-8). Worktree C:/Users/SynAckITPC/Documents/AI/sc-s81-d03, branch feature/s81-d03-deny-and-guards. Start HEAD 5244f7165dbde49579a9f4147229b20050427c18 verified, git status empty, RED sha ae8fffc7... MATCH. Agent: Opus 5.5 (claude-opus-5-5). Notes/logs/scripts: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/D03_fix1/ (before/ byte copies + SHA256SUMS.json, mutate_f1.py, mut/*.log|xml, mutation_results_*.json, shop_set.txt, ci_order_set_f1.txt, comm_set.txt, run_comm.py, comm_head/, pyt_lines.txt, PR_BODY.md). GREEN hunks: price_service _shopping_row_denied + _drop_denied_shopping_rows (new list, one INFO line per call, host only), extract_price_from_shopping drops denied rows first under the flag (before content safety/currency/evidence/short-circuit), _shopping_bh_host_evidence returns _no('denied_host') first under the flag; scs stash drops denied rows under the flag (silent); deny_hosts.is_denied_url conservative backslash-authority rule (chr(92), label token in urlsplit netloc) before the hostname rule; review_service attribution and quotes deny on is_denied_url(link) (hostname, never netloc); scs imports the image_service module and calls image_service._is_valid_image_url; black 26.5.1 on deny_hosts.py + RED file (AST-identical) and both added to .github/black-clean-paths.txt. Final git status --short: EMPTY. The harness refused the Write of D03_FIX1_REPORT.md (subagent report-file block), so this structured output is the report.",
+ "head_sha": "53bf18a7aedc154ad85a54e3ac474fd5f895ff13",
+ "red_files": [
+  {
+   "path": "tests/test_s81_d03_deny_and_guards.py",
+   "sha256": "16390347e3c1e408dc29f2f2e2bbf0b28b24a2eaca839fde88dfdc1ba7494787"
+  }
+ ],
+ "rows_added": [
+  "RED test_f1_1a_shopping_door_drops_denied_rows_on [w41 off|on x ask BHD|AED] (4): ON a link-denied (/bh-en/) and a source-denied Shopping row, both cheaper, never priced; the allowed row wins; a denied-only pool yields None",
+  "RED test_f1_1b_evidence_helper_denies_on [FRAG_BH_PDP|FRAG_PDP x BHD|AED] (4): _shopping_bh_host_evidence False with reasons ['denied_host']",
+  "RED test_f1_1c_denied_rows_reach_no_currency_or_evidence_logic_on (1): evidence recorder sees only the allowed link, no W4-1 pend/relabel line for a denied row (incl. a TRY row), exactly one [DATA_GUARDS_V2] line with count=3 by=link host=www.fragrantica.com and no title/path/currency",
+  "RED test_f1_1d_stash_never_seeds_denied_rows_on [w41 x ask] (4): _seed_shortcircuit_candidates seeds only ('Perfume Shop BH', allowed link)",
+  "RED test_f1_1e_stash_denied_rows_reach_no_evidence_on (1): scs._shopping_bh_host_evidence recorder sees only the allowed link",
+  "PIN test_f1_1p_shopping_door_off_equals_base [FALSY+None] (8): probe3 shape OFF (global_tier reason, converted_usd Fragrantica 45.0 under W4-1 ON, local_bhd under W4-1 OFF), denied row wins its pool, stash seeds 3, no D03 line",
+  "PIN test_f1_2_two_level_public_suffix_labels (1): fragrantica.co.uk, www.parfumo.com.au, basenotes.co.nz, fimgs.net:8443 denied (host and URL); fragrantica.co.uk.evil.test, co.uk, notfragrantica.co.uk not",
+  "PIN test_f1_3_collect_ratings_deny_skip_precedes_dedup (1): link-denied neutral-source item does not consume the dedup key",
+  "RED test_f1_4a_review_display_reads_the_hostname_on [userinfo|backslash] (2): no quote and no 'Per <domain>:' for a userinfo or backslash Fragrantica link",
+  "RED test_f1_4b_backslash_authority_denied_conservatively (1): is_denied_url and the image validator deny a backslash authority carrying a banned label",
+  "PIN test_f1_4p_hostname_rules_pinned (1): userinfo and dotted-userinfo Fragrantica links denied; label in query/path/after-backslash-in-query/userinfo-without-backslash/notfragrantica not",
+  "PIN test_f1_4q_review_userinfo_off_equals_base [FALSY+None] (8): OFF the userinfo link is quoted and attributed by its netloc exactly as at 5244f716",
+  "PIN test_f1_5_piggyback_on_stores_the_stripped_url (1): ON padded page image stored stripped; padded fimgs.net refused",
+  "RED test_f1_6_piggyback_validator_is_patchable_on (1): patching image_service._is_valid_image_url changes the scs piggyback verdict (fails at 5244f716 by construction)"
+ ],
+ "red_step": {
+  "new_rows_failed": 18,
+  "every_failure_is_assertion_error": true,
+  "existing_rows_passed": 250,
+  "pyt_line": "[pyt] tag=d03f1-mut-HEADCODE start=2026-10-22 22:25:45 end=2026-10-22 22:26:15 elapsed=30.3s bound=600s status=FAIL rc=1 :: 18 failed, 270 passed, 1 warning in 21.75s (final RED rows with the 4 app files swapped back to their 5244f716 byte copies, restored sha-identical; junit 18 x failure/AssertionError, 0 errors; same 18 node ids as [pyt] tag=d03f1-red-head2 start=2026-10-22 22:18:16 end=2026-10-22 22:18:29 elapsed=13.9s bound=600s status=FAIL rc=1 :: 18 failed, 270 passed; 270 = the 250 frozen rows + the 20 new PIN rows). RED-step file sha c2fd1bfd762d47937c73f40fa139b58e7227e215b0516b08ed9ae23d638da9dc (first 53,762 bytes still ae8fffc7); pre-black d8b31e10432138eb1784fe7bf3552f6180716bd12cbb34bb6ace31c4def1d19f; final (black, AST-identical) 16390347e3c1e408dc29f2f2e2bbf0b28b24a2eaca839fde88dfdc1ba7494787."
+ },
+ "files_changed": [
+  {
+   "path": "tests/test_s81_d03_deny_and_guards.py",
+   "added": 1037,
+   "deleted": 210,
+   "sha256_after": "16390347e3c1e408dc29f2f2e2bbf0b28b24a2eaca839fde88dfdc1ba7494787"
+  },
+  {
+   "path": "app/services/deny_hosts.py",
+   "added": 29,
+   "deleted": 11,
+   "sha256_after": "9ac5f2adbb33da5e2efb7ba2ef72d6f39337a167341d310d06b96302c43a254b"
+  },
+  {
+   "path": "app/services/price_service.py",
+   "added": 69,
+   "deleted": 2,
+   "sha256_after": "f3dcdf1e3a99a9479d75d56f37f653ae5aa272990f041ad572011963fe6645e3"
+  },
+  {
+   "path": "app/services/review_service.py",
+   "added": 10,
+   "deleted": 5,
+   "sha256_after": "565f8ce563216f0e72ff58bb5330c24da7fe46a91bc522e4448e3f5df4eed3f0"
+  },
+  {
+   "path": "app/services/structured_comparison_service.py",
+   "added": 12,
+   "deleted": 3,
+   "sha256_after": "d648957ab458306f7f7b6913501a97321df4aeec1ea150a69b9c6361dda73eaf"
+  },
+  {
+   "path": "CLAUDE.md",
+   "added": 2,
+   "deleted": 2,
+   "sha256_after": "45ef001f041dc9b9361dc72ad7c1c44425864a08c2013dd5782068f7d6abb92a"
+  },
+  {
+   "path": ".github/black-clean-paths.txt",
+   "added": 2,
+   "deleted": 0,
+   "sha256_after": "849a14654422dfc3ec6c06c7cd97681beff91086d4489ea749d176bb82510eff"
+  }
+ ],
+ "unit_run_on": "[pyt] tag=d03f1-unit-on-final start=2026-10-22 22:43:23 end=2026-10-22 22:43:58 elapsed=35.7s bound=600s status=OK rc=0 :: 288 passed, 1 warning in 31.09s; [hermeticity] sentinel checked 288 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)",
+ "unit_run_off": "[pyt] tag=d03f1-unit-off-final start=2026-10-22 22:42:54 end=2026-10-22 22:43:20 elapsed=25.4s bound=600s status=OK rc=0 :: 288 passed, 1 warning in 19.98s; [hermeticity] sentinel checked 288 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)",
+ "gates": [
+  "RED step: [pyt] tag=d03f1-red-head start=2026-10-22 22:16:21 end=2026-10-22 22:16:29 elapsed=8.7s bound=600s status=FAIL rc=1 :: 24 failed, 264 passed (first draft: f1_1d BHD rows not RED because 45/46 BHD were under the premium 50 BHD floor; f1_1p failed on the stash count; prices raised to 55/56/60 BHD, 550/560/600 AED)",
+  "RED step: [pyt] tag=d03f1-red-head2 start=2026-10-22 22:18:16 end=2026-10-22 22:18:29 elapsed=13.9s bound=600s status=FAIL rc=1 :: 18 failed, 270 passed, 1 warning in 12.67s (18 x AssertionError)",
+  "[pyt] tag=d03f1-unit-off start=2026-10-22 22:22:43 end=2026-10-22 22:22:56 elapsed=13.4s bound=600s status=OK rc=0 :: 288 passed",
+  "[pyt] tag=d03f1-unit-on start=2026-10-22 22:23:09 end=2026-10-22 22:23:14 elapsed=5.2s bound=600s status=OK rc=0 :: 288 passed",
+  "[pyt] tag=d03f1-mut-HEADCODE start=2026-10-22 22:25:45 end=2026-10-22 22:26:15 elapsed=30.3s bound=600s status=FAIL rc=1 :: 18 failed, 270 passed (RED re-proof at 5244f716 bytes with the final rows)",
+  "MUTANTS 22/22 KILLED by AssertionError (byte copies, exact-once edits, whole unit file, restore sha-identical; lock created and removed):",
+  "[pyt] tag=d03f1-mut-F1-1a-door-drop-removed start=2026-10-22 22:27:19 end=2026-10-22 22:27:56 elapsed=36.9s bound=600s status=FAIL rc=1 :: 5 failed, 283 passed (f1_1a x4, f1_1c)",
+  "[pyt] tag=d03f1-mut-F1-1b-evidence-deny-removed start=2026-10-22 22:27:57 end=2026-10-22 22:28:30 elapsed=33.0s bound=600s status=FAIL rc=1 :: 4 failed, 284 passed (f1_1b x4)",
+  "[pyt] tag=d03f1-mut-F1-1c-stash-drop-removed start=2026-10-22 22:28:32 end=2026-10-22 22:29:04 elapsed=32.3s bound=600s status=FAIL rc=1 :: 5 failed, 283 passed (f1_1d x4, f1_1e)",
+  "[pyt] tag=d03f1-mut-F1-1d-door-check-after-evidence start=2026-10-22 22:29:08 end=2026-10-22 22:29:46 elapsed=38.2s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_1c)",
+  "[pyt] tag=d03f1-mut-F1-1e-stash-check-after-evidence start=2026-10-22 22:29:49 end=2026-10-22 22:30:33 elapsed=44.0s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_1e)",
+  "[pyt] tag=d03f1-mut-F1-1f-door-ungated start=2026-10-22 22:30:36 end=2026-10-22 22:31:16 elapsed=40.1s bound=600s status=FAIL rc=1 :: 8 failed (first run TypeError -> f1_1p hardened with assert out is not None) ; re-run [pyt] tag=d03f1-mut-F1-1f-door-ungated start=2026-10-22 22:35:46 end=2026-10-22 22:36:17 elapsed=30.8s bound=600s status=FAIL rc=1 :: 8 failed, 280 passed (f1_1p x8, AssertionError)",
+  "[pyt] tag=d03f1-mut-F1-1g-evidence-ungated start=2026-10-22 22:31:20 end=2026-10-22 22:32:00 elapsed=40.9s bound=600s status=FAIL rc=1 :: 8 failed, 280 passed (f1_1p x8)",
+  "[pyt] tag=d03f1-mut-F1-1h-stash-ungated start=2026-10-22 22:32:02 end=2026-10-22 22:32:32 elapsed=30.0s bound=600s status=FAIL rc=1 :: 8 failed, 280 passed (f1_1p x8)",
+  "[pyt] tag=d03f1-mut-F1-1i-source-name-ignored start=2026-10-22 22:32:34 end=2026-10-22 22:33:18 elapsed=43.9s bound=600s status=FAIL rc=1 :: 10 failed, 278 passed",
+  "[pyt] tag=d03f1-mut-F1-1j-link-ignored start=2026-10-22 22:33:20 end=2026-10-22 22:33:55 elapsed=34.9s bound=600s status=FAIL rc=1 :: 10 failed, 278 passed",
+  "[pyt] tag=d03f1-mut-F1-1k-log-per-row start=2026-10-22 22:33:57 end=2026-10-22 22:34:40 elapsed=42.5s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_1c)",
+  "[pyt] tag=d03f1-mut-F1-1l-log-carries-url start=2026-10-22 22:36:19 end=2026-10-22 22:37:01 elapsed=42.1s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_1c)",
+  "[pyt] tag=d03f1-mut-F1-2-A9-two-level-labels-2 start=2026-10-22 22:37:04 end=2026-10-22 22:37:35 elapsed=31.5s bound=600s status=FAIL rc=1 :: 1 failed (f1_2); post-black re-run [pyt] tag=d03f1-mut-F1-2-A9-two-level-labels-2 start=2026-10-22 22:44:17 end=2026-10-22 22:44:53 elapsed=36.1s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed",
+  "[pyt] tag=d03f1-mut-F1-3-D6-deny-after-dedup start=2026-10-22 22:37:38 end=2026-10-22 22:38:12 elapsed=34.3s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_3)",
+  "[pyt] tag=d03f1-mut-F1-4-U1-quotes-netloc start=2026-10-22 22:38:13 end=2026-10-22 22:38:21 elapsed=8.1s bound=600s status=FAIL rc=1 :: 2 failed, 286 passed (f1_4a x2)",
+  "[pyt] tag=d03f1-mut-F1-4-U1b-attribution-netloc start=2026-10-22 22:38:22 end=2026-10-22 22:38:48 elapsed=26.2s bound=600s status=FAIL rc=1 :: 2 failed, 286 passed (f1_4a x2)",
+  "[pyt] tag=d03f1-mut-F1-4-U2-is_denied_url-netloc start=2026-10-22 22:38:50 end=2026-10-22 22:38:59 elapsed=9.5s bound=600s status=FAIL rc=1 :: 1 failed (f1_4p); post-black [pyt] tag=d03f1-mut-F1-4-U2-is_denied_url-netloc start=2026-10-22 22:44:56 end=2026-10-22 22:45:24 elapsed=28.7s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed",
+  "[pyt] tag=d03f1-mut-F1-4-B1-backslash-rule-removed start=2026-10-22 22:39:00 end=2026-10-22 22:39:05 elapsed=5.6s bound=600s status=FAIL rc=1 :: 2 failed (f1_4a[backslash], f1_4b); post-black [pyt] tag=d03f1-mut-F1-4-B1-backslash-rule-removed start=2026-10-22 22:45:26 end=2026-10-22 22:45:59 elapsed=32.9s bound=600s status=FAIL rc=1 :: 2 failed, 286 passed",
+  "[pyt] tag=d03f1-mut-F1-4-B2-backslash-rule-whole-url start=2026-10-22 22:39:06 end=2026-10-22 22:39:12 elapsed=5.7s bound=600s status=FAIL rc=1 :: 1 failed (f1_4p); post-black [pyt] tag=d03f1-mut-F1-4-B2-backslash-rule-whole-url start=2026-10-22 22:46:01 end=2026-10-22 22:46:32 elapsed=30.5s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed",
+  "[pyt] tag=d03f1-mut-F1-4-B3-label-anywhere-in-netloc start=2026-10-22 22:39:12 end=2026-10-22 22:39:18 elapsed=5.7s bound=600s status=FAIL rc=1 :: 2 failed (f1_2, f1_4p); post-black [pyt] tag=d03f1-mut-F1-4-B3-label-anywhere-in-netloc start=2026-10-22 22:46:33 end=2026-10-22 22:47:07 elapsed=33.7s bound=600s status=FAIL rc=1 :: 2 failed, 286 passed",
+  "[pyt] tag=d03f1-mut-F1-5-G3-on-no-strip start=2026-10-22 22:39:18 end=2026-10-22 22:39:31 elapsed=12.2s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_5)",
+  "[pyt] tag=d03f1-mut-F1-6-MA-by-name-binding start=2026-10-22 22:39:31 end=2026-10-22 22:39:37 elapsed=5.5s bound=600s status=FAIL rc=1 :: 1 failed, 287 passed (f1_6)",
+  "[pyt] tag=d03f1-pins1-off start=2026-10-22 22:48:06 end=2026-10-22 22:49:23 elapsed=76.3s bound=600s status=OK rc=0 :: 639 passed, 2 deselected; netguard 0",
+  "[pyt] tag=d03f1-pins1-on start=2026-10-22 22:49:44 end=2026-10-22 22:50:34 elapsed=49.5s bound=600s status=FAIL rc=1 :: 3 failed, 636 passed = exactly test_rating_tiers.py::TestExpandedTiers::test_fragrantica_is_tier_2, test_retailer_quotes_from_reviews.py::TestRetailerQuotesGraceful::test_bare_numeric_citation_also_mapped, test_fragrance_content_quality.py::test_review_praise_no_interior_per_domain_artifact",
+  "[pyt] tag=d03f1-pins2-off start=2026-10-22 22:50:47 end=2026-10-22 22:51:37 elapsed=50.0s bound=600s status=OK rc=0 :: 471 passed, 1 skipped; netguard 3 nodes, all in baseline",
+  "[pyt] tag=d03f1-pins2-on start=2026-10-22 22:51:56 end=2026-10-22 22:52:33 elapsed=36.5s bound=600s status=OK rc=0 :: 471 passed, 1 skipped",
+  "Shopping set re-derived (38 files: every test referencing extract_price_from_shopping/_seed_shortcircuit_candidates/_shopping_bh_host_evidence/the W4-1+W4-2 flags + test_hotfix_shopping_query_clean.py; cheapest first): [pyt] tag=d03f1-shopA-off start=2026-10-22 22:54:07 end=2026-10-22 22:54:20 elapsed=13.2s bound=1200s status=OK rc=0 :: 262 passed, 4 deselected",
+  "[pyt] tag=d03f1-shopB-off start=2026-10-22 22:54:33 end=2026-10-22 22:55:46 elapsed=71.9s bound=1200s status=OK rc=0 :: 1321 passed",
+  "[pyt] tag=d03f1-shopA-on start=2026-10-22 22:56:04 end=2026-10-22 22:56:25 elapsed=20.3s bound=1200s status=OK rc=0 :: 262 passed, 4 deselected",
+  "[pyt] tag=d03f1-shopB-on start=2026-10-22 22:56:28 end=2026-10-22 22:57:37 elapsed=69.4s bound=1200s status=OK rc=0 :: 1321 passed",
+  "CI-order set (81 files sorted = GREEN 48 + shopping set + test_ci_gates.py): [pyt] tag=d03f1-ci-order start=2026-10-22 22:58:23 end=2026-10-22 23:00:38 elapsed=135.2s bound=1200s status=OK rc=0 :: 2555 passed, 1 skipped, 6 deselected; netguard 0 new",
+  "Comm set OFF (410 files = GREEN 409 + test_hotfix_shopping_query_clean.py, 17 chunks <= 25): [pyt] tag=d03f1-comm-head-01 start=2026-10-22 23:06:30 end=2026-10-22 23:07:05 elapsed=35.4s bound=1200s status=OK rc=0 :: 830 passed, 1 deselected",
+  "[pyt] tag=d03f1-comm-head-02 start=2026-10-22 23:07:06 end=2026-10-22 23:08:36 elapsed=90.0s bound=1200s status=OK rc=0 :: 1041 passed, 1 deselected",
+  "[pyt] tag=d03f1-comm-head-03 start=2026-10-22 23:08:38 end=2026-10-22 23:09:40 elapsed=62.6s bound=1200s status=OK rc=0 :: 1162 passed, 1 xfailed",
+  "[pyt] tag=d03f1-comm-head-04 start=2026-10-22 23:09:41 end=2026-10-22 23:10:47 elapsed=64.8s bound=1200s status=OK rc=0 :: 441 passed, 1 skipped",
+  "[pyt] tag=d03f1-comm-head-05 start=2026-10-22 23:11:15 end=2026-10-22 23:12:19 elapsed=63.6s bound=1200s status=OK rc=0 :: 2086 passed",
+  "[pyt] tag=d03f1-comm-head-06 start=2026-10-22 23:12:20 end=2026-10-22 23:16:51 elapsed=270.2s bound=1200s status=OK rc=0 :: 1445 passed, 1 skipped, 5 deselected",
+  "[pyt] tag=d03f1-comm-head-07 start=2026-10-22 23:16:52 end=2026-10-22 23:18:06 elapsed=74.3s bound=1200s status=OK rc=0 :: 517 passed, 1 xfailed",
+  "[pyt] tag=d03f1-comm-head-08 start=2026-10-22 23:18:37 end=2026-10-22 23:19:38 elapsed=61.1s bound=1200s status=OK rc=0 :: 384 passed, 1 skipped",
+  "[pyt] tag=d03f1-comm-head-09 start=2026-10-22 23:19:39 end=2026-10-22 23:21:01 elapsed=81.9s bound=1200s status=FAIL rc=1 :: 2 failed, 3811 passed, 22 skipped, 4 deselected (the 2 failures = tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest and ::TestFetchPagePriceOpenGraph::test_og_meta_extraction, both in tests/.pre_impl_failures.txt, same 2 as the GREEN head)",
+  "[pyt] tag=d03f1-comm-head-10 start=2026-10-22 23:21:02 end=2026-10-22 23:21:49 elapsed=47.1s bound=1200s status=OK rc=0 :: 750 passed, 3 skipped, 7 deselected",
+  "[pyt] tag=d03f1-comm-head-11 start=2026-10-22 23:21:55 end=2026-10-22 23:24:55 elapsed=180.5s bound=1200s status=OK rc=0 :: 650 passed, 1 skipped, 1 deselected",
+  "[pyt] tag=d03f1-comm-head-12 start=2026-10-22 23:25:35 end=2026-10-22 23:28:11 elapsed=155.7s bound=1200s status=OK rc=0 :: 1655 passed",
+  "[pyt] tag=d03f1-comm-head-13 start=2026-10-22 23:28:11 end=2026-10-22 23:29:44 elapsed=92.8s bound=1200s status=OK rc=0 :: 1194 passed",
+  "[pyt] tag=d03f1-comm-head-14 start=2026-10-22 23:29:45 end=2026-10-22 23:30:41 elapsed=56.3s bound=1200s status=OK rc=0 :: 374 passed, 2 skipped, 10 deselected",
+  "[pyt] tag=d03f1-comm-head-15 start=2026-10-22 23:31:03 end=2026-10-22 23:32:07 elapsed=63.8s bound=1200s status=OK rc=0 :: 605 passed, 6 skipped, 8 deselected",
+  "[pyt] tag=d03f1-comm-head-16 start=2026-10-22 23:32:08 end=2026-10-22 23:33:11 elapsed=62.8s bound=1200s status=OK rc=0 :: 1336 passed, 9 skipped, 35 xfailed",
+  "[pyt] tag=d03f1-comm-head-17 start=2026-10-22 23:33:11 end=2026-10-22 23:33:27 elapsed=15.3s bound=1200s status=OK rc=0 :: 182 passed, 1 skipped",
+  "Comm total OFF: 18463 passed / 2 failed (the 2 pre_impl page_scraping nodes); branch-only-NEW vs the GREEN head and the RED base = EMPTY",
+  "CLAUDE.md readers (34 files) on the final CLAUDE.md: [pyt] tag=d03f1-claude-readers start=2026-10-22 23:34:03 end=2026-10-22 23:36:22 elapsed=138.3s bound=1200s status=OK rc=0 :: 1289 passed, 9 skipped, 11 deselected, 35 xfailed",
+  "netguard: every node in unit/pins/shopping/CI-order logs is in tests/.network_attempt_baseline.txt; comm logs show 4 node ids not listed in that file (test_s78_all_timeout_cap_as_timeout.py::test_F15_route_end_to_end[off|on] sentinel; test_specs_no_fabrication_guard.py::TestFlagOnPrompt::test_flag_on_static_prefix_is_still_cacheable egress; test_supplement_branch_genuine.py::TestCatalogSupplementSourceAttribution::test_cde2_attributes_catalog_supplement_domain_when_flag_on egress), all also present in the GREEN head comm logs, none on a D03 path (pre-existing); hermeticity: no finding in any run",
+  "Lint: ruff 0.16.5 --select E9,F63,F7,F82 --no-cache on the 5 edited .py: All checks passed!; py_compile (temp cfile) clean; wider F401/F811/F841 over the 4 app files 28 at 5244f716 vs 28 now (0 new); black 26.5.1 --check clean on deny_hosts.py and the RED file (AST-identical before/after black); pre-commit hook passed at commit",
+  "Bytes: CRLF backend files 0 bare LF, bytes>127 unchanged (price_service 5590); deny_hosts.py + RED file LF, 0 CR, 0 bytes>127; CLAUDE.md 943 CRLF lines, 3961 bytes>127 before and after, 0 in changed lines; black-clean-paths CRLF kept; added-line sweep 0 hits"
+ ],
+ "docs_applied": [
+  "CLAUDE.md (in place, CRLF, ASCII, 2 lines changed): header cites specs/RULINGS_FIX1_D03.md (F1-1..F1-8)",
+  "CLAUDE.md row: is_denied_url decides on the parsed hostname (never the netloc) plus the conservative backslash-authority rule (F1-4)",
+  "MIN-E2: 'deny_hosts.py holds the two deny literal tuples, DENY_HOSTS and the re-exported LEGACY_DESCRIPTOR_DENY_HOSTS; no other deny literal list in app/ (R1i scans every module but deny_hosts.py)' in the row, the PR body and the deny_hosts docstring",
+  "MIN-6 / MIN-E5: 'the flag read precedes every behavioural branch; a pure base precondition may run first; XD6 equivalent by ruling' in the row, PR body and deny_hosts docstring (the PR body's 'FIRST statement of every gated predicate' removed)",
+  "MIN-E1: the fragrantica.com Source literal in _LITERAL_ROWS cited by name (row and PR body), no line anchor",
+  "F1-4 review hostname sentence in Effect item 4; F1-5/F1-6 module-attribute validator + stored stripped in item 6",
+  "MIN-4: Salvatore dropped from the lv false-positive list; new limit 13 states the measured Ferragamo / Creed Silver cost and D03d as its home; canary adds Ferragamo and Creed Silver pairs",
+  "F1-1: new Effect item 9 (the Shopping door: _drop_denied_shopping_rows / _shopping_row_denied, denied_host reason, the one host-only INFO line, the W4-7 count) and limit 5 rewritten (the measured pre-fix /bh-en/ local_bhd relabel stated, the door now closed)",
+  "Flag OFF: 288 nodes + the new OFF pins (probe3 shape, userinfo base attribution)",
+  "MIN-E4: limit 3 widened to homage/inspired/generic/alternative/vintage (spec L8), new limit 11 spec L10 (3 domains instead of 4), new limit 12 review correction 18 (LVs Neverfull)",
+  "MIN-E7: new limit 14 (conservative backslash rule, policy list not a security boundary)",
+  "MIN-7: recorded as a pre-existing follow-up (row limit 15 and the PR body Follow-ups)",
+  "Limit 9 re-measured at the fix-round head (pin groups + Shopping set ON: exactly the same 3 reds)",
+  "PR body: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/D03_fix1/PR_BODY.md (from D03_green/PR_BODY.md): all of the above, MIN-E3 (test_bare_numeric_citation_also_mapped asserts the Basenotes quote, red ON because Basenotes is denied), the F1 rows in the defect table, a fix-round gates section, limits 11-15, Follow-ups (MIN-7, MIN-E8 orchestrator, D03d); pure ASCII except the 4-byte robot emoji of the required attribution line",
+  "MIN-E8 left to the orchestrator (DEFECT_LEDGER untouched)"
+ ],
+ "deviations": [
+  "The report file D03_FIX1_REPORT.md was NOT written: the harness refused the Write ('Subagents should return findings as text'); this structured output is the report (same as the RED agent's precedent).",
+  "tests/test_shopping_discovery_url_split.py named in the ruling does not exist; the W4-2 split pins live in tests/test_shopping_price_not_self_pending.py and tests/test_w4_7_confidence_single_computation.py, included via a grep for the W4-1/W4-2 flag names; tests/test_hotfix_shopping_query_clean.py was not in the GREEN comm set and was added (410 files).",
+  "f1_1c gained (after the RED step, before GREEN) one log-count assertion block (exactly one [DATA_GUARDS_V2] line, host only); it already failed at 5244f716 on its first assertion and the final rows were re-proved RED at 5244f716 bytes (HEADCODE, same 18 nodes, AssertionError only).",
+  "f1_1p (PIN) gained 'assert out is not None' (3 lines) so the ungated front-door mutant F1-1f is killed by an AssertionError instead of a TypeError; re-run KILLED.",
+  "F1-4: the is_denied_url userinfo case is already True at 5244f716 (it read urlsplit().hostname), so it is a PIN (f1_4p) proven by the netloc mutant U2; only the review half is RED (f1_4a).",
+  "F1-6 is listed among the PIN rows 'green at HEAD' but cannot pass while the by-name import (the defect) is in place: f1_6 fails at 5244f716 on an AssertionError and is counted RED; mutant MA kills it.",
+  "'one INFO line per request at most' implemented as at most one line per extract_price_from_shopping call (stash and evidence helper silent, W4-7 replay filters it); no request-scoped context exists in these files (no request-id ContextVar in app/). Stated as row/PR limit 15.",
+  "F1-5's example url https://cdn.store/x.jpg written as https://cdn.store.test/x.jpg (the RED file's synthetic .test host rule).",
+  "The deny_hosts.py module docstring was also corrected for MIN-E2 / MIN-6 (ruling names only the row and the PR body; docstring only, no behaviour).",
+  "The shopping-row drop in extract_price_from_shopping runs before the L2 content-safety filter (the row is 'as if absent' for everything downstream); in the stash it runs before the per-item loop.",
+  "Commit message given as two -m paragraphs (subject, blank line, trailer), equivalent to the brief's single -m with a blank line."
+ ],
+ "open_questions": [
+  "Q1: accept 'one INFO line per extraction call' (limit 15) as the reading of 'one INFO line per request at most', or require a request-scoped latch (needs a request context outside the D03 files)?",
+  "Q2: the backslash rule is conservative by design (an authority with a backslash and a banned label anywhere is denied, e.g. fragrantica.com.evil.test followed by a backslash): accept as stated limit 14?",
+  "Q3: four comm-log netguard node ids are absent from tests/.network_attempt_baseline.txt (test_s78_all_timeout_cap_as_timeout F15 [off|on] sentinel, test_specs_no_fabrication_guard flag_on_static_prefix egress, test_supplement_branch_genuine cde2 egress); they also appear in the GREEN head comm logs and touch no D03 path: confirm no ratchet action belongs to D03.",
+  "NOT MEASURED: the comm set ON this round (only the two pin groups and the 38-file Shopping set ON; the GREEN head measured all 409 ON); the comm set at base 5244f716 (HEAD OFF shows only the 2 pre_impl nodes); the pre-commit hook test files (no .githooks change); an independent flag-OFF differential beyond the unit file's OFF pins."
+ ],
+ "pr_body_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/D03_fix1/PR_BODY.md",
+ "report_path": "NOT WRITTEN (harness refused the report-file Write); intended C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/D03_fix1/D03_FIX1_REPORT.md; every [pyt] line is in C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/D03_fix1/pyt_lines.txt and in the gates field"
+}

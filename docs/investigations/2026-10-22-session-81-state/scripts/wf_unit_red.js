@@ -1,6 +1,6 @@
 export const meta = {
   name: 's80-unit-red',
-  description: 'Per unit: one Fable RED agent writes the hermetic tests, proves every row fails at base for the right reason, prototypes ON/OFF, runs the mutation table and the base comm set, restores and reports',
+  description: 'Per unit: one Opus RED agent writes the hermetic tests, proves every row fails at base for the right reason, prototypes ON/OFF, runs the mutation table and the base comm set, restores and reports',
   phases: [{ title: 'RED', detail: 'one RED agent per unit, sequential pytest through the bounded runner' }],
 }
 
