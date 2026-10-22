@@ -1,0 +1,3811 @@
+{
+ "unit": "S81-02 held fragrance juices (zero network) + corpus fragrance PDP field presence",
+ "generated": "2026-10-22",
+ "code_root": "C:/Users/SynAckITPC/Documents/AI/sc-s81-d03",
+ "code_root_sha": "95cf6f864b4e70980ca191daa064c0118e223c13",
+ "guards": {
+  "net_calls_attempted": [],
+  "env_names_added_by_import": [],
+  "dotenv": "stubbed (no .env read)"
+ },
+ "key_definition": {
+  "key": "brand|line|concentration = fields 2-4 of app/services/spec_spine_service.py::spine_key(brand, line, None, 'fragrances') (the ml field is dropped); imported, pure function",
+  "brand_split": "spine_key needs brand and name separately and the held sources carry one free-text string; the brand is the longest entry of the documented BRANDS list in scripts/held_fragrances.py matching the start of the string (case-insensitive); unmatched strings get brand '' (brand_resolved false)",
+  "side_split": "a 'A vs B' query contributes both sides; a single-product query contributes itself",
+  "concentration_absent": "'-' when the text names no concentration (spine_key convention); the same line with and without a concentration is two keys",
+  "tag": "keys measured by the repo function; the brand split is a documented normalisation"
+ },
+ "sources": {
+  "data/validation_gold_truth.json": {
+   "fragrance_queries": 18,
+   "sides": 36,
+   "distinct_keys": 34,
+   "tag": "measured"
+  },
+  "data/warmer_catalog.json": {
+   "fragrance_queries": 20,
+   "sides": 30,
+   "distinct_keys": 26,
+   "tag": "measured"
+  },
+  "data/trending_curated.json": {
+   "fragrance_rows": 6,
+   "sides": 12,
+   "distinct_keys": 4,
+   "tag": "measured"
+  },
+  "data/eval_smoke_subset.json": {
+   "fragrance_ids": [
+    "frag-001",
+    "frag-006"
+   ],
+   "distinct_keys": 4,
+   "new_keys_vs_gold": 0,
+   "tag": "measured"
+  }
+ },
+ "distinct_juice_count": {
+  "value": 51,
+  "unit": "distinct brand|line|concentration keys across the four sources",
+  "tag": "measured"
+ },
+ "distinct_brand_line_count": {
+  "value": 48,
+  "unit": "distinct brand|line (concentration collapsed)",
+  "tag": "measured"
+ },
+ "keys": [
+  {
+   "key": "afnan|9pm|-",
+   "texts": [
+    "Afnan 9pm"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "ajmal|amber-wood|-",
+   "texts": [
+    "Ajmal Amber Wood"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "al+haramain|amber-gold-oud|-",
+   "texts": [
+    "Al Haramain Amber Oud Gold Edition"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "al+haramain|amber-oud|-",
+   "texts": [
+    "Al Haramain Amber Oud"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "arabian+swiss|oud-shaghaf|-",
+   "texts": [
+    "Swiss Arabian Shaghaf Oud"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "armaf|club-intense-nuit|-",
+   "texts": [
+    "Armaf Club de Nuit Intense Man"
+   ],
+   "sources": [
+    "data/eval_smoke_subset.json",
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "armani+emporio+giorgio|acqua-gio|-",
+   "texts": [
+    "Armani Acqua di Gio"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "armani+emporio+giorgio|acqua-gio|EDT",
+   "texts": [
+    "Giorgio Armani Acqua di Gio Eau de Toilette 100ml"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "azzaro|most-wanted|-",
+   "texts": [
+    "Azzaro The Most Wanted"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "boss+hugo|bottled|-",
+   "texts": [
+    "Hugo Boss Bottled"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "by+kilian|angels-share|-",
+   "texts": [
+    "By Kilian Angels' Share"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "carolina+ch+herrera|girl-good|-",
+   "texts": [
+    "Carolina Herrera Good Girl"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "carolina+ch+herrera|girl-good|EDP",
+   "texts": [
+    "Carolina Herrera Good Girl Eau de Parfum 80ml"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "chanel|bleu|-",
+   "texts": [
+    "Chanel Bleu de Chanel"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "christian+dior|intense|-",
+   "texts": [
+    "Dior Homme Intense"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "christian+dior|sauvage|-",
+   "texts": [
+    "Dior Sauvage"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "creed|aventus|-",
+   "texts": [
+    "Creed Aventus"
+   ],
+   "sources": [
+    "data/eval_smoke_subset.json",
+    "data/trending_curated.json",
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "creed|oud-royal|-",
+   "texts": [
+    "Creed Royal Oud"
+   ],
+   "sources": [
+    "data/trending_curated.json"
+   ]
+  },
+  {
+   "key": "d&g+dg+dolce+gabbana|blue-light|-",
+   "texts": [
+    "Dolce & Gabbana Light Blue"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "davidoff|cool-water|-",
+   "texts": [
+    "Davidoff Cool Water"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "de+marly+parfums|layton|-",
+   "texts": [
+    "Parfums de Marly Layton"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "ford+tf+tom|black-orchid|-",
+   "texts": [
+    "Tom Ford Black Orchid"
+   ],
+   "sources": [
+    "data/eval_smoke_subset.json",
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "ford+tf+tom|leather-ombre|-",
+   "texts": [
+    "Tom Ford Ombre Leather"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "ford+tf+tom|oud-wood|-",
+   "texts": [
+    "Tom Ford Oud Wood"
+   ],
+   "sources": [
+    "data/trending_curated.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "ford+tf+tom|tobacco-vanille|-",
+   "texts": [
+    "Tom Ford Tobacco Vanille"
+   ],
+   "sources": [
+    "data/trending_curated.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "francis+kurkdjian+maison|540-baccarat-rouge|-",
+   "texts": [
+    "Maison Francis Kurkdjian Baccarat Rouge 540"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "gaultier+jean+jpg+paul|male|-",
+   "texts": [
+    "Jean Paul Gaultier Le Male"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "gianni+versace|eros|-",
+   "texts": [
+    "Versace Eros"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "initio|greatness-oud|-",
+   "texts": [
+    "Initio Oud for Greatness"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "jo+malone|sage-salt-sea-wood|-",
+   "texts": [
+    "Jo Malone Wood Sage & Sea Salt"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "labo+le|33-santal|-",
+   "texts": [
+    "Le Labo Santal 33"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "lancome+paris|belle-est-vie|-",
+   "texts": [
+    "Lancome La Vie Est Belle"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "lancome+paris|belle-est-vie|EDP",
+   "texts": [
+    "Lancome La Vie Est Belle Eau de Parfum 100ml"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "lattafa|asad|-",
+   "texts": [
+    "Lattafa Asad"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "lattafa|khamrah|-",
+   "texts": [
+    "Lattafa Khamrah"
+   ],
+   "sources": [
+    "data/eval_smoke_subset.json",
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "lattafa|yara|-",
+   "texts": [
+    "Lattafa Yara"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "laurent+saint+ysl+yves|black-opium|EDP",
+   "texts": [
+    "YSL Black Opium Eau de Parfum 90ml"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "laurent+saint+ysl+yves||EDP",
+   "texts": [
+    "YSL Y EDP"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "maison+margiela|club-jazz-replica|-",
+   "texts": [
+    "Maison Margiela Replica Jazz Club"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "mancera|boise-cedrat|-",
+   "texts": [
+    "Mancera Cedrat Boise"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "mfk|540-baccarat-rouge|-",
+   "texts": [
+    "MFK Baccarat Rouge 540"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "montale|cafe-intense|-",
+   "texts": [
+    "Montale Intense Cafe"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "nishane|hacivat|-",
+   "texts": [
+    "Nishane Hacivat"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "paco+rabanne|1-million|-",
+   "texts": [
+    "Paco Rabanne 1 Million"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "paco+rabanne|million-one|-",
+   "texts": [
+    "Paco Rabanne One Million"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "prada|carbon-luna-rossa|EDT",
+   "texts": [
+    "Prada Luna Rossa Carbon Eau de Toilette 100ml"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "rasasi|hawas-viper|-",
+   "texts": [
+    "Rasasi Hawas Viper"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "rasasi|hawas|-",
+   "texts": [
+    "Rasasi Hawas For Him",
+    "Rasasi Hawas for Him"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json",
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "valentino|born-roma|EDP",
+   "texts": [
+    "Valentino Donna Born in Roma Eau de Parfum 100ml"
+   ],
+   "sources": [
+    "data/warmer_catalog.json"
+   ]
+  },
+  {
+   "key": "xerjoff|naxos|-",
+   "texts": [
+    "Xerjoff Naxos"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  },
+  {
+   "key": "|abiyedh-ana-rouge|-",
+   "texts": [
+    "Ana Abiyedh Rouge"
+   ],
+   "sources": [
+    "data/validation_gold_truth.json"
+   ]
+  }
+ ],
+ "inferred_distinct_juice_count": {
+  "value": 46,
+  "folds": [
+   [
+    "armani+emporio+giorgio|acqua-gio|-",
+    "armani+emporio+giorgio|acqua-gio|EDT"
+   ],
+   [
+    "carolina+ch+herrera|girl-good|-",
+    "carolina+ch+herrera|girl-good|EDP"
+   ],
+   [
+    "francis+kurkdjian+maison|540-baccarat-rouge|-",
+    "mfk|540-baccarat-rouge|-"
+   ],
+   [
+    "lancome+paris|belle-est-vie|-",
+    "lancome+paris|belle-est-vie|EDP"
+   ],
+   [
+    "paco+rabanne|1-million|-",
+    "paco+rabanne|million-one|-"
+   ]
+  ],
+  "rule": "a no-concentration key folds into the same brand|line with a concentration; MFK = Maison Francis Kurkdjian; 1 Million = One Million; flankers kept apart",
+  "tag": "inferred"
+ },
+ "near_duplicate_pairs_not_folded_by_spine_key": {
+  "pairs": [
+   [
+    "al+haramain|amber-gold-oud|-",
+    "al+haramain|amber-oud|-"
+   ],
+   [
+    "armani+emporio+giorgio|acqua-gio|-",
+    "armani+emporio+giorgio|acqua-gio|EDT"
+   ],
+   [
+    "carolina+ch+herrera|girl-good|-",
+    "carolina+ch+herrera|girl-good|EDP"
+   ],
+   [
+    "francis+kurkdjian+maison|540-baccarat-rouge|-",
+    "mfk|540-baccarat-rouge|-"
+   ],
+   [
+    "lancome+paris|belle-est-vie|-",
+    "lancome+paris|belle-est-vie|EDP"
+   ],
+   [
+    "rasasi|hawas-viper|-",
+    "rasasi|hawas|-"
+   ]
+  ],
+  "tag": "inferred (token subset or equal identity; possible same juice spelled two ways or a flanker)"
+ },
+ "unresolved_brand_texts": [
+  "Ana Abiyedh Rouge"
+ ],
+ "empty_identity_keys": [
+  "laurent+saint+ysl+yves||EDP"
+ ],
+ "entries": [
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-001",
+   "text": "Tom Ford Black Orchid",
+   "brand": "Tom Ford",
+   "line": "Black Orchid",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|black-orchid|-",
+   "spine_key_full": "fragrances|ford+tf+tom|black-orchid|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-001",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-002",
+   "text": "Dior Sauvage",
+   "brand": "Dior",
+   "line": "Sauvage",
+   "brand_resolved": true,
+   "key": "christian+dior|sauvage|-",
+   "spine_key_full": "fragrances|christian+dior|sauvage|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-002",
+   "text": "YSL Y EDP",
+   "brand": "YSL",
+   "line": "Y EDP",
+   "brand_resolved": true,
+   "key": "laurent+saint+ysl+yves||EDP",
+   "spine_key_full": "fragrances|laurent+saint+ysl+yves||EDP|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-003",
+   "text": "Hugo Boss Bottled",
+   "brand": "Hugo Boss",
+   "line": "Bottled",
+   "brand_resolved": true,
+   "key": "boss+hugo|bottled|-",
+   "spine_key_full": "fragrances|boss+hugo|bottled|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-003",
+   "text": "Davidoff Cool Water",
+   "brand": "Davidoff",
+   "line": "Cool Water",
+   "brand_resolved": true,
+   "key": "davidoff|cool-water|-",
+   "spine_key_full": "fragrances|davidoff|cool-water|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-004",
+   "text": "MFK Baccarat Rouge 540",
+   "brand": "MFK",
+   "line": "Baccarat Rouge 540",
+   "brand_resolved": true,
+   "key": "mfk|540-baccarat-rouge|-",
+   "spine_key_full": "fragrances|mfk|540-baccarat-rouge|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-004",
+   "text": "Initio Oud for Greatness",
+   "brand": "Initio",
+   "line": "Oud for Greatness",
+   "brand_resolved": true,
+   "key": "initio|greatness-oud|-",
+   "spine_key_full": "fragrances|initio|greatness-oud|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-005",
+   "text": "Chanel Bleu de Chanel",
+   "brand": "Chanel",
+   "line": "Bleu de Chanel",
+   "brand_resolved": true,
+   "key": "chanel|bleu|-",
+   "spine_key_full": "fragrances|chanel|bleu|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-005",
+   "text": "Dior Homme Intense",
+   "brand": "Dior",
+   "line": "Homme Intense",
+   "brand_resolved": true,
+   "key": "christian+dior|intense|-",
+   "spine_key_full": "fragrances|christian+dior|intense|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-006",
+   "text": "Lattafa Khamrah",
+   "brand": "Lattafa",
+   "line": "Khamrah",
+   "brand_resolved": true,
+   "key": "lattafa|khamrah|-",
+   "spine_key_full": "fragrances|lattafa|khamrah|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-006",
+   "text": "Armaf Club de Nuit Intense Man",
+   "brand": "Armaf",
+   "line": "Club de Nuit Intense Man",
+   "brand_resolved": true,
+   "key": "armaf|club-intense-nuit|-",
+   "spine_key_full": "fragrances|armaf|club-intense-nuit|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-007",
+   "text": "Lattafa Asad",
+   "brand": "Lattafa",
+   "line": "Asad",
+   "brand_resolved": true,
+   "key": "lattafa|asad|-",
+   "spine_key_full": "fragrances|lattafa|asad|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-007",
+   "text": "Rasasi Hawas for Him",
+   "brand": "Rasasi",
+   "line": "Hawas for Him",
+   "brand_resolved": true,
+   "key": "rasasi|hawas|-",
+   "spine_key_full": "fragrances|rasasi|hawas|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-008",
+   "text": "Ajmal Amber Wood",
+   "brand": "Ajmal",
+   "line": "Amber Wood",
+   "brand_resolved": true,
+   "key": "ajmal|amber-wood|-",
+   "spine_key_full": "fragrances|ajmal|amber-wood|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-008",
+   "text": "Swiss Arabian Shaghaf Oud",
+   "brand": "Swiss Arabian",
+   "line": "Shaghaf Oud",
+   "brand_resolved": true,
+   "key": "arabian+swiss|oud-shaghaf|-",
+   "spine_key_full": "fragrances|arabian+swiss|oud-shaghaf|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-009",
+   "text": "Al Haramain Amber Oud",
+   "brand": "Al Haramain",
+   "line": "Amber Oud",
+   "brand_resolved": true,
+   "key": "al+haramain|amber-oud|-",
+   "spine_key_full": "fragrances|al+haramain|amber-oud|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-009",
+   "text": "Lattafa Khamrah",
+   "brand": "Lattafa",
+   "line": "Khamrah",
+   "brand_resolved": true,
+   "key": "lattafa|khamrah|-",
+   "spine_key_full": "fragrances|lattafa|khamrah|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-010",
+   "text": "Armaf Club de Nuit Intense Man",
+   "brand": "Armaf",
+   "line": "Club de Nuit Intense Man",
+   "brand_resolved": true,
+   "key": "armaf|club-intense-nuit|-",
+   "spine_key_full": "fragrances|armaf|club-intense-nuit|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-010",
+   "text": "Afnan 9pm",
+   "brand": "Afnan",
+   "line": "9pm",
+   "brand_resolved": true,
+   "key": "afnan|9pm|-",
+   "spine_key_full": "fragrances|afnan|9pm|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-011",
+   "text": "Versace Eros",
+   "brand": "Versace",
+   "line": "Eros",
+   "brand_resolved": true,
+   "key": "gianni+versace|eros|-",
+   "spine_key_full": "fragrances|gianni+versace|eros|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-011",
+   "text": "Paco Rabanne One Million",
+   "brand": "Paco Rabanne",
+   "line": "One Million",
+   "brand_resolved": true,
+   "key": "paco+rabanne|million-one|-",
+   "spine_key_full": "fragrances|paco+rabanne|million-one|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-012",
+   "text": "Armani Acqua di Gio",
+   "brand": "Armani",
+   "line": "Acqua di Gio",
+   "brand_resolved": true,
+   "key": "armani+emporio+giorgio|acqua-gio|-",
+   "spine_key_full": "fragrances|armani+emporio+giorgio|acqua-gio|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-012",
+   "text": "Dolce & Gabbana Light Blue",
+   "brand": "Dolce & Gabbana",
+   "line": "Light Blue",
+   "brand_resolved": true,
+   "key": "d&g+dg+dolce+gabbana|blue-light|-",
+   "spine_key_full": "fragrances|d&g+dg+dolce+gabbana|blue-light|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-013",
+   "text": "Jo Malone Wood Sage & Sea Salt",
+   "brand": "Jo Malone",
+   "line": "Wood Sage & Sea Salt",
+   "brand_resolved": true,
+   "key": "jo+malone|sage-salt-sea-wood|-",
+   "spine_key_full": "fragrances|jo+malone|sage-salt-sea-wood|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-013",
+   "text": "Le Labo Santal 33",
+   "brand": "Le Labo",
+   "line": "Santal 33",
+   "brand_resolved": true,
+   "key": "labo+le|33-santal|-",
+   "spine_key_full": "fragrances|labo+le|33-santal|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-014",
+   "text": "Mancera Cedrat Boise",
+   "brand": "Mancera",
+   "line": "Cedrat Boise",
+   "brand_resolved": true,
+   "key": "mancera|boise-cedrat|-",
+   "spine_key_full": "fragrances|mancera|boise-cedrat|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-014",
+   "text": "Montale Intense Cafe",
+   "brand": "Montale",
+   "line": "Intense Cafe",
+   "brand_resolved": true,
+   "key": "montale|cafe-intense|-",
+   "spine_key_full": "fragrances|montale|cafe-intense|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-015",
+   "text": "Carolina Herrera Good Girl",
+   "brand": "Carolina Herrera",
+   "line": "Good Girl",
+   "brand_resolved": true,
+   "key": "carolina+ch+herrera|girl-good|-",
+   "spine_key_full": "fragrances|carolina+ch+herrera|girl-good|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-015",
+   "text": "Lancome La Vie Est Belle",
+   "brand": "Lancome",
+   "line": "La Vie Est Belle",
+   "brand_resolved": true,
+   "key": "lancome+paris|belle-est-vie|-",
+   "spine_key_full": "fragrances|lancome+paris|belle-est-vie|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-016",
+   "text": "Lattafa Yara",
+   "brand": "Lattafa",
+   "line": "Yara",
+   "brand_resolved": true,
+   "key": "lattafa|yara|-",
+   "spine_key_full": "fragrances|lattafa|yara|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-016",
+   "text": "Ana Abiyedh Rouge",
+   "brand": "",
+   "line": "Ana Abiyedh Rouge",
+   "brand_resolved": false,
+   "key": "|abiyedh-ana-rouge|-",
+   "spine_key_full": "fragrances||abiyedh-ana-rouge|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-017",
+   "text": "Nishane Hacivat",
+   "brand": "Nishane",
+   "line": "Hacivat",
+   "brand_resolved": true,
+   "key": "nishane|hacivat|-",
+   "spine_key_full": "fragrances|nishane|hacivat|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-017",
+   "text": "Xerjoff Naxos",
+   "brand": "Xerjoff",
+   "line": "Naxos",
+   "brand_resolved": true,
+   "key": "xerjoff|naxos|-",
+   "spine_key_full": "fragrances|xerjoff|naxos|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-018",
+   "text": "Maison Margiela Replica Jazz Club",
+   "brand": "Maison Margiela",
+   "line": "Replica Jazz Club",
+   "brand_resolved": true,
+   "key": "maison+margiela|club-jazz-replica|-",
+   "spine_key_full": "fragrances|maison+margiela|club-jazz-replica|-|-"
+  },
+  {
+   "source_file": "data/validation_gold_truth.json",
+   "source_id": "frag-018",
+   "text": "By Kilian Angels' Share",
+   "brand": "By Kilian",
+   "line": "Angels' Share",
+   "brand_resolved": true,
+   "key": "by+kilian|angels-share|-",
+   "spine_key_full": "fragrances|by+kilian|angels-share|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-kpi-frag-001",
+   "text": "YSL Black Opium Eau de Parfum 90ml",
+   "brand": "YSL",
+   "line": "Black Opium Eau de Parfum 90ml",
+   "brand_resolved": true,
+   "key": "laurent+saint+ysl+yves|black-opium|EDP",
+   "spine_key_full": "fragrances|laurent+saint+ysl+yves|black-opium|EDP|90"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-kpi-frag-002",
+   "text": "Giorgio Armani Acqua di Gio Eau de Toilette 100ml",
+   "brand": "Giorgio Armani",
+   "line": "Acqua di Gio Eau de Toilette 100ml",
+   "brand_resolved": true,
+   "key": "armani+emporio+giorgio|acqua-gio|EDT",
+   "spine_key_full": "fragrances|armani+emporio+giorgio|acqua-gio|EDT|100"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-kpi-frag-003",
+   "text": "Carolina Herrera Good Girl Eau de Parfum 80ml",
+   "brand": "Carolina Herrera",
+   "line": "Good Girl Eau de Parfum 80ml",
+   "brand_resolved": true,
+   "key": "carolina+ch+herrera|girl-good|EDP",
+   "spine_key_full": "fragrances|carolina+ch+herrera|girl-good|EDP|80"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-kpi-frag-004",
+   "text": "Lancome La Vie Est Belle Eau de Parfum 100ml",
+   "brand": "Lancome",
+   "line": "La Vie Est Belle Eau de Parfum 100ml",
+   "brand_resolved": true,
+   "key": "lancome+paris|belle-est-vie|EDP",
+   "spine_key_full": "fragrances|lancome+paris|belle-est-vie|EDP|100"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-kpi-frag-005",
+   "text": "Prada Luna Rossa Carbon Eau de Toilette 100ml",
+   "brand": "Prada",
+   "line": "Luna Rossa Carbon Eau de Toilette 100ml",
+   "brand_resolved": true,
+   "key": "prada|carbon-luna-rossa|EDT",
+   "spine_key_full": "fragrances|prada|carbon-luna-rossa|EDT|100"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-kpi-frag-006",
+   "text": "Valentino Donna Born in Roma Eau de Parfum 100ml",
+   "brand": "Valentino",
+   "line": "Donna Born in Roma Eau de Parfum 100ml",
+   "brand_resolved": true,
+   "key": "valentino|born-roma|EDP",
+   "spine_key_full": "fragrances|valentino|born-roma|EDP|100"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-001",
+   "text": "Tom Ford Ombre Leather",
+   "brand": "Tom Ford",
+   "line": "Ombre Leather",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|leather-ombre|-",
+   "spine_key_full": "fragrances|ford+tf+tom|leather-ombre|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-001",
+   "text": "Tom Ford Tobacco Vanille",
+   "brand": "Tom Ford",
+   "line": "Tobacco Vanille",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|tobacco-vanille|-",
+   "spine_key_full": "fragrances|ford+tf+tom|tobacco-vanille|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-002",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-002",
+   "text": "Tom Ford Oud Wood",
+   "brand": "Tom Ford",
+   "line": "Oud Wood",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|oud-wood|-",
+   "spine_key_full": "fragrances|ford+tf+tom|oud-wood|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-003",
+   "text": "Maison Francis Kurkdjian Baccarat Rouge 540",
+   "brand": "Maison Francis Kurkdjian",
+   "line": "Baccarat Rouge 540",
+   "brand_resolved": true,
+   "key": "francis+kurkdjian+maison|540-baccarat-rouge|-",
+   "spine_key_full": "fragrances|francis+kurkdjian+maison|540-baccarat-rouge|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-003",
+   "text": "Parfums de Marly Layton",
+   "brand": "Parfums de Marly",
+   "line": "Layton",
+   "brand_resolved": true,
+   "key": "de+marly+parfums|layton|-",
+   "spine_key_full": "fragrances|de+marly+parfums|layton|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-004",
+   "text": "Chanel Bleu de Chanel",
+   "brand": "Chanel",
+   "line": "Bleu de Chanel",
+   "brand_resolved": true,
+   "key": "chanel|bleu|-",
+   "spine_key_full": "fragrances|chanel|bleu|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-004",
+   "text": "Dior Sauvage",
+   "brand": "Dior",
+   "line": "Sauvage",
+   "brand_resolved": true,
+   "key": "christian+dior|sauvage|-",
+   "spine_key_full": "fragrances|christian+dior|sauvage|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-005",
+   "text": "Versace Eros",
+   "brand": "Versace",
+   "line": "Eros",
+   "brand_resolved": true,
+   "key": "gianni+versace|eros|-",
+   "spine_key_full": "fragrances|gianni+versace|eros|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-005",
+   "text": "Paco Rabanne 1 Million",
+   "brand": "Paco Rabanne",
+   "line": "1 Million",
+   "brand_resolved": true,
+   "key": "paco+rabanne|1-million|-",
+   "spine_key_full": "fragrances|paco+rabanne|1-million|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-006",
+   "text": "Jean Paul Gaultier Le Male",
+   "brand": "Jean Paul Gaultier",
+   "line": "Le Male",
+   "brand_resolved": true,
+   "key": "gaultier+jean+jpg+paul|male|-",
+   "spine_key_full": "fragrances|gaultier+jean+jpg+paul|male|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-006",
+   "text": "Azzaro The Most Wanted",
+   "brand": "Azzaro",
+   "line": "The Most Wanted",
+   "brand_resolved": true,
+   "key": "azzaro|most-wanted|-",
+   "spine_key_full": "fragrances|azzaro|most-wanted|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-001",
+   "text": "Lattafa Khamrah",
+   "brand": "Lattafa",
+   "line": "Khamrah",
+   "brand_resolved": true,
+   "key": "lattafa|khamrah|-",
+   "spine_key_full": "fragrances|lattafa|khamrah|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-001",
+   "text": "Armaf Club de Nuit Intense Man",
+   "brand": "Armaf",
+   "line": "Club de Nuit Intense Man",
+   "brand_resolved": true,
+   "key": "armaf|club-intense-nuit|-",
+   "spine_key_full": "fragrances|armaf|club-intense-nuit|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-002",
+   "text": "Rasasi Hawas For Him",
+   "brand": "Rasasi",
+   "line": "Hawas For Him",
+   "brand_resolved": true,
+   "key": "rasasi|hawas|-",
+   "spine_key_full": "fragrances|rasasi|hawas|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-002",
+   "text": "Lattafa Asad",
+   "brand": "Lattafa",
+   "line": "Asad",
+   "brand_resolved": true,
+   "key": "lattafa|asad|-",
+   "spine_key_full": "fragrances|lattafa|asad|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-003",
+   "text": "Swiss Arabian Shaghaf Oud",
+   "brand": "Swiss Arabian",
+   "line": "Shaghaf Oud",
+   "brand_resolved": true,
+   "key": "arabian+swiss|oud-shaghaf|-",
+   "spine_key_full": "fragrances|arabian+swiss|oud-shaghaf|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-003",
+   "text": "Al Haramain Amber Oud Gold Edition",
+   "brand": "Al Haramain",
+   "line": "Amber Oud Gold Edition",
+   "brand_resolved": true,
+   "key": "al+haramain|amber-gold-oud|-",
+   "spine_key_full": "fragrances|al+haramain|amber-gold-oud|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-004",
+   "text": "Lattafa Yara",
+   "brand": "Lattafa",
+   "line": "Yara",
+   "brand_resolved": true,
+   "key": "lattafa|yara|-",
+   "spine_key_full": "fragrances|lattafa|yara|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-004",
+   "text": "Rasasi Hawas Viper",
+   "brand": "Rasasi",
+   "line": "Hawas Viper",
+   "brand_resolved": true,
+   "key": "rasasi|hawas-viper|-",
+   "spine_key_full": "fragrances|rasasi|hawas-viper|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-005",
+   "text": "Lattafa Khamrah",
+   "brand": "Lattafa",
+   "line": "Khamrah",
+   "brand_resolved": true,
+   "key": "lattafa|khamrah|-",
+   "spine_key_full": "fragrances|lattafa|khamrah|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-006",
+   "text": "Armaf Club de Nuit Intense Man",
+   "brand": "Armaf",
+   "line": "Club de Nuit Intense Man",
+   "brand_resolved": true,
+   "key": "armaf|club-intense-nuit|-",
+   "spine_key_full": "fragrances|armaf|club-intense-nuit|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-007",
+   "text": "Al Haramain Amber Oud Gold Edition",
+   "brand": "Al Haramain",
+   "line": "Amber Oud Gold Edition",
+   "brand_resolved": true,
+   "key": "al+haramain|amber-gold-oud|-",
+   "spine_key_full": "fragrances|al+haramain|amber-gold-oud|-|-"
+  },
+  {
+   "source_file": "data/warmer_catalog.json",
+   "source_id": "warm-frag-lh-008",
+   "text": "Rasasi Hawas For Him",
+   "brand": "Rasasi",
+   "line": "Hawas For Him",
+   "brand_resolved": true,
+   "key": "rasasi|hawas|-",
+   "spine_key_full": "fragrances|rasasi|hawas|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "bahrain[2].a",
+   "text": "Tom Ford Tobacco Vanille",
+   "brand": "Tom Ford",
+   "line": "Tobacco Vanille",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|tobacco-vanille|-",
+   "spine_key_full": "fragrances|ford+tf+tom|tobacco-vanille|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "bahrain[2].b",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "saudi_arabia[1].a",
+   "text": "Tom Ford Tobacco Vanille",
+   "brand": "Tom Ford",
+   "line": "Tobacco Vanille",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|tobacco-vanille|-",
+   "spine_key_full": "fragrances|ford+tf+tom|tobacco-vanille|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "saudi_arabia[1].b",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "uae[2].a",
+   "text": "Tom Ford Oud Wood",
+   "brand": "Tom Ford",
+   "line": "Oud Wood",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|oud-wood|-",
+   "spine_key_full": "fragrances|ford+tf+tom|oud-wood|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "uae[2].b",
+   "text": "Creed Royal Oud",
+   "brand": "Creed",
+   "line": "Royal Oud",
+   "brand_resolved": true,
+   "key": "creed|oud-royal|-",
+   "spine_key_full": "fragrances|creed|oud-royal|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "kuwait[2].a",
+   "text": "Tom Ford Tobacco Vanille",
+   "brand": "Tom Ford",
+   "line": "Tobacco Vanille",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|tobacco-vanille|-",
+   "spine_key_full": "fragrances|ford+tf+tom|tobacco-vanille|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "kuwait[2].b",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "qatar[1].a",
+   "text": "Tom Ford Oud Wood",
+   "brand": "Tom Ford",
+   "line": "Oud Wood",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|oud-wood|-",
+   "spine_key_full": "fragrances|ford+tf+tom|oud-wood|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "qatar[1].b",
+   "text": "Creed Royal Oud",
+   "brand": "Creed",
+   "line": "Royal Oud",
+   "brand_resolved": true,
+   "key": "creed|oud-royal|-",
+   "spine_key_full": "fragrances|creed|oud-royal|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "oman[2].a",
+   "text": "Tom Ford Tobacco Vanille",
+   "brand": "Tom Ford",
+   "line": "Tobacco Vanille",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|tobacco-vanille|-",
+   "spine_key_full": "fragrances|ford+tf+tom|tobacco-vanille|-|-"
+  },
+  {
+   "source_file": "data/trending_curated.json",
+   "source_id": "oman[2].b",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/eval_smoke_subset.json",
+   "source_id": "frag-001",
+   "text": "Tom Ford Black Orchid",
+   "brand": "Tom Ford",
+   "line": "Black Orchid",
+   "brand_resolved": true,
+   "key": "ford+tf+tom|black-orchid|-",
+   "spine_key_full": "fragrances|ford+tf+tom|black-orchid|-|-"
+  },
+  {
+   "source_file": "data/eval_smoke_subset.json",
+   "source_id": "frag-001",
+   "text": "Creed Aventus",
+   "brand": "Creed",
+   "line": "Aventus",
+   "brand_resolved": true,
+   "key": "creed|aventus|-",
+   "spine_key_full": "fragrances|creed|aventus|-|-"
+  },
+  {
+   "source_file": "data/eval_smoke_subset.json",
+   "source_id": "frag-006",
+   "text": "Lattafa Khamrah",
+   "brand": "Lattafa",
+   "line": "Khamrah",
+   "brand_resolved": true,
+   "key": "lattafa|khamrah|-",
+   "spine_key_full": "fragrances|lattafa|khamrah|-|-"
+  },
+  {
+   "source_file": "data/eval_smoke_subset.json",
+   "source_id": "frag-006",
+   "text": "Armaf Club de Nuit Intense Man",
+   "brand": "Armaf",
+   "line": "Club de Nuit Intense Man",
+   "brand_resolved": true,
+   "key": "armaf|club-intense-nuit|-",
+   "spine_key_full": "fragrances|armaf|club-intense-nuit|-|-"
+  }
+ ],
+ "fixture_response_fragrance_keys_not_in_the_four_sources": {
+  "keys": [
+   "ford+tf+tom|neige-soleil|-",
+   "ford+tf+tom|oud-voyager|-"
+  ],
+  "source": "baseline_completeness.json fragrance_by_content products (lane1, comparison_baseline_d2*, w412)",
+  "tag": "measured, not counted in distinct_juice_count"
+ },
+ "corpora": {
+  "gulf": {
+   "index": "sc-scraper-proof/_proof/sweep2_curl_cffi.jsonl (94 rows), html = sha1('curl_cffi|'+url) under _proof/html",
+   "pages_with_cached_html": 92,
+   "rows_without_html": 2,
+   "fragrance_by_index_flag": {
+    "definition": "sweep2 row is_fragrance == True (recorded by the 2026-08 sweep)",
+    "totals": {
+     "n_pdps": 41,
+     "n_hosts": 41,
+     "jsonld_product": 35,
+     "jsonld_name": 35,
+     "jsonld_brand": 30,
+     "jsonld_image": 35,
+     "jsonld_offers_price": 34,
+     "size_in_title": 23,
+     "jsonld_product_rate": 0.8537,
+     "jsonld_name_rate": 0.8537,
+     "jsonld_brand_rate": 0.7317,
+     "jsonld_image_rate": 0.8537,
+     "jsonld_offers_price_rate": 0.8293,
+     "size_in_title_rate": 0.561,
+     "unblocked_subset": {
+      "n_pdps": 41,
+      "n_hosts": 41,
+      "jsonld_product": 35,
+      "jsonld_name": 35,
+      "jsonld_brand": 30,
+      "jsonld_image": 35,
+      "jsonld_offers_price": 34,
+      "size_in_title": 23,
+      "jsonld_product_rate": 0.8537,
+      "jsonld_name_rate": 0.8537,
+      "jsonld_brand_rate": 0.7317,
+      "jsonld_image_rate": 0.8537,
+      "jsonld_offers_price_rate": 0.8293,
+      "size_in_title_rate": 0.561
+     }
+    },
+    "by_host": [
+     {
+      "host": "ae.ghawali.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "alhajisoman.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "alibaksh.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "alrehabstore.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "ardalzaafaranshop.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 1
+     },
+     {
+      "host": "atelierperfumery.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "bahrain.naseem.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "beautiquefragrances.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "beautyandblends.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.afnan.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.taifalemarat.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "coralperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "en-kwt.ajmal.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "fragrancebh.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "goldenscent.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "klinq.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "leperfumeqa.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "mamlakataloud.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "myperfumes.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "nazih.qa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "om.junaidperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "om.swissarabian.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "ouddubai.ae",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "oudworlds.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "ounass.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "parfum.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "parfum.qa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "parisgallery.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumeqatar.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumeskuwait.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "perfumistaaloud.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "qat.mhgboutique.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "reefperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "sa.mubkhar.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "salams.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "samawa.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "saudi.jazp.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "scentlibraryofficial.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "swissarabian.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "vanilla.sa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "vperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     }
+    ]
+   },
+   "fragrance_by_content": {
+    "definition": "inferred: the <title> head (before the first ' | '), og:title, the URL path or a JSON-LD Product name carries a concentration phrase (price_service.extract_concentration), a perfume word (EN/FR/ES/PT/PL perfume|parfum|cologne|woda perfumowana|woda toaletowa|perfumy|profumo, or the Arabic word for perfume), or an ml/oz/Arabic-ml size token together with a FRAGRANCE_BRAND_KEYWORDS brand; recall is imperfect (a fragrance page naming none of these, e.g. a bare line name, is missed)",
+    "totals": {
+     "n_pdps": 62,
+     "n_hosts": 62,
+     "jsonld_product": 57,
+     "jsonld_name": 57,
+     "jsonld_brand": 43,
+     "jsonld_image": 57,
+     "jsonld_offers_price": 56,
+     "size_in_title": 28,
+     "jsonld_product_rate": 0.9194,
+     "jsonld_name_rate": 0.9194,
+     "jsonld_brand_rate": 0.6935,
+     "jsonld_image_rate": 0.9194,
+     "jsonld_offers_price_rate": 0.9032,
+     "size_in_title_rate": 0.4516,
+     "unblocked_subset": {
+      "n_pdps": 62,
+      "n_hosts": 62,
+      "jsonld_product": 57,
+      "jsonld_name": 57,
+      "jsonld_brand": 43,
+      "jsonld_image": 57,
+      "jsonld_offers_price": 56,
+      "size_in_title": 28,
+      "jsonld_product_rate": 0.9194,
+      "jsonld_name_rate": 0.9194,
+      "jsonld_brand_rate": 0.6935,
+      "jsonld_image_rate": 0.9194,
+      "jsonld_offers_price_rate": 0.9032,
+      "size_in_title_rate": 0.4516
+     }
+    },
+    "by_host": [
+     {
+      "host": "ae.ghawali.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "albayanperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "alhajisoman.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "alibaksh.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "alrehabstore.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "ardalzaafaranshop.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 1
+     },
+     {
+      "host": "atelierperfumery.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "bahrain.naseem.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "beautiquefragrances.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "beautyandblends.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.afnan.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.arabianoud.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.azhaperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.mubkhar.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "bh.oudelite.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "bh.taifalemarat.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "coralperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "en-kwt.ajmal.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "en-sa.rituals.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "faces.sa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "fragrancebh.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "gazzaz.com.sa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "goldencollections.net",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "goldenscent.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "klinq.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "ksa.swissarabian.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "kw.oudelite.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "laverne.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "leperfumeqa.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "mamlakataloud.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "myperfumes.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "om.junaidperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "om.oudelite.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "om.swissarabian.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "oman.afnan.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "oqba.qa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "ouddubai.ae",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "oudworlds.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "ounass.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "parfum.qa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "parisgallery.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumeqatar.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumeskuwait.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "qat.mhgboutique.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "qatarperfumeshop.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "rasasistore.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "reefperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "sa.abdulsamadalqurashi.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "sa.ajmal.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "sa.mubkhar.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "sa.oudelite.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 0,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "salams.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "samawa.ae",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "saudi.jazp.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "saudi.naseem.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "scentlibraryofficial.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "souqscent.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "swissarabian.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "touchofoud.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "vanilla.sa",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "vperfumes.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "yusufbhaifragrances.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     }
+    ]
+   }
+  },
+  "global": {
+   "index": "sc-scraper-proof/_proof/global/_corpus_cachemap.json (328 rows; corpus.json n_rows 328), html = each row's _cache_path",
+   "pages_with_cached_html": 322,
+   "rows_without_html": 6,
+   "fragrance_by_content": {
+    "definition": "as gulf fragrance_by_content (the global corpus has no is_fragrance flag)",
+    "totals": {
+     "n_pdps": 249,
+     "n_hosts": 122,
+     "jsonld_product": 168,
+     "jsonld_name": 168,
+     "jsonld_brand": 150,
+     "jsonld_image": 168,
+     "jsonld_offers_price": 162,
+     "size_in_title": 92,
+     "jsonld_product_rate": 0.6747,
+     "jsonld_name_rate": 0.6747,
+     "jsonld_brand_rate": 0.6024,
+     "jsonld_image_rate": 0.6747,
+     "jsonld_offers_price_rate": 0.6506,
+     "size_in_title_rate": 0.3695,
+     "unblocked_subset": {
+      "n_pdps": 210,
+      "n_hosts": 94,
+      "jsonld_product": 168,
+      "jsonld_name": 168,
+      "jsonld_brand": 150,
+      "jsonld_image": 168,
+      "jsonld_offers_price": 162,
+      "size_in_title": 92,
+      "jsonld_product_rate": 0.8,
+      "jsonld_name_rate": 0.8,
+      "jsonld_brand_rate": 0.7143,
+      "jsonld_image_rate": 0.8,
+      "jsonld_offers_price_rate": 0.7714,
+      "size_in_title_rate": 0.4381
+     }
+    },
+    "by_host": [
+     {
+      "host": "gcc.luluhypermarket.com",
+      "n_pdps": 6,
+      "jsonld_product": 6,
+      "jsonld_name": 6,
+      "jsonld_brand": 0,
+      "jsonld_image": 6,
+      "jsonld_offers_price": 5,
+      "size_in_title": 6
+     },
+     {
+      "host": "noon.com",
+      "n_pdps": 6,
+      "jsonld_product": 4,
+      "jsonld_name": 4,
+      "jsonld_brand": 4,
+      "jsonld_image": 4,
+      "jsonld_offers_price": 4,
+      "size_in_title": 4
+     },
+     {
+      "host": "boutiqaat.com",
+      "n_pdps": 5,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumeria.pl",
+      "n_pdps": 5,
+      "jsonld_product": 5,
+      "jsonld_name": 5,
+      "jsonld_brand": 5,
+      "jsonld_image": 5,
+      "jsonld_offers_price": 5,
+      "size_in_title": 5
+     },
+     {
+      "host": "sephora.me",
+      "n_pdps": 5,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "druni.es",
+      "n_pdps": 4,
+      "jsonld_product": 4,
+      "jsonld_name": 4,
+      "jsonld_brand": 4,
+      "jsonld_image": 4,
+      "jsonld_offers_price": 4,
+      "size_in_title": 0
+     },
+     {
+      "host": "ideabellezza.it",
+      "n_pdps": 4,
+      "jsonld_product": 4,
+      "jsonld_name": 4,
+      "jsonld_brand": 4,
+      "jsonld_image": 4,
+      "jsonld_offers_price": 4,
+      "size_in_title": 0
+     },
+     {
+      "host": "marionnaud.fr",
+      "n_pdps": 4,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "my-origines.com",
+      "n_pdps": 4,
+      "jsonld_product": 4,
+      "jsonld_name": 4,
+      "jsonld_brand": 4,
+      "jsonld_image": 4,
+      "jsonld_offers_price": 4,
+      "size_in_title": 1
+     },
+     {
+      "host": "pacoperfumerias.co.uk",
+      "n_pdps": 4,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "parfumcenter.nl",
+      "n_pdps": 4,
+      "jsonld_product": 4,
+      "jsonld_name": 4,
+      "jsonld_brand": 4,
+      "jsonld_image": 4,
+      "jsonld_offers_price": 4,
+      "size_in_title": 4
+     },
+     {
+      "host": "theperfumeshop.com",
+      "n_pdps": 4,
+      "jsonld_product": 4,
+      "jsonld_name": 4,
+      "jsonld_brand": 4,
+      "jsonld_image": 4,
+      "jsonld_offers_price": 4,
+      "size_in_title": 4
+     },
+     {
+      "host": "bathandbodyworks.ae",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "breuninger.com",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "carrefourksa.com",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 0,
+      "size_in_title": 3
+     },
+     {
+      "host": "eperfumy.pl",
+      "n_pdps": 3,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "escentual.com",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "iciparisxl.be",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "jomashop.com",
+      "n_pdps": 3,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 2
+     },
+     {
+      "host": "kicks.se",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 3
+     },
+     {
+      "host": "matas.dk",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 3
+     },
+     {
+      "host": "notino.co.uk",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "parfumdo.com",
+      "n_pdps": 3,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "parfumerie-burdin.com",
+      "n_pdps": 3,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "parfumsmoinschers.com",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 3
+     },
+     {
+      "host": "perfume.com",
+      "n_pdps": 3,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "pieper.de",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "sephora.com",
+      "n_pdps": 3,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "sephora.com.tr",
+      "n_pdps": 3,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "wells.pt",
+      "n_pdps": 3,
+      "jsonld_product": 3,
+      "jsonld_name": 3,
+      "jsonld_brand": 3,
+      "jsonld_image": 3,
+      "jsonld_offers_price": 3,
+      "size_in_title": 0
+     },
+     {
+      "host": "ae.abdulsamadalqurashi.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 0,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "allbeauty.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "bathandbodyworks.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "bathandbodyworks.com.eg",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "beautybase.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "beautyhabit.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "beirutdutyfree.com",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 2
+     },
+     {
+      "host": "brownthomas.com",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "cloud10beauty.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 1
+     },
+     {
+      "host": "debenhams.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "demeterfragrance.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "douglas.at",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "duftzwilling.de",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 0,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "flaconi.de",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "fragrancecanada.ca",
+      "n_pdps": 2,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "fragrancenet.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "fragranceoutlet.com",
+      "n_pdps": 2,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "fragrancex.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "gratis.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "harveynichols.com",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "hudabeauty.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "johnlewis.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "jomalone.co.uk",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "kenzz.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 0,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "libertylondon.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "lookfantastic.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 0,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "lyko.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "marksandspencer.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "microperfumes.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "mueller.de",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "orisdi.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 1
+     },
+     {
+      "host": "parfum-zentrum.de",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "parfumania.com.tr",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "parfumdreams.de",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "parfumgroup.de",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "penhaligons.com",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumesecompanhia.pt",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "possets.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 0,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "sabbioni.it",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "saudi.zimayaperfumes.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 1
+     },
+     {
+      "host": "selfridges.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "solsticescents.com",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 2
+     },
+     {
+      "host": "spacenk.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "superdrug.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "thefragranceshop.ca",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 0,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "ulta.com",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 0
+     },
+     {
+      "host": "walmart.com",
+      "n_pdps": 2,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 2
+     },
+     {
+      "host": "watsons.com.tr",
+      "n_pdps": 2,
+      "jsonld_product": 2,
+      "jsonld_name": 2,
+      "jsonld_brand": 2,
+      "jsonld_image": 2,
+      "jsonld_offers_price": 2,
+      "size_in_title": 2
+     },
+     {
+      "host": "amouage.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "arenal.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "aromas.es",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "beautysuccess.fr",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 0,
+      "size_in_title": 1
+     },
+     {
+      "host": "bloomingdales.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "boots.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "canadiantire.ca",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "carrefouregypt.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "dillards.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "dm.de",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "essenza-nobile.de",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "fenwick.co.uk",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "fragrancebuy.ca",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "kohls.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "kw.abdulsamadalqurashi.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "londondrugs.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "luckyscent.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "macys.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "marionnaud.ch",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "millies.ie",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "neimanmarcus.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "nordstrom.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "nordstromrack.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "notino.de",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "notino.it",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "notino.nl",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "notino.pl",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "olfactif.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "om.abdulsamadalqurashi.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "ormondejayne.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumeemporium.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "perfumesclub.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "primor.eu",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "qa.abdulsamadalqurashi.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "riteaid.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "rossmann.com.tr",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 1
+     },
+     {
+      "host": "saksfifthavenue.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "sallybeauty.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "scentsplit.com",
+      "n_pdps": 1,
+      "jsonld_product": 1,
+      "jsonld_name": 1,
+      "jsonld_brand": 1,
+      "jsonld_image": 1,
+      "jsonld_offers_price": 1,
+      "size_in_title": 0
+     },
+     {
+      "host": "sephora.fr",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "sephora.pt",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "shoppersdrugmart.ca",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "target.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 0
+     },
+     {
+      "host": "trendyol.com",
+      "n_pdps": 1,
+      "jsonld_product": 0,
+      "jsonld_name": 0,
+      "jsonld_brand": 0,
+      "jsonld_image": 0,
+      "jsonld_offers_price": 0,
+      "size_in_title": 1
+     }
+    ]
+   }
+  },
+  "blocked_split": "unblocked_subset drops pages the corpus index records as blocked (gulf: structurally_blocked or status != 200; global: blocked or http_status != 200)",
+  "field_definitions": {
+   "jsonld_product": "a parseable application/ld+json block holds a node typed Product/ProductGroup/IndividualProduct/ProductModel",
+   "jsonld_name": "a non-empty name on such a node or a hasVariant child",
+   "jsonld_brand": "brand as a non-empty string, or a dict/list carrying a non-empty name",
+   "jsonld_image": "image as a non-empty string, or a dict url/contentUrl, or a list holding one",
+   "jsonld_offers_price": "offers (dict or list, nested offers / priceSpecification included) with price/lowPrice/highPrice parsing to a number > 0",
+   "size_in_title": "the page <title> carries a number + ml / fl oz / oz / Arabic-ml token",
+   "tag": "measured from the cached HTML bytes, zero network"
+  }
+ }
+}
