@@ -2074,3 +2074,343 @@ def test_no_usable_title_and_placeholder_name_is_unresolved(monkeypatch, answer)
     result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
     assert result == _unresolved(_HAWAS, "null_name"), result
     assert "Unknown Product" not in json.dumps(result)
+
+
+# ===========================================================================
+# Fix round 3 (RULINGS_FIX3_B4): F3-1 the product-route-aware same-url key,
+# F3-2 the OpenCart route marker is exactly product/product, F3-3 the first
+# USABLE of title / full_title, F3-4 an allow-listed key needs a non-empty
+# value, F3-5 pins for the round-2 re-verifier's surviving mutants (E1b, F5e,
+# X1, X5). RED rows fail at 83daa8cb on an AssertionError only; PIN rows are
+# green there and are proven by the mutant named in their docstring.
+# ===========================================================================
+_F3_OC = "https://www.b4oc3.example.test/index.php?route=product/product&product_id="
+_F3_OC_ROOT = "https://www.b4oc3.example.test/?route=product/product&product_id="
+_F3_PS = "https://www.b4ps3.example.test/index.php?controller=product&id_product="
+_F3_WC = "https://www.b4wc3.example.test/?product="
+_F3_OSC = "https://www.b4osc3.example.test/product_info.php?products_id="
+
+F3_1_SAME_STORE_PAIRS = {
+    "opencart-index": (_F3_OC + "1262", _F3_OC + "1263"),
+    "opencart-root": (_F3_OC_ROOT + "1262", _F3_OC_ROOT + "1263"),
+    "prestashop": (_F3_PS + "1", _F3_PS + "2"),
+    "woocommerce": (_F3_WC + "b4-oud-a", _F3_WC + "b4-oud-b"),
+    "oscommerce": (_F3_OSC + "1", _F3_OSC + "2"),
+}
+
+
+def _f3_pages(pair_id, url1, url2):
+    names = {url1: "B4 Same Store One " + pair_id, url2: "B4 Same Store Two " + pair_id}
+    pages = {u: ok(_page(n + " - Store", [_product(n, price="12.5")])) for u, n in names.items()}
+    return names, pages
+
+
+@pytest.mark.parametrize("pair_id", sorted(F3_1_SAME_STORE_PAIRS))
+@pytest.mark.parametrize("verb", VERBS)
+def test_same_store_query_routed_pair_is_not_same_url_flag_on(monkeypatch, client, verb, pair_id):
+    """RED (F3-1, re-verifier MAJOR-R1): two DIFFERENT products of ONE
+    query-routed store (OpenCart product_id on index.php and on the root
+    ?route= form, PrestaShop id_product, WooCommerce ?product=, osCommerce
+    products_id) are not the same url: the pre-gate lets them through, both are
+    fetched and the pair DELIVERS (flag ON, full config, POST and GET). At
+    83daa8cb the same-url key dropped the whole query: 400 NOT_PRODUCT_PAGE
+    both / same_url with 0 fetches."""
+    url1, url2 = F3_1_SAME_STORE_PAIRS[pair_id]
+    names, pages = _f3_pages(pair_id, url1, url2)
+    h = _full(monkeypatch, H(), pages=pages)
+    r = _call(client, verb, url1, url2)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert [p["name"] for p in body["products"]] == [names[url1], names[url2]], body
+    assert sorted(h.pages.fetched) == sorted([url1, url2]), h.pages.fetched
+    assert h.events[:3] == ["ssrf", "ssrf", "pregate"], h.events
+    uid = h.user["id"]
+    assert h.ledger.consumes == [uid] and h.ledger.refunds == [], (h.ledger.consumes, h.ledger.refunds)
+
+
+F3_1_STILL_SAME_URL = {
+    "same-id-tracking": ("https://www.b4oc3.example.test/index.php?product_id=1&gclid=x",
+                         "https://www.b4oc3.example.test/index.php?product_id=1&utm_source=y"),
+    "aspnet-pid": ("https://www.b4asp3.example.test/ProductDetails.aspx?pid=1",
+                   "https://www.b4asp3.example.test/ProductDetails.aspx?pid=2"),
+    "identical": (_F3_OC + "1262", _F3_OC + "1262"),
+}
+
+
+@pytest.mark.parametrize("pair_id", sorted(F3_1_STILL_SAME_URL))
+@pytest.mark.parametrize("verb", VERBS)
+def test_same_url_still_refused_for_tracking_pid_and_identical_pairs(monkeypatch, client, verb,
+                                                                     pair_id):
+    """PIN (F3-1 guard; kills a key that keeps the WHOLE query, and an ASP.NET
+    `pid` added to the allow-list): the same product_id with different tracking
+    keys, an ASP.NET ?pid= pair (the stated limit: `pid` is generic) and two
+    identical urls are still refused for $0 as NOT_PRODUCT_PAGE both / same_url,
+    nothing reserved or fetched."""
+    url1, url2 = F3_1_STILL_SAME_URL[pair_id]
+    h = _full(monkeypatch, H(), default=ok(PDP))
+    r = _call(client, verb, url1, url2)
+    assert r.status_code == 400, (r.status_code, r.json())
+    assert _strip_rid(r.json()) == _refusal("NOT_PRODUCT_PAGE", NPP_MSG, "both", "same_url")
+    assert h.ledger.consumes == [] and h.pages.fetched == [], (h.ledger.consumes, h.pages.fetched)
+
+
+_F3_KEY_BASE = "https://www.b4key3.example.test/index.php"
+
+F3_1_KEY_DIFFERS = [
+    ("?route=product/product&product_id=1262", "?route=product/product&product_id=1263"),
+    ("?product=b4-oud-a", "?product=b4-oud-b"),
+    ("?products_id=1", "?products_id=2"),
+    ("?id_product=1&controller=product", "?id_product=2&controller=product"),
+]
+
+F3_1_KEY_EQUAL = [
+    ("?product_id=1&gclid=x", "?product_id=1&utm_source=y"),
+    ("?PRODUCT_ID=1", "?product_id=1"),
+    ("?route=PRODUCT/PRODUCT&product_id=1", "?route=product/product&product_id=1"),
+    ("?product_id=%31", "?product_id=1"),
+    ("?product_id=1%20", "?product_id=1"),
+    ("?product_id=1&route=product/product", "?route=product/product&product_id=1"),
+    ("?product_id=&utm_source=x", ""),
+    ("?pid=1", "?pid=2"),
+    ("?route=product/category&product_id=5", "?product_id=5"),
+]
+
+
+@pytest.mark.parametrize("q1,q2", F3_1_KEY_DIFFERS,
+                         ids=["opencart", "woocommerce", "oscommerce", "prestashop"])
+def test_same_url_key_keeps_product_route_values(q1, q2):
+    """RED (F3-1): the same-url key keeps the allow-listed product-route keys
+    and their values (route=product/product, product_id, id_product, product,
+    products_id), so two products of one store at one path have different
+    keys. At 83daa8cb the whole query was dropped: equal keys."""
+    norm = _fn(ues, "normalize_url_for_same_check")
+    k1, k2 = norm(_F3_KEY_BASE + q1), norm(_F3_KEY_BASE + q2)
+    assert k1 and k2, (k1, k2)
+    assert k1 != k2, (q1, q2, k1)
+
+
+@pytest.mark.parametrize("q1,q2", F3_1_KEY_EQUAL,
+                         ids=["tracking-dropped", "key-case", "route-value-case", "percent-decoded",
+                              "value-stripped", "order", "empty-value-dropped", "pid-not-a-key",
+                              "listing-route-not-a-key"])
+def test_same_url_key_equal_when_only_dropped_keys_differ(q1, q2):
+    """PIN (F3-1 / F3-2 / F3-4 in the key; kills a whole-query key, case-
+    sensitive keys or route value, undecoded or unstripped values, an order-
+    sensitive key, an empty value kept, `pid` in the allow-list and a listing
+    route kept in the key): two urls that differ only in dropped keys, in key
+    case, in the route value's case, in percent-encoding, in surrounding
+    whitespace or in key order have EQUAL keys."""
+    norm = _fn(ues, "normalize_url_for_same_check")
+    k1, k2 = norm(_F3_KEY_BASE + q1), norm(_F3_KEY_BASE + q2)
+    assert k1, k1
+    assert k1 == k2, (q1, q2, k1, k2)
+
+
+_F3_LISTING_ROUTES = ["product/category&path=20", "product/search&search=oud", "product/compare",
+                      "product/special", "product/manufacturer"]
+F3_2_LISTING_ROWS = [p + "?route=" + r for p in ("/index.php", "/") for r in _F3_LISTING_ROUTES]
+
+
+@pytest.mark.parametrize("path", F3_2_LISTING_ROWS)
+def test_classify_url_path_listing_route_is_homepage(path):
+    """RED (F3-2, re-verifier m2): an OpenCart LISTING route (product/category,
+    product/search, product/compare, product/special, product/manufacturer) on
+    a root or /index.php path is a homepage again (as at 96676f1f): only the
+    exact product/product route is a product route. At 83daa8cb any route value
+    starting product/ was exempt (None)."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) == "homepage", path
+
+
+F3_2_EXEMPT_RED_ROWS = ["/index.php?route=PRODUCT/PRODUCT", "/?route=Product/Product"]
+F3_2_EXEMPT_PIN_ROWS = ["/index.php?route=product/product&product_id=7",
+                        "/index.php?route=PRODUCT/PRODUCT&product_id=7"]
+
+
+@pytest.mark.parametrize("path", F3_2_EXEMPT_RED_ROWS)
+def test_classify_url_path_product_product_route_is_case_insensitive(path):
+    """RED (F3-2): the route VALUE product/product is matched case-insensitively
+    (the key already was), so an upper-case product/product route alone is not
+    the homepage. At 83daa8cb the value check was case-sensitive: 'homepage'."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) is None, path
+
+
+@pytest.mark.parametrize("path", F3_2_EXEMPT_PIN_ROWS)
+def test_classify_url_path_product_product_route_stays_exempt(path):
+    """PIN (F3-2 guard, the ruling's two exempt rows; kills a route VETO, i.e. a
+    route value overriding the product_id marker: the exact product/product
+    value vetoing, or a value compared case-sensitively vetoing the upper-case
+    row): route=product/product with a product_id, lower or upper case, stays
+    exempt."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) is None, path
+
+
+@pytest.mark.parametrize("route", _F3_LISTING_ROUTES)
+@pytest.mark.parametrize("verb", VERBS)
+def test_listing_route_link_refused_before_reserve(monkeypatch, client, verb, route):
+    """RED (F3-2, the pre-gate site): an OpenCart listing-route link on
+    /index.php is refused for $0 as NOT_PRODUCT_PAGE url1 / homepage, nothing
+    reserved or fetched. At 83daa8cb it passed the pre-gate and was fetched."""
+    url1 = "https://www.b4oc3.example.test/index.php?route=" + route
+    h = _full(monkeypatch, H(), pages={FX_PDP: ok(PDP)}, default=ok(STOREFRONT))
+    r = _call(client, verb, url1, FX_PDP)
+    assert r.status_code == 400, (r.status_code, r.json())
+    assert _strip_rid(r.json()) == _refusal("NOT_PRODUCT_PAGE", NPP_MSG, "url1", "homepage")
+    assert h.ledger.consumes == [] and h.pages.fetched == [], (h.ledger.consumes, h.pages.fetched)
+
+
+@pytest.mark.parametrize("route", _F3_LISTING_ROUTES)
+def test_redirect_to_listing_route_is_homepage_post_fetch(monkeypatch, route):
+    """RED (F3-2, the post-fetch site): a link redirecting to an OpenCart
+    listing route on /index.php is NOT_PRODUCT_PAGE / homepage on its FINAL url,
+    with no LLM call. At 83daa8cb the final url was exempt and the listing page
+    was extracted."""
+    start = "https://www.b4oc3.example.test/b4-probe-oud-100ml"
+    target = "https://www.b4oc3.example.test/index.php?route=" + route
+    h = H()
+    _serve(monkeypatch, h, {start: redirect(target), target: ok(STOREFRONT)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h)
+    result = _run(ues.extract_from_url(start, url_mode_v2=True))
+    assert result == {"success": False, "code": "NOT_PRODUCT_PAGE", "reason": "homepage",
+                      "url": start, "error": NPP_MSG}, result
+    assert h.pages.fetched == [start, target], h.pages.fetched
+    assert h.llm_calls == []
+
+
+F3_4_EMPTY_VALUE_ROWS = ["/index.php?product_id=", "/?product=", "/index.php?id_product=",
+                         "/?product=%20", "/?gclid=x&product_id="]
+
+
+@pytest.mark.parametrize("path", F3_4_EMPTY_VALUE_ROWS)
+def test_classify_url_path_empty_product_key_is_homepage(path):
+    """RED (F3-4, re-verifier m6 / X4): an allow-listed key with an EMPTY (or
+    whitespace-only) value is not a product-route marker: presence AND a
+    non-empty value are required, so the link stays a homepage. At 83daa8cb key
+    presence alone exempted it (None)."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) == "homepage", path
+
+
+@pytest.mark.parametrize("path,expected", [("/index.php?product_id=5", None), ("/?pid=1", "homepage")],
+                         ids=["product-id-5-exempt", "pid-root-homepage"])
+def test_classify_url_path_non_empty_value_and_pid_limit(path, expected):
+    """PIN (F3-4 / F3-1 guards; kills a fix that refuses a non-empty product_id
+    and `pid` added to the allow-list): /index.php?product_id=5 stays exempt;
+    a single ?pid= link on a root path stays a homepage (the stated limit)."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) == expected, path
+
+
+@pytest.mark.parametrize("node_name", ["Unknown", "Product", "Unknown Product", "Rasasi"])
+def test_placeholder_node_name_gives_way_to_a_usable_llm_full_title(monkeypatch, node_name):
+    """RED (F3-3, re-verifier m3): a Product node NAMED with a placeholder (or
+    the site's own name), an empty <title>, no price, and an LLM answer with a
+    placeholder name and a usable full_title: the first USABLE of title /
+    full_title is the title, so the product is delivered with name == full_name
+    == the full title (never the placeholder). At 83daa8cb the first TRUTHY
+    title (the placeholder) shadowed it: UNRESOLVED_PRODUCT null_name after
+    the paid LLM call."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    page = _page("", [_product(name=node_name, price=None)], og={"site_name": "Rasasi"})
+    _serve(monkeypatch, h, {_HAWAS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps({"is_product_page": True, "name": "N/A",
+                                             "full_title": _HAWAS_TITLE, "price": 10.5}))
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert (result["product"]["name"], result["product"]["full_name"]) == (_HAWAS_TITLE,
+                                                                           _HAWAS_TITLE), result
+    assert len(h.llm_calls) == 1, h.llm_calls
+
+
+def test_challenge_title_past_the_scan_window_is_not_read(monkeypatch):
+    """PIN (F3-5, kills E1b the unbounded title window): the challenge check
+    reads the first 64 KiB only. A challenge <title> that starts past byte
+    65,536 (after a long HTML comment) is not a challenge page: the predicate
+    says False and a page carrying a priced Product node is delivered; the same
+    title placed just inside the window is a challenge (STORE_UNREADABLE)."""
+    is_challenge = _fn(ues, "_is_challenge_page")
+    title = "<title>Just a moment...</title>"
+    node = '<script type="application/ld+json">' + json.dumps(
+        _product("B4 Window Oud", price="10.5")) + "</script>"
+
+    def page(pad):
+        return "<html><head><!--" + "b" * pad + "-->" + title + node + "</head><body></body></html>"
+
+    inside, outside = page(65000), page(65600)
+    assert inside.find("</title>") + len("</title>") < 65536, inside.find("</title>")
+    assert outside.find("<title>") > 65536, outside.find("<title>")
+    assert is_challenge(inside) is True
+    assert is_challenge(outside) is False
+    h = H()
+    _serve(monkeypatch, h, {FX_PDP2: ok(outside), FX_PDP: ok(inside)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, boom=True)
+    delivered = _run(ues.extract_from_url(FX_PDP2, url_mode_v2=True))
+    assert delivered.get("success") is True, delivered
+    assert delivered["product"]["name"] == "B4 Window Oud", delivered
+    refused = _run(ues.extract_from_url(FX_PDP, url_mode_v2=True))
+    assert refused == {"success": False, "code": "STORE_UNREADABLE", "reason": "challenge",
+                       "url": FX_PDP, "error": SU_MSG}, refused
+    assert h.llm_calls == []
+
+
+def test_node_named_like_the_site_takes_the_usable_meta_title(monkeypatch):
+    """PIN (F3-5, kills F5e the node-name usability check ignoring the site
+    names in extract_generic_data_v2): a priced Product node named exactly like
+    og:site_name takes the usable <title>; delivered at $0 with no LLM call."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    page = _page(_HAWAS_TITLE, [_product(name="Rasasi", price="10.5")], og={"site_name": "Rasasi"})
+    _serve(monkeypatch, h, {_HAWAS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, boom=True)
+    result = _run(ues.extract_from_url(_HAWAS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert (result["product"]["name"], result["product"]["full_name"]) == (_HAWAS_TITLE,
+                                                                           _HAWAS_TITLE), result
+    assert h.llm_calls == [], h.llm_calls
+
+
+def test_transport_error_line_carries_no_exception_info(monkeypatch, caplog):
+    """PIN (F3-5, kills X1 the transport ERROR line gaining exc_info=True): the
+    ONE '[URL-V2] fetch failed' record of a transport error is at ERROR with the
+    exact host-only message, and it (like every other record of the run) carries
+    no exception info and no stack info (a traceback could carry the pasted
+    url)."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    _serve(monkeypatch, h, {FX_PDP2: httpx.ConnectTimeout})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, boom=True)
+    caplog.set_level(logging.DEBUG)
+    result = _run(ues.extract_from_url(FX_PDP2, url_mode_v2=True))
+    assert result == {"success": False, "code": "STORE_UNREADABLE", "reason": "fetch_error",
+                      "url": FX_PDP2, "error": SU_MSG}, result
+    failed = [rec for rec in caplog.records if rec.getMessage().startswith("[URL-V2] fetch failed ")]
+    assert [(rec.levelno, rec.getMessage()) for rec in failed] == [
+        (logging.ERROR, "[URL-V2] fetch failed host=www.fragrancex.com reason=fetch_error "
+                        "type=ConnectTimeout")], [(r.levelno, r.getMessage()) for r in failed]
+    assert failed[0].exc_info is None and failed[0].exc_text is None, failed[0].exc_info
+    assert failed[0].stack_info is None
+    assert [rec.getMessage() for rec in caplog.records if rec.exc_info] == []
+
+
+def test_non_2xx_401_is_the_4xx_class(monkeypatch):
+    """PIN (F3-5, kills X5 a 401 reported as http_403): an upstream 401 is
+    STORE_UNREADABLE with the 4xx-class reason http_4xx (only a 403 is
+    http_403; the reason vocabulary has no per-status 401 word), no LLM call."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    h = H()
+    _serve(monkeypatch, h, {FX_PDP2: status(401)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h)
+    result = _run(ues.extract_from_url(FX_PDP2, url_mode_v2=True))
+    assert result == {"success": False, "code": "STORE_UNREADABLE", "reason": "http_4xx",
+                      "url": FX_PDP2, "error": SU_MSG}, result
+    assert h.llm_calls == []

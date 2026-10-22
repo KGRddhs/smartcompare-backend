@@ -12,7 +12,7 @@ import logging
 import string
 import httpx
 from typing import Optional, Dict, Any, List, Tuple
-from urllib.parse import urlparse, parse_qs, urljoin, urlsplit
+from urllib.parse import urlparse, parse_qs, urlencode, urljoin, urlsplit
 from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 
@@ -137,9 +137,12 @@ def _retailer_log_name(retailer: Any) -> str:
 def normalize_url_for_same_check(u: Any) -> str:
     """The url1 == url2 key of the pre-gate: scheme and host casefolded, ONE
     leading 'www.' dropped, an explicit port kept, ONE trailing '/' dropped (the
-    root becomes ''), path case and percent-encoding kept, query and fragment
-    dropped. '' for a non-str or malformed link (never raises); the caller never
-    treats two '' as the same url."""
+    root becomes ''), path case and percent-encoding kept, the fragment and every
+    query key dropped EXCEPT the product-route keys and their values (RULINGS_FIX3_B4
+    F3-1: route=product/product, product_id, id_product, product, products_id; keys
+    case-insensitive, values percent-decoded and stripped, sorted), so two products
+    of one query-routed store are not the same url. '' for a non-str or malformed
+    link (never raises); the caller never treats two '' as the same url."""
     try:
         parts = urlsplit(u if isinstance(u, str) else "")
         port = parts.port  # ValueError on a malformed port
@@ -152,7 +155,9 @@ def normalize_url_for_same_check(u: Any) -> str:
         host = host[4:]
     netloc = host if port is None else f"{host}:{port}"
     path = parts.path[:-1] if parts.path.endswith("/") else parts.path
-    return f"{parts.scheme.casefold()}://{netloc}{path}"
+    key = f"{parts.scheme.casefold()}://{netloc}{path}"
+    pairs = _product_route_pairs(parts.query, _SAME_URL_PRODUCT_QUERY_KEYS)
+    return key + "?" + urlencode(pairs) if pairs else key
 
 
 # Pre-gate path classes beyond price_service's storefront-root / search pair
@@ -180,17 +185,37 @@ _URL_PRODUCT_SEGMENT_RE = re.compile(r"/(?:products?|p|dp|item)/|/-/p", re.I)
 # "any non-empty query" (tracking-only queries stay homepage). A bare `p` (a
 # WordPress post id) is deliberately absent.
 _PRODUCT_ROUTE_QUERY_KEYS = frozenset({"product_id", "id_product", "product"})
+# RULINGS_FIX3_B4 F3-1: the same-url key keeps these keys plus osCommerce
+# products_id; an ASP.NET `pid` is generic (a WordPress post or page id) and stays out.
+_SAME_URL_PRODUCT_QUERY_KEYS = _PRODUCT_ROUTE_QUERY_KEYS | {"products_id"}
+# F3-2: OpenCart's one product-page route; listing routes (product/category,
+# product/search, product/compare, ...) are not product routes.
+_OPENCART_PRODUCT_ROUTE = "product/product"
+
+
+def _product_route_pairs(query: str, keys: frozenset) -> List[Tuple[str, str]]:
+    """The product-route markers of a query, sorted: (key lower-cased, value
+    percent-decoded and stripped) for a key in ``keys`` with a NON-EMPTY value
+    (F3-4), and ("route", "product/product") for an OpenCart route whose value is
+    exactly product/product, case-insensitive (F3-2), de-duplicated. Every other
+    key is dropped."""
+    pairs = []
+    for key, values in parse_qs(query, keep_blank_values=True).items():
+        k = key.lower()
+        for value in values:
+            v = value.strip()
+            if k == "route":
+                if v.lower() == _OPENCART_PRODUCT_ROUTE:
+                    pairs.append((k, _OPENCART_PRODUCT_ROUTE))
+            elif k in keys and v:
+                pairs.append((k, v))
+    return sorted(set(pairs))
 
 
 def _query_names_a_product_route(query: str) -> bool:
-    """True when the query carries a product-route marker (F2-1 allow-list)."""
-    for key, values in parse_qs(query, keep_blank_values=True).items():
-        k = key.lower()
-        if k in _PRODUCT_ROUTE_QUERY_KEYS:
-            return True
-        if k == "route" and any(v.startswith("product/") for v in values):
-            return True
-    return False
+    """True when the query carries a product-route marker (F2-1 allow-list, as
+    narrowed by F3-2 and F3-4)."""
+    return bool(_product_route_pairs(query, _PRODUCT_ROUTE_QUERY_KEYS))
 
 
 def classify_url_path(u: Any) -> Optional[str]:
@@ -961,9 +986,10 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
     (e) missing title or price -> the V2 extraction prompt; `is_product_page: false`
         refuses (`not_product_page`) only when no Product node was found
         (ruling B4-R1: a node-bearing page is never refused on the LLM's word);
-    (f) the title must be usable (`null_name` otherwise), an unusable merged name
-        gives way to it (F2-5), and the product is normalised with its image as
-        ONE https url string or None."""
+    (f) the title is the first USABLE of title / full_title (`null_name` when
+        neither is; an unusable title gives way to a usable full_title, F3-3), an
+        unusable merged name gives way to it (F2-5), and the product is
+        normalised with its image as ONE https url string or None."""
     retailer = detect_retailer(url)
     logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
 
@@ -1021,9 +1047,15 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
                 if key not in raw_data or raw_data[key] is None:
                     raw_data[key] = value
 
-    title = raw_data.get("title") or raw_data.get("full_title")
-    if not is_usable_title(title, site_names):
+    # F3-3 (RULINGS_FIX3_B4): the first USABLE of title / full_title, so a
+    # placeholder node name no longer shadows a usable LLM full_title; an unusable
+    # title is cleared so normalize_product_data ships the usable one.
+    title = next((t for t in (raw_data.get("title"), raw_data.get("full_title"))
+                  if is_usable_title(t, site_names)), None)
+    if title is None:
         return _v2_refusal(url, "UNRESOLVED_PRODUCT", "null_name", "unresolved", status)
+    if not is_usable_title(raw_data.get("title"), site_names):
+        raw_data["title"] = None
     # F2-5 (RULINGS_FIX2_B4): an unusable merged name (a placeholder, the site's own
     # name, a non-str) never ships; the usable title above takes its place.
     if not is_usable_title(raw_data.get("name"), site_names):
