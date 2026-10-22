@@ -1,0 +1,22 @@
+# D03 RED notes (Opus 5.5 RED agent, 2026-10-22)
+
+- 17:05 start. Read s81-common.txt, RULINGS_D03, D03_SPEC_REVIEW (sha 71464344...), D03_UNIT_SPEC (sha 3460ffab..., matches worktree copy).
+- Real worktree sc-s81-d03 at 95cf6f86 on branch feature/s81-d03-deny-and-guards, git status empty at start. Tracked-file sha snapshot: tracked_sha_before.json (3410 files).
+- Step 2: the "not measured" list in the task is EMPTY (": ;") -> nothing to run.
+- Scratch worktree: <scratchpad>/D03_scratch (detached 95cf6f86).
+- P1 literals probed at base in scratch (p1_probe.json): identical with ENABLE_LONGEST_HOST_MATCH off/on. source_usage case moved to forum.basenotes.net (the www.parfumo.de row never matches a url host: score/usage strip www from the url host but not from the row).
+- Deviation: R1e spec False rows parfumo.co and fimgs.network dropped (they contradict ruling C10: .co and .network are public suffixes, so the label rule denies them). Replaced by parfumoshop.com / myfimgs.net False; added fragrantica.cn / www.parfumo.it True and notfragrantica.cn False (C10).
+- Deviation: URL rows R8a-R8d and P10 not written (ruling R-D03-1 carve-out to D03b); P14 scope fence added (url_routes.py / url_extraction_service.py carry no deny_hosts / denied_source / flag name).
+- Added per rulings: R3d (_routable_registry identity, B4), R3e (memo replacement, B4), R7e/P9b/G9c (scs piggyback, C4/B3), R10a/R10b/P12 (review display, B1), R11a/P13/G11b (validate_scrape_url chokepoint + harvest guard, B2), R5e (scs wrappers), C1/C2 rows in P6.
+- 17:26 base unit run (real worktree): 142 failed (all AssertionError) / 106 passed (all P/G rows).
+- 17:31 prototype (proto_apply.py + proto/deny_hosts.py, scratch only): unit file 248 passed with the flag exported ON and unset (rows set the flag themselves).
+- 17:32 prototype pin groups (23 files, 612 nodes): OFF 612 passed; ON 3 failed = test_rating_tiers::test_fragrantica_is_tier_2, test_retailer_quotes_from_reviews::TestRetailerQuotesGraceful::test_bare_numeric_citation_also_mapped, test_fragrance_content_quality::test_review_praise_no_interior_per_domain_artifact. test_review_paraphrase.py stayed GREEN ON (the review predicted :42-50 and :259 red; prototype-dependent).
+- Added rows after the first mutation design pass: R1e fragrantica.com.br:8443 (kills port-kept mutant M6, the label rule otherwise subsumes it), P9c (padded page image OFF keeps the base prefix rule; kills M50).
+- 17:36 mutation run (mutate.py, 52 mutants, full unit file per mutant).
+- M44 failed with TypeError (P3 subscripted a None rating_source): P3/R4c/R4d now read rating_source through _src_name/_src_url helpers (None-safe) -> re-run M44.
+- Comm set: build_comm.py -> comm_set.txt (407 files) + comm_set_reasons.tsv; precommit hook files excluded (2 present: phase_b, phase_b_round2); NETWORK_FLAKY_EXCLUDE nodes deselected per chunk.
+- 17:42 final RED file sha ae8fffc7ffe50205af9170a82f1de22ca38e629482b1afc93bf1c0181610449c; base 143 failed (all AssertionError) / 107 passed; prototype ON 250 / OFF 250 passed.
+- 17:43-17:56 comm set at base (17 chunks, 407 files): 18134 passed / 145 failed = 143 unit RED + 2 baseline test_page_scraping nodes (tests/.pre_impl_failures.txt).
+- 17:56-18:01 mutation table re-run on the final file: 51 KILLED / 1 SURVIVED (M4, equivalent under the C10 label rule). Restore sha verified per mutant; prototype snapshot verified after the run.
+- 18:03 scratch worktree removed (git worktree list clean); real worktree: 3410 tracked files sha-identical to the start snapshot; git status = only the new test file; no orphan pytest.
+- D03_RED_REPORT.md NOT written: the harness refused a report-file Write from a subagent; the report travels in the structured output.

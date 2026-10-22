@@ -1,0 +1,371 @@
+diff --git a/app/services/image_service.py b/app/services/image_service.py
+index a8e53930..11cef887 100644
+--- a/app/services/image_service.py
++++ b/app/services/image_service.py
+@@ -41,6 +41,7 @@ from app.services import api_budget_service as _llm_breaker
+ from app.services.model_config import sampling_kwargs, standard_model, token_limit_kwargs
+ from app.services.openai_service import get_client
+ from app.services.serper_service import search_images
++from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -54,7 +55,10 @@ def _is_valid_image_url(value: Any) -> bool:
+     if not isinstance(value, str):
+         return False
+     stripped = value.strip()
+-    return stripped.startswith("http://") or stripped.startswith("https://")
++    ok = stripped.startswith("http://") or stripped.startswith("https://")
++    if ok and data_guards_v2_enabled() and is_denied_url(stripped):
++        return False
++    return ok
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/app/services/price_service.py b/app/services/price_service.py
+index 24d159cc..3dddc84a 100644
+--- a/app/services/price_service.py
++++ b/app/services/price_service.py
+@@ -19,6 +19,7 @@ from dataclasses import dataclass
+ from html import unescape as html_unescape
+ from typing import Optional, List, Dict, Any, FrozenSet, Tuple
+ from urllib.parse import urlparse, quote_plus, urljoin, urlsplit
++from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
+ 
+ import httpx
+ 
+@@ -542,6 +543,11 @@ LUXURY_BRAND_KEYWORDS = {
+     "celine", "loewe", "moncler", "balmain", "alexander mcqueen",
+ }
+ 
++COUNTERFEIT_BRAND_LINE_ALLOWLIST = {"replica": ("margiela",)}
++_CF_V2_EXTRA_TOKENS = ("copycat",)
++_LUXURY_WHOLE_TOKEN_KEYWORDS = frozenset({"lv"})
++_LV_TOKEN_RE = re.compile(r"(?<![a-z0-9.])l\.?v\.?(?![a-z0-9.])")
++
+ # Designer / niche fragrance brands — used by is_fragrance_query to recognise a
+ # perfume even when the query omits the "perfume"/"edp" product word (e.g. "Tom
+ # Ford Ombré Leather", "Creed Aventus"). Distinct from LUXURY_BRAND_KEYWORDS
+@@ -991,6 +997,8 @@ def validate_scrape_url(url: str) -> bool:
+     """Reject URLs that waste rendering credits (search/category pages)."""
+     if not url:
+         return False
++    if data_guards_v2_enabled() and is_denied_url(url):
++        return False
+     try:
+         parsed = urlparse(url)
+         if parsed.scheme not in ("http", "https"):
+@@ -1019,6 +1027,8 @@ def is_counterfeit_listing(title: Any) -> bool:
+     number, a list or an object. `_jsonld_str` is identity on a real string, so
+     this is byte-identical for every input the bare `.lower()` did not crash on."""
+     title_lower = _jsonld_str(title).lower()
++    if data_guards_v2_enabled():
++        return _counterfeit_v2(title_lower)
+     return any(kw in title_lower for kw in COUNTERFEIT_KEYWORDS)
+ 
+ 
+@@ -1234,6 +1244,25 @@ def _contains_token(name_lower: str, token: str) -> bool:
+     return re.search(pattern, name_lower) is not None
+ 
+ 
++def _cf_v2_pattern(words):
++    alts = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
++    return re.compile(r"(?<![a-z])(?:" + alts + r")(?:s|es)?(?![a-z])")
++
++
++_CF_V2_RE = _cf_v2_pattern(
++    [k for k in COUNTERFEIT_KEYWORDS if k != "replica"] + list(_CF_V2_EXTRA_TOKENS)
++)
++_CF_V2_REPLICA_RE = _cf_v2_pattern(["replica"])
++
++
++def _counterfeit_v2(title_lower):
++    if _CF_V2_RE.search(title_lower):
++        return True
++    if _CF_V2_REPLICA_RE.search(title_lower) and not _contains_token(title_lower, "margiela"):
++        return True
++    return False
++
++
+ def is_high_value_query(product_name: str) -> bool:
+     """True iff `product_name` names a high-value product (phone/laptop/console/
+     GPU). EL-2 split (G4):
+@@ -1290,6 +1319,11 @@ def is_implausible_high_value_price(product_name: str, amount: Optional[float])
+ def is_luxury_brand(product_name: str) -> bool:
+     """Check if the product is from a luxury/designer brand."""
+     name_lower = product_name.lower()
++    if data_guards_v2_enabled():
++        return any(
++            b in name_lower for b in LUXURY_BRAND_KEYWORDS
++            if b not in _LUXURY_WHOLE_TOKEN_KEYWORDS
++        ) or bool(_LV_TOKEN_RE.search(name_lower))
+     return any(brand in name_lower for brand in LUXURY_BRAND_KEYWORDS)
+ 
+ 
+diff --git a/app/services/rating_service.py b/app/services/rating_service.py
+index b6a57e8f..f42ed7c7 100644
+--- a/app/services/rating_service.py
++++ b/app/services/rating_service.py
+@@ -10,6 +10,8 @@ from collections import Counter
+ 
+ import httpx
+ 
++from app.services.deny_hosts import data_guards_v2_enabled, is_denied_source, is_denied_url
++
+ from app.services.price_service import (
+     is_accessory,
+     strict_title_match,
+@@ -48,10 +50,18 @@ LUXURY_FASHION_RETAILERS = {
+ }
+ 
+ 
++def _rating_source_denied(source, link=None) -> bool:
++    if not data_guards_v2_enabled():
++        return False
++    return is_denied_source(source) or is_denied_url(link)
++
++
+ def get_rating_tier(source: str) -> int:
+     """Classify a retailer into rating trust tiers. Returns 1, 2, or 3."""
+     if not source:
+         return 3
++    if data_guards_v2_enabled() and is_denied_source(source):
++        return 3
+     source_lower = source.lower()
+     for r in RATING_TIER_1:
+         if r in source_lower:
+@@ -75,6 +85,8 @@ def collect_retailer_ratings(full_name: str, shopping_items_cache: Dict) -> List
+         source = item.get("source", "")
+         if not rating or not source:
+             continue
++        if _rating_source_denied(source, item.get("link")):
++            continue
+         source_key = source.lower().strip()
+         if source_key in seen:
+             continue
+@@ -130,6 +142,8 @@ def extract_rating_from_shopping(
+             continue
+         if not (0 < rating_val <= 5):
+             continue
++        if _rating_source_denied(item.get("source", ""), item.get("link")):
++            continue
+ 
+         title = item.get("title", "")
+         source = item.get("source", "")
+diff --git a/app/services/review_service.py b/app/services/review_service.py
+index 1446aace..025b5040 100644
+--- a/app/services/review_service.py
++++ b/app/services/review_service.py
+@@ -10,6 +10,7 @@ import re
+ import logging
+ from typing import Optional, List, Dict, Any, Tuple
+ from urllib.parse import urlparse
++from app.services.deny_hosts import data_guards_v2_enabled, is_denied_host
+ 
+ from app.services.extraction_service import (
+     extract_reviews,
+@@ -169,6 +170,8 @@ def clean_review_citations(reviews: dict, search_results: list) -> dict:
+ 
+     def _attribute(num: str) -> str:
+         domain = snippet_source_map.get(num, "")
++        if domain and data_guards_v2_enabled() and is_denied_host(domain):
++            return ""
+         return f"Per {domain}: " if domain else ""
+ 
+     def replace_citation(text: str) -> str:
+@@ -317,6 +320,8 @@ def build_retailer_quotes_from_reviews(
+         if not isinstance(result, dict):
+             continue
+         domain = _extract_domain(result.get("link", ""))
++        if domain and data_guards_v2_enabled() and is_denied_host(domain):
++            continue
+         if not domain or domain in seen_domains:
+             continue  # dedupe by source domain
+         text = (result.get("snippet") or "").strip()
+diff --git a/app/services/search_descriptor_service.py b/app/services/search_descriptor_service.py
+index 7cf2adbe..65a1e55e 100644
+--- a/app/services/search_descriptor_service.py
++++ b/app/services/search_descriptor_service.py
+@@ -108,7 +108,8 @@ SEARCH_KINDS = frozenset({"platform_api", "onsite_html", "sitemap", "none"})
+ DISCOVERED_VIA = frozenset({"platform_probe", "homepage_form", "robots", "manual"})
+ 
+ #: House rule 7, in code. Never fetched, by any path, for any reason.
+-DENY_HOSTS = ("fragrantica.com", "parfumo.com")
++from app.services import deny_hosts as _deny_hosts  # noqa: E402
++DENY_HOSTS = _deny_hosts.LEGACY_DESCRIPTOR_DENY_HOSTS
+ 
+ #: Fetch budget per host in the off-clock resolver (B8 sec 10: cheapest first,
+ #: cap 3). robots.txt is always the first of the three.
+@@ -399,6 +400,8 @@ def _now_iso() -> str:
+ 
+ 
+ def _deny(host: str) -> bool:
++    if _deny_hosts.data_guards_v2_enabled():
++        return _deny_hosts.is_denied_host(host)
+     h = (host or "").lower().strip()
+     if h.startswith("www."):
+         h = h[4:]
+diff --git a/app/services/source_router.py b/app/services/source_router.py
+index 87100ba4..61cf39aa 100644
+--- a/app/services/source_router.py
++++ b/app/services/source_router.py
+@@ -531,6 +531,23 @@ def _load_catalog_rows() -> List[Source]:
+ # equals _LITERAL_ROWS exactly — a prod no-op.)
+ SOURCE_REGISTRY: List[Source] = _LITERAL_ROWS + _load_catalog_rows()
+ 
++from app.services.deny_hosts import data_guards_v2_enabled, is_denied_host  # noqa: E402
++
++_ROUTABLE_MEMO = None
++
++
++def _routable_registry():
++    global _ROUTABLE_MEMO
++    if not data_guards_v2_enabled():
++        return SOURCE_REGISTRY
++    reg = SOURCE_REGISTRY
++    memo = _ROUTABLE_MEMO
++    if memo is not None and memo[0] is reg:
++        return memo[1]
++    filtered = [s for s in reg if not is_denied_host(getattr(s, "domain", ""))]
++    _ROUTABLE_MEMO = (reg, filtered)
++    return filtered
++
+ 
+ _TIER_ORDER = ("bahrain", "gcc", "global")
+ 
+@@ -575,7 +592,7 @@ def _registry_row_for_host(
+     caller keeps its own "first match WITH the field" semantic on both paths.
+     ``registry`` overrides SOURCE_REGISTRY for unit tests.
+     """
+-    reg = SOURCE_REGISTRY if registry is None else registry
++    reg = _routable_registry() if registry is None else registry
+     domain = _normalize_domain(str(host or ""))
+     if not domain:
+         return None
+@@ -694,8 +711,9 @@ def get_sources_for_category(
+     """
+     super_enabled = _super_routing_enabled()
+     result: List[Source] = []
++    _reg = _routable_registry()
+     for tier in _TIER_ORDER:
+-        for s in SOURCE_REGISTRY:
++        for s in _reg:
+             if s.tier != tier:
+                 continue
+             if getattr(s, "requires_super", False) and not super_enabled:
+@@ -719,7 +737,7 @@ def get_shopify_sources_for_category(category: str) -> List[Source]:
+     """
+     return [
+         s
+-        for s in SOURCE_REGISTRY
++        for s in _routable_registry()
+         if s.is_shopify
+         and s.tier == "bahrain"
+         and (not s.categories or category in s.categories)
+@@ -737,7 +755,7 @@ def get_algolia_sources_for_category(category: str) -> List[Source]:
+     """
+     return [
+         s
+-        for s in SOURCE_REGISTRY
++        for s in _routable_registry()
+         if s.is_algolia
+         and s.tier == "bahrain"
+         and (not s.categories or category in s.categories)
+@@ -752,7 +770,7 @@ def get_jsonapi_sources_for_category(category: str) -> List[Source]:
+     """
+     return [
+         s
+-        for s in SOURCE_REGISTRY
++        for s in _routable_registry()
+         if s.mechanism == "json_api"
+         and s.tier == "bahrain"
+         and (not s.categories or category in s.categories)
+@@ -780,7 +798,7 @@ def get_curl_pagescrape_sources_for_category(category: str) -> List[Source]:
+     """
+     return [
+         s
+-        for s in SOURCE_REGISTRY
++        for s in _routable_registry()
+         if (s.mechanism or "") in ("", "curl")
+         and s.tier == "bahrain"
+         and not s.is_shopify
+@@ -797,7 +815,7 @@ def get_sitemap_sources_for_category(category: str) -> List[Source]:
+     """
+     return [
+         s
+-        for s in SOURCE_REGISTRY
++        for s in _routable_registry()
+         if s.mechanism in ("sitemap", "curl")
+         and s.tier == "bahrain"
+         and (not s.categories or category in s.categories)
+@@ -833,7 +851,7 @@ def _direct_fetch_sources(category: str, mechanism: str) -> List[Source]:
+     fan-out; the adapter still stamps genuine-vs-converted by actual currency."""
+     matched = [
+         (idx, s)
+-        for idx, s in enumerate(SOURCE_REGISTRY)
++        for idx, s in enumerate(_routable_registry())
+         if s.mechanism == mechanism
+         and s.tier in ("bahrain", "gcc")
+         and (not s.categories or category in s.categories)
+@@ -914,7 +932,7 @@ def get_gcc_shopify_pagescrape_sources_for_category(category: str) -> List[Sourc
+     """
+     matched = [
+         (idx, s)
+-        for idx, s in enumerate(SOURCE_REGISTRY)
++        for idx, s in enumerate(_routable_registry())
+         if (s.mechanism or "") == ""
+         and not s.is_shopify
+         and not s.is_algolia
+@@ -943,7 +961,7 @@ def source_usage(url: str, category: str) -> str:
+         return "price"
+ 
+     domain = _normalize_domain(parsed.netloc)
+-    for s in SOURCE_REGISTRY:
++    for s in _routable_registry():
+         registry_domain = s.domain.lower()
+         if domain == registry_domain or domain.endswith("." + registry_domain):
+             if not s.categories or category in s.categories:
+@@ -966,7 +984,7 @@ def score_source(url: str, category: str) -> float:
+         return 0.5
+ 
+     domain = _normalize_domain(parsed.netloc)
+-    for s in SOURCE_REGISTRY:
++    for s in _routable_registry():
+         registry_domain = s.domain.lower()
+         if domain == registry_domain or domain.endswith("." + registry_domain):
+             if not s.categories or category in s.categories:
+@@ -1168,7 +1186,7 @@ def is_render_only_domain(domain_or_url: str) -> bool:
+         except (ValueError, TypeError):
+             host = domain_or_url
+     host = host.replace("www.", "").lower()
+-    for s in SOURCE_REGISTRY:
++    for s in _routable_registry():
+         if not getattr(s, "is_render_only", False):
+             continue
+         d = s.domain.replace("www.", "").lower()
+diff --git a/app/services/structured_comparison_service.py b/app/services/structured_comparison_service.py
+index cbf8cd3d..79c553cc 100644
+--- a/app/services/structured_comparison_service.py
++++ b/app/services/structured_comparison_service.py
+@@ -1540,7 +1540,8 @@ from app.services.response_builder import (
+     single_verdict_margin_enabled,  # W4-12 — per-call flag reader
+     _calibrated_gap,  # W4-12 — the pre-nudge calibrated gap
+ )
+-from app.services.image_service import get_product_image_url
++from app.services.image_service import get_product_image_url, _is_valid_image_url
++from app.services.deny_hosts import data_guards_v2_enabled as _d03_guards_on
+ # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
+ # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
+ # `site:` discovery query runs FIRST, and every candidate is gated registry-
+@@ -6121,7 +6122,10 @@ class StructuredComparisonService:
+             # are FREE (already paid by the price scrape) AND usually
+             # higher fidelity (real product hero shot vs Serper thumbnail).
+             page_img = result["price"].get("image_url")
+-            if page_img and isinstance(page_img, str) and (
++            if _d03_guards_on():
++                if _is_valid_image_url(page_img):
++                    result["image_url"] = page_img.strip()
++            elif page_img and isinstance(page_img, str) and (
+                 page_img.startswith("http://") or page_img.startswith("https://")
+             ):
+                 result["image_url"] = page_img.strip()
