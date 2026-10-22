@@ -1,0 +1,584 @@
+{
+ "unit": "S81-03 LLM-LEDGER-V2 (ENABLE_LLM_LEDGER_V2, lane B), base 95cf6f864b4e70980ca191daa064c0118e223c13, real worktree C:/Users/SynAckITPC/Documents/AI/sc-s81-s03; RED file tests/test_s81_s03_llm_ledger_v2.py per the spec as amended by RULINGS_S81_03 (R-S03-1..10, BL1-BL5, C1-C14) and the review. 97 test functions, 196 collected nodes: 67 RED functions (124 nodes) and 30 PIN functions (72 nodes). Notes folder: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S03_red/ (notes.md, base/proto logs, proto/ = prototype leaf + apply script + 050 SQL + prototype.diff + mutants.py, mut/ = 70 mutant logs + mutants.json + mut_compact.json, comm/ = comm_set.txt + comm_set_reasons.tsv + 16 chunk logs + run_comm.out). Step 2 (files the review listed as not measured): the task list was empty and the review names none, so nothing ran.",
+ "test_files": [
+  {
+   "path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s03/tests/test_s81_s03_llm_ledger_v2.py",
+   "sha256": "13d1be3ab5ec742a5b8c32a77f97a70328eba0c680a0b079c97dace020c9ec84",
+   "bytes": 115335
+  }
+ ],
+ "base_run": {
+  "failed": 124,
+  "passed": 72,
+  "every_failure_is_assertion_error": true,
+  "failed_node_ids": [
+   "test_a10_unknown_ids_and_bad_counts_price_to_none[args0..args11] (12 nodes)",
+   "test_a11_openai_price_delegates_bit_identically",
+   "test_a12_provider_of[10 params]",
+   "test_a13_record_keys_and_otel_map",
+   "test_a14_anthropic_usage_normalisation[6 params]",
+   "test_a14b_unreadable_anthropic_usage_is_unpriced[None, garbage1]",
+   "test_a15_openai_entry_record",
+   "test_a16_summary_cost_semantics_summary_only",
+   "test_a17_summary_is_bounded_by_distinct_models_not_calls",
+   "test_a18_merge_llm_summaries",
+   "test_a19_record_llm_call_no_op_unbound_and_appends_bound",
+   "test_a1_leaf_exists_and_imports_only_stdlib_and_openai_pricing",
+   "test_a20_spend_ledger_row_shape",
+   "test_a20b_spend_ledger_row_validation[override0..override12] (13 nodes)",
+   "test_a2_flag_reader_idiom[13 params]",
+   "test_a2b_flag_read_per_call",
+   "test_a3_anthropic_rows_exact_keys_rates_and_as_of",
+   "test_a4_openai_rows_reexported_same_object_and_legacy_rates",
+   "test_a5_haiku_price_with_every_cache_field",
+   "test_a6_sonnet_price_and_cache_read_is_010",
+   "test_a7_web_search_is_001_each",
+   "test_a8_batch_halves_tokens_not_search",
+   "test_a9_haiku_long_context_tier_with_derived_cache_rates",
+   "test_b10_openai_records_on_the_llm_ledger_are_dropped",
+   "test_b11_builder_fault_delivers_base_body_with_one_warning",
+   "test_b1_rest_compare_carries_metadata_llm",
+   "test_b2_stream_complete_carries_metadata_llm",
+   "test_b3_hard_cap_partial_carries_metadata_llm_and_the_unclaimed_add",
+   "test_b8_unverified_ledger_takes_the_handed_summary",
+   "test_b9_llm_ledger_records_join_metadata_llm",
+   "test_bl4_consumers_reach_the_leaf_by_module_attribute[6 consumer files]",
+   "test_c11_track_fault_adds_base_estimate_with_one_warning",
+   "test_c1_track_prices_the_matched_ledger_entry",
+   "test_c2_each_entry_claimed_once",
+   "test_c7_e2e_tracked_deltas_follow_the_ledger",
+   "test_c8_claims_reset_on_a_new_openai_ledger",
+   "test_c8b_claims_reset_when_the_llm_ledger_changes",
+   "test_d1_v1_vision_cost_priced_by_model",
+   "test_d2_v1_vision_cost_prices_cached_tokens",
+   "test_d5_v2_vision_cost_priced_by_model",
+   "test_d6_disambiguation_cost_priced_by_model",
+   "test_e1_record_usage_accepts_provider_keyword",
+   "test_e2_record_usage_skips_non_openai_provider",
+   "test_e3_record_usage_skips_claude_verdict_id",
+   "test_e5_get_model_claude_verdict_skips_the_counter",
+   "test_e8_router_fault_falls_back_to_base_with_one_warning",
+   "test_f1_public_share_strips_metadata_llm_and_openai[None, true]",
+   "test_f2_public_share_strips_llm_only_row[None, true]",
+   "test_g1_admin_costs_sums_metadata_llm",
+   "test_g2_admin_costs_api_carries_llm_block",
+   "test_g5_llm_read_failure_is_unknown_not_zero",
+   "test_g7_costs_html_renders_llm_block_safely",
+   "test_g8_llm_cost_note_text",
+   "test_h1_050_and_rollback_exist_once_and_039_stays_reserved",
+   "test_h2_050_one_transaction_creates_exactly_the_table",
+   "test_h3_050_is_service_role_only_and_append_only_by_grant",
+   "test_h4_050_outside_the_043_fence",
+   "test_h5_050_header_and_rollback",
+   "test_i1_camera_merges_vision_into_metadata_llm",
+   "test_i3_camera_vision_cost_follows_the_vision_model",
+   "test_i4_camera_merge_fault_delivers_with_one_warning",
+   "test_j1_track_matches_an_llm_record",
+   "test_k3_leaf_has_no_url_or_stray_model_literal",
+   "test_l1_fy25_unit_env_carries_the_flag",
+   "test_u1_rest_total_cost_carries_tracked_and_unclaimed_list_prices",
+   "test_u2_stream_total_cost_carries_tracked_and_unclaimed_list_prices",
+   "test_u3_builder_adds_only_unclaimed_entries",
+   "(full 124 node ids: S03_red/base_failed.txt; the 72 passing nodes = every PIN node: S03_red/base_passed.txt)"
+  ],
+  "pyt_line": "[pyt] tag=s03red-base start=2026-10-23 01:55:20 end=2026-10-23 01:55:49 elapsed=30s bound=600s status=FAIL rc=1 (124 failed, 72 passed, 11 warnings in 26.08s; [hermeticity] sentinel checked 196 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)) | classification rerun [pyt] tag=s03red-base-tbline start=2026-10-23 01:56:49 end=2026-10-23 01:57:11 elapsed=21s bound=600s status=FAIL rc=1 (124 failed, 72 passed in 18.66s; --tb=line: 123 'AssertionError: ...' plus 1 rewritten bare assert 'assert (3 == 4)' in I1, where base passes the fake compare's own metadata.llm through unmerged; no ImportError/AttributeError/TypeError) | [pyt] tag=s03red-collect start=2026-10-23 01:58:16 end=2026-10-23 01:58:21 elapsed=5s bound=600s status=OK rc=0 (196 collected) | base literal recording in the scratch worktree: [pyt] tag=s03red-rec start=2026-10-23 01:41:44 end=2026-10-23 01:42:27 elapsed=42s bound=600s status=OK rc=0 (3 passed, netguard 0): REST and stream OFF identical, total_cost 0.016634, serper_calls 8, gpt_calls 9, metadata.openai 11 calls / 0.017992; ON expectation 0.0179916 + 0.008 + 0.006 = 0.031992"
+ },
+ "prototype": {
+  "on_passed": 196,
+  "on_failed": 0,
+  "off_passed": 196,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=s03red-proto-off start=2026-10-23 02:02:30 end=2026-10-23 02:02:37 elapsed=6s bound=600s status=OK rc=0 (196 passed, 11 warnings in 4.84s; [hermeticity] sentinel checked 196 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)) -- flag unset in the shell (every row sets or deletes the flag itself)",
+   "[pyt] tag=s03red-proto-on start=2026-10-23 02:02:51 end=2026-10-23 02:02:58 elapsed=7s bound=600s status=OK rc=0 (196 passed, 11 warnings in 5.53s) -- ENABLE_LLM_LEDGER_V2=true exported for that one runner call",
+   "[pyt] tag=s03red-proto-cvar start=2026-10-23 02:03:00 end=2026-10-23 02:03:14 elapsed=13s bound=600s status=FAIL rc=1 (2 failed, 194 passed in 10.27s) -- the literal R-S03-2 design: claims in a ContextVar the first tracked call sets lazily. U1/U2 fail: metadata.total_cost 0.034308 != 0.031992 (the 8 mini entries tracked inside the gather child tasks are invisible to the builder and get added again as unclaimed, +0.002316)"
+  ],
+  "notes": "The prototype lives in a detached scratch worktree of 95cf6f86 (now removed). The source is under S03_red/proto/ (llm_pricing.py, apply_proto.py, 050_fwd.sql, 050_rb.sql, prototype.diff with 9 files, 207+/14-). It covers every change-list item: the new leaf; RB metadata.llm, summary only, plus the unclaimed add to metadata.total_cost, both in try/except with ONE '[LLM-LEDGER] <site> failed type=%s -- base value' WARNING; the TG hunk (isinstance-dict guard, so non-dict usage raises as base); OV1, OV2 and OD; MR get_model and record_usage(provider=None), both in try/except; the IR merge in try/except; the share strip of ('openai','llm'); AD (LLM_COST_NOTE, LLM_COST_SOURCE, _LLM_SELECT_JSON_PATH 'id,created_at,full_response->metadata->llm', _llm_rows on the endpoint's own client, _aggregate_llm); CH (an inert <div id=\"llmKpis\" style=\"display:none\"> plus renderLlmKpis called from load()); migration 050 and its rollback (REVOKE ... FROM PUBLIC, anon, authenticated, service_role, then GRANT SELECT, INSERT); and the FY25 UNIT_ENV entry. Every consumer reaches the leaf through `from app.services import llm_pricing as _llm_pricing` (BL4). What the spec and rulings got wrong: (1) R-S03-2 as worded (claims in a lazily set llm_pricing ContextVar) is not satisfiable without either an scs binding hunk or a shared store. The explicit-pair, stream and camera compares make their first _track_gpt_cost inside asyncio.gather child tasks, whose ContextVar sets never reach the builder. Measured above: the double count. The prototype keys claims by the identity of the bound (openai, llm) ledger lists in a bounded module registry (256 entries, strong references, so ids cannot be reused). That passes U1, U2, U3, C8 and C8b. (2) My claims/C rows work through svc._track_gpt_cost, so they hold whatever tracked_call_cost_usd signature GREEN chooses."
+ },
+ "mutants": [
+  {
+   "id": "M1",
+   "description": "flag reader always True",
+   "survived": false,
+   "killed_by": "a2, a2b, b4, b4s, b5 (+10 rows; 49 nodes)"
+  },
+  {
+   "id": "M2",
+   "description": "flag reader drops .strip().lower()",
+   "survived": false,
+   "killed_by": "a2 (' TRUE ', ' FALSE '; 2 nodes)"
+  },
+  {
+   "id": "M3",
+   "description": "RB not gated",
+   "survived": false,
+   "killed_by": "b4, b4s, b5, u4 (19 nodes)"
+  },
+  {
+   "id": "M3b",
+   "description": "RB flag-read-not-first (build_llm_metadata called before the flag check)",
+   "survived": false,
+   "killed_by": "b4, b4s, b5, b11 (+1; 20 nodes)"
+  },
+  {
+   "id": "M4",
+   "description": "RB writes metadata.llm after the caller override merge",
+   "survived": false,
+   "killed_by": "b6"
+  },
+  {
+   "id": "M5",
+   "description": "build_llm_metadata trusts the bound ledger without the summary-equality check",
+   "survived": false,
+   "killed_by": "b8"
+  },
+  {
+   "id": "M6",
+   "description": "zero-call summary cost None",
+   "survived": false,
+   "killed_by": "a16"
+  },
+  {
+   "id": "M7",
+   "description": "all-unpriced summary cost 0.0",
+   "survived": false,
+   "killed_by": "a16, a18"
+  },
+  {
+   "id": "M8",
+   "description": "1h cache write priced at the 5m rate",
+   "survived": false,
+   "killed_by": "a5, a9"
+  },
+  {
+   "id": "M9",
+   "description": "web-search fee halved under batch",
+   "survived": false,
+   "killed_by": "a8"
+  },
+  {
+   "id": "M10",
+   "description": "long-context threshold >= instead of >",
+   "survived": false,
+   "killed_by": "a9"
+  },
+  {
+   "id": "M11",
+   "description": "(redefined by R-S03-4) long-context cache read at the base rate, not the derived 0.05",
+   "survived": false,
+   "killed_by": "a9"
+  },
+  {
+   "id": "M11b",
+   "description": "long-context threshold counts input tokens only",
+   "survived": false,
+   "killed_by": "a9"
+  },
+  {
+   "id": "M11c",
+   "description": "Sonnet long context flat-priced instead of unpriced",
+   "survived": false,
+   "killed_by": "a9"
+  },
+  {
+   "id": "M12",
+   "description": "dated claude id priced by prefix match",
+   "survived": false,
+   "killed_by": "a10"
+  },
+  {
+   "id": "M13",
+   "description": "(redefined by C7) OpenAI price re-implemented term-wise u*in/1e6 + c*cin/1e6 + o*out/1e6",
+   "survived": false,
+   "killed_by": "a11 (== on 5 tuples)"
+  },
+  {
+   "id": "M14",
+   "description": "a claim is never marked",
+   "survived": false,
+   "killed_by": "c2, u1, u2, u3"
+  },
+  {
+   "id": "M15",
+   "description": "unpriced match returns None and TG adds it (combined leaf + TG edit)",
+   "survived": false,
+   "killed_by": "c5, c9, c11 (5 nodes)"
+  },
+  {
+   "id": "M15s",
+   "description": "unpriced match returns None (leaf only)",
+   "survived": true,
+   "equivalent_by_ruling": false,
+   "killed_by": "SURVIVED: equivalent in the prototype, whose TG treats a None leaf result as 'use the base estimate'; ruling needed: accept as equivalent or require the leaf contract (C5 at unit level)"
+  },
+  {
+   "id": "M16",
+   "description": "TG not gated (ON body always)",
+   "survived": false,
+   "killed_by": "b4, b4s, b5, c6 (15 nodes)"
+  },
+  {
+   "id": "M17",
+   "description": "claims never reset on a new ledger",
+   "survived": false,
+   "killed_by": "c8, c1, c2, c7, b3 (+5; 10 nodes)"
+  },
+  {
+   "id": "M17b",
+   "description": "claims not reset when the llm ledger changes (C11)",
+   "survived": false,
+   "killed_by": "c8b"
+  },
+  {
+   "id": "M18",
+   "description": "claims stored by mutating the ledger entry dicts",
+   "survived": false,
+   "killed_by": "c10"
+  },
+  {
+   "id": "M19",
+   "description": "OV1 ignores cached tokens",
+   "survived": false,
+   "killed_by": "d2"
+  },
+  {
+   "id": "M20a",
+   "description": "OV1 not gated",
+   "survived": false,
+   "killed_by": "d3, i2"
+  },
+  {
+   "id": "M20b",
+   "description": "OV2 not gated (BL3)",
+   "survived": false,
+   "killed_by": "d5b"
+  },
+  {
+   "id": "M20c",
+   "description": "OD not gated",
+   "survived": false,
+   "killed_by": "d6b"
+  },
+  {
+   "id": "M21",
+   "description": "record_usage ignores provider=",
+   "survived": false,
+   "killed_by": "e2"
+  },
+  {
+   "id": "M22",
+   "description": "get_model ON still reads the counter for a claude verdict id",
+   "survived": false,
+   "killed_by": "e5"
+  },
+  {
+   "id": "M22b",
+   "description": "get_model not gated (BL3)",
+   "survived": false,
+   "killed_by": "e5b, b4, b4s, b5 (15 nodes)"
+  },
+  {
+   "id": "M22c",
+   "description": "record_usage not gated",
+   "survived": false,
+   "killed_by": "e4, b4, b4s, b5 (14 nodes)"
+  },
+  {
+   "id": "M23",
+   "description": "record_usage gate inverted (skips openai)",
+   "survived": false,
+   "killed_by": "e2, e3, e7"
+  },
+  {
+   "id": "M24",
+   "description": "share strips only openai",
+   "survived": false,
+   "killed_by": "f1, f2"
+  },
+  {
+   "id": "M25",
+   "description": "share strip mutates the stored dict in place",
+   "survived": false,
+   "killed_by": "f1"
+  },
+  {
+   "id": "M26",
+   "description": "/costs llm block computed with the flag OFF",
+   "survived": false,
+   "killed_by": "g3"
+  },
+  {
+   "id": "M26b",
+   "description": "/costs/api llm block computed with the flag OFF",
+   "survived": false,
+   "killed_by": "g3"
+  },
+  {
+   "id": "M27",
+   "description": "llm read failure reported as 0.0",
+   "survived": false,
+   "killed_by": "g5"
+  },
+  {
+   "id": "M28",
+   "description": "llm read reuses the openai select string",
+   "survived": false,
+   "killed_by": "g1, g2, g5"
+  },
+  {
+   "id": "M28b",
+   "description": "/costs llm read on the other client factory (C4)",
+   "survived": false,
+   "killed_by": "g1, g5"
+  },
+  {
+   "id": "M29",
+   "description": "costs.html renders api.llm.cost_usd without fmtUsd",
+   "survived": false,
+   "killed_by": "g7"
+  },
+  {
+   "id": "M29b",
+   "description": "costs.html llmKpis container is a visible grid (C6)",
+   "survived": false,
+   "killed_by": "g7"
+  },
+  {
+   "id": "M30",
+   "description": "050 grants UPDATE to service_role",
+   "survived": false,
+   "killed_by": "h3"
+  },
+  {
+   "id": "M30b",
+   "description": "050 REVOKE omits service_role (BL1 / R-S03-3)",
+   "survived": false,
+   "killed_by": "h3"
+  },
+  {
+   "id": "M31",
+   "description": "050 REVOKE omits anon",
+   "survived": false,
+   "killed_by": "h3"
+  },
+  {
+   "id": "M32",
+   "description": "050 adds a device_id column",
+   "survived": false,
+   "killed_by": "h2, h4"
+  },
+  {
+   "id": "M33",
+   "description": "camera overwrites metadata.llm with the vision summary instead of merging",
+   "survived": false,
+   "killed_by": "i1, i4"
+  },
+  {
+   "id": "M34",
+   "description": "camera merge runs with the flag OFF",
+   "survived": false,
+   "killed_by": "i2"
+  },
+  {
+   "id": "M35",
+   "description": "record_llm_call raises without a bound ledger",
+   "survived": false,
+   "killed_by": "a19"
+  },
+  {
+   "id": "M36",
+   "description": "build_llm_metadata ignores the llm-ledger records",
+   "survived": false,
+   "killed_by": "b9, b10"
+  },
+  {
+   "id": "M37",
+   "description": "anthropic prompt_tokens leaves cache_read out",
+   "survived": false,
+   "killed_by": "a14, j1 (7 nodes)"
+  },
+  {
+   "id": "M38",
+   "description": "(replaces the records cap, R-S03-1) the summary carries per-call records",
+   "survived": false,
+   "killed_by": "a16, a17, b1, b2, b3"
+  },
+  {
+   "id": "M39",
+   "description": "spend_ledger_row emits an extra key",
+   "survived": false,
+   "killed_by": "a20"
+  },
+  {
+   "id": "M40",
+   "description": "(redefined by C7) TG OFF base reordered to (p*0.15 + c*0.60)/1_000_000",
+   "survived": false,
+   "killed_by": "c3, c6, c11 (1234/567 exact ==)"
+  },
+  {
+   "id": "M41",
+   "description": "the unclaimed add removed (R-S03-2)",
+   "survived": false,
+   "killed_by": "u1, u2, u3, b3"
+  },
+  {
+   "id": "M42",
+   "description": "the unclaimed add re-adds claimed entries",
+   "survived": false,
+   "killed_by": "u1, u2, u3"
+  },
+  {
+   "id": "M43",
+   "description": "an openai record on the llm ledger is not dropped (R-S03-7)",
+   "survived": false,
+   "killed_by": "b10"
+  },
+  {
+   "id": "M44",
+   "description": "TG flag-read-not-first (tracked_call_cost_usd called before the flag check)",
+   "survived": false,
+   "killed_by": "c6, b4, b4s, b5, c11 (+9; 25 nodes)"
+  },
+  {
+   "id": "M45",
+   "description": "OV1 flag-read-not-first",
+   "survived": false,
+   "killed_by": "d3, i2, d1"
+  },
+  {
+   "id": "M46",
+   "description": "MR get_model flag-read-not-first",
+   "survived": false,
+   "killed_by": "e5b, b4, b4s, b5 (16 nodes)"
+  },
+  {
+   "id": "M47",
+   "description": "IR flag-read-not-first",
+   "survived": false,
+   "killed_by": "i2"
+  },
+  {
+   "id": "M48",
+   "description": "/costs flag-read-not-first (the llm read issued OFF)",
+   "survived": false,
+   "killed_by": "g3, g5"
+  },
+  {
+   "id": "M49",
+   "description": "RB fault wrapper removed (R-S03-5)",
+   "survived": false,
+   "killed_by": "b11"
+  },
+  {
+   "id": "M50",
+   "description": "TG fault wrapper removed",
+   "survived": false,
+   "killed_by": "c11"
+  },
+  {
+   "id": "M51",
+   "description": "fallback WARNING logs the exception text",
+   "survived": false,
+   "killed_by": "b11"
+  },
+  {
+   "id": "M52",
+   "description": "ON tolerates a non-dict usage (C9)",
+   "survived": false,
+   "killed_by": "c9, c11"
+  },
+  {
+   "id": "M53",
+   "description": "MR fault wrapper removed",
+   "survived": false,
+   "killed_by": "e8"
+  },
+  {
+   "id": "M54",
+   "description": "IR fault wrapper removed",
+   "survived": false,
+   "killed_by": "i4"
+  },
+  {
+   "id": "M55",
+   "description": "leaf holds a quoted gpt- model literal (BL2 / K3)",
+   "survived": false,
+   "killed_by": "k3"
+  },
+  {
+   "id": "M56",
+   "description": "leaf imports another app module (A1)",
+   "survived": false,
+   "killed_by": "a1"
+  },
+  {
+   "id": "M57",
+   "description": "OTEL 'unverified' comment dropped (R-S03-8)",
+   "survived": false,
+   "killed_by": "a13"
+  }
+ ],
+ "comm_set": {
+  "files": 378,
+  "chunks": 16,
+  "base_failures": [
+   "tests/test_page_scraping.py::TestFetchPagePriceJsonLD::test_jsonld_nested_offers_picks_lowest (FAILED; in tests/.pre_impl_failures.txt)",
+   "tests/test_page_scraping.py::TestFetchPagePriceOpenGraph::test_og_meta_extraction (FAILED; in tests/.pre_impl_failures.txt)",
+   "tests/test_personalization_bundle_c.py::test_applied_shifts_list_is_default_empty_when_no_priorities (FAILED; in tests/.pre_impl_failures.txt)",
+   "tests/test_personalization_bundle_c.py::test_full_response_payload_audit_no_magnitude_keys (FAILED; in tests/.pre_impl_failures.txt)",
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR; cold tiktoken cache, the known environmental noise)",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR; cold tiktoken cache, the known environmental noise)"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=s03comm-base-01 start=2026-10-23 02:19:56 end=2026-10-23 02:20:29 elapsed=34s bound=1200s status=OK rc=0 (794 passed; [hermeticity] sentinel checked 794 test(s); [netguard] blocked 23 attempt(s) from 6 node(s))",
+   "[pyt] tag=s03comm-base-02 start=2026-10-23 02:20:30 end=2026-10-23 02:21:14 elapsed=44s bound=1200s status=OK rc=0 (1189 passed, 5 deselected; [netguard] blocked 40 attempt(s) from 14 node(s))",
+   "[pyt] tag=s03comm-base-03 start=2026-10-23 02:21:15 end=2026-10-23 02:22:19 elapsed=64s bound=1200s status=OK rc=0 (1033 passed, 1 skipped, 3 deselected; [netguard] blocked 5 attempt(s) from 3 node(s))",
+   "[pyt] tag=s03comm-base-04 start=2026-10-23 02:22:20 end=2026-10-23 02:22:38 elapsed=18s bound=1200s status=OK rc=0 (375 passed, 1 skipped, 10 deselected; [netguard] blocked 9 attempt(s) from 3 node(s))",
+   "[pyt] tag=s03comm-base-05 start=2026-10-23 02:22:39 end=2026-10-23 02:24:30 elapsed=111s bound=1200s status=OK rc=0 (3017 passed; [netguard] blocked 72 attempt(s) from 37 node(s))",
+   "[pyt] tag=s03comm-base-06 start=2026-10-23 02:24:31 end=2026-10-23 02:25:09 elapsed=39s bound=1200s status=OK rc=0 (628 passed, 14 deselected; [netguard] blocked 20 attempt(s) from 9 node(s))",
+   "[pyt] tag=s03comm-base-07 start=2026-10-23 02:25:10 end=2026-10-23 02:25:26 elapsed=16s bound=1200s status=OK rc=0 (312 passed; [netguard] blocked 3 attempt(s) from 3 node(s))",
+   "[pyt] tag=s03comm-base-08 start=2026-10-23 02:25:27 end=2026-10-23 02:25:49 elapsed=22s bound=1200s status=OK rc=0 (624 passed, 10 deselected; [netguard] blocked 7 attempt(s) from 1 node(s))",
+   "[pyt] tag=s03comm-base-09 start=2026-10-23 02:25:49 end=2026-10-23 02:26:25 elapsed=35s bound=1200s status=FAIL rc=1 (4 failed, 718 passed, 24 skipped, 7 deselected; [netguard] blocked 149 attempt(s) from 19 node(s))",
+   "[pyt] tag=s03comm-base-10 start=2026-10-23 02:26:26 end=2026-10-23 02:26:53 elapsed=28s bound=1200s status=FAIL rc=1 (350 passed, 4 skipped, 2 deselected, 1 xfailed, 2 errors; [netguard] blocked 106 attempt(s) from 13 node(s))",
+   "[pyt] tag=s03comm-base-11 start=2026-10-23 02:26:54 end=2026-10-23 02:28:47 elapsed=113s bound=1200s status=OK rc=0 (1032 passed; [netguard] blocked 20 attempt(s) from 1 node(s))",
+   "[pyt] tag=s03comm-base-12 start=2026-10-23 02:28:48 end=2026-10-23 02:30:43 elapsed=115s bound=1200s status=OK rc=0 (1629 passed, 1 xfailed; [netguard] blocked 17 attempt(s) from 9 node(s))",
+   "[pyt] tag=s03comm-base-13 start=2026-10-23 02:30:44 end=2026-10-23 02:31:57 elapsed=74s bound=1200s status=OK rc=0 (630 passed, 2 skipped, 11 deselected; [netguard] blocked 73 attempt(s) from 23 node(s))",
+   "[pyt] tag=s03comm-base-14 start=2026-10-23 02:31:58 end=2026-10-23 02:32:45 elapsed=47s bound=1200s status=OK rc=0 (474 passed, 8 deselected; [netguard] blocked 122 attempt(s) from 47 node(s))",
+   "[pyt] tag=s03comm-base-15 start=2026-10-23 02:32:46 end=2026-10-23 02:33:31 elapsed=45s bound=1200s status=OK rc=0 (1204 passed, 9 skipped, 35 xfailed; [netguard] blocked 20 attempt(s) from 12 node(s))",
+   "[pyt] tag=s03comm-base-16 start=2026-10-23 02:33:32 end=2026-10-23 02:33:42 elapsed=10s bound=1200s status=OK rc=0 (61 passed; [netguard] blocked 0 attempt(s) from 0 node(s))",
+   "TOTAL at base: 14070 passed, 4 failed, 2 errors; every netguard block is a sentinel block (the conftest guard), and every [hermeticity] line checked its chunk"
+  ],
+  "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S03_red/comm/comm_set.txt (per-file reasons: comm/comm_set_reasons.tsv; components ref.txt / scan_raw.txt / mig.txt / claudemd.txt / client.txt / named.txt; the union is the spec's 364-file comm_set.txt plus 14 files a broader source-scan grep found, minus the 4 test_precommit_hook*.py files and the new RED file; the 4 NETWORK_FLAKY_EXCLUDE nodes were passed as --deselect; the two importers of the edited tests/test_s75_fanout_identity.py, test_s78_tier_fill_residual_guard.py and test_s80_b1.py, are included, as are the admin / share / costs.html readers)"
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "Before the RED file was written, the sha256 of all 3410 tracked files in sc-s81-s03 was snapshotted (S03_red/base_shas.txt). After every run the snapshot was identical (diff empty: TRACKED_IDENTICAL). `git status --short` shows only `?? tests/test_s81_s03_llm_ledger_v2.py`, and HEAD is 95cf6f864b4e70980ca191daa064c0118e223c13. No git write ran in the real worktree. The scratch worktree S03_red/s03_scratch held no node_modules junction; it was removed with `git worktree remove --force`, and `git worktree list` shows 0 s03_scratch rows. Mutation restores: every mutant restored from byte copies and sha-checked, and the final prototype shas matched proto_shas_before.txt. The .qa-mutation.lock was created and deleted. No pytest process of mine is running; the only python process with pytest or pyt in its command line is the orchestrator's stall_monitor.py (PID 33988), left untouched. No .env was read, copied or printed. No secret appears anywhere. Pure ASCII, LF (0 bytes > 127, 0 CR)."
+ },
+ "deviations_from_spec": [
+  "REPORT FILE: the Write tool refused S81-03_RED_REPORT.md because subagents may not write report files, so the full report is this structured output. The running notes are S03_red/notes.md.",
+  "R-S03-2 mechanism (the main finding for the gate): claims kept in a ContextVar that the first tracked call sets lazily do not satisfy R-S03-2's own end-to-end acceptance. Measured with the prototype in mode S03_PROTO_CLAIMS_MODE=contextvar: U1 and U2 fail with metadata.total_cost 0.034308 against the expected 0.031992. The explicit-pair and stream compares make their first _track_gpt_cost inside asyncio.gather child tasks (scs:4346 / :4991), and a ContextVar.set there never reaches the parent context where build_comparison_response runs. The prototype that passes keys claims by the identity of the bound (openai ledger, llm ledger) lists in a bounded module registry (llm_pricing._CLAIM_REGISTRY, 256 entries). The RED rows test behaviour only: U1, U2 and U3 end to end and in the unit, C8 and C8b resets. They do not test the storage, so GREEN may use any mechanism that passes them.",
+  "R-S03-1: the spec's records rows are removed or rewritten. A17 (the records cap) is replaced by a bounded-summary row. The 'records' asserts in B1, B3, B8 and B9 are dropped. metadata.llm is asserted to carry EXACTLY spec 2.5's keys minus records and records_truncated (schema_version, calls, priced_calls, unpriced_calls, the 7 token sums, web_search_requests, cost_usd, cost_complete, by_provider, by_model, basis, price_table_as_of) and to stay under 2048 bytes as JSON. Mutant M38 now means 'the summary carries records'.",
+  "R-S03-4: A9 is rewritten. A Haiku request above 100K with cache tokens is now priced at the derived 0.05 / 0.625 / 1.00 (60000 in + 50000 read + 1000 out = 0.035; writes case 0.07). The threshold counts cache reads (50000 + 50001 gives 0.02750005). Sonnet at 100000 is flat-priced (0.21) and Sonnet at 250000 is None. The source must contain 'derived', 'R1' and '2026-10-22'. M11 is redefined (base cache rate in the tier), and M11b and M11c are added.",
+  "R-S03-2 rows added: U1 (REST, ON total_cost = every ledger entry at list + Serper + Tier 1.5, abs 1.5e-6), U2 (stream twin), U3 (unit, only unclaimed entries added), U4 (PIN, OFF builder total_cost == round(total_cost, 6) with zero leaf calls, 7 OFF values) and U5 (PIN, an unpriced unclaimed entry adds nothing). B3 also asserts the unclaimed add on the hard-cap partial (0.00027). B5 pins the OFF literal 0.016634 and the full metadata.openai literal on REST and stream.",
+  "R-S03-5 fault rows: B11 (RB, full REST compare), C11 (TG), E8 (MR get_model + record_usage) and I4 (IR camera). Each asserts exactly one WARNING starting '[LLM-LEDGER]' that contains 'failed type=_LeafBoom' and 'base value' and never the exception text. No fault row targets 'the unclaimed add' on its own, because neither the spec nor the rulings name its function (the prototype calls it unclaimed_openai_cost_usd). It is covered by M41 / M42 only.",
+  "C9 and R-S03-5: C9 is now a PIN (non-dict usage None / [] / 'usage' raises AttributeError in both flag states). The old C9 (claims never mutate entries) is renamed C10.",
+  "R-S03-7: B10 (build_llm_metadata drops provider-openai llm records) is called a PIN in the ruling, but it is necessarily RED at base because the leaf does not exist. It kills M43.",
+  "BL3: E5b (3 OFF values) and D5b were added, and M20 was split into M20a / b / c with one killer each. BL4: the static row test_bl4_consumers_reach_the_leaf_by_module_attribute covers 6 consumer files. The recorder rows are B1 (build_llm_metadata), C1 (tracked_call_cost_usd == 1), D1 (openai_usage_cost_usd == 1) and E5 (provider_of). Every OFF PIN wraps every function defined in llm_pricing except the flag reader and asserts zero calls. BL5: H1 checks only exactly one 050 forward + rollback file and no 039_*. BL1: H3 requires 'revoke all on table public.llm_spend_ledger from public, anon, authenticated, service_role' BEFORE exactly one 'grant select, insert on [table] public.llm_spend_ledger to service_role'.",
+  "C4: the G fakes answer both client factories. /costs patches get_supabase_client with the data fake and get_admin_supabase_client with an empty recorder; /costs/api the reverse. G1 and G2 assert that the recorder saw no query. C6: G7 requires the llmKpis container to carry no grid class (or display:none). G7's function extraction is formatting-tolerant (no indentation dependency). G8 pins OPENAI_COST_NOTE byte-equal to its base literal.",
+  "B4 stream twin (B4s) runs over 3 OFF values (None, 'false', ' FALSE ') rather than all 7; the REST twin, U4 and G3 cover all 7.",
+  "Unchanged from the spec: the mutants M15 and M35 needed shape changes on the prototype. M15 is a combined two-edit mutant (leaf returns None AND TG adds it), because the leaf-only M15s is absorbed by the TG None fallback (SURVIVED, reported as equivalent for a ruling). M35 forces a raise before the leaf's own try block.",
+  "D7 (PIN) runs in both flag states. Both requests go through the camera route with ENABLE_PAID_ROUTE_METERING on: the signed-in request asserts the reserved refund, the anonymous one (anon gate on, a 64-hex fingerprint) asserts the anon refund. Both 500s carry 'Image analysis failed. Please try again.'.",
+  "Comm set: 378 files rather than the spec's 364. The extra 14 come from a broader source-scan grep under the union rule. All 14 were green at base."
+ ],
+ "open_questions": [
+  "Q1 (blocking for GREEN design): how should claims be stored? R-S03-2 says 'an llm_pricing ContextVar', but measured, a lazily set ContextVar double-counts every claim made inside a gather child task, giving 0.034308 instead of 0.031992. Options: (a) a module registry keyed by the identity of the bound ledger lists (the prototype; bounded, no scs hunk); (b) a ContextVar bound in the parent before the gather, which needs a one-line scs entry hunk at :4146 / :4740 that R-S03-2 forbids; (c) a ContextVar whose shared default is the registry. The RED rows accept any of these.",
+  "Q2: Sonnet long-context threshold. R-S03-4 says a Sonnet long-context request is unpriced but names no threshold. The RED rows assert 100000 flat-priced and 250000 None, so either a 100K or a 200K threshold passes. Rule the number for GREEN and the S81-07 pricing read.",
+  "Q3: should 'the unclaimed add' get a named leaf function (for example unclaimed_openai_cost_usd) and its own fault-injection row? Today R-S03-5 lists it as part of the TG site, but it runs inside the builder.",
+  "Q4: metadata.llm key set. The RED rows require exactly spec 2.5 minus records / records_truncated, which keeps schema_version, priced_calls, unpriced_calls and basis. R-S03-1's parenthetical list omits those four. Confirm the exact set.",
+  "Q5: M15s (leaf-only 'unpriced match returns None') survives in the prototype because the TG falls back to the base estimate on None. Accept it as equivalent, or pin the leaf contract tracked_call_cost_usd never returns None at unit level? The latter would need the function's signature to be ruled.",
+  "Q6: by_model entries in the admin llm aggregate are asserted as exactly {calls, cost_usd} (spec AD), and the per-response summary's by_model entries carry provider plus the token sums (spec 2.5). Confirm both shapes."
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S03_red/notes.md (S81-03_RED_REPORT.md was not written: the tool refuses report files for subagents, so this structured output is the report)",
+ "not_measured_alone": []
+}

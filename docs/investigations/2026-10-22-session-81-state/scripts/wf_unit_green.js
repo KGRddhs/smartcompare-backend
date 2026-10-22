@@ -1,6 +1,6 @@
 export const meta = {
   name: 's80-unit-green',
-  description: 'Per unit: Fable GREEN implements to the frozen RED files, then (when args.adversaries > 0) two Fable adversaries on the exact bytes; fix rounds are launched separately by the orchestrator',
+  description: 'Per unit: Opus GREEN implements to the frozen RED files, then (when args.adversaries > 0) two Opus adversaries on the exact bytes; fix rounds are launched separately by the orchestrator',
   phases: [
     { title: 'GREEN', detail: 'implement to green, flag-OFF identity, comm set at HEAD, report' },
     { title: 'Adversaries', detail: 'correctness then engineering lens on the exact bytes' },
