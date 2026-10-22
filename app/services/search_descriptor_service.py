@@ -60,6 +60,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus, urljoin, urlparse
 
 from app.services import robots_eval
+# D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list lives in deny_hosts, a
+# stdlib-only leaf, so importing it here cannot cycle.
+from app.services import deny_hosts as _deny_hosts
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +111,10 @@ SEARCH_KINDS = frozenset({"platform_api", "onsite_html", "sitemap", "none"})
 DISCOVERED_VIA = frozenset({"platform_probe", "homepage_form", "robots", "manual"})
 
 #: House rule 7, in code. Never fetched, by any path, for any reason.
-DENY_HOSTS = ("fragrantica.com", "parfumo.com")
+#: D03: the value moved to ``deny_hosts.LEGACY_DESCRIPTOR_DENY_HOSTS`` (the same
+#: tuple object, byte-identical value); with ``ENABLE_DATA_GUARDS_V2`` ON
+#: ``_deny`` uses the full ``deny_hosts`` rule instead.
+DENY_HOSTS = _deny_hosts.LEGACY_DESCRIPTOR_DENY_HOSTS
 
 #: Fetch budget per host in the off-clock resolver (B8 sec 10: cheapest first,
 #: cap 3). robots.txt is always the first of the three.
@@ -399,6 +405,9 @@ def _now_iso() -> str:
 
 
 def _deny(host: str) -> bool:
+    # D03: flag read FIRST, so the OFF path below is the base body unchanged.
+    if _deny_hosts.data_guards_v2_enabled():
+        return _deny_hosts.is_denied_host(host)
     h = (host or "").lower().strip()
     if h.startswith("www."):
         h = h[4:]

@@ -41,6 +41,8 @@ from app.services import api_budget_service as _llm_breaker
 from app.services.model_config import sampling_kwargs, standard_model, token_limit_kwargs
 from app.services.openai_service import get_client
 from app.services.serper_service import search_images
+# D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
+from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,12 @@ def _is_valid_image_url(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     stripped = value.strip()
-    return stripped.startswith("http://") or stripped.startswith("https://")
+    valid = stripped.startswith("http://") or stripped.startswith("https://")
+    # D03: an image on a banned host (fimgs.net = the Fragrantica image CDN) is
+    # never valid in any tier; the flag is read only after a base-True verdict.
+    if valid and data_guards_v2_enabled() and is_denied_url(stripped):
+        return False
+    return valid
 
 
 # ---------------------------------------------------------------------------

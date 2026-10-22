@@ -38,6 +38,8 @@ from app.services.api_budget_service import (
 )
 from app.services import firecrawl_service, scrapedo_service
 from app.services.platform_router import detect_platform
+# D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
+from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
 
 ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
@@ -542,6 +544,21 @@ LUXURY_BRAND_KEYWORDS = {
     "celine", "loewe", "moncler", "balmain", "alexander mcqueen",
 }
 
+# D03 (ENABLE_DATA_GUARDS_V2) guard data; COUNTERFEIT_KEYWORDS and
+# LUXURY_BRAND_KEYWORDS above stay byte-identical. With the flag ON:
+#  * a counterfeit keyword in COUNTERFEIT_BRAND_LINE_ALLOWLIST is neutralised by
+#    any of its tokens present as a whole token in the same title (the Maison
+#    Margiela "Replica" fragrance line: gold query frag-018);
+#  * _CF_V2_EXTRA_TOKENS keep a counterfeit word the substring rule caught only
+#    through a keyword prefix ("copycat" via "copy") counterfeit (ruling C2);
+#  * a luxury keyword in _LUXURY_WHOLE_TOKEN_KEYWORDS matches only as a whole
+#    token (``lv``, ``l.v.``, ``l.v``, ``lv.``; never inside silver, velvet,
+#    calvin, elvive, salvatore, volvo, lvmh).
+COUNTERFEIT_BRAND_LINE_ALLOWLIST: Dict[str, Tuple[str, ...]] = {"replica": ("margiela",)}
+_CF_V2_EXTRA_TOKENS: Tuple[str, ...] = ("copycat",)
+_LUXURY_WHOLE_TOKEN_KEYWORDS: FrozenSet[str] = frozenset({"lv"})
+_LV_TOKEN_RE = re.compile(r"(?<![a-z0-9.])l\.?v\.?(?![a-z0-9.])")
+
 # Designer / niche fragrance brands — used by is_fragrance_query to recognise a
 # perfume even when the query omits the "perfume"/"edp" product word (e.g. "Tom
 # Ford Ombré Leather", "Creed Aventus"). Distinct from LUXURY_BRAND_KEYWORDS
@@ -991,6 +1008,11 @@ def validate_scrape_url(url: str) -> bool:
     """Reject URLs that waste rendering credits (search/category pages)."""
     if not url:
         return False
+    # D03: the ONE never-fetched chokepoint (ruling B2). Every escalation /
+    # harvest candidate passes here, so a banned host is never scraped or
+    # rendered whatever its registry tier reads "as if absent". Flag read FIRST.
+    if data_guards_v2_enabled() and is_denied_url(url):
+        return False
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
@@ -1019,6 +1041,9 @@ def is_counterfeit_listing(title: Any) -> bool:
     number, a list or an object. `_jsonld_str` is identity on a real string, so
     this is byte-identical for every input the bare `.lower()` did not crash on."""
     title_lower = _jsonld_str(title).lower()
+    # D03: whole-token matching + the brand-line allowlist (flag ON only).
+    if data_guards_v2_enabled():
+        return _counterfeit_v2(title_lower)
     return any(kw in title_lower for kw in COUNTERFEIT_KEYWORDS)
 
 
@@ -1234,6 +1259,42 @@ def _contains_token(name_lower: str, token: str) -> bool:
     return re.search(pattern, name_lower) is not None
 
 
+def _cf_v2_pattern(words) -> "re.Pattern[str]":
+    """D03: a counterfeit keyword as a whole token plus an optional plural
+    ``s`` / ``es``. The lookarounds are LETTERS-only (ruling C1): a keyword glued
+    to a digit ("1:1replica", "Replica1") still matches, while "infused",
+    "focused", "unused" and "copyright" do not. Compiled once at import from the
+    keyword literals (no env read at import)."""
+    alts = "|".join(re.escape(w) for w in sorted(set(words), key=lambda w: (-len(w), w)))
+    return re.compile(r"(?<![a-z])(?:" + alts + r")(?:s|es)?(?![a-z])")
+
+
+_CF_V2_RE = _cf_v2_pattern(
+    [kw for kw in COUNTERFEIT_KEYWORDS if kw not in COUNTERFEIT_BRAND_LINE_ALLOWLIST]
+    + list(_CF_V2_EXTRA_TOKENS)
+)
+_CF_V2_BRAND_LINE_RES = tuple(
+    (_cf_v2_pattern([kw]), tokens)
+    for kw, tokens in sorted(COUNTERFEIT_BRAND_LINE_ALLOWLIST.items())
+)
+
+
+def _counterfeit_v2(title_lower: str) -> bool:
+    """D03 ``is_counterfeit_listing`` rule under ``ENABLE_DATA_GUARDS_V2``.
+
+    Any non-allowlisted keyword (or extra token) as a whole token drops the
+    listing; an allowlisted keyword drops it only when none of its neutralising
+    tokens is present as a whole token in the same title."""
+    if _CF_V2_RE.search(title_lower):
+        return True
+    for pattern, neutralisers in _CF_V2_BRAND_LINE_RES:
+        if pattern.search(title_lower) and not any(
+            _contains_token(title_lower, t) for t in neutralisers
+        ):
+            return True
+    return False
+
+
 def is_high_value_query(product_name: str) -> bool:
     """True iff `product_name` names a high-value product (phone/laptop/console/
     GPU). EL-2 split (G4):
@@ -1290,6 +1351,14 @@ def is_implausible_high_value_price(product_name: str, amount: Optional[float]) 
 def is_luxury_brand(product_name: str) -> bool:
     """Check if the product is from a luxury/designer brand."""
     name_lower = product_name.lower()
+    # D03: ``lv`` only as a whole token (flag ON only); every other keyword
+    # keeps the substring rule.
+    if data_guards_v2_enabled():
+        return any(
+            brand in name_lower
+            for brand in LUXURY_BRAND_KEYWORDS
+            if brand not in _LUXURY_WHOLE_TOKEN_KEYWORDS
+        ) or _LV_TOKEN_RE.search(name_lower) is not None
     return any(brand in name_lower for brand in LUXURY_BRAND_KEYWORDS)
 
 

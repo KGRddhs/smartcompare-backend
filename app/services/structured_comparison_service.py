@@ -1541,6 +1541,10 @@ from app.services.response_builder import (
     _calibrated_gap,  # W4-12 — the pre-nudge calibrated gap
 )
 from app.services.image_service import get_product_image_url
+# D03 (ENABLE_DATA_GUARDS_V2): the Tier 1.5 piggyback below goes through the
+# image validator (which carries the banned-host deny) under the flag only.
+from app.services.image_service import _is_valid_image_url
+from app.services.deny_hosts import data_guards_v2_enabled
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
 # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
 # `site:` discovery query runs FIRST, and every candidate is gated registry-
@@ -6121,7 +6125,14 @@ class StructuredComparisonService:
             # are FREE (already paid by the price scrape) AND usually
             # higher fidelity (real product hero shot vs Serper thumbnail).
             page_img = result["price"].get("image_url")
-            if page_img and isinstance(page_img, str) and (
+            # D03 (ruling C4): flag ON, the override goes through
+            # image_service._is_valid_image_url, so a page image on a banned
+            # host (fimgs.net) never replaces the cascade result. Flag OFF:
+            # the base inline test below, unchanged.
+            if data_guards_v2_enabled():
+                if _is_valid_image_url(page_img):
+                    result["image_url"] = page_img.strip()
+            elif page_img and isinstance(page_img, str) and (
                 page_img.startswith("http://") or page_img.startswith("https://")
             ):
                 result["image_url"] = page_img.strip()
