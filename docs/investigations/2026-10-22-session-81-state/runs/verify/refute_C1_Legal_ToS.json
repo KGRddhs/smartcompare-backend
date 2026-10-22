@@ -1,0 +1,107 @@
+{
+ "cluster": "C1: Provider adapter and cost (digests A1, R1, R2, R14, R9)",
+ "lens": "Legal, ToS, App Review and privacy",
+ "verdicts": [
+  {
+   "recommendation": "C1.1 OpenAI-shaped llm_adapter plus guarded_anthropic_create chokepoint",
+   "verdict": "weakened",
+   "reason": "The design is legally neutral and the Anthropic SDK is MIT-licensed, but the recommendation leaves out the SR8 privacy pin. sentry-sdk 2.68.1 auto-enables AnthropicIntegration once anthropic is installed. Today only OpenAIIntegration(include_prompts=False) is pinned, so prompts would be captured if send_default_pii were ever turned on. anthropic is also not yet in requirements.txt.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sentry_service.py:738-758 - SR8 pins only OpenAIIntegration(include_prompts=False); send_default_pii=False",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:97,142 - openai==3.3.1, sentry-sdk==2.68.1, no anthropic pin",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/processors.json - openai row module list must gain llm_adapter/anthropic modules (T7b/T7c)"
+   ],
+   "fix": "In the same PR as the adapter, add AnthropicIntegration(include_prompts=False) with its SR8 pin, the aged anthropic pin, the processors.json module rows and an env-name-only ANTHROPIC_API_KEY read (never committed to the public repo)."
+  },
+  {
+   "recommendation": "C1.2 Haiku 5.5 for every role, Sonnet verdict second flag",
+   "verdict": "stands",
+   "reason": "I found no legal, ToS or App Review defect. Both flags are backend-only and default OFF, so the review build is unaffected (2.1 only needs the backend live; 2.5.19 concerns hidden features in the binary). Neither model is an Anthropic Covered Model, so there is no 30-day retention, and Sonnet's server fallback goes to Sonnet 5, not a Covered Model. Runway is a cost question outside this lens. The consent gating in C1.7 applies to both flags.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (read 2026-10-22) - content not retained by default; Covered Models are Fable/Mythos only",
+    "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22) - 2.1(a) and 2.5.19 text",
+    "https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback (read 2026-10-22) - Haiku 5.5 has no server-side fallback"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C1.3 web_search only on KB miss, capped, domain-filtered, priced",
+   "verdict": "weakened",
+   "reason": "blocked_domains only blocks Fragrantica and Parfumo. It does not make Anthropic's search fetcher obey our robots fail-closed or Cloudflare-stop rulings, which only bind our own fetchers. Only allowed_domains from the robots-checked registry approaches compliance (the two lists cannot be combined; that is a 400). The docs also require citations to be shown when output reaches users. And web_search_20260209+ defaults to code execution, which keeps data for 30 days and is not ZDR-eligible.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22) - 'When displaying API outputs directly to end users, citations must be included'; allowed_domains or blocked_domains, not both",
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (read 2026-10-22) - code execution and programmatic tool calling: retained up to 30 days, not ZDR",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md - ruling scoped to our fetchers"
+   ],
+   "fix": "Use allowed_domains drawn only from the robots-checked merchant registry (never blocked_domains alone). Pin web_search_20250305 or allowed_callers ['direct'] so no code-execution container retains data. Show each cited source URL in the UI and legal text. Ship nothing until the owner rules that Anthropic's crawler satisfies the robots ruling."
+  },
+  {
+   "recommendation": "C1.4 Caching layout with per-category schema+exemplar breakpoint and pre-warm",
+   "verdict": "weakened",
+   "reason": "Caching is ZDR-eligible and stores no prompts. User data sits after the breakpoint, which is correct. The gap: the cached per-category exemplars come from data/verdict_exemplars.json in a PUBLIC GitHub repo, and the R2 loop feeds user-feedback answers into that file. Real user comparisons (products, cohort or preference text) would then be published, breaking the privacy policy and the public-repo rule.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py:34-35 - exemplars read from repo data/verdict_exemplars.json",
+    "https://github.com/KGRddhs/smartcompare-backend (origin remote; repo is public per standing ruling)",
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (read 2026-10-22) - prompt caching row: prompts and outputs not stored"
+   ],
+   "fix": "Keep the caching layout. Exemplars must be owner-written or synthetic, with a test that fails if any exemplar carries a comparison id, user id, cohort or profile field. Feedback-derived exemplars stay in the private database, never in the repo."
+  },
+  {
+   "recommendation": "C1.5 Plain Messages live path, Batches nightly, Railway cron, no Managed Agents",
+   "verdict": "weakened",
+   "reason": "The choice of surfaces is sound. But Batches keep inputs for 29 days and are not ZDR-eligible. A nightly judge over the day's comparisons reprocesses personal data (profile preferences, cohort patterns) for a quality-evaluation purpose that privacy section 3 does not list. It also conflicts with the section-8 promise that deleting an account 'immediately and permanently' removes comparisons. The policy omits Anthropic's up-to-2-year retention of flagged content.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (read 2026-10-22) - Batch: 29-day retention, ZDR No; flagged content retained up to 2 years",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:55-58,101-115 - purposes and immediate-deletion promise",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:109 - photos: section 4 explains what OpenAI keeps"
+   ],
+   "fix": "Before any batch runs, strip user ids, profile and cohort fields so batches carry only product and verdict text. Add the evaluation purpose, the 29-day batch and 2-year flagged-content retention, and a processor-copy caveat to the post-approval privacy delta."
+  },
+  {
+   "recommendation": "C1.6 Provider-aware ledger, metadata.openai byte-identical OFF, fix gpt-4o-mini formulas",
+   "verdict": "stands",
+   "reason": "No legal defect. The ledger records token counts and list prices, not user content, and flag-OFF byte identity protects the review build. One small truth issue: once Claude serves calls, the admin OPENAI_COST_NOTE (free daily allowance from data sharing) is false. It is internal-only, not user-facing, so the recommendation stands; fold the note into the same change.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:132-145 - OPENAI_COST_NOTE and metadata.openai select",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:32-44 - gpt-only exact-key table"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C1.7 Legal sequencing: text sites after legal text and consent v3, camera 1.0.1",
+   "verdict": "weakened",
+   "reason": "The order is right but cannot be enforced. Consent is kept only in device AsyncStorage, and the server never learns its version. A backend ENABLE_ANTHROPIC_PROVIDER flip would therefore send data from consent-v2 devices (including the 1.0.0(3) review build) to Anthropic without the explicit permission 5.1.2(i) requires. Keeping OpenAI moderation also keeps the disclosed OpenAI data-sharing (training) programme in force.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46,76-82 - AI_CONSENT_VERSION 2 stored locally; grep finds no consent field in api.ts or app/",
+    "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22) - 5.1.2(i): disclose sharing with third-party AI and obtain explicit permission before doing so",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:67-69 - consent names OpenAI; data-sharing programme for all comparisons"
+   ],
+   "fix": "Have the client send its AI-consent version on every compare, and route a request to Anthropic only when that version is 3 or higher (otherwise OpenAI or refuse). If moderation stays on OpenAI, the owner must also decide whether organisation data sharing stays ON and keep the section-4 text accurate for both processors."
+  }
+ ],
+ "new_risks": [
+  "Anthropic's rules for organisations serving minors apply to the 13+ teen audience: tailored safeguards, a public statement of child-safety and privacy compliance, and disclosure that users are dealing with an AI. Non-compliance can mean account suspension. No recommendation covers this (support.claude.com/en/articles/9307344, dated 2026-03-16, read 2026-10-22; C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md:17).",
+  "Bahrain PDPL (Law No. 30 of 2018, cross-border transfer articles 12-13): moving to Anthropic is a new transfer to a US recipient. Consent v3 and the privacy text must cover that transfer and its basis, not just rename the provider.",
+  "Web search is enabled organisation-wide in the Claude Console by default. Any stray tool definition, or a batch job, can therefore search without the registry allowlist. Disable it, or restrict domains at organisation level, in a dedicated workspace until the robots ruling is made (platform.claude.com web-search-tool docs, read 2026-10-22).",
+  "The account-deletion promise (privacy policy section 8, 'immediately and permanently') does not reach copies held by processors: Anthropic batch data for 29 days, trust-and-safety-flagged content for up to 2 years, and OpenAI data-sharing copies under OpenAI's terms. The deletion text needs a processor-copy carve-out.",
+  "Public-repo leakage beyond exemplars: eval fixtures, smoke-run token-profile captures and re-recorded W4-11/FY25 fixtures built from real compares would publish user inputs. Any fixture taken from production must be scrubbed, or kept out of git.",
+  "Retailer content from web_search: cited_text and page_age snippets (up to 150 characters) and prices taken from search results would be redistributed in shared result pages and history. Per-channel share needs a provenance and citation display, and none of the recommendations defines what a shared card may carry."
+ ],
+ "sources": [
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback (search result, read 2026-10-22)",
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22)",
+  "https://support.claude.com/en/articles/9307344-responsible-use-of-anthropic-s-models-guidelines-for-organizations-serving-minors (dated 2026-03-16, read 2026-10-22)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sentry_service.py:720-760",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/processors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:15-115",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46-82",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:220,228",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py:34-35",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py:247-262",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:17,522,531,557",
+  "J1 digests A1, R1, R2, R9; J2 digest R14"
+ ]
+}

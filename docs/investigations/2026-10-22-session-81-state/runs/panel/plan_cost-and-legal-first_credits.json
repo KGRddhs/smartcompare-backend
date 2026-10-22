@@ -1,0 +1,702 @@
+{
+ "angle": "cost-and-legal-first: credits, rulings, consent",
+ "thesis": "No Anthropic dollar is spent before it is metered, capped and measured, and no user data moves before the disclosure covering it is live. The ledger, the per-lane Riyadh-day spend breaker and the consent/device request context land dark first. The router sends only consent>=3 traffic to Anthropic. One held legal PR plus the first OTA open the window. The KB is seeded through the Batch API (50% off) from legal sources, so warm compares cost about $0.001 (inferred) and web_search stays a capped last resort. Deferred: share, app speed, auth throttles, reviews, wider Sonnet use.",
+ "milestones": [
+  {
+   "id": "M0",
+   "title": "Inherited close-out and free baselines",
+   "goal": "B4 URL-MODE-V2 merged; every cost cap and runway figure rests on $0 production facts instead of inference.",
+   "exit_metric": "B4 PR merged on green with the flag-OFF pins intact; the MEAS-ZERO JSON records daily compare volume, the repeat-pair share, Serper calls per compare and credits left, the Console tier and credit expiry, and the 012 pg_policies, each with source, window and n."
+  },
+  {
+   "id": "M1",
+   "title": "Money rails before the first Anthropic token",
+   "goal": "Ledger, spend breaker, request context and the per-role router merged dark; Claude cost, latency, quality and refusal measured on synthetic/L2-rebuilt inputs only.",
+   "exit_metric": "Units 03-06 are byte-identical with the flag OFF (verify_flag_byte_identity base->head->base). MEAS-CLAUDE-GATE records a measured $/compare per mix and a go/no-go per role, with total spend at or below its approved budget."
+  },
+  {
+   "id": "M2",
+   "title": "One post-approval legal window, per-device bounds, text flip",
+   "goal": "Legal v3 and the first OTA ship together; quota, fragrance gate and Anthropic text roles flip in runbook order; OpenAI turned off.",
+   "exit_metric": "Legal v3 live in EN and AR. At least 80% of metered compares carry consent>=3 and a device header before the quota/text flips. Zero pre-v3 requests reach Anthropic (router metric). The 200-compare canary gives a measured $/compare, and the ledger matches the Console within 10%."
+  },
+  {
+   "id": "M3",
+   "title": "Knowledge base ahead of the Serper cliff",
+   "goal": "Legal KB schema, registry with persisted robots and DENY_HOSTS, a Batch seed, ingest and KB-first serve, so warm compares skip paid legs.",
+   "exit_metric": "At least 500 seeded juices, each carrying per-field provenance. SQL finds 0 kb_* rows with DENY_HOSTS provenance. KB hit rate and Serper calls per 100 compares measured before and after the KB-first flip."
+  },
+  {
+   "id": "M4",
+   "title": "B2 on the new brain and capped web_search",
+   "goal": "Abstain when the KB cannot support a winner; web_search as a capped, registry-allowlisted last resort.",
+   "exit_metric": "Abstain rate measured and within the owner bound. At most 1 search per compare. Daily search spend at or below the search-lane cap for 7 days. Every abstain is refunded."
+  },
+  {
+   "id": "M5",
+   "title": "Learning loop on a capped budget",
+   "goal": "compare_runs ledger plus a nightly Haiku Batch judge inside the offclock cap.",
+   "exit_metric": "compare_runs written for 100% of delivered compares. Nightly judge spend at or below the offclock cap for 7 nights. Sonnet escalations at or below 10% of judged runs."
+  }
+ ],
+ "units": [
+  {
+   "id": "S81-01",
+   "title": "B4-FINISH URL-MODE-V2",
+   "milestone": "M0",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_URL_MODE_V2",
+   "files": [
+    "app/api/url_routes.py",
+    "app/services/url_extraction_service.py",
+    "app/middleware/error_handler.py",
+    "tests/test_s80_url_mode_v2.py",
+    "tests/test_retro_w2_1.py",
+    "tests/test_model_config_enforced.py",
+    "tests/test_paid_route_metering.py"
+   ],
+   "scope": "Finish in worktree sc-s80-b4 (83daa8cb): RULINGS_FIX3_B4 from the ADV2 reports, fix round 3, two adversaries (correctness, engineering), rebase onto origin/main 95cf6f86 (B3 merged), post-rebase gates (comm set = reference grep UNION source-scanning pins), PR via pr_rest.py, merge on green. Contract per R-A7: pre-gate before the credit reserve, typed codes with field/reason, 25 s deadline, JSON-LD image normalisation, plain httpx with no Chrome impersonation; also fixes link-mode images and product info.",
+   "tests": [
+    "Flag-OFF identity: the test_retro_w2_1.py 400 pins and the W4-13 ledger fixture stay byte-identical; verify_flag_byte_identity base->head->base",
+    "Each ADV2 finding gets one RED row that turns GREEN",
+    "Post-rebase rerun of test_model_config_enforced.py and test_paid_route_metering.py (both edited by B4; S81-06 rewrites the count later)",
+    "Source pin: no impersonate= or Chrome UA on the URL path",
+    "No link-mode URL from a non-registry host is written to any cache table"
+   ],
+   "preconditions": [
+    "RULINGS_FIX3_B4 written by the orchestrator",
+    "B4_ADV2_correctness.md and B4_ADV2_engineering.md read"
+   ],
+   "risk": "The rebase onto 95cf6f86 collides with B3 on test_model_config_enforced.py and error_handler.py, and every later backend-A unit waits on this merge."
+  },
+  {
+   "id": "S81-02",
+   "title": "MEAS-ZERO free production baselines",
+   "milestone": "M0",
+   "lane": "ops",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "docs/investigations/2026-10-22-session-81-state/runs/meas_zero.json",
+    "docs/investigations/2026-10-22-session-81-state/ledger.md",
+    "scripts/dump_l2_for_shadow.sql"
+   ],
+   "scope": "$0, owner-run, read-only reads that size every cap. Owner SQL over search_logs for 14 days: daily compare count, fragrance share, the share of pairs repeated within 7 days (the KB-warm ceiling) and Serper calls per compare. Serper credits left and Upstash commands per day. From the Console: tier, credit expiry and workspace limit. On Railway web, by name only: whether ANTHROPIC_API_KEY exists, and the production flag names including ENABLE_SYNC_DB_OFFLOAD and SERPER_LIFETIME_LIMIT. Also pg_policies on the 012 tables and the free GET /v1/models/claude-haiku-5-5. Output: one dated ledger line plus a JSON file.",
+   "tests": [
+    "Every figure carries source, window and n; inferred values are tagged inferred",
+    "SQL is SELECT-only and returns no personal column (no email, user_id or query text)",
+    "Secrets appear as variable names only; the JSON is ASCII and passes the key-shape sweep"
+   ],
+   "preconditions": [
+    "Owner runs the SQL and the Console/Railway name reads"
+   ],
+   "risk": "Without daily volume and repeat-pair share every runway figure and breaker default stays a guess."
+  },
+  {
+   "id": "S81-03",
+   "title": "LLM-LEDGER-V2 provider-aware cost ledger",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_LLM_LEDGER_V2",
+   "files": [
+    "app/services/llm_pricing.py",
+    "migrations/045_llm_spend_ledger.sql",
+    "app/api/admin_routes.py",
+    "app/api/share_routes.py",
+    "app/static/admin/costs.html",
+    "tests/test_s81_llm_ledger.py",
+    "tests/test_cost_dashboard.py"
+   ],
+   "scope": "New stdlib-only leaf module llm_pricing; openai_pricing stays untouched. Rows for claude-haiku-5-5 and claude-sonnet-5-5 as read 2026-10-22: input, 5m and 1h cache writes (from usage.cache_creation), cache read, output, the >100K tier and Batch 50% stacking. web_search at $10/1,000, counted from server_tool_use. An unknown model id prices None, never 0. A ContextVar ledger writes metadata.llm only with the flag ON. Migration 045 adds llm_spend_ledger (job, model, batch, tokens, usd, riyadh_day) with service-role RLS. /admin/costs and costs.html add the new rows; share_routes strips metadata.llm.",
+   "tests": [
+    "Flag-OFF identity: metadata.openai and the /admin/costs body are byte-identical",
+    "test_cost_meter_s74 EXACT_KEYS and PRICE_TABLE_AS_OF stay green (the claude rows live outside PRICE_USD_PER_1M)",
+    "The public share body never carries metadata.llm",
+    "A 5m-vs-1h cache_creation usage fixture prices differently; Batch and >100K rows are applied",
+    "Unknown model -> None; migration 045 has service-role-only RLS and no user_id column"
+   ],
+   "preconditions": [
+    "S81-02 records the pricing-page read date"
+   ],
+   "risk": "If the cache-write split or the Batch rate is mis-keyed the ledger drifts from the Console bill, so a weekly reconciliation is part of S81-13."
+  },
+  {
+   "id": "S81-04",
+   "title": "SPEND-BREAKER per-lane daily USD caps",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_LLM_SPEND_BREAKER",
+   "files": [
+    "app/services/llm_spend_breaker.py",
+    "app/api/admin_routes.py",
+    "tests/test_s81_spend_breaker.py"
+   ],
+   "scope": "Module llm_spend_breaker: Asia/Riyadh-day USD caps in four lanes (live, escalation for Sonnet, search, offclock). admit(lane, an upper bound computed from max_tokens) runs before dispatch; record(actual cost from llm_pricing) runs after. One Upstash EVAL does a microdollar INCRBY plus EXPIREAT. Caps come from ANTHROPIC_DAILY_USD_CAP_{LIVE,ESCALATION,SEARCH,OFFCLOCK}; when unset, the proposed defaults are $3/$1/$0.50/$2. Over cap: live returns a coded LLM_UNAVAILABLE plus refund; escalation and search are skipped and the Haiku result is kept; offclock is deferred. On a Redis error, live falls back to an in-process counter and offclock fails closed.",
+   "tests": [
+    "Flag-OFF identity: zero Redis calls and no behaviour change",
+    "Per-lane trip semantics; a live trip refunds the credit and keeps the coded body",
+    "Key rollover at 20:59 vs 21:00 UTC (Riyadh midnight)",
+    "Two concurrent admits on the last cent never both pass (atomic Lua)",
+    "Redis outage: live uses the in-process counter, offclock refuses"
+   ],
+   "preconditions": [
+    "S81-03 merged",
+    "Owner confirms or sets the four cap names"
+   ],
+   "risk": "A cap set too tight turns peak traffic into LLM_UNAVAILABLE refusals, so the canary reads trip counts before any cap is lowered."
+  },
+  {
+   "id": "S81-05",
+   "title": "REQUEST-CONTEXT consent, device and compare-id headers",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_REQUEST_CONTEXT_HEADERS",
+   "files": [
+    "app/middleware/request_context.py",
+    "app/services/device_key.py",
+    "app/main.py",
+    "tests/test_s81_request_context.py"
+   ],
+   "scope": "A pure ASGI middleware reads three headers into ContextVars: X-AI-Consent-Version (int, else None), X-Device-Fingerprint (64 hex, else None) and X-Compare-Request-Id (uuid4, else None). A malformed value becomes None, never a 400. device_key() = HMAC-SHA256(DEVICE_KEY_PEPPER, fp), with a dual read of DEVICE_KEY_PEPPER_PREVIOUS for rotation. Raw values are never logged, never set as Sentry tags and never stored. Flag OFF: pass-through and every context stays None. Consumers: the router consent gate, device quota, refusal budget and compare_runs.",
+   "tests": [
+    "Flag-OFF identity: response bytes and headers are identical and every ContextVar is None",
+    "Malformed values yield None and a 200",
+    "Pepper unset: device_key returns None and one metric fires",
+    "Header values are absent from caplog and from Sentry event payloads",
+    "Context stays isolated across concurrent requests and survives streaming responses"
+   ],
+   "preconditions": [
+    "Owner sets DEVICE_KEY_PEPPER on web (name only) before S81-09 flips"
+   ],
+   "risk": "Wrong middleware order relative to request_id/security could drop the context on the stream route."
+  },
+  {
+   "id": "S81-06",
+   "title": "ANTHROPIC-ROUTER per-role, consent-gated adapter",
+   "milestone": "M1",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_ANTHROPIC_{TEXT,VERDICT,CRITIC,MODERATION,VISION} + ENABLE_SONNET_ESCALATION + ENABLE_OPENAI_PRE_V3",
+   "files": [
+    "app/services/llm_router.py",
+    "app/services/anthropic_client.py",
+    "app/services/model_config.py",
+    "app/services/extraction_service.py",
+    "app/services/openai_service.py",
+    "app/services/sentry_service.py",
+    "requirements.in",
+    "tests/test_s81_llm_router.py"
+   ],
+   "scope": "llm_router sits above guarded_llm_create; with every flag OFF it is an exact pass-through. A role goes to Anthropic only when the request's consent version is 3 or higher; otherwise it goes to OpenAI while ENABLE_OPENAI_PRE_V3 is ON, else returns a coded CONSENT_UPDATE_REQUIRED plus refund. guarded_anthropic_create has its own breaker, typed errors (including 529), max_retries 1, and records breaker admission and ledger usage BEFORE raising on refusal or max_tokens. Calls send no temperature or prefill, run with thinking off at effort low, use output_config.format and re-sized caps. Sonnet runs only as a capped escalation. The Claude reviews prompt never asks for an estimated rating or total. SR8 pin, env-safety entry and a gated processors row ship in the same PR.",
+   "tests": [
+    "Flag-OFF identity: kwargs reaching guarded_llm_create are byte-identical at all 16 sites, and metadata.openai is unchanged",
+    "Pins redden by design and are rewritten in the PR: test_u3c_store_false_pin 01/01b/01c/02, test_model_config_enforced >=15, test_model_config.py:135 claude regex, T7b test_legal_docs_u8.py:763, test_sentry_channels_u8d BASE_INTEGRATIONS",
+    "Netguard: consent 2 or None never reaches api.anthropic.com",
+    "Refusal and max_tokens: the ledger row and breaker record exist before LLMUnavailableError",
+    "529/overloaded maps to typed transient; extraction_service.py:2665-2678 never sees Anthropic text; at most 1 retry",
+    "Escalation fires only on the listed Haiku failures, at most once per compare, and is skipped when its lane is over cap"
+   ],
+   "preconditions": [
+    "S81-01, S81-03, S81-04, S81-05 merged",
+    "anthropic SDK release at least 14 days old; lock recompiled; pip-audit",
+    "ANTHROPIC_API_KEY in tests/_env_safety.CREDENTIALS_UNSET and the netguard"
+   ],
+   "risk": "This is the largest pin rewrite of the session (16 sites). A missed site either stays silently on OpenAI or leaks pre-v3 traffic, so the consent netguard is the gate."
+  },
+  {
+   "id": "S81-07",
+   "title": "MEAS-CLAUDE-GATE spike, eval and parity",
+   "milestone": "M1",
+   "lane": "data",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "scripts/spike_anthropic.py",
+    "scripts/shadow_experiments.py",
+    "scripts/dump_l2_for_shadow.sql",
+    "data/eval_smoke_subset.json",
+    "tests/fixtures/s81_gold_fragrance_60.json",
+    "tests/fixtures/s81_moderation_100.json",
+    "tests/test_s81_spike_script.py"
+   ],
+   "scope": "Owner-run and owner-approved, at most $15 in the offclock lane. Inputs are L2-rebuilt or owner-written; no user query, id, cohort or profile goes to Anthropic before consent v3. Per role: count_tokens; a 20-call spike recording TTFT, end-to-end time and usage (Haiku with thinking off; Sonnet with between_tools); one web_search_20250305 turn alone and one combined with output_config.format; cache_read across format changes; an image block with the B3 schema; the Arabic verdict at its token cap. Eval: a 60-case fragrance gold set (gpt-4o vs Haiku vs Haiku->Sonnet), smoke20, WINNER_INDEX_MISMATCH, refusal rate and 100-case moderation parity.",
+   "tests": [
+    "The script refuses any input carrying user_id, cohort, profile, email or device keys",
+    "It will not run without --budget-usd and stops at that budget through the offclock lane",
+    "Prod-HTTP runs are is_synthetic and quota-exempt",
+    "Output records n, window, model id and settings per row",
+    "Only token counts and labels are written; no prompt text and no API key value"
+   ],
+   "preconditions": [
+    "S81-06 merged",
+    "Owner approves the budget; dedicated Console workspace with web search restricted"
+   ],
+   "risk": "Twenty calls are noisy, so the flip gate treats them as bounds and the S81-13 canary replaces them with production numbers."
+  },
+  {
+   "id": "S81-08",
+   "title": "CLIENT-FIRST-OTA headers and new device id",
+   "milestone": "M2",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "none (server reads under ENABLE_REQUEST_CONTEXT_HEADERS)",
+   "files": [
+    "SmartCompareApp/src/services/api.ts",
+    "SmartCompareApp/src/services/deviceFingerprint.ts",
+    "SmartCompareApp/src/services/aiConsent.ts",
+    "SmartCompareApp/src/services/referralService.ts",
+    "SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts"
+   ],
+   "scope": "In api.ts every metered request sends three headers: the axios interceptor, both attempts of the camera raw fetch, the SSE headers and /usage/status. X-AI-Consent-Version carries the stored record, else 0. X-Device-Fingerprint carries the device hash. X-Compare-Request-Id is a uuid v4 per compare, reused on /feedback and /events. The fingerprint becomes a Keychain UUID with an IDFV fallback and no osBuildId; the old hash rides alongside for one release so referral SAME_DEVICE and users.device_fingerprint_hash can migrate. The consent record is keyed to device and account. Merge now; ships in the first post-approval OTA.",
+   "tests": [
+    "All four request paths carry the three headers (jest mocks of axios and fetch)",
+    "Source pin: osBuildId and osInternalBuildId are never read",
+    "The consent header equals the stored record version, or 0 when there is none",
+    "compare_request_id is identical on the compare and its /feedback call",
+    "The old hash is still sent in the referral body; behaviour is unchanged when the server ignores the headers"
+   ],
+   "preconditions": [
+    "S81-05 merged",
+    "Owner updates the App Privacy label before the OTA"
+   ],
+   "risk": "If a metered path is missed (camera raw fetch), the costliest request stays account-only and consent-unknown, so it falls to non-delivery once OpenAI is off."
+  },
+  {
+   "id": "S81-09",
+   "title": "DEVICE-QUOTA-RIYADH 3 per device per day",
+   "milestone": "M2",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_DEVICE_DAILY_QUOTA + ENABLE_RIYADH_RESET",
+   "files": [
+    "app/services/usage_service.py",
+    "app/api/usage_routes.py",
+    "app/middleware/error_handler.py",
+    "tests/test_s81_device_quota.py",
+    "tests/test_legal_disclosure_s77.py",
+    "tests/test_register_benefits_parity_s69.py",
+    "tests/test_paid_route_metering.py"
+   ],
+   "scope": "One Upstash Lua EVAL per consume covers account-daily and device-daily keys (the S81-05 HMAC key, EXPIREAT next Asia/Riyadh midnight). The device INCR runs before the lifetime-free branch. consume_comparison_credit gains a device_fp kwarg that defaults to the request context, and the device key joins consumed_keys. _refund_credit_sync and _previous_daily_key learn the device key. One Riyadh date-key helper serves consume, refund and status. retry_after plus an allow-listed resets_at/scope reach the wire via http_exception_handler. The review demo account and device are exempt. No header = account-only plus a metric. Adds the refusal-budget key.",
+   "tests": [
+    "Flag-OFF identity: keys, TTLs and the 429 body are byte-identical",
+    "Pins redden by design and move with S81-12: the TIER_LIMITS-vs-ToS parity pins in test_legal_disclosure_s77 and test_register_benefits_parity_s69",
+    "Two accounts on one device share 3/day; a refund restores both keys",
+    "Rollover at 21:00 UTC; status and consume agree on the key",
+    "Redis outage: the stated fail-open plus a metric; demo allowlist exempt"
+   ],
+   "preconditions": [
+    "S81-01 merged (error_handler.py)",
+    "S81-05 merged",
+    "Flip only after S81-12 is live and S81-08 has propagated, never during a review"
+   ],
+   "risk": "Consume fails open during an Upstash outage, which means unbounded compares, so the S81-04 breaker is the dollar backstop."
+  },
+  {
+   "id": "S81-10",
+   "title": "FRAGRANCE-ONLY-GATE zero-cost refusal",
+   "milestone": "M2",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_FRAGRANCE_ONLY_GATE",
+   "files": [
+    "app/services/category_gate.py",
+    "app/api/text_routes.py",
+    "app/api/image_routes.py",
+    "app/api/version_routes.py",
+    "app/api/feedback_routes.py",
+    "app/services/structured_comparison_service.py",
+    "data/fragrance_lexicon.json",
+    "tests/test_s81_category_gate.py"
+   ],
+   "scope": "category_gate runs before the credit consume and the preferences read. (1) A positive non-fragrance category word refuses at $0. (2) A KB or lexicon positive proceeds. (3) Otherwise consume, parse, then refuse right after _resolve_pair_category and before _fetch_product_data, refund, and count the refusal on the S81-09 budget (10/day/device); past that budget it returns 429 with retry_after and never spends a credit. The Haiku residue classifier runs only at consent>=3. Refusals return COMING_SOON for skincare and makeup and hidden for the rest. version_routes adds categories_live; coming_soon_tap is allowed; trending, smart pick and history are filtered.",
+   "tests": [
+    "Flag-OFF identity on all three compare routes",
+    "A brand-only fragrance pair is not refused (the 'other' trap)",
+    "A non-fragrance pair is refused with zero LLM and zero Serper calls (netguard + call count)",
+    "Refused-after-parse refunds both keys; over budget returns 429 and the credit is untouched",
+    "Consent below 3 never calls the residue classifier"
+   ],
+   "preconditions": [
+    "S81-06 merged (parse goes through the router)",
+    "S81-09 merged (refusal-budget key)"
+   ],
+   "risk": "A thin lexicon refuses genuine niche fragrances, so it is measured on the gold set and the seed before the flip."
+  },
+  {
+   "id": "S81-11",
+   "title": "CLIENT-HONEST-FRAGRANCE-UI",
+   "milestone": "M2",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "none (reads categories_live from S81-10)",
+   "files": [
+    "SmartCompareApp/src/components/CategorySelector.tsx",
+    "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+    "SmartCompareApp/src/components/CohortBadge.tsx",
+    "SmartCompareApp/src/screens/InviteeQuizScreen.tsx",
+    "SmartCompareApp/src/components/hero/LoadingRings.tsx",
+    "SmartCompareApp/src/components/results/ResultsContent.tsx",
+    "SmartCompareApp/src/i18n/en.json",
+    "SmartCompareApp/src/i18n/ar.json"
+   ],
+   "scope": "Remove the fabricated numbers: CohortBadge (keep the digit-free survey lines), the InviteeQuiz 78 fallback, the LoadingRings 2074 default, the '30 seconds' share claim, the 'shopped smarter' banner and 7 orphan keys. Category row: one Fragrances chip plus 'Fragrances only for now'. Skincare and makeup coming-soon chips render only when the server's categories_live says so (absent on build-3 servers, off during any review); a tap sends coming_soon_tap. The other six are hidden, and QUICK_CATS and SMART_PICK keys follow. Copy is Arabic-first.",
+   "tests": [
+    "Source pin: no hardcoded count, percentage or duration on the removed surfaces",
+    "Pins redden by design: ResultsContent.render.test:213,250, the m18 pins, and the CategorySelector.test.tsx nine-chip pin",
+    "Coming-soon chips are hidden when categories_live is absent",
+    "A coming_soon_tap event is sent once per tap with an allowlisted payload",
+    "Arabic and English copy parity for the new lines"
+   ],
+   "preconditions": [
+    "S81-10 merged (categories_live and the event allowlist)"
+   ],
+   "risk": "The 1.0.1 screenshots and Notes for Review must match the narrowed UI, or review flags it under 2.3.1."
+  },
+  {
+   "id": "S81-12",
+   "title": "LEGAL-V3 one-window legal unit",
+   "milestone": "M2",
+   "lane": "docs-legal",
+   "kind": "docs-legal",
+   "flag": "none",
+   "files": [
+    "app/legal/privacy_policy.md",
+    "app/legal/privacy_policy_ar.md",
+    "app/legal/terms_of_service.md",
+    "app/legal/terms_of_service_ar.md",
+    "landing/privacy.html",
+    "landing/ar/privacy.html",
+    "app/legal/processors.json",
+    "SmartCompareApp/src/services/aiConsent.ts"
+   ],
+   "scope": "One held PR, merged first in the window. It replaces every OpenAI mention in the privacy policy and Terms (EN and AR, landing terms included) and the consent copy. It covers Anthropic as processor (30 days API, 29 Batch, 2 years flagged), its search subprocessor, the OpenAI transition and the end of data sharing, the Bahrain PDPL art. 12-13 transfer basis, the minors statement and AI disclosure for 13+, deletion vs processor copies, TTLs (device counters about 25 h, auth 6 h, compare_runs), 3/day/device with the Riyadh reset, referral text, Sponsored/CTA independence and citations. Also consent v3, TERMS_VERSION and the 12 anchors.",
+   "tests": [
+    "T6: the twelve anchors, both TERMS_VERSION literals and test_consent_capture_w3_16::test_b12 move together",
+    "T7a/T7b/T7c: the anthropic row has public_name true; the legal_fill_in_u8 SEVEN_FLAGS pin reddens by design when the gate flag joins",
+    "EN/AR parity and the vendor-name pins (test_legal_docs_u8_polish, test_legal_s78) stay green",
+    "aiConsent V-tests: version 3 re-asks once and the sha fence matches the new body",
+    "Consent copy names OpenAI only in the transition sentence; Terms parity is green with the S81-09 flag-ON limits"
+   ],
+   "preconditions": [
+    "S81-06 merged (processors row)",
+    "S81-08 and S81-11 merged (shared client files)",
+    "Owner/counsel text review",
+    "Held until Apple approval"
+   ],
+   "risk": "Merged before approval, it changes the policy the reviewer reads; merged after a flip, it breaks 5.1.2(i). The S81-13 order is binding."
+  },
+  {
+   "id": "S81-13",
+   "title": "FLIP-WINDOW and COST-CANARY runbook",
+   "milestone": "M2",
+   "lane": "ops",
+   "kind": "ops-owner",
+   "flag": "none (flips the M1/M2 flags)",
+   "files": [
+    "docs/investigations/2026-10-22-session-81-state/FLIP_RUNBOOK.md",
+    "docs/investigations/2026-10-22-session-81-state/ledger.md",
+    "scripts/verify_flag_byte_identity.py",
+    "app/static/admin/costs.html"
+   ],
+   "scope": "After approval, in order, with one canary per step: (1) merge LEGAL-V3 and deploy backend and landing; (2) OTA S81-08, S81-11 and the v3 copy; (3) ledger, breaker and request context ON; (4) quota, Riyadh reset and the fragrance gate once at least 80% of metered compares carry a device header; (5) TEXT, then VERDICT and CRITIC for consent>=3; (6) MODERATION after parity; (7) VISION on the owner's yes; (8) close the pre-v3 window and turn OpenAI off. Each canary: 200 compares giving $/compare, latency, refusals, trips and runway.",
+   "tests": [
+    "Before each flip: the previous state is byte-identical on a smoke pair",
+    "After 24 h the ledger matches the Console within 10%",
+    "Every breaker trip is logged with its lane and explained",
+    "The consent>=3 share is read from the request-context metric before steps 4-5",
+    "smoke20 green after each step; rollback = flag off, rehearsed once"
+   ],
+   "preconditions": [
+    "Apple approves 1.0.0 (3)",
+    "S81-03 to S81-12 merged",
+    "S81-07 go verdict per role"
+   ],
+   "risk": "Flipping before most clients send consent>=3 sends the rest to non-delivery once OpenAI is off; the 80% gate and the pre-v3 window absorb that."
+  },
+  {
+   "id": "S81-14",
+   "title": "KB-SCHEMA migrations 046-047 and kb_service",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "none (no callers; read by ENABLE_KB_INGEST)",
+   "files": [
+    "migrations/046_kb_core.sql",
+    "migrations/047_revoke_012_anon.sql",
+    "app/services/kb_service.py",
+    "tests/test_s81_kb_schema.py",
+    "tests/test_migration_043_delete_user_cascade.py"
+   ],
+   "scope": "Migration 046 creates: kb_products (id = spine brand axis + identity tokens, no ml); kb_variants (concentration + ml); kb_offers (amount, observed_currency, evidence rung, captured_at, a latest view and a prune function); kb_images (URL + provenance only); kb_specs (value, source_url, host); kb_reviews (a source enum rejecting DENY_HOSTS; aggregate, count, URL); kb_gaps; kb_merchants (robots_state, status, blocked_reason, tos, deny, partner fields). Service-role RLS, plus the kb_product_card and kb_upsert_compare RPCs. Migration 047 REVOKEs the 012 policies and runs a postcheck. kb_service calls go through run_db.",
+   "tests": [
+    "anon and authenticated are denied on every kb_* table (pg_policies fixture)",
+    "kb_reviews rejects fragrantica, parfumo and basenotes sources",
+    "No user_id or device column in any kb_* table, so the 043 cascade pin stays green",
+    "kb_product_card returns one row per product in one call",
+    "The 047 postcheck fails if any 012 USING(true) policy remains"
+   ],
+   "preconditions": [
+    "S81-02 live pg_policies read",
+    "Owner confirms which key the backend uses for L2 reads before 047 applies"
+   ],
+   "risk": "If any reader still uses the anon key on the 012 tables, 047 breaks it, so the postcheck plus a 24 h log watch guards the apply."
+  },
+  {
+   "id": "S81-15",
+   "title": "REGISTRY-ROBOTS-DENY persisted registry",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_MERCHANT_REGISTRY_DB + ENABLE_LIVE_ROBOTS_GATE",
+   "files": [
+    "app/services/merchant_registry.py",
+    "app/services/deny_hosts.py",
+    "app/services/source_router.py",
+    "app/services/rating_service.py",
+    "app/services/search_descriptor_service.py",
+    "app/services/robots_eval.py",
+    "scripts/cron_robots_refresh.py",
+    "tests/test_rating_tiers.py"
+   ],
+   "scope": "kb_merchants is seeded from data/bh_gcc_sources.json plus the 44 literals (country and genuine_method kept; fragrantica and parfumo excluded) and read per call through a 5-15 min per-process memo. Flag OFF: SOURCE_REGISTRY byte-identical. One DENY_HOSTS module serves source_router (the :347 literal goes), rating_service (:37, :46), the descriptor, ingest and search. Live robots is a lookup of the persisted QarenBot verdict; missing or expired = skip + queue. Candidate -> live needs robots, a platform probe, one PDP and a ToS ok. Challenge or unreadable = blocked + reason.",
+   "tests": [
+    "Flag-OFF identity: SOURCE_REGISTRY and the router output are byte-identical",
+    "test_rating_tiers reddens by design (fragrantica leaves RATING_TIER_2)",
+    "Netguard: no robots.txt fetch on the live path",
+    "A missing or expired verdict skips the host and enqueues a re-read",
+    "AST pin: DENY_HOSTS is the only deny literal list; a challenge marks the host blocked with a reason"
+   ],
+   "preconditions": [
+    "S81-14 merged",
+    "Owner publishes the QarenBot contact page",
+    "Robots precomputed for every live host before the flip"
+   ],
+   "risk": "Live adapters still send impersonate=chrome while robots is judged for QarenBot, so capture under the named UA is measured off-clock and the live-UA ruling stays with the owner."
+  },
+  {
+   "id": "S81-16",
+   "title": "KB-SEED-BATCH held corpora and feed walk",
+   "milestone": "M3",
+   "lane": "data",
+   "kind": "data-offclock",
+   "flag": "ENABLE_KB_SEED",
+   "files": [
+    "scripts/cron_kb_seed_batch.py",
+    "scripts/cron_feed_walk.py",
+    "scripts/seed_spec_spine.py",
+    "railway.kbseed.json",
+    "tests/test_s81_kb_seed.py"
+   ],
+   "scope": "Haiku 5.5 Message Batches (thinking disabled, output_config JSON, 50% rate) run over the held corpora (92 Gulf PDPs, 414 global pages), then a QarenBot feed walk of the 24 bulk-feed hosts (Bahrain first, ranked by merchant count). Only robots-allow, blocked=false, ToS-ok rows are used; pages with notes beside a Fragrantica/Parfumo/Basenotes link are skipped; each field records its provenance host; keys are per juice. Usage is logged for the first 20 rows and the run aborts above 2x the R15 per-row estimate. Spend goes through the offclock lane and the spend ledger. Public content only; batches are deleted after retrieval.",
+   "tests": [
+    "A row lacking a robots allow or a ToS verdict is refused",
+    "A page with notes beside a deny-host link is skipped",
+    "The run aborts on a per-row cost overrun and writes a ledger row per batch",
+    "Request-body pin: thinking disabled, no temperature, no user-derived field",
+    "Batches are deleted after the results are stored"
+   ],
+   "preconditions": [
+    "S81-14, S81-15, S81-03, S81-04 merged",
+    "Owner approves the seed budget (at most $10) and creates the Railway cron service"
+   ],
+   "risk": "Feed walks at concurrency 1 with delays of at least 2 s are slow, so coverage is measured per run, never promised."
+  },
+  {
+   "id": "S81-17",
+   "title": "KB-INGEST write-back on every compare",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_INGEST",
+   "files": [
+    "app/services/kb_ingest.py",
+    "app/services/structured_comparison_service.py",
+    "app/services/price_service.py",
+    "tests/test_s81_kb_ingest.py"
+   ],
+   "scope": "One RPC upsert per compare via to_thread at the success return after moderation (REST about :4706; stream before the complete yield, about :5564), never after build_comparison_response. Writes only: canonical URLs on registry hosts with readable-allow robots, identity confidence high, no placeholder identity, no Tier-3 or uncited Tier-2 value, no DENY_HOSTS row. Keeps the JSON-LD cand['image'] and price candidates with observed_currency. Misses feed kb_gaps with per-field completeness. The counterfeit filter is fixed for 'Replica', 'infused' and lv.",
+   "tests": [
+    "Flag-OFF identity: zero added Supabase calls and byte-identical bodies",
+    "CONTENT_UNAVAILABLE and timeout partials never ingest",
+    "A link-mode non-registry URL is never stored; query and fragment are stripped",
+    "Exactly one RPC per compare (call count)",
+    "'Maison Margiela Replica' and 'infused' titles survive; 'silver' and 'velvet' are not luxury tokens"
+   ],
+   "preconditions": [
+    "S81-14, S81-15 merged",
+    "Owner has canaried ENABLE_SYNC_DB_OFFLOAD"
+   ],
+   "risk": "Ingest is the brain's poisoning surface: a loose identity rule writes wrong cards that the KB-first serve then repeats for free."
+  },
+  {
+   "id": "S81-18",
+   "title": "KB-FIRST-SERVE and verdict cache",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_FIRST_SERVE + ENABLE_VERDICT_CACHE",
+   "files": [
+    "app/services/structured_comparison_service.py",
+    "app/services/verdict_cache.py",
+    "app/services/response_builder.py",
+    "tests/test_s81_kb_first_serve.py"
+   ],
+   "scope": "Before _fetch_product_data, one gathered kb_product_card read for both products REPLACES the L2 read; a full hit skips Serper, scrapers and the extract LLMs. KB price is served with its age: build 3 keeps 24 h converted / 7 d genuine, and older prices go only to clients sending the as-of header. Image = KB, JSON-LD or placeholder. Refresh is queued, never inline. Verdict cache key = ordered pair + card versions + scores hash + winner index + lang + model + prompt digest. It serves no-preference users only, returns deep copies, and is never seeded from a non-supported row.",
+   "tests": [
+    "Flag-OFF identity",
+    "A full KB hit makes zero Serper and zero extract-LLM calls, and at most 1 Supabase round trip per product",
+    "A swapped pair order never reuses the other orientation",
+    "A user with preferences, cohort or profile never receives a cached verdict",
+    "Build 3 never sees a price past its TTL; mutating a cached verdict does not leak across requests"
+   ],
+   "preconditions": [
+    "S81-17 merged with ingest canaried for at least 7 days",
+    "KB read p50 measured in the canary"
+   ],
+   "risk": "A wrong card now serves at zero cost to every later user; the card version in the key and S81-20 bound the blast radius."
+  },
+  {
+   "id": "S81-19",
+   "title": "GAP-QUEUE operator path and enrich worker",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_OPERATOR_INGEST + ENABLE_KB_ENRICH_WORKER",
+   "files": [
+    "app/api/admin_kb_routes.py",
+    "app/static/admin/kb.html",
+    "app/static/admin/capture_bookmarklet.js",
+    "scripts/worker_kb_enrich.py",
+    "railway.enrich.json",
+    "tests/test_s81_operator_ingest.py"
+   ],
+   "scope": "Admin-key operator path for blocked hosts (decision 11): a bookmarklet posts the JSON-LD, og:image and price of the page the operator's own browser rendered; plus manual entry and partner/licensed rows. Each needs the host's tos_reviewed_at and stamps provenance. Admin views: the blocked list, the gap queue by field and per-field completeness. An enrich worker (its own Railway service) drains kb_gaps on robots-allow hosts with the QarenBot fetcher (4 s, no fallback adapter, no impersonation), Redis single-flight, offclock lane.",
+   "tests": [
+    "Flag OFF: routes return 404 and the worker exits at start",
+    "Requests without the admin key get 401; a host without tos_reviewed_at is refused",
+    "Netguard: the worker never fetches a blocked host",
+    "Operator rows carry provenance and never overwrite cited merchant rows",
+    "The worker stops at the offclock cap"
+   ],
+   "preconditions": [
+    "S81-14, S81-15 merged",
+    "Owner creates the worker service and records ToS reviews for blocked hosts"
+   ],
+   "risk": "The bookmarklet must not become an evasion tool, so it captures one page per action from a normal browser session and is admin-key only."
+  },
+  {
+   "id": "S81-20",
+   "title": "B2-RESULT-GATE-V2 abstain on the new brain",
+   "milestone": "M4",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_RESULT_GATE",
+   "files": [
+    "app/services/result_gate.py",
+    "app/services/structured_comparison_service.py",
+    "app/api/text_routes.py",
+    "app/api/image_routes.py",
+    "tests/test_s81_result_gate_v2.py"
+   ],
+   "scope": "Re-spec from B2_UNIT_SPEC, BL1/BL2, Q1-Q7 and Q-R1..R7 on the new brain: abstain when the KB cards plus identity resolution cannot support a winner (placeholder, same identity, category conflict, no cited evidence). Exits per R-A3: INSUFFICIENT_DATA with a reason, refund with consumed_keys including the device key, no lifetime bump, no history row, no KB ingest, no verdict-cache seed, no Sonnet escalation. The camera refuses before the vision->compare spend. The flip is sized by the B1 abstain rate.",
+   "tests": [
+    "Flag-OFF identity (B1 metadata unchanged)",
+    "Every abstain refunds both the account and device keys",
+    "Abstained rows never reach kb_upsert_compare or the verdict cache",
+    "A camera abstain happens before any Serper call",
+    "An abstain never triggers Sonnet escalation; B1 telemetry matches the gate decision"
+   ],
+   "preconditions": [
+    "S81-17, S81-18 merged",
+    "ENABLE_RESULT_STATUS_METADATA ON with the abstain rate measured"
+   ],
+   "risk": "Abstaining too often reads as a broken app at review, so the flip waits for the measured rate."
+  },
+  {
+   "id": "S81-21",
+   "title": "WEB-SEARCH-CAPPED live miss and nightly discovery",
+   "milestone": "M4",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_LIVE_WEB_SEARCH + ENABLE_MERCHANT_DISCOVERY",
+   "files": [
+    "app/services/web_search_service.py",
+    "app/services/structured_comparison_service.py",
+    "scripts/cron_merchant_discovery.py",
+    "tests/test_s81_web_search.py"
+   ],
+   "scope": "web_search_service has its own result type (citations, HTTP-200 tool errors, pause_turn). Live: only on a KB miss, at most ONE search per compare, and only if the residual budget exceeds the measured search p95 and the search lane admits. web_search_20250305 is pinned (no code execution), max_uses 1, allowed_domains = robots-allow registry hosts. A prose call is followed by a separate structured extract. Stores URL + title, never cited_text. Nightly discovery: blocked_domains = DENY_HOSTS, capped, output = kb_merchants candidates.",
+   "tests": [
+    "Flag-OFF identity",
+    "A KB hit makes zero searches; a second search in one compare is impossible (count pin)",
+    "Request-shape pin: allowed_domains and blocked_domains never together; the tool version is pinned",
+    "Over the search-lane cap: an honest gap plus a queued gap, never a 500",
+    "cited_text is never persisted or rendered; consent below 3 never searches"
+   ],
+   "preconditions": [
+    "S81-07 settles the format combination and the latency",
+    "S81-15, S81-18 merged",
+    "Owner restricts web search in the Console to the workspace"
+   ],
+   "risk": "Search spend scales with the KB miss rate; the daily search cap holds the dollar bound by turning a cold KB into honest gaps."
+  },
+  {
+   "id": "S81-22",
+   "title": "COMPARE-RUNS and capped batch judge",
+   "milestone": "M5",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_COMPARE_RUN_LEDGER + ENABLE_BATCH_JUDGE",
+   "files": [
+    "migrations/048_compare_runs.sql",
+    "app/services/compare_runs.py",
+    "app/services/sentry_service.py",
+    "app/api/feedback_routes.py",
+    "scripts/cron_judge_batch.py",
+    "tests/test_s81_compare_runs.py",
+    "tests/test_migration_043_delete_user_cascade.py"
+   ],
+   "scope": "048 compare_runs: ONE insert at the capture_result_status exits (sentry_service.py:671). Columns: comparison_id as a NULL FK with ON DELETE SET NULL, consent_version, compare_request_id, a peppered device hash and a de-identified evidence snapshot, under a stated retention. compare_request_id also goes on comparison_feedback and user_events (T23 re-record). cron_judge_batch: a nightly Haiku Batch with thinking off, consent>=3 runs only, ids/profile/cohort stripped, sampled to the offclock cap. Sonnet escalation <= 10% under its cap; overflow waits for the next night; judgements keyed on run_id.",
+   "tests": [
+    "Flag-OFF identity: no insert",
+    "Exactly one run per delivered compare, including a stream disconnect",
+    "The 043 cascade detaches the FK; pin updated by design",
+    "Batch payload schema pin: no user id, profile, cohort or email",
+    "Runs with consent below 3 are never judged; the judge stops at the cap and defers the rest; T23 OpenAPI fixture re-recorded"
+   ],
+   "preconditions": [
+    "S81-03, S81-04 merged",
+    "S81-12 live (retention text)",
+    "ENABLE_SYNC_DB_OFFLOAD canaried"
+   ],
+   "risk": "Judge input size is unmeasured, so the first night runs on 50 L2-rebuilt compares to size tokens and the flag rate before sampling scales."
+  }
+ ],
+ "cut_or_deferred": [
+  "Auth throttles V2, both phases: deferred. Under the device quota, extra accounts gain no compares, so they no longer cost money. The per-email lockout exists, and phase 2 needs the Railway hop probe. The owner raises the Supabase dashboard limits now.",
+  "Per-platform share flow (channel builder, per-token OG preview, native kits): deferred. It brings no cost or legal gain; only the '30 seconds' claim goes now (S81-11). The later unit must never put web_search snippets on a share card.",
+  "App speed and latency client work (SSE flip, floor/reveal cuts, Sentry replay removal, runtime Geist): deferred. KB-first serve is the latency win that also saves money, and SSE needs the #118 pinning device check.",
+  "Feedback Q1/Q2 card, nightly clustering, exemplars and votes: deferred until compare_runs runs and the App Privacy label covers them. Exemplars are never built from user data in the public repo.",
+  "Reviews channel 1 (JSON-LD AggregateRating), judgeme removal, Trustpilot and YouTube: deferred. They need the persisted registry robots verdict and the test_m6_* pin rewrite. The Claude reviews prompt already stops estimating ratings (S81-06).",
+  "Sonnet as the default verdict or judge model: rejected on cost (critic table: about 2.4 months of runway at 300/day). Sonnet runs only as a capped escalation.",
+  "Prompt caching ON with pre-warm timers: deferred until S81-07/S81-13 measure the cache-read share at real call spacing. At 100-300/day the writes may cost more than the reads save; the layout ships with caching off.",
+  "Native 1.0.1 work (provider-neutral permission strings, camera identify UX, expo-image, includeWebFeedback), Shopify UCP and Common Crawl CDX: they go to the 1.0.1 plan or wait for accepted terms (UCP bars caching)."
+ ],
+ "owner_actions": [
+  "Approve this plan, then confirm or set the breaker caps ANTHROPIC_DAILY_USD_CAP_{LIVE,ESCALATION,SEARCH,OFFCLOCK} (proposed $3/$1/$0.50/$2 per Riyadh day; names only on Railway).",
+  "In the Claude Console, create a dedicated MYEZ workspace with its limit at the $400 balance. Restrict web search to that workspace (it is on org-wide by default). Create the key there and set ANTHROPIC_API_KEY on Railway web by name only. Read the credit expiry and tier.",
+  "Run the MEAS-ZERO reads (search_logs SQL, flag names, Serper credits, pg_policies on the 012 tables, which key the backend uses for L2) and paste the outputs into the session-81 state folder.",
+  "Approve the MEAS-CLAUDE-GATE budget (at most $15) and the seed budget (at most $10). Set DEVICE_KEY_PEPPER on web. Create the Railway cron/worker services for kbseed, robots refresh, enrich and judge.",
+  "Canary ENABLE_SYNC_DB_OFFLOAD (a precondition of every KB write). Set SERPER_LIFETIME_LIMIT to the real paid ceiling with a daily Serper budget so the gate is armed while the KB is cold.",
+  "Publish the QarenBot crawler contact page on getmyez.com, and record tos_reviewed_at for each blocked host before any operator capture.",
+  "With counsel, review the LEGAL-V3 text (Bahrain PDPL transfer basis, minors statement, Sponsored disclosure). Decide pre-v3 handling: a short OpenAI window of days, or an immediate 'update required'.",
+  "When 1.0.0 (3) is approved: update the App Privacy label, then run FLIP_RUNBOOK in order with one canary per step. When OpenAI goes off, disable OpenAI organisation data sharing.",
+  "Camera flip: give an explicit yes at flip time accepting the build-3 permission-string mismatch, or wait for the 1.0.1 strings.",
+  "After 30 days of ledger data, set the monthly ceiling (decision 8) and decide whether the Sonnet escalation and live web_search caps may rise."
+ ]
+}

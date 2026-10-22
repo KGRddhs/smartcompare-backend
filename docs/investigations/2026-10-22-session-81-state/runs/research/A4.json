@@ -1,0 +1,234 @@
+{
+ "topic": "A4 Images and camera identification: loss paths at 95cf6f86, what B3 changed, and what an Anthropic vision + web_search path replaces",
+ "summary": "At 95cf6f86 all seven image loss paths from the S80 digest are still open. B3 (#365) only changed identification, and only behind the dark flag ENABLE_VISION_IDENTITY_V2. B4 (URL-mode images, ENABLE_URL_MODE_V2) is not on main. B7 (ENABLE_IMAGE_PIPELINE_V2) was never built. Most orchestrator line numbers moved by about 38. Image race: scs:5977-5990. Piggyback: scs:6123-6127. Stash: scs:5748-5755 / 5813-5819 / 5934-5945.\n\nHow images are found today. Every compare resolves the image fresh, in a 5 s race (scs:5785), with no cache. The tiers run in this order:\n- Tier 1.5 piggyback: in practice always None.\n- Tier 1.5b: Knowledge Graph, organic or inline image from the unified search; free, and no identity check.\n- Tier 1: Serper Images [0]. Paid, with a daily budget (SERPER_IMAGE_DAILY_BUDGET, default 500). The budget check is a blocking Upstash INCRBY on the event loop.\n- Tier 3: the standard model (gpt-4o-mini) picks a URL from the organic results.\n\nThe validator accepts http://. That is a new problem I found: iOS App Transport Security will refuse such a URL, and the tile drops to the placeholder. This is inferred, because app.json has no ATS override.\n\nWhat B3 changed (flag OFF in production):\n- One vision call with a strict json_schema and a 20 s timeout (wait_for). Base64 data URI, detail auto.\n- Each product records which photo (image_index) it came from; non-products (is_product false) are dropped.\n- Confidence and category are carried, but nothing gates on them; that refusal is B2's job.\n- Signed-in scans get personalisation.\n\nThe client contract is unchanged: action error, need_second_product, comparison, comparison_failed, and a coded 503 LLM_UNAVAILABLE.\n\nAn Anthropic replacement needs four pieces:\n1. Identification on claude-haiku-5-5. Image blocks, with no detail field. output_config.format with the B3 schema. No temperature parameter (Haiku 5.5 returns a 400 on any non-default value, and the code sends 0). Thinking is on by default and counts against max_tokens. Handle stop_reason refusal; Haiku has no fallback. Escalate to claude-sonnet-5-5 when confidence is low or the name is unknown.\n2. Image finding from our own knowledge base first, then from images we already hold (the JSON-LD cand['image'] that is thrown away today). web_search returns page URLs, not image URLs. So a server fetch under robots fail-closed must read og:image / JSON-LD. Fragrantica and Parfumo must be blocked by domain.\n3. One validator: absolute https, a public host (reuse the SSRF validator), and a raster content-type.\n4. A new product_images record storing URL and provenance only, never the image file. Write the image into the early buffer so a partial result keeps it.\n\nSwitching provider also changes the consent and legal text and forces a new consent ask.",
+ "findings": [
+  {
+   "claim": "The text-mode image cascade at 95cf6f86 is: Tier 1.5 piggyback, then Tier 1.5b (Knowledge Graph first, then organic, then the inline images pack), then Tier 1 Serper Images[0] (paid, budget-gated), then Tier 3 GPT pick from up to 10 organic results, else None. Validation is only a string starting with http:// or https://.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:241-287 - tier order",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:52-57 - _is_valid_image_url accepts http:// and https://",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:86-117 - Knowledge Graph, organic, images pack",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:146-207 - Tier 3 via standard_model, 120 tokens, temperature 0.1"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Timeouts and budget. The whole image race is capped at 5.0 s and runs in parallel with specs (8 s), price (15 s) and reviews (10 s). Serper Images has a daily Redis counter (SERPER_IMAGE_DAILY_BUDGET, default 500, 36 h TTL), fails open when Redis is down, is checked with a synchronous incrby on the event loop, and also sits under the lifetime gate SERPER_LIFETIME_LIMIT.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5769-5786 - _PHASE1_TIMEOUTS image_url 5.0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5977-5990 - image task inside the Phase-1 gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:27-33,1163,1166-1206 - budget read, TTL, sync incrby",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/serper_service.py:1201-1222 - search_images plus the lifetime gate"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Loss path 1 is still open: the early stash keeps only specs and price (done-callbacks), not the image. A hard cap during the gather loses the image. B3 does not touch this.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5748-5755 - _stash_early buffer",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5813-5819,5934-5945 - price and specs callbacks only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Loss paths 2 and 3 are still open. When both specs and reviews are cached, the unified search is skipped, so search_payload and organic are None. On a unified-search timeout, ENABLE_UNIFIED_SEARCH_BOUND returns {organic: []}. Either way the free Tier 1.5b and Tier 3 have no input, and only paid Serper Images remains.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5856-5860 - search runs only on a cache miss",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5876-5884 - empty payload on timeout",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5981-5986 - organic_results and search_payload come from unified_search"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Loss path 4 is still open: the Bright Data fallback mapper keeps only title, link and snippet, so every image field is dropped whenever Bright Data serves the search.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/brightdata_service.py:225-246 - _map_bd_organic"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Loss path 5 is still open: the piggyback reads price['image_url'], which only the off-clock Zyte seeder sets. The JSON-LD image the live price path does capture is stored as cand['image'] (a list) and never mapped.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6123-6127 - piggyback reads price image_url",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/zyte_service.py:499,661 - the only writers",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10962-10964 - cand['image'] captured"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Loss paths 6 and 7 are still open: the 5 s race cap, and URL mode copying the raw JSON-LD image value (list, ImageObject or None) with og:image used only when the key is absent. B4 (URL mode V2) is not on main; ENABLE_URL_MODE_V2 and ENABLE_IMAGE_PIPELINE_V2 have no code sites.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/url_extraction_service.py:275-279,312,338-339 - raw item.get('image'), og fallback only when the key is absent",
+    "grep 'ENABLE_URL_MODE_V2|ENABLE_IMAGE_PIPELINE_V2' over C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app - empty",
+    "git log 95cf6f86 - B1 #364 and B3 #365 merged; B4 not merged"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "A further loss path is not in the digest: the backend accepts and ships http:// image URLs. The client app.json has no NSAppTransportSecurity override, so iOS ATS is expected to block those loads, firing onError and showing the placeholder.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_service_edges.py:22 - pins http:// as valid",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6124-6126 - piggyback accepts http://",
+    "grep NSAppTransport|NSAllowsArbitraryLoads in C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json - empty (Expo default ATS assumed)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The Knowledge-Graph-first image has no identity or category check, so a misidentified or placeholder name such as 'Unknown Unknown Product' gets whatever Google matched. B3 adds a category and product_type, but nothing feeds them into image selection.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:86-93 - Knowledge Graph returned unconditionally",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:482-484 - query built from brand and name, placeholders included",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5978-5979 - full_name is the only input"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "V1 camera call (production, flag OFF): one user message with one text prompt plus image_url parts as data:<mime>;base64 with detail auto. The vision model defaults to gpt-4o-mini, with max_tokens 500 and temperature 0. There is no response_format and no wait_for. The reply must be a bare JSON array. Products are normalised to five keys (brand 'Unknown', name 'Unknown Product', confidence default 'medium'), and confidence is never read downstream. Cost is hardcoded at mini prices.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:582-616 - V1 prompt",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:618-643 - data URI, detail auto, guarded_llm_create 500 tokens",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:663-686 - five-key normaliser, mini cost"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "B3 V2 call (ENABLE_VISION_IDENTITY_V2, default OFF). Adds VISION_PROMPT_V2 (0-based image_index, no invention, Arabic transliteration, nine categories) and a strict json_schema vision_products_v2 with ten required fields, using an anyOf category branch. max_tokens is 1000 under wait_for(VISION_TIMEOUT_SECONDS=20). A refusal or no content raises LLMUnavailableError; finish_reason=length is a parse failure. The normaliser keeps one best candidate per image_index (two for a single image), and places unpaired candidates last. Underscore keys are stripped from every wire body.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:143-197 - VISION_PROMPT_V2",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:207-253 - VISION_RESPONSE_FORMAT_V2",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:339-419 - normaliser and selection",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:457-557 - _identify_products_v2",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:293 - public_vision_products"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Camera route contract. 400s: no image, more than 4, empty, over 10 MB, unsupported mime (HEIC sniffed). A vision exception gives a coded 503 LLM_UNAVAILABLE when transient, else a 500. Other exits: parse error gives action error; moderation block gives need_second_product; 0 products gives action error; 1 product gives need_second_product (success true); 2 or more give compare_from_text(products[0] vs products[1]). Every non-delivery refunds through latched reserved and anon refunds. An unsuccessful compare under the envelope gives comparison_failed carrying the result code. The client shows 'need_more_photos' for need_second_product, 'timeout' for comparison_failed, 'engine_unavailable' for outage codes, and 'vision_failed' only for action error.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:243-268 - validation",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:336-380 - vision exits",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:446-504 - 0, 1 and 2+ products, B3 personalisation",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:119-139,694-698 - comparison_failed envelope",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:300-365 - client action mapping"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Client upload: every photo is resized to 1024 px wide, re-encoded as JPEG at quality 0.8, and sent as multipart with a bearer token, under an AbortController deadline. The backend can therefore assume JPEG of roughly 1024x(768-1365) for any vision provider.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:255-300 - manipulateAsync resize 1024, JPEG 0.8, fetch with abort"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "ProductImage client states:\n- usable URL (non-empty string): an Image with onError, resizeMethod resize, tone background visible while loading and no glyph.\n- null, undefined, blank or onError: a placeholder with a phone glyph for every category.\nThe error state resets when the URL changes; there is no retry and no status text.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:60-63 - isUsableUrl",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:77-116 - reset, Image, onError",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:119-150 - phone-glyph placeholder"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic vision replacement constraints. Model id claude-haiku-5-5 at $0.10/$0.50 per MTok (prompts up to 100K tokens), claude-sonnet-5-5 at $2/$10. Haiku 5.5 returns a 400 on any non-default temperature, so sampling_kwargs(model, 0) must omit it. Thinking is adaptive by default and counts toward max_tokens. Structured output goes through output_config.format, not response_format. Refusal is an HTTP 200 with stop_reason refusal, and Haiku has no server-side fallback. Image blocks are {type:image, source:{type:base64|url, media_type, data}} with no detail parameter. Haiku 5.5 vision resolution and per-image limits were not in the bundled docs.",
+   "evidence": [
+    "claude-api skill bundle 2.1.304 SKILL.md model table (cached 2026-10-06; read 2026-10-22)",
+    "claude-api shared/model-migration.md:2231-2350 - Haiku 5.5 sampling 400, thinking on, no fallback (read 2026-10-22)",
+    "claude-api python/claude-api/README.md:157,179 - base64 and url image source (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Anthropic server web_search tool cannot directly replace image finding. Its results are page URLs and titles, not image URLs. web_search_20260209 (dynamic filtering) is documented only for Opus and Sonnet 5.x/4.6, so Haiku 5.5 probably gets the basic web_search_20250305. web_fetch fetches only URLs already in the conversation, runs on Anthropic's fetcher (whose agents Fragrantica and Parfumo robots disallow), and returns document text that may not carry og:image metadata.",
+   "evidence": [
+    "claude-api shared/tool-use-concepts.md:229-256 - tool versions and dynamic-filtering model list (read 2026-10-22)",
+    "claude-api SKILL.md Server Tools QR - web_fetch fetches only URLs present; allowed_domains/blocked_domains (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "No image persistence exists anywhere. image_url is never cached in L1 or L2, and the only image-bearing store is the off-clock Zyte seed. The submitted Notes v3 B forbids hosting image copies but allows linking to the store's own URL, so a knowledge-base image row must store URL plus provenance, never the image file.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json - MYEZ-014 and OWNER-INGEST-FRAGRANCEX",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:1-32 - fresh per compare, no cache"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Correction to the S80 digest: the 'piggyback at scs:6086-6090' and 'image task scs:5940-5952' anchors were at 683f56c0. At 95cf6f86 they are scs:6123-6127 and scs:5977-5990 (shifted by the B1/B3 inserts). The content is unchanged, and the 7-path analysis itself is still correct.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5977-5990,6123-6127"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Tests that pin the current image and camera contracts:\n- tests/test_image_service.py: 24 tier-order tests.\n- tests/test_image_knowledge_graph_tier.py: 13 tests for Tier 1.5b precedence.\n- tests/test_image_service_edges.py: validator incl. http:// true; the budget.\n- tests/test_comparison_response_image_url.py: 10 tests for the wire keys and the piggyback override.\n- tests/test_camera_vision.py (26) and tests/test_s80_b3_vision_identity_v2.py (53 defs / 131 nodes; P1-P10 flag-OFF byte identity, prompt sha).\n- tests/test_image_identify_llm_unavailable_s69.py: the 503 contract.\n- tests/test_retro_w2_1.py: camera body and refund pins.\n- client: __tests__/ProductImage.test.tsx and camera.engineUnavailable.s69.test.tsx.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_service.py:23-253",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_knowledge_graph_tier.py:41-123",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_service_edges.py:22-45,173-291",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_comparison_response_image_url.py:23-336",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_s80_b3_vision_identity_v2.py:575-1181",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_identify_llm_unavailable_s69.py:190-233",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_retro_w2_1.py:396-1068",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/ProductImage.test.tsx:25-99",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/screens/camera.engineUnavailable.s69.test.tsx:160-195"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Cost of Haiku 5.5 vision per scan, estimated: two 1024x~1000 JPEGs at about 1,400 tokens each plus about 1,200 prompt tokens is about 4k input tokens ($0.0004), plus about 500 output and thinking tokens ($0.00025), so under $0.001 per scan. $400 of credits covers several hundred thousand scans at Haiku rates, before any Sonnet escalation or web_search fees.",
+   "evidence": [
+    "image-token rule of thumb w*h/750 (unverified for Haiku 5.5)",
+    "claude-api SKILL.md Haiku 5.5 pricing (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Port B3's V2 contract to Haiku 5.5 behind a new provider flag, default OFF and read per call. Reuse VISION_RESPONSE_FORMAT_V2's schema in output_config.format and keep the same normaliser and wire keys, so the build-3 client contract (error, need_second_product, comparison, comparison_failed, 503 LLM_UNAVAILABLE) is unchanged.",
+  "Make the provider seam drop temperature for Claude models (Haiku 5.5 returns a 400 on any non-default temperature, and sampling_kwargs sends 0). Size max_tokens for adaptive thinking, set effort low, map stop_reason refusal to the existing LLMUnavailableError, and handle max_tokens like V2's finish_reason=length.",
+  "Gate Sonnet 5.5 escalation on the V2 signals already counted (confidence low, unknown_name or unknown_brand, unpaired_index). One retry per scan keeps cost bounded while fixing the hard Arabic-label and no-label cases.",
+  "Close loss path 5 first, at zero cost. Map the JSON-LD image already captured as cand['image'] (price_service.py:10964) into price['image_url'], so the dead piggyback (scs:6123-6127) fires for every scraped PDP.",
+  "Add the image to the early stash (a done-callback, as with specs and price) so a hard-cap partial at the gather keeps its image (loss path 1).",
+  "Create an owned product_images record holding URL, source_host, source_page_url, method, content_type, verified_at, last_status and fail_count, keyed on the specs cache identity, plus a Redis L1 entry. Read it before any tier. That removes paths 2, 3, 4 and 6 for repeat products and stops paying Serper per compare. Never store the image file (Notes v3 B).",
+  "Use web_search only to discover a product page, not as an image source. The server then fetches that page under robots fail-closed (a challenge means stop) and reads JSON-LD/og:image. Set blocked_domains for fragrantica.com and parfumo.* on every web_search and web_fetch call.",
+  "Tighten the single URL validator: absolute https only (closes the ATS loss), a public host through the existing SSRF url_validator, and a raster content-type (jpeg/png/webp) from a bounded HEAD or range request at write time. Do it under a new flag, because test_image_service_edges.py:22 pins http as valid.",
+  "Add an identity check before persisting an image: the source page's product title must match the brand and name, or the category must match B3's vision category. Do not persist placeholder identities ('Unknown Product'). This stops the Knowledge-Graph violin/watch class.",
+  "Move try_consume_serper_image_credit off the event loop, or drop Tier 1 once the knowledge base serves images. It is a blocking Upstash incrby inside the 5 s race.",
+  "Treat the provider switch as a legal change. Privacy policy, processors.json and the AI-consent copy name OpenAI, so bump AI_CONSENT_VERSION through the U8 machinery and re-ask consent before the flag flips.",
+  "Client, for 1.0.1 (OTA after approval): replace the phone glyph with a per-category glyph, and add one retry on onError. No native change is needed."
+ ],
+ "open_questions": [
+  "Does Haiku 5.5 accept the B3 schema exactly (anyOf with null, type ['string','null']) under output_config.format together with image blocks? The supported JSON-schema subset was not in the bundled docs; it needs one live smoke run.",
+  "What are Haiku 5.5's vision resolution, image-token cost and per-image size limit? Query the Models API capabilities.",
+  "Which web_search version does Haiku 5.5 support (20260209 or only 20250305)? What does it cost per search today, and can it be combined with output_config.format in one call?",
+  "Is OPENAI_MODEL_VISION set on web? Production state is unrecorded (R-A15), so the true V1 baseline model is unknown.",
+  "Does the expected iOS ATS default hold for the shipped build-3 binary? Measure how many delivered image_url values are http:// in stored full_response rows.",
+  "Will the owner accept a short HEAD/range request to retailer CDNs at knowledge-base write time? It must honour robots fail-closed.",
+  "How should the knowledge base key product identity (the specs cache key vs a new canonical product id) so camera, typed and URL inputs resolve to the same image row?"
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/identity_winner.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/specs/B3_UNIT_SPEC.md (sections 0-1.3)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/specs/GATE_B3.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/specs/B4_UNIT_SPEC.md (header)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py (1345-1368, 3700-3724, 5740-6127)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py (27-33, 1154-1206)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/serper_service.py (1201-1240)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/brightdata_service.py (225-246)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py (10955-10968)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/url_extraction_service.py (270-339)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts (250-300)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx (300-420)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json (grep only)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_service_edges.py, test_s80_b3_vision_identity_v2.py, test_retro_w2_1.py, test_image_service.py, test_image_knowledge_graph_tier.py, test_comparison_response_image_url.py, test_camera_vision.py, test_image_identify_llm_unavailable_s69.py (test names and lines)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (Product image pipeline and SESSION 80 B3 flag rows, auto-loaded)",
+  "claude-api skill bundle 2.1.304: SKILL.md, shared/tool-use-concepts.md:229-256, shared/model-migration.md:2231-2407, python/claude-api/README.md:157-179 (read 2026-10-22)"
+ ]
+}

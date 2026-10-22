@@ -1,0 +1,109 @@
+{
+ "cluster": "C1: Provider adapter and cost (digests A1, R1, R2, R14, R9)",
+ "lens": "correctness and implementability at 95cf6f86",
+ "verdicts": [
+  {
+   "recommendation": "C1.1 llm_adapter with OpenAI-shaped Anthropic branch, separate chokepoint, JSON schemas",
+   "verdict": "weakened",
+   "reason": "The U3c pins stop guarded_llm_create from delegating: exactly 2 create(**kwargs), and kwargs may not go to a helper. So all 16 dispatch sites must be re-pointed. Moving them takes test_model_config_enforced below its >=15 count. The compare preflight reads only the openai breaker. Adding token caps alone leaves thinking on, so classify blows its 4 s wait_for. The 1000-token verdict cap is not re-measured for the ~30% larger Claude tokenizer.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_u3c_store_false_pin.py:236,288-305 - exactly 2 dispatches; kwargs only via get/subscript/create(**kwargs)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config_enforced.py:126,140 - sites matched by callee name guarded_llm_create, >=15",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1384-1394 - classify wait_for _CLASSIFY_LLM_TIMEOUT, max_tokens 10"
+   ],
+   "fix": "Add one routing wrapper above guarded_llm_create (flag OFF = an exact pass-through). Name the pin rewrites (u3c 01/01b/01c/02, enforced >=15). Make the preflight read the breaker of the active provider. Disable thinking on every latency-bound site (classify/parse/disambig/verdict). Re-measure every cap, the 1000-token verdict included, under the Claude tokenizer. Record usage BEFORE raising on refusal or max_tokens."
+  },
+  {
+   "recommendation": "C1.2 Haiku 5.5 for every role behind one flag; Sonnet second flag",
+   "verdict": "weakened",
+   "reason": "One flag for EVERY role contradicts C1.7. Vision must stay on OpenAI until 1.0.1, because the native permission strings name OpenAI, and moderation is a separate decision. Haiku also rejects temperature 0. The verdict depends on it: the S2 A/B attributes the whole winner-variance bucket to it. The eval must therefore gate the Haiku flip itself, not only the Sonnet flip. The $0.003 figure is a modelled token count x1.3, not a measurement.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2650-2658 - verdict temperature=0 (S2 Decision D)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:220,228 - camera/photo strings name OpenAI",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:107-123 - sampling_kwargs caveat: re-run the determinism A/B"
+   ],
+   "fix": "Use per-role provider flags: text roles first, vision only in 1.0.1, moderation separate. Gate the Haiku text flip on a smoke20 regression run plus the WINNER_INDEX_MISMATCH rate against the temperature-0 baseline. Treat the cost per compare as provisional until the metadata.llm ledger has measured it."
+  },
+  {
+   "recommendation": "C1.3 web_search only on KB miss, capped, domain-filtered, priced in ledger",
+   "verdict": "weakened",
+   "reason": "No product knowledge base exists at 95cf6f86 (only the L2 spec/price cache), so the 'KB miss' trigger is undefined. Structured outputs are documented as incompatible with citations, and web_search results carry citations, so a search turn and a json_schema output on one request may 400. A search turn adds model turns of unpublished latency inside the 30 s cap that no residual guard bounds. Anthropic's fetching is outside our robots fail-closed ruling.",
+   "evidence": [
+    "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/tool-use-concepts.md:561 - structured outputs incompatible with citations (400)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:954 - only OpenAI chokepoint; no search tool path exists"
+   ],
+   "fix": "Gate search on the KB unit actually existing. Run search as its own prose request with no output_config.format, and extract its result in a second structured call. Bound it with the residual-deadline wait_for, or move it to background enrichment. Get an owner ruling on Anthropic-side fetching against the robots ruling."
+  },
+  {
+   "recommendation": "C1.4 cache layout plus max_tokens-0 pre-warm at boot plus probe",
+   "verdict": "weakened",
+   "reason": "max_tokens 0 is rejected together with output_config.format. The skill says structured-output requests cannot be reshaped for a keep-alive and should use the 1 h TTL instead, which implies the format is part of the cached prefix. So a pre-warm without the format, on the routes C1.1 makes structured, writes an entry that real traffic never reads. A boot-only warm also expires after the 1 h TTL. The layout and the probe stand.",
+   "evidence": [
+    "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/prompt-caching.md:295 - max_tokens 0 rejected with output_config.format",
+    "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/prompt-caching.md:156 - structured outputs cannot be reshaped for the keep-alive; use the 1 h TTL",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/main.py:179,192,344 - startup hooks; the warm must be fire-and-forget and drained"
+   ],
+   "fix": "Warm each structured route with a minimal real request: the same format, thinking and effort, max_tokens of at least 1. Run it fire-and-forget on a timer shorter than the TTL. Keep the cache_read_input_tokens > 0 probe as the acceptance test."
+  },
+  {
+   "recommendation": "C1.5 plain Messages API, Batches nightly, Railway cron, no agents",
+   "verdict": "weakened",
+   "reason": "Streaming buys nothing on the live path. Phones drive REST (the SSE default is off and cannot change before approval with no OTA), and the SSE verdict is one whole event built after json.loads. A client.messages.batches.create under app/ is flagged by test_u3c_02, because 'batches' is in SDK_OBJECTS. The refusal and max_tokens checks need the usage recorded first. The rest stands.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52 - ENABLE_EXPO_FETCH_SSE_DEFAULT = false",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_u3c_store_false_pin.py:37,196-199 - .create on a 'batches' attribute is an offender under app/",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5398 - verdict yielded as one SSE event"
+   ],
+   "fix": "Drop model streaming from the launch scope. Put the Batch submitter in scripts/cron_* (or widen the u3c rule in the same PR, with a ruling). Map refusal and max_tokens to LLMUnavailableError only after the call is recorded in the ledger."
+  },
+  {
+   "recommendation": "C1.6 provider-aware ledger, metadata.llm when ON, fix gpt-4o-mini formulas",
+   "verdict": "weakened",
+   "reason": "The public share view strips only metadata.openai, so a new metadata.llm would leak on the public share page. /admin/costs reads only full_response->metadata->openai, so Claude spend never reaches the dashboard. Adding claude-* keys to PRICE_USD_PER_1M reddens the exact-keys pin. The mini formulas feed metadata.total_cost and the W4-13 search_logs cost, so an unflagged fix breaks flag-OFF byte identity.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py:71-75 - strips only 'openai' from metadata",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:143-153 - cost reader selects metadata->openai only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_cost_meter_s74.py:430-440 - PRICE_TABLE_AS_OF and the EXACT_KEYS set pinned"
+   ],
+   "fix": "Put Claude prices in a separate llm_pricing table. Strip metadata.llm in share_routes. Extend the admin cost readers and costs.html to sum metadata.llm. Change the hardcoded 0.15/0.60 formulas (structured_comparison_service.py:9610, openai_service.py:554,678,923) and the router counting only under the provider flag."
+  },
+  {
+   "recommendation": "C1.7 legal sequencing, vision waits 1.0.1, moderation owner call",
+   "verdict": "weakened",
+   "reason": "The direction is right, but there are two gaps. First, the 'one processor' moderation option cannot happen before 1.0.1, because vision stays on OpenAI until then. Second, the consent record lives only on the device (AsyncStorage) and is never sent to the server. After the consent-v3 OTA, build-3 phones that have not done two cold launches still show the v2 copy naming OpenAI. The backend cannot tell them apart, so 'after consent v3 ships' is not a gate that can be enforced.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46 - AI_CONSENT_VERSION = 2, client-only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/locales/en.json:4-5 - native purpose strings name OpenAI",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py:252 - moderation on OpenAI"
+   ],
+   "fix": "Have the client send its consent version (or gate on a minimum app version via APP_MIN_VERSION). Switch per request only for clients on consent v3. Record that a single processor is reachable only in 1.0.1. Add a gated anthropic row to processors.json (the gate_flag pattern of the youtube row) so the dark adapter can merge."
+  }
+ ],
+ "new_risks": [
+  "anthropic is not in requirements.in. Adding it means a lock recompile, which CI's 'Lock is current' step diffs; a pip-audit --strict pass; and the 14-day release-age rule. No recommendation plans the dependency.",
+  "sentry-sdk 2.68.1 auto-enables AnthropicIntegration once the package is importable. init_sentry pins only OpenAIIntegration(include_prompts=False) (sentry_service.py:744-746). Without an explicit AnthropicIntegration(include_prompts=False) and a pin, prompt capture depends on send_default_pii alone.",
+  "Test hermeticity: ANTHROPIC_API_KEY must join tests/_env_safety.CREDENTIALS_UNSET and the netguard, or the import-time load_dotenv(override=True) can hand a real key to the test tier (the R-W0 incident class).",
+  "Haiku 5.5 has no server-side fallback and returns stop_reason refusal from its safety classifiers. Fragrance and supplement names can trip it. A refusal on parse or verdict becomes LLM_UNAVAILABLE and a refund; no recommendation sizes the refusal rate before the flip.",
+  "The W4-14 Arabic directive and the Arabic max_tokens precondition were measured for OpenAI only. With the ~30% Claude tokenizer, the 1000-token Arabic verdict JSON is more likely to truncate, and nothing re-measures it.",
+  "Two worktrees share one Railway web replica. A separate Anthropic breaker key plus the existing openai breaker leaves the half-open probe accounting (M13-31 non-atomic) duplicated per provider, and no recommendation pins the second key's probe semantics."
+ ],
+ "sources": [
+  "J1 journal digests A1, R1, R2, R9 (wf_61b37e95-99f/journal.jsonl)",
+  "J2 journal digest R14 (wf_fa7a7126-eef/journal.jsonl)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:954-1035",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:40-145",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:30-50",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_router_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:60-85,1368-1400,2620-2720",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1748,5398,9606-9613",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py:71-75",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:143-153",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sentry_service.py:701-760",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_u3c_store_false_pin.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config_enforced.py:120-165",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_cost_meter_s74.py:425-440",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/processors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:220,228; locales/en.json:4-5; src/services/aiConsent.ts:46; src/config/features.ts:52",
+  "claude-api skill (bundled 2.1.299): shared/tool-use-concepts.md:540-562, shared/prompt-caching.md:131-140,156,252-295, shared/models.md:87"
+ ]
+}

@@ -1,0 +1,106 @@
+{
+ "cluster": "C6: Learning loop, feedback, reviews, data ledger, legal unit (digests A8, R7, R10, R12)",
+ "lens": "legal, ToS, App Review and privacy",
+ "verdicts": [
+  {
+   "recommendation": "C6.1 compare_runs de-identified ledger (migration 045, no user_id)",
+   "verdict": "weakened",
+   "reason": "Not de-identified while comparison_id is set: it links to user-owned rows, so under Bahrain PDPL it is pseudonymous personal data until nulled. Privacy s8 gives non-account records 'no fixed period', but 5.1.1(i) requires a stated retention. A re-compare flag needs device linkage. source_click already sends full retailer URLs. Pepper must be an env var (public repo).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:107,117 (no fixed period; de-identified kept after deletion)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:588 source_click {source_name,url}",
+    "https://developer.apple.com/app-store/review/guidelines/ 5.1.1(i) retention/deletion must be explained (read 2026-10-22)"
+   ],
+   "fix": "Keep compare_runs but give it a stated retention period in privacy s8. Store the re-compare flag as a write-time boolean with no device key. Allowlist event_data so store_cta_tap carries only the merchant id, never a URL. Never store compare_request_id in compare_runs."
+  },
+  {
+   "recommendation": "C6.2 post-response Haiku/Sonnet batch judge, retire inline self-critique",
+   "verdict": "weakened",
+   "reason": "Anthropic confirms Batch results are kept 29 days and Batches are not ZDR-eligible, so this needs its own disclosure. The judge sends compare data to Anthropic after the fact. Under 5.1.2(i) that is lawful only for compares made under a consent naming Anthropic, but build 3 runs consent v2, which names OpenAI. The web_search check goes through Anthropic's search subprocessor (Brave). Retiring the inline critique stands.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention - Batch 'No' ZDR, '29-day retention' (read 2026-10-22)",
+    "https://developer.apple.com/app-store/review/guidelines/ 5.1.2(i) 'including with third-party AI ... explicit permission' (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46 AI_CONSENT_VERSION = 2"
+   ],
+   "fix": "Judge only compares whose request recorded consent version >= 3, and never judge before the post-approval legal window. Run the web_search check with allowed_domains set to the merchant registry. Disclose the 29-day Batch retention."
+  },
+  {
+   "recommendation": "C6.3 client compare_request_id UUID as feedback join key",
+   "verdict": "stands",
+   "reason": "It is a random per-request UUID, not a device or advertising identifier, so ATT and 5.1.2 are not engaged. The field is optional and additive, and extra='ignore' keeps build 3 unaffected. It is stored only in comparisons and search_logs, which migration 043 hard-deletes on account deletion. I could not find a legal defect, provided it never enters the de-identified compare_runs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/043_delete_user_cascade_full_erasure.sql:173-186",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:103-111 optional fields"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C6.4 neutral identity-first feedback questions, drop positive-only chips",
+   "verdict": "weakened",
+   "reason": "The questions are sound and 5.6.1 does not apply (they are not App Store rating prompts). Two gaps. The optional 'correct name' free text is user content: under the escalation rule it would be sent to Anthropic, could feed exemplars, and could carry personal data. 'Which would you buy?' is purchase-intent data that must never reach paying stores per user. The OTA adds new data collection, which the App Privacy label must declare.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:107 change_suggestion max_length=1000",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:31 feedback disclosure",
+    "https://developer.apple.com/app-store/review/guidelines/ 2.3.1(a) new features described in Review Notes (read 2026-10-22)"
+   ],
+   "fix": "Cap the correct-name text at about 80 characters and keep it out of LLM prompts, exemplars and store reports. Before the OTA, update the App Privacy label (Product Interaction, Other User Content) and treat preference answers as aggregate-only."
+  },
+  {
+   "recommendation": "C6.5 nightly offline clustering job, KB proposals, exemplars, eval cases",
+   "verdict": "weakened",
+   "reason": "data/verdict_exemplars.json is git-tracked in the PUBLIC repo, and the existing rotation cron writes it. User-derived exemplars promoted there would be published. The 2-device agreement needs a device key, but feedback has no device column; device_fingerprint_hash sits on users (021) and is erased on deletion. KB corrections taken from web_search results need citations if shown to users.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/verdict_exemplars.json (git ls-files: tracked)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/021_device_fingerprint_users.sql:6",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool - 'citations must be included' (read 2026-10-22)"
+   ],
+   "fix": "Store exemplar sets and proposals in a service-role Supabase table, never in the repo, and have a test refuse user-derived exemplars in data/. Compute device agreement inside the job from the existing device hash and persist only counts. Keep a citation on every KB correction."
+  },
+  {
+   "recommendation": "C6.6 JSON-LD reviews, partner keys, Trustpilot, claims tables, delete judgeme/fragrantica",
+   "verdict": "weakened",
+   "reason": "Channel 1 breaks the standing rulings on two of the three hosts. Golden Scent's robots.txt says Disallow: / for '*', allows only named AI bots, and disallows review pages even for them; the code reaches it through Algolia, not the PDP. noon is Akamai-walled and render-only (challenge = stop). Storing review bodies redistributes third-party copyrighted content without a licence. Fragrantica also sits in LUXURY_FASHION_RETAILERS.",
+   "evidence": [
+    "https://www.goldenscent.com/robots.txt - 'User-agent: *' Disallow: / ; AI-bot group only (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:300-306 noon Akamai-walled is_render_only; :347 fragrantica",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:46 fragrantica in LUXURY_FASHION_RETAILERS"
+   ],
+   "fix": "Limit channel 1 to hosts whose '*' (or MYEZ UA) robots group allows the PDP and that serve no challenge, such as Nice One. From them store only ratingValue, ratingCount and the source URL with attribution. Keep review_excerpts for channel-2 licensed partners only. Add rating_service.py:46 to the shared deny list."
+  },
+  {
+   "recommendation": "C6.7 single post-approval legal window for the Anthropic switch",
+   "verdict": "weakened",
+   "reason": "'Sections 4/5/7' is too narrow. OpenAI is also named in privacy s2, s3.2, s3.3, s3.6 (the data-sharing basis) and s8, and in the Terms licence paragraph, which also describes the OpenAI data-sharing programme. Terms s4 still sets per-account limits of 3/day and 10/month. The Batch 29-day figure is correct. Store reports need a minimum cohort size, and sponsored CTAs need a statement that payment does not change verdicts.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:15,28,38,58,109 OpenAI mentions outside s4/5/7",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md:25,53 per-account limits; OpenAI data-sharing",
+    "https://privacy.claude.com/en/articles/7996866 - API I/O deleted within 30 days (updated 2026-07-01, read 2026-10-22)"
+   ],
+   "fix": "Widen the unit to every OpenAI mention in both policies and both Terms, in EN and AR, and remove the data-sharing-programme basis. Describe Anthropic's 30-day standard and 29-day Batch retention and its search subprocessor. Set a k>=20 floor for store reports. State that store payments never affect verdicts or rankings."
+  }
+ ],
+ "new_risks": [
+  "Consent provenance is not recorded server-side. AI_CONSENT_VERSION exists only on the client (aiConsent.ts:46), so the backend cannot tell whether a compare, a judge batch or an exemplar was produced under a consent naming Anthropic. Every Anthropic call path needs a per-request consent_version, refused below 3.",
+  "Data already shared under the OpenAI data-sharing programme (privacy s4 and the Terms) stays with OpenAI after the switch. The new text must say so and must say whether the programme is turned off. No recommendation covers how the transition is disclosed.",
+  "Terms s4 (terms_of_service.md:25) still promises per-account limits of 3/day and 10/month plus referral bonuses (s9). The device-only rule needs those clauses and the referral reward text rewritten, and the device code must stay IDFV/keychain-based, never fingerprinting (5.1.2, ATT).",
+  "Paid store CTAs, store trust scores and verdict ranking create a conflict of interest. Bahrain consumer-protection rules on misleading advertising and 5.1.2(i)'s limit on sharing with third parties (improve the app or serve ads) need an explicit independence and disclosure rule for store-facing data.",
+  "Anthropic web_search returns cited_text of up to 150 characters per citation. Storing those snippets in the KB or in judgement rows copies third-party (possibly copyrighted) text, and if any are shown to users the citation display rule applies. Store URLs and titles only.",
+  "Expo OTA after approval: new data-collecting features (feedback card, share channels) shipped by OTA must be declared in the App Privacy label at once, and listed in the 1.0.1 Review Notes (2.3.1(a)), or a later review can flag undisclosed collection."
+ ],
+ "sources": [
+  "https://platform.claude.com/docs/en/build-with-claude/batch-processing (read 2026-10-22): 'Batch results are available for 29 days after creation'",
+  "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (read 2026-10-22): Batch not ZDR-eligible, 29-day retention; web search ZDR-eligible except dynamic filtering",
+  "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data (updated 2026-07-01, read 2026-10-22): API inputs/outputs deleted within 30 days",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22): citations rule, allowed_domains/blocked_domains, $10 per 1,000 searches",
+  "https://simonwillison.net/2025/Mar/21/anthropic-use-brave/ (2025-03-21, secondary): Brave Search listed as an Anthropic subprocessor",
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22): 5.1.1(i), 5.1.2(i), 2.3.1(a)",
+  "https://www.goldenscent.com/robots.txt (read 2026-10-22): 'User-agent: *' Disallow: /",
+  "https://developers.trustpilot.com/data-solutions-how-to (read 2026-10-22): Deletions API every 28 days; Insights access needed for service reviews",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "J1 digests A8, R7; J2 digests R10, R12"
+ ]
+}

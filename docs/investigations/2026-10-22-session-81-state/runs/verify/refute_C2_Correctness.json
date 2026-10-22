@@ -1,0 +1,113 @@
+{
+ "cluster": "C2: Knowledge base, merchant registry, crawler, data sources (digests A2, A3, R3, R4, R13, R15)",
+ "lens": "Correctness and implementability at 95cf6f86 (code read, no tests run)",
+ "verdicts": [
+  {
+   "recommendation": "C2.1 Migration 045 kb_* tables, service-role RLS, hash identity key, harden 012",
+   "verdict": "weakened",
+   "reason": "045 is free (039 is reserved for the M13-29 RLS work) and the 044 REVOKE/GRANT pattern fits. Hardening 012 is safe: every reader uses the admin client. The key recipe is the weak part. dedup_brand_name is a display builder that keeps the name's casing, not a normaliser. spine_key already folds brand aliases and category padding. A third key would compete with it, and stripping the axes merges supplement doses when the token is empty.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/text_sanitize.py:24-33 (display-name builder, casing preserved)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:190-240 (existing spine_key with brand alias groups and padding subtraction)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:9411-9418 (dose-merge warning on _strip_identity_axes)"
+   ],
+   "fix": "Derive kb_product_id from spine_key's brand axis plus identity tokens minus padding, without ml, and key the variant on concentration plus ml. Put the 012 REVOKE in its own migration (not 039) with a postcheck, and add a test_migration_045 pin modelled on test_migration_044."
+  },
+  {
+   "recommendation": "C2.2 fire_and_forget kb_ingest after build_comparison_response; KB read point; TTLs",
+   "verdict": "weakened",
+   "reason": "Right after build_comparison_response is the wrong place. L3 moderation runs after it and can turn the result into CONTENT_UNAVAILABLE, so refused compares would be ingested. Timeout partials skip the builder entirely. The fetch_page_price result drops image/sku/gtin. run_db runs inline while ENABLE_SYNC_DB_OFFLOAD is OFF, which blocks the single-worker loop. The unified-search gate reads L1 only, and that search also feeds the free image tier.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4602,4677-4692,4706 (build, then moderation refusal, then return); stream :5447,5531-5565",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:13951-13961 (result omits image/gtin/sku)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:35-40 (inline when the flag is OFF); structured_comparison_service.py:5855-5860,5978"
+   ],
+   "fix": "Ingest from product_data at the success return after moderation (:4706 and before the complete yield at :5564), always through asyncio.to_thread. Plumb the image and GTIN through the price result under the flag. Gate the KB/L2 short-circuit of the unified search behind its own flag, with an explicit image fallback, and re-pin test_stage_timings and test_smart_fallback."
+  },
+  {
+   "recommendation": "C2.3 Persistent per-host merchant registry seeded from bh_gcc_sources, per-call TTL read",
+   "verdict": "weakened",
+   "reason": "Counts verified: 368 rows, 275 live, 199 blank mechanism. A per-call registry is feasible, because consumers import SOURCE_REGISTRY lazily, but it is built at import (:532) and the loader drops country and genuine_method. Health cannot come from _record_provider_attempt: only the Firecrawl and Scrape.do wrappers call it, never curl or the adapters, so ~275 rows would have no signal. Seeding from the literals copies the fragrantica.com row.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:28,347,532 (frozen Source, fragrantica literal, import-time merge)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:2178-2340 (only render wrappers record attempts)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:14745-14749 (lazy registry iteration)"
+   ],
+   "fix": "Add an attempt hook to the curl wave and every adapter before using it as the health source. Exclude the Fragrantica and Parfumo rows at seed time. Keep flag-OFF SOURCE_REGISTRY identical, pinned by test_bh_gcc_registry_loader and test_registry_liveness_gate."
+  },
+  {
+   "recommendation": "C2.4 Owned QarenBot crawler, robots fail-closed on live path, politeness, OSS picks",
+   "verdict": "weakened",
+   "reason": "The named UA and contact page already exist for the off-clock robots read. Enforcing robots on the LIVE path clashes with the code: fetch_page_price and 13 adapter modules fetch with Chrome impersonation (32 sites). Judging robots as QarenBot while fetching as Chrome is incoherent, and switching the UA puts the measured 84% curl capture at risk. An inline robots GET also eats into the 15 s race. robots_eval has no Crawl-delay support, and Protego/extruct/price-parser are not in requirements.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:387-413 (QarenBot UA, off-clock only); landing/bot/index.html exists",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:14888-14891 (live fetch, no robots check)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:74,204 (can_fetch, no crawl-delay)"
+   ],
+   "fix": "The live path should read a persisted robots verdict from the registry (fetched off-clock with the named UA) and never fetch robots inline. Get an owner ruling on the live adapter UA before enforcing. Park Scrape.do super mode on challenged hosts, all behind a default-OFF flag."
+  },
+  {
+   "recommendation": "C2.5 Port seed_spec_spine to Haiku, seed corpora, persist identity per compare, open-data policy",
+   "verdict": "weakened",
+   "reason": "The seeder calls OpenAI chat.completions, and requirements.txt pins only openai==3.3.1 with no anthropic SDK, so the port needs a new dependency and client. Its default corpora (_proof/html) are not in this checkout. spine_key includes ml, so notes are stored once per bottle size. 035 is unapplied. The per-compare GTIN/image persistence depends on the dropped fields (13951) and on wide_candidate_enabled. The open-data and licence rules hold.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:80,377-390 (OpenAI client, default _proof corpora)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:97 (openai only)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10950-10970 (cand image/sku only under the wide-candidate path)"
+   ],
+   "fix": "Add the Anthropic SDK through a provider adapter, key specs per juice (no ml), write seed output to the service-role table rather than a repo JSON file, and plumb GTIN and image through the price result under the KB flag."
+  },
+  {
+   "recommendation": "C2.6 Robotoff-style insights/votes, RapidFuzz+Splink+Haiku merge, UCP MCP probe, Open Prices fields",
+   "verdict": "weakened",
+   "reason": "Auto-applying device-keyed votes repeats M13-29: anonymous feedback is written with the service role from client-supplied ids, so anyone can forge votes and poison facts above the threshold. The UCP probe covered only 6 advertising hosts, no MCP handshake was ever done, and /collections/all is currency-blind. The GTIN field list lacks gtin14, and no check-digit code exists. Splink is heavy, so it must stay off-clock.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-08-31-m13-full-review.md:58 (M13-29 anonymous service-role write forgery)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:625-629,662-665 (6 UCP hosts, no MCP handshake)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10659 (no gtin14)"
+   ],
+   "fix": "Never auto-apply from votes. Weight votes by attested device and quota, and auto-apply only machine predictions backed by cited merchant evidence. Run the UCP MCP probe off-clock on the 6 known hosts first. Add gtin14 and a check-digit validator."
+  },
+  {
+   "recommendation": "C2.7 Image cascade URL-only, fix cand[image] drop under B7, Haiku validation, https rule",
+   "verdict": "weakened",
+   "reason": "The drop location is right: the result at 13951-13961 omits cand[image], which is set at 10964. But ENABLE_IMAGE_PIPELINE_V2 (B7) does not exist anywhere in app/, so it has to be created. The current piggyback override also accepts http://. An inline Haiku yes/no per non-JSON-LD candidate adds a paid call inside the 5 s image race on every compare, which works against faster compares.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10964,13951-13961",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5785,6123-6127 (5 s race; override accepts http)",
+    "grep ENABLE_IMAGE_PIPELINE_V2 app/ = 0 hits; CLAUDE.md:313 names it as unit B7"
+   ],
+   "fix": "Create the B7 flag and carry cand image onto the price result under it. Tighten the override to https, public host and raster type. Run Haiku validation and pHash off-clock at KB ingest, not inline in the image race."
+  }
+ ],
+ "new_risks": [
+  "fragrantica.com is still a literal registry row (source_router.py:347) and URL mode has no deny list, so any registry seed, KB discovery or ingest-from-URL path would bring in a banned source unless it is filtered explicitly.",
+  "Offers served from the KB/L2 would ship without captured_at, because get_cached_price drops fetched_at (product_data_service.py:290-297). Stale prices could appear as current, which breaks the no-fabricated-numbers rule unless the read path and the wire carry capture time.",
+  "Currency truth: the registry's country field means 'serves BH', and 17 BH rows price in another currency. The proposed kb_offers schema has no observed-currency or evidence-rung column, so the KB could keep a mislabelled currency permanently instead of letting it expire on a 7 d TTL.",
+  "Ingest inherits filter bias: the counterfeit substring filter drops genuine 'Replica' (Maison Margiela) and 'infused' listings before they reach any KB write point, so the owned KB would never learn them.",
+  "Single-worker uvicorn with ENABLE_SYNC_DB_OFFLOAD default OFF: per-compare KB writes plus per-call registry reads run blocking Supabase calls on the event loop and can turn latency into 15 s race and stream hard-cap timeouts for other users.",
+  "Public repo: seed outputs (data/spec_spine.json) and any partner/CTA commercial fields placed in bh_gcc_sources.json would be published. Partner terms and KB seed data must live only in service-role tables."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/text_sanitize.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/async_utils.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/044_apple_siwa_tokens.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-08-31-m13-full-review.md",
+  "J1 digests A2, A3, R3, R4; J2 digests R13, R15"
+ ]
+}

@@ -1,0 +1,82 @@
+{
+ "cluster": "C5 Client surfaces: categories, honest numbers, share (digests A5, R6, R12)",
+ "lens": "legal, ToS, App Review and privacy",
+ "verdicts": [
+  {
+   "recommendation": "C5.1 Fragrance-only chips with skincare/makeup coming-soon, copy and event changes",
+   "verdict": "weakened",
+   "reason": "Guideline 2.1(a) says placeholder and temporary content must be scrubbed before submission, and disabled coming-soon chips are exactly that at the 1.0.1 review. Narrowing 9 categories to 1 through an OTA plus a backend refusal changes the reviewed binary's behaviour. That runs against 2.5.2 and 2.5.19, and the 2.3 metadata (screenshots, 'Smart product comparison') would stop matching. The rec only says 'check'; it has to decide.",
+   "evidence": [
+    "https://developer.apple.com/app-store/review/guidelines/ 2.1(a), 2.3, 2.3.1(a), 2.5.2, 2.5.19 (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CategorySelector.tsx:38-50",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/index.html:9-10 - generic 'Smart product comparison' og copy"
+   ],
+   "fix": "Ship one fragrances chip plus a plain 'Fragrances only for now' line (no disabled chips) and gate the backend refusal until after approval. Describe the narrowing in Notes for Review for 1.0.1 (2.3.1(a)) and refresh the screenshots and description. Use nominative brand names in the example copy, covered by Terms §53."
+  },
+  {
+   "recommendation": "C5.2 Remove CohortBadge and fake numbers; show thresholded real counts and provenance",
+   "verdict": "weakened",
+   "reason": "Removing the badge and the 2074/78/73%/30-second claims is sound. Two replacements fail. 'k of n raters said the winner was right' cannot be computed honestly: FeedbackCard always sends useful:true and no client sends winner_correct. 'Rating source + review_count' would redisplay ratings from Google Shopping via Serper and scraped iHerb pages, which 5.2.2 says needs ToS permission, and Fragrantica is still a rating tier.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:37,200,281 - fragrantica tier; google_shopping via google.serper.dev",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:53-55 - useful:true only",
+    "https://developer.apple.com/app-store/review/guidelines/ 5.2.2 (read 2026-10-22)"
+   ],
+   "fix": "Ship the removals now. Show 'compared n times' (n >= 20) and store-count/freshness lines only. Show k-of-n only from winner_correct answers collected by a new client. Show third-party rating counts only from sources whose terms allow redisplay, with Fragrantica and Google-derived ratings excluded."
+  },
+  {
+   "recommendation": "C5.3 Post-approval share OTA: per-channel builder, wa.me/t.me/x intents, real Copy",
+   "verdict": "weakened",
+   "reason": "The URL intents, openURL with a Share.share fallback and expo-clipboard are all ToS-clean and OTA-safe. But the builder sits on the referral flow: each share grants a Loop 1 Deep Review credit, plus bonus comparisons. That conflicts with the ONE 3-per-day device quota and with the reward text in Privacy §46/§115, and Android always reports sharedAction, so rewards fire on shares that were never sent. The text-only path also has no privacy toggles.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:253-270 - share grants Deep Review credit",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:532-545 - text-only path, no toggles, names unguarded",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:46,89"
+   ],
+   "fix": "Build the per-channel text only from fields the user's show_name/show_result/show_reasons toggles allow, on both paths. Drop any reward wording from the share copy. Settle referral rewards against the 3-per-day rule and the legal text before the OTA."
+  },
+  {
+   "recommendation": "C5.4 Landing OG tags, assetlinks, APP_STORE_URL, dark per-comparison OG route",
+   "verdict": "weakened",
+   "reason": "Static OG, the assetlinks fingerprint (public, not a secret) and APP_STORE_URL are fine. The server-rendered card is risky: drawing retailer product images or brand logos into it re-hosts third-party copyright and contradicts Privacy §6, which says pictures load directly from the retailer. WhatsApp, X and Telegram crawlers cache previews beyond our deletion promise in §9. open.html is noindex, but a per-comparison page without it would expose comparisons to indexing.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:95,115 - images load direct from retailer; deletion of shared links",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:8 - noindex today",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/index.html:10 - og:description 'Coming soon to the App Store.'"
+   ],
+   "fix": "Render a text-and-brand-only card (no retailer or brand images), keep noindex,nofollow on /c/ previews, delete card images when the account is deleted, and add a policy line on link-preview caches. Update the 'Coming soon' og:description at approval."
+  },
+  {
+   "recommendation": "C5.5 Native 1.0.1: react-native-share, view-shot card, IG Stories, Snap Kit",
+   "verdict": "weakened",
+   "reason": "The react-native-share MIT licence suits a closed app, and a public Meta App ID is not a secret. But the IG Stories and Snap Creative Kit apps require the owner to accept the Meta Platform Terms and Snap Kit Developer Terms, and Snap requires app review. A privacy manifest does not cover saving images: that needs NSPhotoLibraryAddUsageDescription. Logging /c/ visits records IP and UA of non-users, and Privacy §5 only covers hosting-provider logs.",
+   "evidence": [
+    "https://developers.facebook.com/docs/instagram-platform/sharing-to-stories/ - App ID required (per R6, read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:91 - website logging limited to hosting provider",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:152-154 - infoPlist has no photo-add purpose string"
+   ],
+   "fix": "Before 1.0.1, have the owner accept the Meta and Snap developer terms and pass Snap review. Add NSPhotoLibraryAddUsageDescription instead of a manifest entry. Measure /c/ conversion as aggregate counts without stored IPs, and update Privacy §5 and the App Privacy label for the new share events."
+  }
+ ],
+ "new_risks": [
+  "Fragrantica is still listed in RATING_TIER_2 (rating_service.py:37). Any rating, provenance or 'review_count' surface could cite a banned source; remove it from the tiers and add a deny filter.",
+  "Referral rewards (bonus comparisons, Deep Review credits, the 7-day bonus expiry) are written into Privacy §46/§115 and referral_service.py, and they contradict the new single 3-compares-per-day device rule. Terms, Privacy and the in-app reward copy need a coordinated rewrite.",
+  "source_click sends the full retailer URL, query string included (ResultsScreen.tsx:588), which breaks the 'no URLs in event payloads' invariant in api.ts:1018-1022. New share and category events need a per-type property schema so the same leak does not repeat.",
+  "The 1.0.1 submission must state the category narrowing, the share targets and any coming-soon UI in Notes for Review (2.3.1(a)), and replace screenshots showing electronics compares (2.3), or it risks rejection.",
+  "Product images are hotlinked from retailers and a search-engine image server (Privacy §6). Any shared image, OG card or Stories background that includes them redistributes third-party copyrighted content without permission (5.2.1/5.2.2).",
+  "The share text and preview cards spread AI verdict text, but the privacy and consent text still names OpenAI (privacy_policy.md:15, terms_of_service.md:53). Shared reasons should come only from the deterministic verdict until the Anthropic legal text and re-consent ship."
+ ],
+ "sources": [
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22): 2.1(a), 2.3, 2.3.1(a), 2.5.2, 2.5.19, 3.2.2(x), 5.1.2(i), 5.2.1, 5.2.2",
+  "https://developers.facebook.com/docs/instagram-platform/sharing-to-stories/ (cited in R6, read 2026-10-22)",
+  "https://reactnative.dev/docs/share and https://reactnative.dev/docs/linking (cited in R6, read 2026-10-22)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html, landing/index.html, landing/ar/index.html, landing/.well-known/assetlinks.json, landing/nginx.conf.template",
+  "Digests A5, R6 (J1) and R12 (J2)"
+ ]
+}

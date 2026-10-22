@@ -1,0 +1,222 @@
+{
+ "topic": "A7: Rate limits, abuse controls and the device-keyed daily quota gap (code at 95cf6f86)",
+ "summary": "The quota digest (quota_profile_onboarding.json) still holds at 95cf6f86. Credit is taken at the gate, refunded only when success is falsy, and the pill counts lifetime use. This delta covers what the pivot needs.\n\n(a) Auth limits come from slowapi decorators keyed on get_remote_address, with in-memory storage. On Railway that address is a rotating edge peer: on 2026-10-02, 322 anonymous calls came from 155 addresses with no 429. So \"5/min per client\" really means about 5/min per random edge bucket, and the counts reset on every deploy. The one control that works is the per-email lockout: 5 failures within 900 s gives a 429 ACCOUNT_LOCKED. It fails open without Redis and covers login and PUT email/password only. Register (3/min), social-login (10/min) and refresh (10/min) have no per-email, per-device or per-account control. ENABLE_PROXY_AWARE_RATELIMIT is unsafe as written because it reads the leftmost X-Forwarded-For entry, which the caller controls. The Procfile passes no --forwarded-allow-ips. #299 (a per-user limiter key) is still open.\n\n(b) Metering is by user id only. Redis keys are usage:daily:{uid}:{UTC date} and usage:monthly:{uid}:{UTC month}. The day resets at 00:00 UTC, which is 03:00 in Bahrain/KSA and 04:00 in the UAE. Free accounts get 3/day and 10/month, with the first 3 lifetime-free comparisons counted inside those caps. Premium gets 10/day and 70/month. A Redis error lets the request through (fail-open). Today the device fingerprint only carries lifetime_comparisons_used over at /register, and at /social-login only when ENABLE_SOCIAL_DEVICE_FINGERPRINT is on. The anon:{fp} gate exists but is dark, and with ENABLE_COMPARE_AUTH_REQUIRED on in prod it is mostly unreachable.\n\n(c) What \"3 per day per device\" needs, none of which exists today:\n- a device-keyed daily counter for signed-in users;\n- the client sending X-Device-Fingerprint on compare calls (it sends it only on register, social sign-in and share);\n- a rule for a missing or invalid header (build 3 would send none);\n- a rule for several accounts on one device (each new account gets a fresh 3/day today);\n- a premium exemption rule;\n- a server-provided reset_at;\n- copy fixes on the pill and Paywall.\n\nThe fingerprint is a random UUID nonce in SecureStore, plus the bundle id and OS build. The server only checks its format, so a script can send a new hash per request. On Android it resets on uninstall. On iOS it usually survives a reinstall, but Expo says not to rely on that. So a device cap only works on honest clients, and the per-user cap plus the sign-in requirement stay the real spend control.\n\n(d) Login and sign-up limits ride decorators that are always on. The flag set (proxy-aware, default limits, endpoint key) is ordered: proxy-aware must be fixed first. The open items are #299, #114, a per-email register/reset limiter and a verified proxy anchor.\n\n(e) The tests that pin these limits are mostly checks that a string is present in the source, plus a few behaviour tests. Changing TIER_LIMITS breaks the legal-parity pins.",
+ "findings": [
+  {
+   "claim": "Auth-route limits: register 3/min, login 5/min with lockout, refresh 10/min, password-reset 3/min, password-recovery 5/min, PUT email 5/min with lockout, PUT password 5/min with lockout, social-login 10/min, DELETE account 1/min, resend-verification 3/min. Logout with an expired bearer spends its own 10/min budget. All are keyed on _rate_limit_key.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:582-583,686-687,750-751,1013-1014,1028-1029,1094-1095,1128-1129,1158-1159,1187-1188,1206-1207",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:858-870 - expired-bearer logout budget"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Lockout is per email hash: failed_login:{sha256[:16]}, threshold 5, window 900 s, armed with SET NX EX then INCR. It fails open without Redis and is applied only on login and PUT email/password. Register, social-login and password-reset have no per-account control.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:47-48,1294-1373",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:695-737,1110-1154"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The lockout can be used to deny service: anyone who knows a victim's email can lock that account for 15 minutes with 5 wrong passwords. No per-IP pre-check stands in the way, because the IP key rotates.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:1300-1330",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:577 - rotating edge addresses"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "With the flag off, the limiter key is get_remote_address and storage is memory://, so counts are per process and reset on every deploy. uvicorn runs without --proxy-headers or --forwarded-allow-ips, so the peer is the Railway edge. The 2026-10-02 log showed 155 rotating peers across 322 calls, so the limits are neither per client nor global, and they are not a spend control.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:52-59,149-156,176-185",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/Procfile:1",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:577"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "ENABLE_PROXY_AWARE_RATELIMIT (read per call) keys on the leftmost valid X-Forwarded-For entry, which a client can forge. The same helper feeds audit_client_ip at the auth audit sites. CLAUDE.md says do not flip it until the trusted hop is verified. The comment at rate_limiter.py:16-18 ('ONE limiter key') is refuted by the 2026-10-02 measurement (#114 triage).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:14-70",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:362",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-10-05-session-72-state/readiness/ISSUE_TRIAGE.md:88"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "ENABLE_DEFAULT_RATE_LIMITS reaches only /health, / and /favicon.ico, because slowapi exempts router-included routes. ENABLE_LIMITER_ENDPOINT_KEY is read once when the Limiter is built (restart needed) and must come after the proxy-aware fix. Neither one changes the login or sign-up limits.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:88-139",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:445,458"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "#299 is still open: no per-user limiter key exists. UI-5 scoped it as a default-OFF flag that keys paid routes on the user id. The U13 guards run as router dependencies before the slowapi check, so a dependency could put the verified user id on request.state for the key function to read.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-10-05-session-72-state/readiness/ISSUE_TRIAGE.md:27",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:52-59 - key_func unchanged",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:573 - guard order"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Tiers: free has lifetime_free 3, monthly 10, daily 3; premium has 10/day and 70/month. Keys are usage:daily:{uid}:{UTC Y-m-d} and usage:monthly:{uid}:{UTC Y-m}, each with a TTL. The day resets at 00:00 UTC, which is 03:00 in Bahrain/KSA/Kuwait/Qatar and 04:00 in the UAE/Oman. /usage/status returns no reset time.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:138-159",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:712-758"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "_atomic_consume does INCRBY on the daily counter, then the monthly counter, with a DECRBY rollback. A Redis error or missing Redis returns None and the request is allowed (unlimited during a Redis outage). The lifetime-free branch bumps the counters with no cap check.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:235-281",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:314-375"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Only user ids are metered. The device binding touches only users.lifetime_comparisons_used: /register inherits the highest value seen on the device, and /social-login does the same only under ENABLE_SOCIAL_DEVICE_FINGERPRINT (default OFF). The daily and monthly Redis counters are per user id, so every extra account on one device gets a fresh 3/day and 10/month.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:499-537,540-579,615-628,1171-1172",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:152-159"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "ENABLE_ANON_USAGE_GATE (default OFF) meters anon:{fp} only for anonymous callers on /text/quick and /image/identify. A missing or invalid fingerprint skips the gate. With ENABLE_COMPARE_AUTH_REQUIRED on in prod, anonymous callers get 401 first, so the gate only matters with that flag off.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:25-135",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1385-1420",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:224-242"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The CLAUDE.md row for #128 ('refund_anon has NO callers') is partly stale. The image route now refunds on its non-delivery exits under metering, but not on its five validation 400s, which come after the anon debit. /text/quick still never refunds.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:415",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:302-318,349-668",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1464-1466"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The client fingerprint is SHA-256 of applicationId, osBuildId and a random UUID nonce kept in SecureStore. Only the nonce is unique per device, since bundle id and OS build are shared. The client sends the header only on register, the Google/Apple sign-in calls and share, never on compare or camera requests.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:17-38",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts:138-154,979-998,1142-1160",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts - no 'fingerprint' match"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Reinstall behaviour: on Android the fingerprint resets on uninstall. On iOS it usually survives a reinstall, but Expo says not to rely on that. The comment at deviceFingerprint.ts:3 ('resets on uninstall') is wrong for iOS.",
+   "evidence": [
+    "https://docs.expo.dev/versions/latest/sdk/securestore/ - persistence on reinstall (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The server checks only the fingerprint's format (^[a-f0-9]{64}$). A script can send a fresh random hash each time, so a device cap stops honest multi-account users but not scripted abuse. The per-user cap plus the sign-in requirement remain the spend control.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:35,478-496",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:22,36-41"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Client quota surfaces: the Home pill shows max(0, total - used)/total 'free', reading only the lifetime counter, hydrated once on mount. On 429 USAGE_LIMIT, Home and Results open the Paywall with the 429 body. PaywallScreen shows daily or monthly copy with 'resets daily/monthly' and no reset time. /usage/status requires sign-in and carries no device-level fields.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/hooks/useComparisonCounter.ts:17-91",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:487-489,617-619,938-978",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/PaywallScreen.tsx:38-124",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/usage_routes.py:9-10"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Most auth-limit tests only check that a string appears in the source. test_security_regression asserts '5/minute', '3/minute' and '1/minute' appear anywhere in auth_routes.py, not on the specific route. Behaviour pins exist for refresh, password-reset, lockout and the flags.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_security_regression.py:425-438",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_password_reset_deep_link.py:322-330",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_429_contract.py:51-58,320",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_rate_limiting_complete.py:98-105",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_m13_01_slowapi_middleware.py:34-159",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_m13_02_proxy_aware_ratelimit.py:36-88",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_limiter_endpoint_key.py:236-571",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_retro_r_auth_fixer_pins.py:65-66",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_retro_w1_9_429.py:78-79,563"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Quota pins tie TIER_LIMITS to the legal text: the free tier (3, 10, 3) is asserted against the ToS, and other tests cover consume, anon gate and device inheritance. Changing the daily or monthly rule means changing the ToS and these tests together.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_legal_disclosure_s77.py:810-813",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_register_benefits_parity_s69.py:4-82",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_m13_37_freemium_atomic_consume.py:103-119",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_m13_03_paid_work_gating.py:97-199",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_auth_routes_invite_fingerprint.py:165-227",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_usage_device_inheritance.py:128"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Apple DeviceCheck reportedly stores 2 bits per device per developer that survive reinstall, and App Attest proves a genuine app. Either would be a stronger device signal, but both need native work (1.0.1) and server calls to Apple. The doc page did not render, so this comes from general knowledge.",
+   "evidence": [
+    "https://developer.apple.com/documentation/devicecheck - page body not rendered (read 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  }
+ ],
+ "recommendations": [
+  "Add one new dark flag (for example ENABLE_DEVICE_DAILY_QUOTA, read per call, default OFF, no change when OFF). Inside consume_comparison_credit, also atomically consume usage:daily:dev:{fp}:{date} with a cap of 3 for free accounts, and refund both counters on the existing refund paths. Reason: today every account on a device gets its own 3/day.",
+  "Fingerprint priority for that gate: the X-Device-Fingerprint header first, then users.device_fingerprint_hash, then a per-user-only fallback with an INFO log. Reason: build 3 never sends the header on compare calls, so refusing a missing header would block every current user.",
+  "Client (merge now, OTA only after approval): send X-Device-Fingerprint on every metered request (text/url compare, camera identify) from the api.ts interceptor. Reason: the device gate cannot see compares without it.",
+  "Turn on ENABLE_SOCIAL_DEVICE_FINGERPRINT before or with the device quota. Reason: Google/Apple accounts otherwise have a NULL device hash, so the stored-hash fallback cannot work for them.",
+  "The owner decides whether premium is exempt from the device cap (premium stays per user at 10/day today), whether the 10/month free cap stays, and whether the reset is 00:00 UTC or GCC local midnight. Reason: these are product and ToS choices, and test_legal_disclosure_s77 pins the ToS to (3, 10, 3).",
+  "Add reset_at and device-level remaining as new fields in /usage/status and in the 429 USAGE_LIMIT body, then render them on the pill and Paywall (1.0.1 or after approval). Reason: the copy says 'resets daily' with no time, and the pill counts the lifetime counter.",
+  "Do #299 as a dark flag: a key function that uses a verified user id (set on request.state by the paid-route guard), falling back to IP. Reason: the IP key rotates per request on Railway.",
+  "Fix the proxy anchor before any IP-keyed flag: run uvicorn with --forwarded-allow-ips set to the trusted edge, or read the hop the trusted edge appended. Do not use the leftmost X-Forwarded-For entry. Reason: the leftmost entry is forgeable, and the same helper writes admin_audit_log IPs.",
+  "Add per-email Redis limits on register, password-reset and resend-verification, alongside the decorators, behind a dark flag. Reason: today only the rotating IP buckets protect sign-up and reset.",
+  "Make the lockout harder to abuse against a victim, for example by requiring a per-email failure count plus a per-client threshold, or a short CAPTCHA-free backoff. Reason: anyone can lock a known email for 15 minutes.",
+  "Replace the string-presence auth-limit tests with per-route decorator pins (an AST check of the decorator directly above each route) and behaviour tests on register and login 429s. Reason: the current pins pass even if the wrong route carries the limit.",
+  "Treat the device cap as protection against honest multi-account use only, and keep the sign-in requirement and the per-user cap as the spend control. Later, consider iOS DeviceCheck or Android Play Integrity (native, 1.0.1) for a server-verifiable device signal. Reason: the fingerprint is client-generated and only format-checked."
+ ],
+ "open_questions": [
+  "Is ENABLE_SOCIAL_DEVICE_FINGERPRINT set in production? CLAUDE.md does not record it as SET, and the Railway config was not read.",
+  "Premium and the device cap: exempt, a separate premium device cap, or the same 3/day?",
+  "Daily reset at 00:00 UTC (current) or at GCC local midnight (Asia/Riyadh or Asia/Dubai)?",
+  "Does the 10/month free cap and the lifetime-free-3 rule survive the '3 per day' ask? Either way the ToS and the legal parity tests change.",
+  "Which header or hop does Railway's edge append that can be trusted for the client IP? Unverified without measuring live traffic.",
+  "Does Supabase GoTrue rate-limit sign-up and password reset on its side for this project? Not checked: production configuration was off-limits."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/quota_profile_onboarding.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 57, 171, 361-363, 415, 437, 445, 451, 458, 573, 577, 694)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/url_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/usage_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/021_device_fingerprint_users.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/Procfile",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-10-05-session-72-state/readiness/ISSUE_TRIAGE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/usageService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/hooks/useComparisonCounter.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/PaywallScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/ (test_security_regression.py, test_password_reset_deep_link.py, test_429_contract.py, test_rate_limiting_complete.py, test_m13_01_slowapi_middleware.py, test_m13_02_proxy_aware_ratelimit.py, test_limiter_endpoint_key.py, test_retro_r_auth_fixer_pins.py, test_retro_w1_9_429.py, test_legal_disclosure_s77.py, test_register_benefits_parity_s69.py, test_m13_37_freemium_atomic_consume.py, test_m13_03_paid_work_gating.py, test_auth_routes_invite_fingerprint.py, test_usage_device_inheritance.py, conftest.py)",
+  "https://docs.expo.dev/versions/latest/sdk/securestore/ (read 2026-10-22)",
+  "https://developer.apple.com/documentation/devicecheck (read 2026-10-22, body not rendered)"
+ ]
+}

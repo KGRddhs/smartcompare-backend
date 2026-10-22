@@ -1,0 +1,236 @@
+{
+ "topic": "A6: App speed and size: startup path, bundle, compare client path, candidate speedups",
+ "summary": "The ux_surfaces_latency digest was about the camera wait, the consent sheet, feedback and the Results page. It said nothing about startup or bundle size, so this report starts from the code at 95cf6f86 and from the M22 mobile report, which is the measured source behind the M23 figures. Nothing in the digest turned out to be wrong. One change since: commit f7d85e71 (PR #362) is now on main.\n\nStartup is already non-blocking on the network. The splash waits on six things, one after another: Sentry init, evaluation of the whole eagerly imported module graph, runtime loading of 6 TTF fonts, a run of storage reads (AsyncStorage for language, i18n changeLanguage, SecureStore for the stable id, AsyncStorage for the saved user, SecureStore for the token), and a splash floor of 700 ms minimum and 1500 ms maximum. The auth refresh runs in the background. expo-updates uses its defaults (check on load, timeout 0), so it never blocks launch. The Arabic RTL bootstrap reloads the bundle once on the first launch where the direction changes. That doubles that one cold start.\n\nComparisons are client-bound only at the edges. SSE is OFF, so every compare is one REST GET with a 35 s timeout. Cold backend time is 24.5 to 31.5 s. During that wait the user sees a stage checklist driven by a timer, not by real progress. Once a result arrives, the client adds a 1.2 s minimum-display floor (it only costs time when the result came back in under 1.2 s), then the modal transition, then an 800 ms reveal delay and a spring of about 420 ms. Today this is noise. Once the owned knowledge base serves compares in under 1 s, these fixed delays of roughly 2.5 s become most of what the user waits for.\n\nBundle (M22, measured): iOS Hermes bytecode 5,299,992 B and Android 8,285,250 B before B1. B1 removed 1,749,282 B and B4 removed 469,608 B. Still open at HEAD:\n- 198,567 B of Sentry replay/feedback code that nothing uses (metro.config.js has no stub);\n- inlineRequires is off and all screens are imported statically, including markdown at 80,564 B used only by LegalScreen;\n- the three Geist fonts ship twice (382,744 B).\n\nexpo-image is NOT installed. Product images use the plain React Native Image, with Android-only downsampling and no prefetch. History refetches 50 rows on every focus with no cache. Home refetches referral status and /health on every focus.\n\nRanked speedups:\n1. Fast-hit skip for the Home 1.2 s floor and a shorter Results reveal (OTA).\n2. Prefetch product images during the floor (OTA).\n3. Stale-while-revalidate for History and Home (OTA).\n4. Sentry stub in metro.config.js (OTA).\n5. Lazy-load the rarely used screens (OTA).\n6. Run the boot storage reads in parallel (OTA).\n7. Turn on SSE progressive paint (OTA, but blocked on a certificate-pinning device check).\n8. Native, in 1.0.1: expo-image, and embedding Cairo natively instead of loading fonts at runtime.\n\nJest baseline to keep green: 3,694 passed in one process, with only the 4 nativeBundle.w37 drift tests failing.",
+ "findings": [
+  {
+   "claim": "Boot order: sentryBootstrap is imported first, then App's whole static graph is evaluated. That includes api.ts setupCertificatePinning() and the module-level configureGoogleSignIn().",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/index.ts:6 - sentryBootstrap first",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentry.ts:263-288 - Sentry.init, tracesSampleRate 0.1, no replay integration",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:27 - setupCertificatePinning() in module body",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:37-65,96 - 20 screens imported statically; configureGoogleSignIn at module level"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The splash is held until three things are done: fonts loaded, init() finished, and the splash floor. init() awaits, one after another: AsyncStorage language, i18n.changeLanguage, bootstrapRtl, SecureStore stable id, then initializeAuth (AsyncStorage user plus SecureStore token). The splash floor is 700 ms minimum and 1500 ms maximum.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:198-226 - serial awaits",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:345-348 - gate on !fontsLoaded || isLoading || showSplash",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/SplashScreen.tsx:28-29,73-84 - MIN 700 / MAX 1500",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/featureBucket.ts:70-80 - SecureStore read"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Auth verify and refresh does NOT block first render. initializeAuth resolves from the cached user and token, then fires runBootRefresh without waiting (no deadline). Push-token registration also fires and is not awaited, on every authed launch.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts:769-791 - optimistic boot, void runBootRefresh",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts:736-753 - runBootRefresh",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:239 - tryRegisterPushToken each authed boot"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The RTL bootstrap calls Updates.reloadAsync() once when the layout direction changes, for example on the first Arabic launch. That one cold start runs the whole boot twice. A persisted flag guards against a reload loop.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/rtlBootstrap.ts:42-61"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "expo-updates has no checkAutomatically or fallbackToCacheTimeout override, so the defaults apply: check ON_LOAD, timeout 0. That means a non-blocking check, with any update applied on the next launch. runtimeVersion policy is appVersion, so every native change needs 1.0.1.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:272-277 - runtimeVersion appVersion; updates.url only",
+    "https://docs.expo.dev/versions/latest/sdk/updates/ - defaults ON_LOAD / 0, applies next restart (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Fonts: useAppFonts loads 6 TTFs at runtime and gates first render. The 3 Geist TTFs are ALSO embedded natively by the expo-font config plugin, so they ship twice (382,744 B per M22). Cairo comes only from the JS assets (B4 per-weight subpaths).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts:25-55",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:192-200 - expo-font plugin embeds Geist",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-mobile.md:106-108 - asset payload, Geist twice"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Compare client path: the SSE flag is false, so streamComparison issues ONE axios GET /api/v1/text/compare with COMPARE_TIMEOUT_MS 35000. The SSE branch, with its 60 s STREAM_WATCHDOG_MS watchdog and a single REST fallback, is unreachable. onStatus and onSpecs never fire, so the loader shows no real progress.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:48-52 - 35 s / 120 s / 60 s",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:677-709,744-751 - REST path, flag gate",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:761-775,927-943 - watchdog, fallback once, sawTerminal latch",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:33-52 - flip only after the expo/fetch pinning device check"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Perceived latency is mostly the backend (cold 24.5-31.5 s, capped at 30 s). During that wait the user sees a stage checklist driven by a timer: checks land at 1.2/4.2/12/19.5/26 s, with captions escalating at 8 and 18 s. One stage label claims 'Cross-checking 25+ retailers', which also belongs to the fabricated-numbers topic (Q5).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx:102-128,146-170",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:1149-1160 - Home loader, counter hidden"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Fixed client delays after a result arrives: the Home 1.2 s floor (it only costs time when the result came in under 1.2 s), the modal transition, then the Results reveal at 800 ms plus a spring of about 420 ms, before 'user_tappable'. For a cache or KB hit these add about 2.4 s or more of fixed wait. The History path already has a fast-hit skip (400 ms floor, skipped below 300 ms) that the Home path lacks.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:191-212 - MIN_LOADING_MS 1200",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:431-439 - await increment() then floor navigate",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:460-474 - 800 ms reveal + 420 ms",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:139-141,235-257 - camera 1200, history 400/300"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Wall-time instrumentation already exists. The tracker marks ttfb, first_card_visible, ready_celebration and user_tappable, and reports one Sentry 'comparison_wall_time' info event per compare. It can serve as the before/after metric (not read, since Sentry tools are off-limits).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/lib/performance/wallTimeInstrumentation.ts:11-26,97-111",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:392-399"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Bundle sizes: iOS hbc 5,299,992 B and Android 8,285,250 B (M22; which platform each label belongs to is still unreconciled). B1 (lucide babel rewrite) took the bundle from 8,259,431 to 6,510,149 B (-1,749,282 B; modules 3,832 to 2,192). B4 cut the Cairo asset payload from 1,143,476 to 673,868 B (-469,608 B). Largest remaining: react-native 686,585 B, reanimated 672,359 B, all @sentry 823,858 B, app src 424,968 B (pre-B1 attribution).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-mobile.md:92-108",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/CONTEXT_SESSION_LOG.md:192",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/babel.config.js:44-181 - per-icon rewrite, skipped under test"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Still open at HEAD: the 198,567 B of dead Sentry browser code (replay 132,946 + feedback 50,195 + replay-canvas 15,426). metro.config.js changes only cacheVersion and has no resolveRequest stub.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js:9-17 - only cacheVersion deviation",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-mobile.md:102,112,520"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "inlineRequires is not enabled, and all screens are imported eagerly, so module factories run at cold start. markdown-it plus react-native-markdown-display (80,564 B) is used only by LegalScreen. Expo docs say inlineRequires is safe only together with tree shaking, because it can reorder side effects. That would endanger the Sentry-first invariant.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js:7-17",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:56 - LegalScreen static import",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentryBootstrap.ts:18-21 - order invariant",
+    "https://docs.expo.dev/guides/tree-shaking/ - inlineRequires caveat (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "expo-image is not a dependency and is not used. Product images go through the React Native core Image in ProductImage, loaded from remote image URLs with an onError placeholder. resizeMethod='resize' downsamples on Android only, so iOS decodes the full-resolution bitmap. There is no prefetch and no explicit cache policy.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json:15-58 - no expo-image",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:24,99-113"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "expo-image would give disk caching by default (memory-disk optional), prefetch(), blurhash/thumbhash placeholders and allowDownscaling (default true). It is a native module, so it needs a new binary (1.0.1 under the appVersion runtime policy), not an OTA.",
+   "evidence": [
+    "https://docs.expo.dev/versions/latest/sdk/image/ - cachePolicy, prefetch, allowDownscaling (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:272-274"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "History refetches up to 50 rows with GET /comparisons/history on EVERY focus (the server limits this to 30/min). It uses no cache, the default 120 s axios timeout, and an untuned SectionList (no initialNumToRender or windowSize). Results opens as a root modal, so returning from a result triggers another refetch.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx:690-723",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx:1004-1011 - SectionList props",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/history_routes.py:87-93 - 30/minute, le=50",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:31,444-450"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Home fetch pattern:\n- getReferralStatus on every focus.\n- /health on every focus (deferred via InteractionManager; the result is discarded).\n- Usage status on mount.\n- Three editorial fetches on mount (smart-pick, savings, trending), with no client cache.\n- History's header also fetches monthly stats and recent decisions once on mount.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:160-184,269-286",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/hooks/useComparisonCounter.ts:16-40",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx:69-71,301-303,357-359",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx:147-158"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The camera path downscales both photos to 1024 px wide JPEG (quality 0.8), one after the other, before a single multipart upload with a 120 s AbortController timeout. 1024 px is within Claude vision's recommended size, so the pivot needs no client resize change.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:264-279,300"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Jest baseline: the latest measured full run in one process gave 3,694 passed, with only the 4 nativeBundle.w37 junction-drift tests (d5, k2, k4, k5) failing. That is the accepted base for the client gate. 95cf6f86 has 385 *.test.ts(x) files and 17 .snap files. Older gates: 2,729/278 suites at ece0fbbe; 328 suites/44 snapshots at W4-14. f7d85e71 (PR #362) now shows in SmartCompareApp's git log, whereas the digest recorded it as not on main.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/harness_conventions.json:458,480 - 3694 passed, 4 w37 nodes",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:633,711 - older suite figures",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/config/nativeBundle.w37.test.ts - drift suite",
+    "git log -3 -- SmartCompareApp at 95cf6f86 - f7d85e71 present"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "1 (largest visible effect once the KB serves fast). OTA. Give the Home floor a fast-hit skip like A17's History path (skip below ~300 ms, otherwise a ~400 ms floor), and cut the 800 ms reveal delay. Files: HomeScreen.tsx:191-212 and ResultsScreen.tsx:460-474. Risk: low. Floor pins and snapshot tests need deliberate updates, and the wall-time tags should be checked before and after.",
+  "2. OTA. Prefetch both products' image_url with the core Image.prefetch between the result arriving and navigation. Files: HomeScreen.tsx:431-439 (alongside navigateToResultsWithFloor) and ResultsScreen.tsx:300-330 for camera. Risk: low; it is best-effort and must be bounded so the floor never waits on it.",
+  "3. OTA. Stale-while-revalidate for History: keep the last list in memory or AsyncStorage, render it immediately on focus, then refetch. Also throttle the focus refetch (for example once per 30 s unless a compare or delete happened). Drop the /health ping on every focus and fetch referral status only on mount. Files: HistoryScreen.tsx:690-723, HomeScreen.tsx:160-184,269-286. Risk: low to medium. Keep the A12 filter-ref semantics and the deleted-ids pruning.",
+  "4. OTA (JS-only bundle change). Add a Metro resolveRequest stub for @sentry-internal/replay, replay-canvas and feedback (-198,567 B). File: metro.config.js; the cacheVersion hash already forces cache invalidation. Risk: low. The exit gate is a before/after `expo export` byte diff, and Sentry must still capture events on a device.",
+  "5. OTA. Lazy-load the rarely used routes (Legal with markdown, Paywall, ReferralLanding, InviteeQuiz, ScanCamera, both onboarding hosts) via React Navigation getComponent or require inside the screen factory. File: App.tsx:37-73,389-492. Risk: medium. App.distinctRouteNames and the navigation source-scanning suites are known collision points. Do NOT turn on global inlineRequires: it can reorder side effects and break the Sentry-first invariant at sentryBootstrap.ts:18-21.",
+  "6. OTA. Run the independent boot reads in parallel: getSavedLanguage, getStableId, getSavedUser and getToken via Promise.all, then apply language, RTL and auth. File: App.tsx:198-226. Risk: low; the gain is small (tens of ms, inferred). bootstrapRtl must still run before render, and the B5 finally-release must stay.",
+  "7. OTA constant, but GATED. Flip ENABLE_EXPO_FETCH_SSE_DEFAULT only after the device check shows certificate pinning rejects a mismatched cert on both platforms under expo/fetch. Then wire onFirstPaint, onSpecs and onPrices into a progressive Home or Results view so the checklist reflects real progress. Files: features.ts:52, api.ts:744-943, HomeScreen.tsx:416-425. Risk: high (pinning bypass, double-compare latch). Do it after review approval.",
+  "8. Native, 1.0.1. Add expo-image to ProductImage: memory-disk cache, iOS downscaling, recyclingKey, prefetch. File: ProductImage.tsx:99-113. Risk: medium; needs a new binary and new jest mocks with plain (non-virtual) jest.mock.",
+  "9. Native, 1.0.1. Embed the Cairo 400/600/700 weights through the expo-font plugin, then drop the runtime useFonts gate, or keep it only for OTA-added fonts. This removes the font wait before first render and the double-shipped Geist (382,744 B). Files: app.json:192-200, fonts.ts:43-55. Risk: medium. iOS and Android resolve embedded font family names differently, so verify Arabic rendering on a device.",
+  "10. OTA, design call. Consider lowering the splash minimum from 700 ms (SplashScreen.tsx:28) once boot is measured. Leave expo-updates at its non-blocking defaults; never set fallbackToCacheTimeout above 0.",
+  "11. OTA, minor. Downscale the two camera photos in parallel (api.ts:264-279). The bigger camera win is server-side: split identification from compare and add an image stream route, per the digest. Keep 1024 px, which fits Claude vision input guidance.",
+  "Gate for any client unit: the full jest suite in one process must stay at the 3,694-passed base, with only nativeBundle.w37 d5/k2/k4/k5 failing; no jest -u and no .snap files in the diff. Also run tsc 5.9.3 and eslint, and do a before/after `npx expo export` byte diff for any bundle claim."
+ ],
+ "open_questions": [
+  "The Expo tree-shaking guide (read 2026-10-22) says tree shaking is 'Enabled by default in SDK 54 and later'. The measured B1/M22 exports on expo ~54.0.33 kept the whole lucide barrel, and fonts.ts:14 says the tree shaker is absent. Is it disabled, production-only and unexercised, or does the doc describe a later SDK? Re-measure with `npx expo export` before relying on it.",
+  "Which platform the 5,299,992 B and 8,285,250 B hbc figures belong to is unreconciled (CONTEXT_SESSION_LOG.md:192). What is the current post-B1/B4 export size per platform at 95cf6f86? It was not re-measured here because builds and exports are out of scope for this read-only task.",
+  "Real distribution of comparison_wall_time (ttfb, user_tappable) in Sentry for build 1.0.0 (3)? Not read: Sentry tools are prohibited here.",
+  "Can embedded Geist be referenced by the same family names on both platforms, so the runtime useFonts entry for Geist could be dropped by OTA in build 3? This needs a device check.",
+  "Will the Anthropic/KB pivot change result payload size (more fields, sources)? That would affect history row payloads and the 50-row focus refetch."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/harness_conventions.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-mobile.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/CONTEXT_SESSION_LOG.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/specs/2026-09-23/W3_9_UNIT_SPEC.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 633, 674, 708-712)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/index.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/babel.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.cacheVersion.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/eas.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentryBootstrap.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentry.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/rtlBootstrap.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/index.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/featureBucket.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/SplashScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/hooks/useComparisonCounter.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/lib/performance/wallTimeInstrumentation.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/history_routes.py",
+  "https://docs.expo.dev/versions/latest/sdk/updates/ (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/image/ (read 2026-10-22)",
+  "https://docs.expo.dev/guides/customizing-metro/ (read 2026-10-22)",
+  "https://docs.expo.dev/guides/tree-shaking/ (read 2026-10-22)"
+ ]
+}

@@ -1,0 +1,221 @@
+{
+ "topic": "R11 Image finding and product identification: options, cost, accuracy, recommended knowledge-base cascade",
+ "summary": "Answer: use Claude Haiku 5.5 vision to identify the product and Sonnet 5.5 only when confidence is low. Then take the image from the owned base (an identity-keyed image table with provenance), then the retailer's JSON-LD Product.image from the PDP we already fetch, then the free Serper Knowledge Graph image, then paid Serper Images. Every candidate gets one cheap Haiku yes/no check by URL. The Anthropic web_search tool returns no image fields (only url, title, page_age, encrypted_content). web_fetch returns only text/plain or PDF and refuses image content types, so neither tool is an image source. web_search is useful only to discover a retailer PDP URL, at $0.01 per search.\n\nOptions (source | returns | $ per 1,000 | licence | status):\n- Claude Haiku 5.5 vision | identity JSON | ~0.70 per camera compare | own photo | high-res tier, $0.10/$0.50 per MTok.\n- Sonnet 5.5 vision | identity | ~13 | - | $2/$10 per MTok.\n- Retailer JSON-LD/og:image | image URL | 0 marginal | retailer's, hotlink with provenance | 79.1% present on 86 cached PDPs.\n- Serper KG/organic piggyback | URL | 0 | Google-sourced, third-party | no measured rate.\n- Serper Images | URL | ~0.30-1.00 (third-party figure) | third-party | live, 500/day budget.\n- Brave Search | images included | 5 | third-party | live.\n- SerpApi | Google Images | 25 at Starter | third-party | live.\n- Google CSE | - | 5 after 100/day free | - | closed to new customers, ends 2027-01-01.\n- Bing | - | - | - | retired 2025-08-11.\n- DuckDuckGo | no API; scraping rejected.\n- Unsplash/Wikimedia | stock or free media, hotlink plus attribution | 0 | near-zero coverage of exact SKUs.\n- Anthropic web_search | page refs | 10 plus tokens | - | no images.\n\nCost per compare (2 products, inferred from list prices): base hit $0. JSON-LD path plus 2 Haiku checks ~$0.0003. Serper fallback ~$0.002. web_search discovery worst case ~$0.022. A camera compare adds ~$0.0007 with Haiku (~$0.013 if it escalates to Sonnet).\n\nHit rate: JSON-LD 79.1% when a PDP is fetched (measured in the repo docstring). But S78 page fetches missed 23 of 30 price races, so today's effective rate is low. The base starts at 0% (no persistent image store). Claude vs GPT-4o on product ID: no published benchmark. Roboflow (third-party, 2026-10-13) puts Haiku 5.5 at identification 83.3-86.5% and OCR 61.2-65.3%. No Arabic-label benchmark exists, so an in-house gold set is required.\n\nDelta vs S80: B3 vision v2 merged (95cf6f86). B7 has not landed (0 hits for ENABLE_IMAGE_PIPELINE_V2). The JSON-LD image is still dropped at price_service.py:13952-13961. The backend validator still accepts http while ATS blocks it.",
+ "findings": [
+  {
+   "claim": "Claude image cost is ceil(w/28)*ceil(h/28) visual tokens. Claude 4.7 and later models (so Haiku 5.5 and Sonnet 5.5) are on the high-res tier: 2,576 px long edge, 4,784 visual tokens max. Limits are 8000x8000 px and 10 MB base64 per image. Formats are JPEG/PNG/GIF/WebP. Accuracy drops on rotated, low-quality or <200 px images. Claude does not read image metadata.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/vision.md - Resolution and token cost table; Limitations; FAQ (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The client resizes every camera image to 1024 px wide JPEG q0.8. A 3:4 portrait shot (1024x1365) therefore costs about 37x49 = 1,813 visual tokens, about $0.00018 on Haiku 5.5 and about $0.0036 on Sonnet 5.5 per image.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:269-272 - resize width 1024, compress 0.8",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - Haiku 5.5 $0.10/$0.50 per MTok (<=100K prompt), Sonnet 5.5 $2/$10 (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Estimated camera identify cost is about $0.0007 with Haiku 5.5 (2 images plus about 1K prompt tokens in, about 400 out) and about $0.013 with Sonnet 5.5. Haiku 5.5 runs adaptive thinking by default and its tokenizer counts about 30% more tokens per text. Thinking should be disabled or effort set low to cap output tokens. A refusal stop_reason has no server fallback.",
+   "evidence": [
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:87 - Haiku 5.5 thinking, tokenizer, refusal",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:51 - current vision model gpt-4o-mini"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "There is no published Claude vs GPT-4o benchmark on product or packaging identification, and none on Arabic labels. Roboflow Vision Evals (third-party, updated 2026-10-13) score Haiku 5.5 at 69.6% overall (#22/63), identification 83.3% low / 86.5% high effort, OCR 61.2% / 65.3%, with an average of 11.01 s per sample.",
+   "evidence": [
+    "https://playground.roboflow.com/models/anthropic/claude-haiku-5-5 - scores (read 2026-10-22)",
+    "https://huggingface.co/papers/2502.14949 - KITAB-Bench Arabic OCR, predates Haiku 5.5"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Anthropic web_search results carry only url, title, page_age and encrypted_content, with no image or thumbnail field. Price is $10 per 1,000 searches plus tokens for the results. user_location takes an ISO country code, and allowed_domains/blocked_domains are supported.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - Search results; Usage and pricing (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic web_fetch returns a text/plain document (PDFs as base64). It returns unsupported_content_type for anything other than text, HTML or PDF, so it cannot fetch an image. It does not render JavaScript. It can fetch only URLs already present in the conversation. It refuses URLs blocked by robots.txt (url_not_allowed). It is free beyond tokens (about 2,500 tokens per 10 kB page). The docs do not say whether og:image or JSON-LD script content survives the text conversion.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool.md - How web fetch works; Errors; URL validation; pricing (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Claude vision accepts an image by URL. That makes a cheap identity check possible: pass the candidate image URL and ask whether it shows brand+name+size. A 1000x1000 image is 1,296 tokens, about $0.00013 on Haiku 5.5.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/vision.md - URL-based image example; 1000x1000 = 1,296 tokens (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The current image cascade is: Tier 1.5 page-scrape piggyback, Tier 1.5b free Knowledge Graph/organic image from the unified Serper payload, Tier 1 Serper Images (500/day budget plus the lifetime ceiling), Tier 3 GPT extraction, then None. Nothing is persisted.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:214-287 - orchestrator",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:75-121 - KG first, then organic, then images pack",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:23-33 - SERPER_IMAGE_DAILY_BUDGET default 500",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/serper_service.py:1201-1216 - lifetime budget gate"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Retailer JSON-LD Product.image was present on 79.1% of 86 cached PDPs. The image is captured as cand['image'] but dropped when extract_price_from_html builds its reduced result dict, so Tier 1.5 has no live producer. This matches R0, and nothing has changed at 95cf6f86.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:4598-4601 - image 79.1% on 86 PDPs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10822,10964 - _jsonld_image_urls / cand['image']",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:13952-13961 - reduced dict without image",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/cand_image_survival.json - answer NO"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The JSON-LD hit rate in production is bounded by page-fetch success. S80 measured Serper legs at 6-13 s, a 12 s unified-search timeout and 23 of 30 price-race misses. The image task has a 5 s cap inside the same gather.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json - summary IMAGES 1-7",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5785 - image_url 5.0 s"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "B7 IMAGE-PIPELINE-V2 has not landed. ENABLE_IMAGE_PIPELINE_V2 has 0 occurrences in app/, and the HEAD is the B3 vision-v2 merge.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2 - grep ENABLE_IMAGE_PIPELINE_V2 app = 0 hits; git log -1 = 95cf6f86 Merge #365 s80-b3-vision-identity-v2"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The https/ATS contract is mismatched. The backend validator accepts http:// URLs. The client checks only for a non-empty string. app.json sets no ATS exception, so default ATS blocks http images and they fall to the onError placeholder.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:52-57 - http or https accepted",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:59-62,103 - isUsableUrl, onError",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:152-154 - infoPlist has no NSAppTransportSecurity"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Google Custom Search JSON API (web and image) is closed to new customers and is discontinued on 2027-01-01. The pricing was 100 free queries per day, then $5 per 1,000, up to 10k per day. It is not a viable option.",
+   "evidence": [
+    "https://developers.google.com/custom-search/v1/overview - closed to new customers; 2027-01-01 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Bing Search APIs, including Image Search, were retired on 2025-08-11. The replacement, Grounding with Bing in Azure AI Agents, returns model output, not raw image URLs.",
+   "evidence": [
+    "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement - retirement notice (search 2026-10-22)",
+    "https://www.theregister.com/2025/05/15/bing_search_apis_retired/ - image endpoint included"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Paid image search prices: Brave Search API about $5 per 1,000 with image results included and $5 of free credit a month (official dashboard per search summary; tiers conflict). SerpApi Starter $25 per 1,000. Serper packs about $0.30-1.00 per 1,000 with 6-month expiry (third-party; the official page is behind login). DuckDuckGo has no official API, and its unofficial endpoints would be scraping, so it is rejected.",
+   "evidence": [
+    "https://api-dashboard.search.brave.com/documentation/pricing - $5/1K (search 2026-10-22)",
+    "https://costbench.com/software/web-scraping/serpapi/ - SerpApi plans (search 2026-10-22)",
+    "https://coldiq.com/blog/serper-pricing - Serper packs (search 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Unsplash requires hotlinking the returned URLs, attribution to the photographer and Unsplash, and download-event tracking, and it restricts ML use. Commons accepts only free media. Both hold stock or free photos, not exact retail SKUs, so their coverage of GCC fragrance SKUs is near zero.",
+   "evidence": [
+    "https://unsplash.com/api-terms - sections 3, 6, 9, 12 (read 2026-10-22)",
+    "https://commons.wikimedia.org/wiki/Commons:Packaging - free media only (read 2026-10-22, partial)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "App Store Guideline 5.2.2 (S79 L4-01) favours images taken from the retailer page the price came from, or a placeholder. FragranceX images need a CJ licence first. Search-engine images (KG or Serper) are the weaker posture, and stored images should carry their provenance.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json - L4-01, 5.2.2, CJ licence"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Open-source dedupe options: imagehash (pHash/dHash; BSD-2-Clause, about 3.9k stars, last commit 2026-10-12), light enough for request-path or off-clock use. open_clip (MIT-style text under a NOASSERTION SPDX tag, about 14.2k stars, pushed 2026-09-30) needs torch, so off-clock only; pretrained weights carry their own terms. imagededup (Apache-2.0, about 5.7k stars, last push 2025-08-15). faiss (MIT, about 41k stars) for nearest-neighbour search.",
+   "evidence": [
+    "https://api.github.com/repos/JohannesBuchner/imagehash - BSD-2-Clause 3881 stars, commit 2026-10-12 (read 2026-10-22)",
+    "https://api.github.com/repos/mlfoundations/open_clip - 14213 stars, pushed 2026-09-30; LICENSE MIT-style text",
+    "https://api.github.com/repos/idealo/imagededup - Apache-2.0 5680, 2025-08-15",
+    "https://api.github.com/repos/facebookresearch/faiss - MIT 41189"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Recommended cost per 2-product compare, priced at list prices: base hit $0; JSON-LD path plus 2 Haiku URL checks about $0.0003; Serper Images fallback about $0.002; Anthropic web_search PDP discovery about $0.022 (2 x ($0.01 + about 10K Haiku tokens)). A camera compare adds about $0.0007 with Haiku; at an assumed 20% Sonnet escalation rate, add about $0.0026.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - token prices (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - $10/1,000"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Cascade for the knowledge base, step 1: identify with Haiku 5.5. Use the B3 strict schema ported to Claude structured output, image-before-text order, thinking off or effort low, and a bounded wait. Escalate to Sonnet 5.5 only when confidence is low or the label is Arabic and Haiku abstains. Reason: about 20x cheaper per call. Gate behind ENABLE_ANTHROPIC_PROVIDER, post-approval (consent and privacy text change).",
+  "Step 2: look up an identity-keyed image table (identity_key, image_url https-only, source_page_url, source_host, method jsonld|og|kg|serper, width, height, phash, verified_by, verified_at). Serve hits at $0. Reason: today there is no persistent image store, so every compare pays again. This also covers PLAN B7's 24 h cache; make it longer-lived because it has provenance.",
+  "Step 3: fix the JSON-LD drop. Carry cand['image'][0] through the reduced dict at price_service.py:13952-13961 as image_url, under the B7 flag, and re-record the test_wide_candidate_dict pin deliberately. Reason: 79.1% of PDPs carry the image. It costs $0 and is the strongest 5.2.2 posture.",
+  "Step 4: fall back to the free Serper KG/organic image, then Serper Images with its own short timeout. Do not add Brave or SerpApi. Reason: Serper is already integrated and budgeted, and it is the cheapest per 1,000.",
+  "Step 5: validate every non-JSON-LD candidate. Run a Haiku vision yes/no check by URL (about $0.00013) plus the KG title/type check, and reject images under 200 px or with a non-image content type. Reason: neither search source has a measured accuracy, and Claude errs on images under 200 px.",
+  "Use Anthropic web_search only to discover a GCC retailer PDP URL (allowed_domains = the merchant registry, user_location country BH). Then fetch that page ourselves through the existing robots-fail-closed fetcher and parse the JSON-LD. Do not rely on web_fetch for the image. Reason: neither tool returns image fields, and web_fetch converts pages to text.",
+  "Make the backend reject http:// in _is_valid_image_url when the flag is on. Reason: default ATS blocks http on iOS, so those URLs only produce the error placeholder.",
+  "Pick the canonical image off-clock with imagehash pHash (Hamming distance <= 8) to collapse duplicates across retailers. Prefer the brand domain, then the largest retailer image of at least 600 px. Keep open_clip off the request path (torch weight on Railway).",
+  "Build a 100-photo gold set of GCC fragrance packaging (about 30% Arabic labels) and score brand+name+size exact match for Haiku 5.5, Sonnet 5.5 and the current gpt-4o-mini. Reason: no published benchmark covers this, and the expected-accuracy numbers stay unverified until it runs.",
+  "Log tier and provenance per image in the B1 telemetry (image_present, method). Reason: it turns the expected hit rate into a measured one after the flip.",
+  "Do not use Google CSE (closed, ends 2027-01-01), Bing (retired), DuckDuckGo (no API; scraping), Unsplash or Wikimedia (no SKU coverage; attribution duties), or FragranceX images without a CJ licence."
+ ],
+ "open_questions": [
+  "Does web_fetch's text conversion keep JSON-LD script or og:image content? The docs are silent; one paid test call would answer it and needs owner approval.",
+  "Does Haiku 5.5 support web_search dynamic filtering, or does it need allowed_callers ['direct']? Check capabilities.server_tools in the Models API.",
+  "Is BH an accepted user_location country code for Anthropic web_search?",
+  "Legal: hotlink retailer CDN images with provenance or re-host them? Re-hosting raises copyright and 5.2.2 exposure, while hotlinking risks broken links and hotlink protection. This needs an owner and counsel ruling.",
+  "What are the real hit rates of the Serper KG image and of Serper Images first results for GCC fragrance names? Neither has been measured.",
+  "How long is VISION_PROMPT_V2 in tokens? It is needed to firm up the identify cost estimate.",
+  "What is SERPER_IMAGE_DAILY_BUDGET actually set to in production? It is UNKNOWN per PLAN R-A15 and readable by name only."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/serper_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/scrapers_health.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/cand_image_survival.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/tool-use-concepts.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/model-migration.md",
+  "https://platform.claude.com/docs/en/build-with-claude/vision.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22)",
+  "https://developers.google.com/custom-search/v1/overview (read 2026-10-22)",
+  "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement (search 2026-10-22)",
+  "https://www.theregister.com/2025/05/15/bing_search_apis_retired/ (search 2026-10-22)",
+  "https://api-dashboard.search.brave.com/documentation/pricing (search 2026-10-22)",
+  "https://costbench.com/software/web-scraping/serpapi/ (search 2026-10-22)",
+  "https://coldiq.com/blog/serper-pricing (search 2026-10-22)",
+  "https://playground.roboflow.com/models/anthropic/claude-haiku-5-5 (read 2026-10-22)",
+  "https://unsplash.com/api-terms (read 2026-10-22)",
+  "https://commons.wikimedia.org/wiki/Commons:Packaging (read 2026-10-22, partial)",
+  "https://api.github.com/repos/JohannesBuchner/imagehash (read 2026-10-22)",
+  "https://api.github.com/repos/mlfoundations/open_clip (read 2026-10-22)",
+  "https://api.github.com/repos/idealo/imagededup (read 2026-10-22)",
+  "https://api.github.com/repos/facebookresearch/faiss (read 2026-10-22)"
+ ]
+}

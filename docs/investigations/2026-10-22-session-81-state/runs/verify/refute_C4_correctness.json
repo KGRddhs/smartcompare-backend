@@ -1,0 +1,110 @@
+{
+ "cluster": "C4: Device quota, auth rate limits, zero-cost refusal (digests A7, R5)",
+ "lens": "correctness and implementability at 95cf6f86",
+ "verdicts": [
+  {
+   "recommendation": "C4.1 Device daily quota inside consume_comparison_credit, refunds, fallback ladder",
+   "verdict": "weakened",
+   "reason": "consume_comparison_credit(user_id, access_token) never sees the request, so all 5 callers must pass the header. The lifetime-free branch at :360 returns before any cap, so a device check placed with _atomic_consume misses fresh accounts. Refunds call refund_comparison_credit(user_id) with no consumed_keys, and _refund_credit_sync only knows daily/monthly. users.device_fingerprint_hash is NULL for social users.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:331,360-376,472-485",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:619,677,885,1323,1354",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:513"
+   ],
+   "fix": "Add an optional device_fp kwarg (flag-gated) to consume_comparison_credit, run the device INCR before the lifetime-free branch, return the device key inside consumed_keys, teach _refund_credit_sync a 'device' key, and switch every refund site (text x4, url x2, image latch) to pass usage_check['consumed_keys']."
+  },
+  {
+   "recommendation": "C4.2 Client sends X-Device-Fingerprint via api.ts interceptor; fingerprint rework",
+   "verdict": "weakened",
+   "reason": "The axios interceptor only reaches axios calls. SSE compare uses expo/fetch with hand-built headers, and image identify uses raw fetch plus its own 401 retry, so both would send no header. Dropping osBuildId changes every hash: deviceFingerprint.test.ts:80 reddens, and stored hashes stop matching. IDFV/SecureStore come from already-linked JS modules, so this is not native.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:55-69,286-289,836-844",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:27-31",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/deviceFingerprint.test.ts:80"
+   ],
+   "fix": "Add the header in the interceptor AND in the SSE headers object and both identify fetches (incl. the retry). Ship the fingerprint change with a dual-hash transition (send old+new or migrate the binding) so device_fingerprint_hash and referral SAME_DEVICE checks keep matching."
+  },
+  {
+   "recommendation": "C4.3 Riyadh-midnight reset; resets_at/scope in /usage/status and 429",
+   "verdict": "weakened",
+   "reason": "http_exception_handler rebuilds the 429 body with only success/error/code/request_id(+retry_after_seconds), so resets_at and scope in the USAGE_LIMIT detail never reach the wire (tier/remaining are dropped today too). _daily_key and _previous_daily_key are UTC with a fixed 86400 TTL, and the UTC refund fallback plus the UTC copy pins would break. /usage/status takes no Request, so it cannot compute a device scope.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/error_handler.py:120-143",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:152-167,250",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/usage_routes.py:10-15"
+   ],
+   "fix": "Flag-gate a Riyadh date-key helper used by consume, refund fallback and status alike. Put retry_after (int) in the USAGE_LIMIT detail to get Retry-After for free. Extend http_exception_handler to pass through an allow-listed resets_at/scope only when present (flag-OFF byte-identical). Add Request to usage_status for the header, and update test_m18_usage_symmetry plus the paywall s69 pins."
+  },
+  {
+   "recommendation": "C4.4 ENABLE_AUTH_THROTTLE_V2 Upstash login/register/social/refresh/reset throttles",
+   "verdict": "weakened",
+   "reason": "Per-IP buckets are meaningless today: the peer is a rotating Railway edge address and XFF is spoofable (C4.6 is not done), and once fixed, Bahrain carrier NAT makes 5 registers/hour/IP a launch hazard. Password login and refresh send no X-Device-Fingerprint (only register and social do). Per-user refresh needs a GoTrue round-trip first. A 'generic 401' must not replace the ACCOUNT_LOCKED 429 that build 3 renders.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-59",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts:154,998,1160",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:1294-1371"
+   ],
+   "fix": "Ship V2 in two phases: first the per-email/per-account keys only (login, reset, register-by-email, using the track_failed_login SET NX EX + INCR pattern). Gate the per-IP and per-device keys on C4.6 and on the header OTA, with NAT-tolerant IP ceilings. Keep ACCOUNT_LOCKED 429 + retry_after unchanged."
+  },
+  {
+   "recommendation": "C4.5 Move GoTrue calls to Supabase secret key + Sb-Forwarded-For",
+   "verdict": "weakened",
+   "reason": "The diagnosis holds: the anon client at auth_service.py:181 serves sign_up, password and id_token calls. But refresh_session (:492-496), the biggest /token consumer, and password reset/resend are left off the list. Sb-Forwarded-For needs a trustworthy client IP, which does not exist until C4.6 (a spoofed XFF forwarded upstream lets attackers dodge Supabase limits). The current SMTP/limits config was never verified.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:172-192,492-496",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:156-158",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-49"
+   ],
+   "fix": "Raise the dashboard limits and verify SMTP now. Behind a flag, build the anon-role GoTrue client with the secret key for register/login/social/refresh/reset/resend, and send Sb-Forwarded-For only after the C4.6 probe yields a verified client IP (check supabase-py 2.31 accepts sb_secret_ keys first)."
+  },
+  {
+   "recommendation": "C4.6 Live XFF spoof probe, rewrite _leftmost_xff_ip, #299 per-user key",
+   "verdict": "weakened",
+   "reason": "The direction is right, but 'never the leftmost' prejudges the probe: if Railway overwrites XFF with one value, leftmost is correct. Rewriting :33-49 reddens tests/test_m13_02_proxy_aware_ratelimit.py:51-57 (leftmost pin), which goes unnamed. require_paid_route_user returns early with the flag OFF and never sets request.state, and ENABLE_LIMITER_ENDPOINT_KEY is read only when the Limiter is built.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-59",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_m13_02_proxy_aware_ratelimit.py:51-66",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:312-334"
+   ],
+   "fix": "Run the probe with a dark header-echo log line. Choose the hop (X-Real-IP, or rightmost-untrusted via uvicorn --forwarded-allow-ips) from the measurement, update the m13_02 pins in the same PR, and set request.state.limit_user_id inside require_paid_route_user on both flag arms behind the #299 flag."
+  },
+  {
+   "recommendation": "C4.7 Zero-cost non-fragrance refusal before consume via chip+lexicon+Haiku",
+   "verdict": "refuted",
+   "reason": "classify_category_from_text returns 'other' for brand/model names, so the 'residue' is most queries, and a pre-consume LLM call is unmetered spend. A forced 'fragrances' chip makes blind non-fragrance names resolve AS fragrances. The q= category comes from the parse LLM inside compare_from_text, after consume. No anthropic SDK exists (openai only), and a provider switch needs legal/consent re-ask post-approval.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1307-1317,1368-1392",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:458-490,4302-4304",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:97"
+   ],
+   "fix": "Pre-consume, refuse only on a $0 positive non-fragrance category word (classify_category_from_text != fragrances/other). Otherwise consume, then refuse right after _resolve_pair_category (before _fetch_product_data) with a coded non-delivery and refund. Don't let the chip override detection for refusal, and meter any classifier call per account (device headers are spoofable)."
+  }
+ ],
+ "new_risks": [
+  "Redis fail-open: _atomic_consume returns None with no Redis or on any error (usage_service.py:243-244, 279-281), and the request is allowed. A device quota built on the same pattern means an Upstash outage gives unlimited spend. None of the recommendations sets a fail-closed or degraded cap for the device key.",
+  "The camera path consumes only under ENABLE_PAID_ROUTE_METERING (image_routes.py:320). A device quota inside consume_comparison_credit never fires on /image unless that flag is on, and the Vision call can run uncounted.",
+  "'ONE rule of 3/day' clashes with TIER_LIMITS free monthly 10 and lifetime_free 3 (usage_service.py:137-149). Those values are AST-pinned by tests/test_legal_disclosure_s77.py:801-810 and tests/test_register_benefits_parity_s69.py and stated in the live legal text, so changing them means a U8 legal edit post-approval, plus a Terms version bump across twelve anchors.",
+  "SSE 429 is raised before StreamingResponse. The client treats any non-ok stream as a transport failure and falls back to one non-streaming request (api.ts:847-849, 934), so every quota refusal costs two requests, and the stream-path 429 body is never parsed.",
+  "A changed fingerprint derivation orphans existing users.device_fingerprint_hash and referral_invites.device_fingerprint_hash values. That breaks the lifetime-counter inheritance at /register (auth_routes.py:499-537) and the SAME_DEVICE referral abuse check (abuse_detection_service.py:132-147), unless there is a migration or dual-hash window.",
+  "Any well-formed random 64-hex header passes valid_device_fingerprint, so a scripted client mints a new 'device' on every request. Only the per-account counter plus compare-auth-required bound spend, which argues for keeping the account cap alongside the device cap, not replacing it."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A7, R5)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/usage_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/error_handler.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_m13_02_proxy_aware_ratelimit.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md"
+ ]
+}

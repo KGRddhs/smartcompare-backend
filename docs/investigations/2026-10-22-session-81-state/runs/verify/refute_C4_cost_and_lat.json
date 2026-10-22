@@ -1,0 +1,104 @@
+{
+ "cluster": "C4: Device quota, auth rate limits, zero-cost refusal (digests A7, R5)",
+ "lens": "cost and latency",
+ "verdicts": [
+  {
+   "recommendation": "C4.1 Device daily quota: HMAC device key consumed inside consume_comparison_credit",
+   "verdict": "weakened",
+   "reason": "The dollar cost is small, about 2-4 more Upstash commands per compare. The latency is not. _atomic_consume runs sequential, blocking Upstash REST calls (INCRBY, EXPIRE, INCRBY, EXPIRE) on the event loop while ENABLE_ASYNC_REDIS_OFFLOAD is OFF. A device key adds 1-3 round trips at 163-203 ms each, and refunds add GET+DECRBY per key. The stored-hash fallback costs one more Supabase read (285-381 ms) unless the column joins the existing select.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:248-262 - sequential INCRBY/EXPIRE per key, sync client",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:390 - an Upstash GET measured at 163-203 ms with TLS",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:525-528 - the tier select has no device_fingerprint_hash column"
+   ],
+   "fix": "Do the account-daily, account-monthly and device-daily consume (with EXPIREAT) in ONE Upstash EVAL Lua script, which is one round trip, and add device_fingerprint_hash to the existing _get_user_tier_info select; also keep the per-account cap as the spend backstop, because a script can send a fresh valid hash on every request."
+  },
+  {
+   "recommendation": "C4.2 Client sends X-Device-Fingerprint on every metered request; UUID in 1.0.1",
+   "verdict": "weakened",
+   "reason": "The axios interceptor misses the two raw fetch paths. One is the camera /image/identify upload, the most expensive request (vision plus a compare). The other is SSE. Camera compares would therefore fall back to the account-only counter. /usage/status is not a metered request, so the pill cannot show a device remaining count without the header. Dropping osBuildId in 1.0.1 changes every hash, which gives every device a fresh bucket once and breaks lifetime inheritance.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:302-322 - the camera identify call is a raw fetch, not axios",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:27-31 - osBuildId is part of the hash",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/usage_routes.py:9-10 - /usage/status takes no device input"
+   ],
+   "fix": "Add the header explicitly to the camera fetch, the SSE fetch and /usage/status as well as the interceptor, and in 1.0.1 send both the old and the new hash for one release so the server can migrate buckets instead of re-granting them."
+  },
+  {
+   "recommendation": "C4.3 Reset at Asia/Riyadh midnight; resets_at/retry_after/scope in 429 and status",
+   "verdict": "weakened",
+   "reason": "resets_at, retry_after_seconds and scope come from the clock and the INCR results, so they cost no extra round trip. But every key builder is UTC: _daily_key, _previous_daily_key (the refund fallback), the anon keys and get_usage_status. Moving only the consume key would make refunds miss across the new boundary and give everyone a double window on the switch day. A device-scope remaining count on /usage/status adds one Upstash GET (163-203 ms) per call.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:152-175 - daily, monthly and previous-window keys use UTC dates",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:726-727 - get_usage_status does two blocking GETs today"
+   ],
+   "fix": "Route every daily and monthly key builder, the refund fallbacks included, through one server-side Asia/Riyadh date helper switched by the same flag, and budget the extra device-count GET on /usage/status."
+  },
+  {
+   "recommendation": "C4.4 Upstash auth throttles: login/register/social/refresh/reset limit table",
+   "verdict": "weakened",
+   "reason": "Login alone checks up to 4 counters (account, IP per minute, IP failures per hour, device). With the track_failed_login INCR plus EXPIRE pattern that is 4-8 sequential sync REST round trips, about 0.7-1.6 s added to every login on the event loop. Refresh fires on every app open and pays 2-4 more. The per-IP keys are worthless until C4.6, but still cost round trips. Per-IP sign-up limits (5/hour) block GCC users who share one carrier NAT address. Fail-open or fail-closed behaviour under a stalled Upstash (13 s without bounded transport) is not stated.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:1294-1373 - lockout = SET NX EX then INCR, fails open without Redis",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:390 - Upstash GET 163-203 ms",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-49 - IP key reads the forgeable leftmost X-Forwarded-For"
+   ],
+   "fix": "Evaluate all of an endpoint's counters in one Lua EVAL (one round trip, offloaded), ship only the account, email and device rows until C4.6 verifies the IP anchor, size per-IP rows for carrier NAT, and state fail-open behaviour with a bounded transport."
+  },
+  {
+   "recommendation": "C4.5 Supabase secret key + Sb-Forwarded-For; raise limits; custom SMTP",
+   "verdict": "weakened",
+   "reason": "It adds no request latency, and SMTP costs cents per 1,000 emails. But the 'measured client IP' does not exist until the C4.6 probe, and sending the forgeable leftmost X-Forwarded-For would hand attackers per-IP Supabase buckets. The 30/150 per-5-min figures are documented defaults, not this project's settings. The /token load at 100/300/1000 compares a day is unmeasured: every authed request also makes an uncached GoTrue get_user call, and refresh runs on each app open.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:181 - backend GoTrue client built with the anon key",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:572-573 - verify_token calls GoTrue get_user on every authed request, no cache",
+    "https://supabase.com/docs/guides/auth/rate-limits (read 2026-10-22, via R5 digest)"
+   ],
+   "fix": "Raise the dashboard limits now, which is the only step not blocked; move to the secret key with Sb-Forwarded-For only after C4.6 names the trusted hop; and first count /token and /user calls per 5 minutes from the Railway log."
+  },
+  {
+   "recommendation": "C4.6 Live proxy spoof probe; never leftmost XFF; #299 per-user limiter key",
+   "verdict": "stands",
+   "reason": "No hidden cost or latency. The probe is one or a few HTTP calls. The rate_limiter rewrite is pure code. The #299 key reads the user the paid-route guard already resolved through the shared get_optional_user dependency, so it adds no second verify_token round trip. Storage stays memory://. One caveat: with 155 rotating edge addresses, the probe should run several times to cover more than one edge node.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:313-325 - the guard reuses the get_optional_user dependency (one verify_token per request)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-49 - leftmost XFF reader to replace"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C4.7 Zero-cost non-fragrance refusal before credit and before LLM/Serper",
+   "verdict": "weakened",
+   "reason": "classify_category_from_text recognises category words only, so brand-only fragrance pairs ('Dior Sauvage vs Bleu de Chanel') return 'other'. The 'ambiguous residue' is therefore most traffic, so most compares pay a serial Haiku call before the credit, on top of the parse LLM that already judges category. That latency is unmeasured. max_tokens about 1024 is wrong for an enum (the existing classifier uses 10 tokens and a 4 s cap). The route reads preferences before the credit, so a refusal is not zero cost.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1307-1342 - deterministic classifier: a bare brand/model returns 'other'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1394-1406 - existing classify call: 10 tokens, CLASSIFY_LLM_TIMEOUT 4.0 s",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:600-619 - preferences read runs before consume_comparison_credit"
+   ],
+   "fix": "Put the refusal before the preferences read; build and measure a fragrance brand lexicon so the residue is small; send the residue to the existing bounded classifier pattern (about 10 output tokens, thinking off, a 2-4 s cap, fail to 'allow'); and measure the Haiku p50 before calling the gate zero-latency."
+  }
+ ],
+ "new_risks": [
+  "Gate latency stack: before any compare work, an authed request pays the revocation GET (163-203 ms) + an uncached GoTrue get_user + the preferences read + gather(tier, bonus) + 2-4 sync Upstash REST calls on the event loop, roughly 1.5-2 s. The device key, auth counters and refusal classifier all add to it, and no recommendation sets a gate latency budget.",
+  "Serper and Bright Data spend under the new quota: cold compares burn about 10-15 Serper credits each, so 1000 compares a day is about $300-450 a month. SERPER_LIFETIME_LIMIT=0 on web leaves the spend gate inert. The quota was sized against LLM cost only.",
+  "One rule (3 a day per device) replacing the tiers drops the 10/month cap, so the maximum per-device monthly use goes from 10 to about 90 compares. That multiplies the Serper and Bright Data exposure, and it moves the TIER_LIMITS / ToS legal-parity pins.",
+  "Upstash is a single point of failure for every new counter (quota, auth throttles, refusal budget). The sync client with ENABLE_UPSTASH_BOUNDED_TRANSPORT held can park a call for 13 s, and fail-open consume means unlimited compares during an outage.",
+  "Camera compares, the most expensive request, go through a raw fetch that the interceptor will not cover. The anon gate debits before the five image-validation 400s, so camera abuse is metered least.",
+  "A device-hash change (OS updates change osBuildId today; 1.0.1 drops it) re-grants fresh daily buckets and breaks lifetime inheritance unless the server accepts both hashes during a migration window."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A7, R5, R1, A1, A4, A8 digests)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 339, 384-390, 444, the W0-3 Upstash row)",
+  "https://supabase.com/docs/guides/auth/rate-limits (via R5 digest, read 2026-10-22)",
+  "https://platform.claude.com/docs/en/about-claude/pricing.md (via R1 digest, read 2026-10-22)"
+ ]
+}

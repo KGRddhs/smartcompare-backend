@@ -1,0 +1,236 @@
+{
+ "topic": "R2: Anthropic architecture for live compares, off-clock KB growth and critique loops; caching layout (code at sc-s80-b2 95cf6f86; docs read 2026-10-22)",
+ "summary": "Answer: none of the three workloads needs Managed Agents, the Agent SDK, sessions or Skills. All three run on the plain Messages API, orchestrated by our own code.\n\n(a) Live compare (30 s cap): keep today's code-orchestrated fan-out and swap each GPT call for a single-shot Messages call with structured outputs (output_config.format). Pin settings per route:\n- Haiku 5.5 for parse, identify (vision), extraction and classify, at effort low (default medium), no temperature.\n- Sonnet 5.5 only for the verdict, at effort low or thinking between_tools (default high), with fallbacks \"default\".\n- Look up the knowledge base (KB) first, in code. Use web_search only as a capped fallback (max_uses 1-2, blocked_domains Fragrantica/Parfumo), on a separate route so the tool list never toggles.\n\n(b) KB growth: our own robots fail-closed QarenBot fetcher fetches the pages. Haiku 5.5 extracts from them in Message Batches (50% off, most batches finish within 1 h). Discovery can run web_search inside batches. Avoid web_fetch for merchant pages: it applies Anthropic's robots handling, not our ruling, and serves cached copies.\n\n(c) Nightly critique and eval: Sonnet 5.5 (Haiku for cheap triage) in Batches with a 1-hour cached rubric prefix, writing to the existing verdict_critiques and eval_runs tables.\n\nCaching layout, in render order:\n1. Sorted tools.\n2. Frozen global system block.\n3. Per-category block (field schema plus exemplars), with an explicit cache_control breakpoint.\n\nEverything that varies goes in messages after the breakpoint: date, region, language, cohort, the retrieved KB card bundle and the query. Never cache the whole KB. The minimum cacheable prefix is 512 tokens on both models, and our verdict, price, review and parser prompts are all above it.\n\nEconomics, computed from the pricing page:\n- Haiku reads are $0.01/MTok against $0.10 base, so a 3K-token prefix saves about $0.00027 per hit.\n- Sonnet reads are $0.10 against $2, so a 3K-token prefix saves about $0.0057 per hit.\n\nIn dollars caching is minor. The bigger costs are output tokens and web search ($10 per 1,000 searches). The main gain from caching is latency.\n\nBlockers before any switch:\n- temperature is sent on every site (400 on both models).\n- max_tokens caps of 10 and 60 tokens leave no room for thinking.\n- The parallel Phase-1 calls cannot read each other's cache, so pre-warm.\n- Sentry auto-enables AnthropicIntegration.\n- The provider switch means a legal-text change and a consent re-ask.\n\nPricing conflict: the bundled skill says Sonnet 5.5 cache reads cost $0.20; the live pricing page says $0.10 (0.05x). The page wins.",
+ "findings": [
+  {
+   "claim": "No workload needs Managed Agents, the Agent SDK, sessions or Skills. The skill says single calls and code-orchestrated workflows cover extraction and classification. Managed Agents bills $0.08 per session-hour, gets no Batch discount, and runs tools in its sandbox, where our robots fail-closed fetcher would not apply. The Agent SDK is the Claude Code harness. Agent Skills are for loading instructions or generating documents.",
+   "evidence": [
+    "claude-api SKILL.md 'Which Surface Should I Use?' + 'Should I Build an Agent?'",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - Managed Agents $0.08/session-hour, no batch mode (read 2026-10-22)",
+    "shared/managed-agents-overview.md:3 - per-session container runs the tools"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The live compare is already a code-orchestrated parallel fan-out under one outer wait_for. Phase 1 gathers specs, price, reviews and image; Phase 2 follows; the verdict is last. It maps 1:1 onto single-shot Messages calls, with no need for a model-driven agent loop.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1656 - STREAM_HARD_CAP_SECONDS (prod 30)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5993,6255 - phase1/phase2 asyncio.gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4118 - _compare_from_text_impl"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Per-model settings (skill):\n- Haiku 5.5: effort defaults to medium. Adaptive thinking is ON when the thinking field is omitted. thinking disabled is allowed only at effort high or below. Non-default temperature, top_p or top_k is a 400. Prefill is a 400. Forced tool_choice is accepted but skips thinking. Haiku 5.5 does not take the fallbacks parameter: the list form is a 400 and 'default' does nothing.\n- Sonnet 5.5: effort defaults to high (levels recalibrated; start at low for extraction and chat). thinking disabled is a 400. between_tools is the lowest setting: it is accepted only at effort high or below and allows no other thinking field and no per-message effort. Forced tool_choice any/tool is a 400.",
+   "evidence": [
+    "claude-api shared/model-migration.md:2287-2293,2335,2350 (Haiku 5.5)",
+    "claude-api shared/model-migration.md:2096-2101,2142,2182-2184 (Sonnet 5.5)",
+    "claude-api SKILL.md Thinking & Effort table"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Refusals arrive as HTTP 200 with stop_reason 'refusal', so check stop_reason before parsing content or JSON; with structured outputs a refused reply may not match the schema. Server fallback for Sonnet 5.5 uses fallbacks:'default' with beta server-side-fallback-2026-07-01, on the Claude API only and not inside Batches. It retries only cyber and frontier_llm declines (on Sonnet 5); bio, reasoning_extraction and general_harms declines are not retried. Haiku 5.5 has no server-side fallback, so its refusals must be handled in our code.",
+   "evidence": [
+    "claude-api shared/model-migration.md:2191 (Sonnet 5.5 safeguards and fallback)",
+    "claude-api shared/model-migration.md:1376-1425 (refusal handling, billing, sticky routing)",
+    "claude-api shared/tool-use-concepts.md:563 - refusal output may not match schema"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Blocking incompatibilities in today's call sites:\n- Every shipped site sends temperature, which is a 400 on both target models.\n- classify is capped at 10 max_tokens and disambiguate at 60. Thinking counts toward max_tokens on Haiku 5.5, so these caps must be raised or thinking turned off at effort low/medium.\n- The training-data price fallback (extract_price_from_training_data) is a fabrication path and should not be ported.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config_enforced.py:229-240 - pinned kwargs incl. temperature",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1391 - token_limit_kwargs(_model, 10)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:894 - token_limit_kwargs(_model, 60)",
+    "claude-api shared/model-migration.md:2271 - thinking consumes max_tokens"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Structured outputs (output_config.format, or messages.parse) are supported on both Haiku 5.5 and Sonnet 5.5, in Batches too. A new schema pays a one-time compile and is then cached for 24 h. Not supported: numeric or length constraints and recursive schemas (the Python SDK strips these and validates client-side). Incompatible with document citations. The B3 vision-identity-v2 strict json_schema already in main ports directly.",
+   "evidence": [
+    "claude-api shared/tool-use-concepts.md:537-566",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py - B3 VISION_RESPONSE_FORMAT_V2 json_schema (diff 683f56c0..95cf6f86, +lines 107-160,385)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Web search costs $10 per 1,000 searches plus tokens, and its results count as input tokens in later turns. Errors come back as HTTP 200 with an error object. Batches allow it at the same price but throttle it. Toggling web_search on or off changes the system prompt, which invalidates the system and messages caches; so put web-search calls on a separate route and never toggle the tool per request. Results carry url, title and page_age only, no image URLs.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - pricing, errors, batches, result fields (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md - invalidation table 'Web search toggle' (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The web_fetch tool is a poor fit for KB growth under the standing rulings. It applies Anthropic-side restrictions, robots.txt among them (url_not_allowed), not our QarenBot fail-closed evaluation. It serves cached content unless use_cache:false is set. It does not render JavaScript, and it fetches only URLs that already appear in the conversation. Fragrantica's robots names Claude-User, so it should refuse there anyway; still, block Fragrantica and Parfumo explicitly. How it handles an unreadable robots file is not documented.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool.md - error codes, cache bypass, JS note, URL validation (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:862-869 - Fragrantica/Parfumo rule",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md:3-20 - fail-closed"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Version support for Haiku 5.5:\n- Dynamic-filtering web tools (_20260209 and later) are documented for 'Claude 4.6 and later models'. The skill's model list for them omits Haiku 5.5, but Haiku 5.5 does gain programmatic tool calling.\n- Haiku 5.5 vision support is not stated explicitly in the bundled skill or the pages read.\nRead capabilities.server_tools.web_search and the vision capability from the Models API before relying on either.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - dynamic filtering 'Claude 4.6 and later' (read 2026-10-22)",
+    "claude-api SKILL.md Server Tools QR - _20260209 list excludes Haiku",
+    "claude-api shared/model-migration.md:2357 - Haiku 5.5 gains programmatic tool calling"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Message Batches: up to 100,000 requests or 256 MB per batch. Most batches finish within 1 h; a batch expires at 24 h; results stay available for 29 days. Batches are single-shot (no tool loop), reject stream, speed, fallbacks and max_tokens:0, and give 50% off every token including cache reads and writes. Cache hits inside a batch are best-effort (30-98%). The docs advise the 1-hour TTL for shared prefixes. Haiku 5.5 batch rate: $0.05 in / $0.25 out; Sonnet 5.5: $1 in / $5 out.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md lines 43-49,78,1041,1832 (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - batch table (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Existing pieces already cover the off-clock loops: verdict_critiques (migration 030) and eval_runs (031) tables, a critique service behind the default-OFF ENABLE_SELF_CRITIQUE flag, a per-category exemplar file, the spec_spine table seeded off-clock under a citation-or-omit rule (035), and the price-warmer cron pattern. The nightly batch loops can write into these with no new surface.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql:40",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/031_eval_runs.sql:37",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:83-87",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql:63-110",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py:35,153"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The verdict system prompt is assembled in this order: base, then category personality, then category exemplars, then the cohort pain-workflow and decision-style blocks, then a conditional weird/weak instruction. Today all of it is one system string. On Claude, the category-static part should be its own system block with a cache_control breakpoint, and the cohort and quality parts should come after it, so cohort variation does not fragment the prefix.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2124 - build_verdict_prompt",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2166,2179 - personality then exemplars (static per category)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2189-2198 - cohort block + conditional quality text",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2646 - single system message"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The static prompts are all above the 512-token minimum cacheable prefix that Haiku 5.5 and Sonnet 5.5 share: COMPARISON_SYSTEM is about 7.1K chars, PRICE_EXTRACTION_SYSTEM about 3.1K, REVIEWS_EXTRACTION_SYSTEM about 3.2K and PRODUCT_PARSER_PROMPT about 24.6K. Below 1,024 tokens they could not cache on OpenAI. The token counts are estimated at about 4 chars per token; measure them with count_tokens on claude-haiku-5-5.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:102-546,911-974,975-1027,1028-1094 (wc -c)",
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md - 512-token group incl. Haiku 5.5 and Sonnet 5.5 (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Cache rules to follow:\n- What invalidates: any byte change in the prefix (timestamps, unsorted json.dumps, per-user fields, conditional sections); any change to the tool list; a model switch; tool_choice or images (these invalidate the messages cache); thinking or effort changes (which must be pinned per route).\n- Limits: at most 4 breakpoints. Caches are isolated per workspace.\n- TTL: the 5-minute TTL is refreshed by every read. Use the 1-hour TTL (2x write) when the gap between requests is 5-60 minutes. A max_tokens:0 pre-warm or keep-alive cannot carry output_config.format, so on structured-output routes use the 1-hour TTL.\n- Verify: check usage.cache_read_input_tokens greater than 0 on a second identical request. cache_creation shows writes split by TTL. Cache diagnostics is a beta, first-party only.",
+   "evidence": [
+    "claude-api shared/prompt-caching.md:7-11,103-116,127-158,180-208,212-226,295",
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md - invalidation table (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Parallel requests with an identical prefix cannot read each other's cache entry, because an entry becomes readable only once the first response starts streaming. The Phase-1 per-product calls run in parallel, so on a cold prefix every one of them pays full price. Low tester traffic (gaps over 5 minutes) makes cold prefixes the normal case. Fix: pre-warm at worker boot and keep the 1-hour TTL on the per-category prefixes.",
+   "evidence": [
+    "claude-api shared/prompt-caching.md:252-258 (concurrent-request timing)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5993 - phase1 gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - thin prod traffic"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Cache economics, computed from the pricing page.\nHaiku 5.5 (prompts of 100K tokens or fewer):\n- base input $0.10/MTok; 5-minute write $0.125; 1-hour write $0.20; read $0.01; output $0.50.\n- A 3K-token prefix costs $0.0003 uncached and $0.00003 on a hit.\nSonnet 5.5:\n- base input $2; 5-minute write $2.50; 1-hour write $4; read $0.10 (0.05x); output $10.\n- A 3K-token prefix costs $0.006 uncached and $0.0003 on a hit.\nBreak-even is 2 requests on the 5-minute TTL and 3 on the 1-hour TTL. The discounts stack with Batch.\nPrompts over 100K tokens on Haiku are billed at 5x, so the card bundles must stay small.\nThe bundled skill says Sonnet 5.5 cache reads cost $0.20; the pricing page says $0.10, and the page wins.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md lines 29,34-35,41,150-154,222 (read 2026-10-22)",
+    "claude-api SKILL.md Claude Sonnet 5.5 section - 'cache reads $0.20' (conflict)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "A rough budget per compare: Haiku workers (about 25K input and 4K output tokens) cost about $0.005; a Sonnet verdict (about 5K input, 1.2K output) about $0.022; each web search adds $0.01. That is about $0.03-0.06 per compare, so $400 covers roughly 7-13K compares. Off-clock Haiku batch extraction is about $0.0005 per page, and a nightly Sonnet batch critique about $0.009 per comparison. Web search and verdict output dominate the cost, not cacheable input.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - model + batch + web search rows (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config_enforced.py:229-240 - current per-site output caps"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "How to bring a growing KB into a request: retrieve a small product-card bundle in code (Postgres, by deterministic key) and place it in messages after the last breakpoint, once per request. Don't cache the whole base: it changes daily, and a large base pushes Haiku past 100K tokens (5x price). The Files API does not reduce per-request input billing, and a client kb_lookup tool adds a model round trip on a 30 s path. Keep tool-based lookup for the off-clock flows.",
+   "evidence": [
+    "claude-api shared/prompt-caching.md:54-62 (shared prefix, varying suffix)",
+    "claude-api shared/cost-optimization.md:121,125 (reference docs behind tools / Files API skip-when)",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md:222 - Haiku long-prompt pricing (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Changes since the prior digest:\n- SDK pin: with 14-day aging on 2026-10-22, anthropic 1.12.0 (2026-10-07) and 1.12.1 (2026-10-08) now qualify, where 1.11.0 was the newest on 10-19. The 1.11.0 Model literal lacks claude-haiku-5-5, though a plain str still works.\n- Sentry auto-enables AnthropicIntegration once the package is installed, which reddens the SR8 integration-list pin.\n- llm_provider.py at 95cf6f86 is only an OpenAI-compatible base_url switch, not an Anthropic seam.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - PyPI upload dates, Model literal, Sentry auto-enable",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/llm_provider.py:1-12,128-183"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "A provider switch is also a legal and consent change. OpenAI is the only AI processor named in the legal documents, the consent copy and the processor manifest, and the AI consent sheet is sha256-pinned under AI_CONSENT_VERSION=2. Moving to Anthropic needs new legal text and a version bump that re-asks every user, and the OpenAI data-sharing disclosure would need revisiting.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - question (3) OpenAI-only processor",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json - MYEZ-020 consent sha256 pin"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Live compare: one dark flag (e.g. ENABLE_ANTHROPIC_PROVIDER, read per call, OFF byte-identical) that routes each existing call site to a plain Messages call with output_config.format. Haiku 5.5 for parse, identify, extract and classify at effort low; Sonnet 5.5 for the verdict only. This keeps the proven 30 s orchestration and avoids an agent loop's extra round trips.",
+  "Pin thinking and effort per route and never vary them per request, because both are part of the cache key. Drop temperature on every site (400 on both models), and raise or replace the 10- and 60-token caps, because Haiku thinking consumes max_tokens.",
+  "Verdict on Sonnet 5.5: run an A/B on latency and quality between adaptive thinking at effort low and thinking between_tools at effort low/medium. Ship fallbacks:'default' with beta server-side-fallback-2026-07-01, on the live path only (Batches reject it). Check stop_reason=='refusal' before parsing and map it to the existing degraded-verdict path. On Haiku, handle refusals in code; never send fallbacks.",
+  "Make the KB the first lookup in code (a deterministic product-card bundle of a few hundred tokens per product, injected after the cache breakpoint). Only on a miss fall to the existing adapters and Serper, and only then to a capped Haiku web_search route (max_uses 1-2, user_location country BH, blocked_domains fragrantica.com and parfumo.com). Each search costs $0.01, more than the whole Haiku token bill.",
+  "Cache layout: tools sorted by name, then a frozen global system block, then the per-category schema and exemplar block with an explicit cache_control breakpoint (ttl 1h on structured-output routes). Date, region, language, cohort, quality flags, the KB bundle and the query all go in messages after it. Split build_verdict_prompt so its cohort and quality text sits after the breakpoint.",
+  "Pre-warm each active per-category prefix with max_tokens:0 at worker boot, sent without output_config.format and with the same thinking and effort settings. Use the 1-hour TTL so the parallel Phase-1 calls read a warm entry. Add a CI or integration probe that asserts cache_read_input_tokens > 0 on a second identical request; diff the payloads, or use cache diagnostics (beta), on any regression.",
+  "KB growth: crawl with our own QarenBot fetcher behind robots_eval (fail-closed), then submit Haiku 5.5 extraction to Message Batches with a strict schema and a 1-hour cached schema prefix. Use web_search inside batches only for merchant discovery, and feed discovered URLs back into the robots-checked fetcher. Do not use web_fetch for merchant pages: it does not apply our fail-closed ruling and it caches.",
+  "Dedupe deterministically first (GTIN, then brand + line + concentration + size). Send only the ambiguous pairs to a Haiku batch adjudication with an enum verdict, and to Sonnet when Haiku is unsure. Store provenance (url, retrieved_at, robots verdict) per field, so 'fix missing data' becomes a re-crawl queue rather than a model guess.",
+  "Nightly critique and eval: a Railway cron, following the price-warmer pattern, builds a Message Batch of the day's comparisons. Sonnet 5.5 grades them against a rubric, with Haiku as a cheap pre-filter, under a 1-hour cached rubric prefix; results go to verdict_critiques and eval_runs. Low-scoring items and user-feedback 'wrong' answers feed the exemplar file only after human review, which avoids an unattended loop over the prompt.",
+  "Images: web_search returns no image URLs. Take candidate images from retailer-page JSON-LD or og:image fetched within robots, and use Claude vision (resized to 1280 px or less, about 1.2K tokens) only to confirm that an image matches the identified product. Never let the model invent an image URL.",
+  "Before writing code, settle by measurement on the Models API: Haiku 5.5 vision support and its web_search/web_fetch version support (capabilities.server_tools). Also measure web_search latency at p50/p95 under the 30 s cap.",
+  "Prerequisites before the provider flag can ship: a pinned anthropic SDK (re-run the 14-day aging rule; 1.12.x now qualifies); Sentry AnthropicIntegration disabled or set to include_prompts False, plus an updated SR8 pin; the legal text and an AI_CONSENT_VERSION bump that re-asks consent; and a separate API key or workspace for live vs batch traffic so the per-workload cost and cache reads are attributable."
+ ],
+ "open_questions": [
+  "Does Haiku 5.5 accept web_search_20260209/20260318 with dynamic filtering, or only web_search_20250305 with allowed_callers ['direct']? Does it support vision input? Neither is stated in the material read; check capabilities on the Models API.",
+  "Can a web_search request be combined with output_config.format, given that web-search citations are always on and document citations are incompatible with structured outputs? If not, a two-step search-then-extract is needed. Not verified.",
+  "Does changing output_config.format invalidate the cache? The prompt-caching page's table does not say, but cost-optimization.md lists it as a cache-breaker. Keep one schema per route until this is measured.",
+  "How does Anthropic's web_fetch handle a host whose robots.txt is unreadable (403/WAF)? It is undocumented, so web_fetch cannot be shown to comply with the fail-closed ruling.",
+  "What is the real web_search latency (p50/p95) from Railway, and does it fit inside the 30 s cap next to the existing Serper legs (p95 16.9 s measured)?",
+  "What is the production compare volume per 5-minute and per 1-hour window? It decides whether the 5-minute TTL, the 1-hour TTL or a boot pre-warm pays off, and is needed to turn the per-compare estimate into a monthly figure against the $400 credits.",
+  "Does the pinned SDK version expose beta fallbacks and output_config.format on messages.parse with the claude-haiku-5-5 string? Verify against the chosen 1.12.x pin."
+ ],
+ "sources": [
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api (SKILL.md loaded via the Skill tool; the file is not on disk)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/agent-design.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/prompt-caching.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-overview.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/tool-use-concepts.md (93-282, 528-580)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/model-migration.md (1376-1425, 2078-2422)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/platform-availability.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/openai_flows_provider.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json (summary)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json (summary)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/llm_provider.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config_enforced.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql, 031_eval_runs.sql, 035_spec_spine.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (grep; lines 341, 593, 858-869)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md (1-40)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-reference.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md (read 2026-10-22, first 100K chars)"
+ ]
+}

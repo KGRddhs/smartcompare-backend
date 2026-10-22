@@ -1,0 +1,114 @@
+{
+ "cluster": "C3: Latency architecture and app speed (digests A9, R9, A6, R8)",
+ "lens": "Correctness and implementability at 95cf6f86 (flag-OFF byte identity, pins, migration/RLS fit, build-3 contract, SSE/REST support, ordering hazards, App Review constraints)",
+ "verdicts": [
+  {
+   "recommendation": "C3.1 ENABLE_KB_FIRST_SERVE: one KB read, early return, gated versioned cards, budgets",
+   "verdict": "weakened",
+   "reason": "No KB table exists (new migration 045; 039 reserved; needs the 044 service-role RLS pattern). An early return skips _get_price, so self._price_candidates is empty and reconcile_pair_fairness can pend the KB price; fact_check and confidence legs also change. B1 identity_confidence has no vision signal ('medium' = empty brand). Hard cap 25 s contradicts prod 30 s. Build 3 is one REST body with no progressive UI.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4346-4349,4389-4393 - pair gather then fairness re-selects from this request's candidates",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:92 - 039 reserved, 044 latest applied; :337 STREAM_HARD_CAP 30.0 in prod",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:424-425 - onSpecs/onPrices only markTtfb"
+   ],
+   "fix": "Ship it dark as a pair-level KB serve: migration 045 with service-role RLS, cards written only at identity 'high'. Carry the stored price candidates so fairness can re-select. Keep the cap at the prod 30 s. State the build-3 budgets as whole-response times; card-level times start with the SSE OTA."
+  },
+  {
+   "recommendation": "C3.2 Serve KB price with age, bounded PDP refresh, no Serper race",
+   "verdict": "weakened",
+   "reason": "Build 3 renders no fetched_at or as-of field, so a price stale up to 30 days would reach reviewers undated, which breaks the no-fabrication rule. The live fetchers use curl_cffi impersonate=chrome with no robots.txt check. The stored url can be a discovery link (W4-2), not a PDP. Shrinking the race means retuning SERPER_ROTATION_DEADLINE 14 s and the 12 s fan-out. SOURCE_REGISTRY is built at import.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:14767,15179 - impersonate=\"chrome\" on live fetches; grep finds no live robots gate",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:134-149 - 24h / 7d TTLs; client grep for fetched_at|as_of returns nothing",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:532 - SOURCE_REGISTRY = literals + catalog at import"
+   ],
+   "fix": "Serve past-TTL prices only to clients that send a capability header after the as-of OTA; build 3 keeps today's 24h/7d rule. Route the refresh through a robots-fail-closed gate with an honest UA, only for registry PDP urls. Retune the rotation deadline and the fan-out together."
+  },
+  {
+   "recommendation": "C3.3 Move smart fallback/Tier 2/Tier 3 to background KB enrichment",
+   "verdict": "weakened",
+   "reason": "Tier 3 is pure gpt-4o training-data synthesis with no search. Moving it into an owned KB would persist invented specs as 'knowledge', against the no-fabricated-numbers rule. In-process jobs drain only 8 s at shutdown and are abandoned on every deploy (one replica), so single-flight needs a Redis lock or a cron worker. The TG guard exists, but a local flag reddens test_T18. Fix 6 is not on main.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:839-860 - Tier 3 'NO Serper search - pure training-data synthesis'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/main.py:396 - DRAIN_TIMEOUT 8.0, stragglers abandoned",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:466 - TG stated limits (1) lost re-cache, (8) test_T18 red with flag set"
+   ],
+   "fix": "Drop Tier 3 from the KB path entirely. Enrich only with retrieved, cited fields, in an off-process worker (price-warmer style) behind a Redis single-flight lock. Keep the TG guard as the interim step, after its canary."
+  },
+  {
+   "recommendation": "C3.4 Cache base verdict; wire set_comparison_cache; freeze crown",
+   "verdict": "refuted",
+   "reason": "get_comparison_cache_key sorts the names, so A-vs-B and B-vs-A share a key: winner_index and the product_N pros/cons orientation flip. The key has no lang, model, prompt version or winner. No unpersonalised verdict exists: generate_comparison takes user_preferences, a cohort-weighted scores_summary and demographics. The pros/cons pop mutates comparison in place. REST has no mid-screen update, so the crown freeze is moot.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:722-725,775-778 - sorted '_vs_' key, 24h Redis TTL",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4450-4482 - verdict built from personalised scores_summary + user_preferences + demographics",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4512-4520 - pros/cons pop mutates the stashed comparison"
+   ],
+   "fix": "Cache only the verdict for users with no preferences, cohort or behaviour profile. Key it on the ordered pair, card versions, scores-summary hash, deterministic winner index, lang, model and prompt digest, and deep-copy on read. Do not reuse set_comparison_cache."
+  },
+  {
+   "recommendation": "C3.5 Haiku 5.5 thinking-off live path, Sonnet off path, spike first",
+   "verdict": "weakened",
+   "reason": "The anthropic SDK is not in the lock; only openai 3.3.1 is. The single LLM chokepoint is OpenAI-shaped (store=False, OpenAI breaker). Consent v2 and the legal text name OpenAI, so the live switch is post-approval with a consent re-ask. Haiku-low TTFT is 7.8 s at 10K tokens, against C3.1's under-7 s verdict. Token streaming conflicts with the scrub and L3 moderation that run before the verdict frame. /health is pure, so 8.4 s is a loop stall with no ready lever (client reuse rolled back).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:97 - openai==3.3.1; no anthropic",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:955-984 - guarded_llm_create forces OpenAI store=False",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/main.py:599-616 - /health has no await and no I/O"
+   ],
+   "fix": "Add the SDK through requirements.in with a release at least 14 days old and a provider-neutral chokepoint, and run the 20-call spike. Measure the real verdict prompt size before setting budgets. Stream only whole moderated events. Flip only after the consent v3 OTA and the legal update post-approval."
+  },
+  {
+   "recommendation": "C3.6 Per-product SSE events, SSE flip after pin check, camera split",
+   "verdict": "weakened",
+   "reason": "Fairness, the prescoring guard and the region guard are pair-level and must run before the specs/prices yields. Emitting a product's price before the pair barrier brings back the CD-interactions-02 flash. Build 3 has no progressive UI (onSpecs/onPrices only mark TTFB), so the flip yields captions only. The S78-TG stream over-skip must be re-ruled before the flip, and the stream tail is unbounded unless ENABLE_FULL_STREAM_DEADLINE is on. Camera credit is reserved at identify.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5077-5121 - fairness/prescoring/region guards 'Must run BEFORE the specs yield, the prices yield'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:424-425 - no progressive render",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:466 - TG limit (2): re-rule before ENABLE_EXPO_FETCH_SSE is flipped"
+   ],
+   "fix": "Emit only per-product identity/specs/image early; keep prices at the pair barrier. Pair the SSE flip with a progressive-card OTA, ENABLE_FULL_STREAM_DEADLINE and the TG re-ruling. Make the camera split carry the identify reservation as a token, with one refund on compare failure."
+  },
+  {
+   "recommendation": "C7 client speed OTA list plus native 1.0.1 items, measured",
+   "verdict": "weakened",
+   "reason": "The Sentry stub replaces getDefaultConfig, but the P-B1 fence pins require('expo/metro-config') in metro.config.js source, and the ~7.2.0 option is unverified (no node_modules). Prefetch 'during the floor' has no window once the under-300 ms skip lands. Lazy screens on native Metro defer evaluation only; bytes are unchanged. Dropping the Geist load does not free the splash: Cairo still loads at runtime. History SWR must key per user and honour delete busts.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/metro.cacheVersion.pb1.test.ts:254-267 - source fence on expo/metro-config + cacheVersion",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:193-201,272-300 - 1.2 s floor; /health ping is telemetry only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts:25-53 - Cairo stays runtime-loaded"
+   ],
+   "fix": "Amend the P-B1 fence in the same PR as getSentryExpoConfig, keeping the cacheVersion line. Prefetch at result arrival, not during the floor. Count lazy screens as eval-time only. Key the SWR caches per user and bust them on delete. Re-baseline jest on the merge SHA, since CI jest is blocking."
+  }
+ ],
+ "new_risks": [
+  "Live price-path fetches use curl_cffi impersonate=\"chrome\" with no robots.txt gate (price_service.py:14767,15179). Any new hot-path PDP refresh or KB-enrichment fetch inherits this and breaks the robots-fail-closed and no-impersonation rulings unless a gate is built first.",
+  "Seeding the 'owned KB' from today's L2 product_specs imports LLM specs. Those came from a prompt that orders a training-data fallback, plus smart_fallback, tier2 and tier3 rows. Only 3 of 52 corpus products carry the tier-3 marker. A KB bootstrapped from L2 is poisoned from day one.",
+  "Route pre-work blocks the event loop before any KB hit: get_user_preferences then consume_comparison_credit (text_routes.py ~822-836), with ENABLE_SYNC_DB_OFFLOAD OFF and Upstash p95 1.5 s. This alone can exceed the under-2 s KB budget. The new 3-per-device quota rule must keep consume-at-gate plus refund on KB-path failures.",
+  "Product-key normalisation is lowercase-and-underscore only (cache_service.py:710-725). Camera names, typed names and brand-doubled names (dedup_brand_name) will miss or collide in a KB keyed this way. A canonical product_key (brand + name + size, as _shopping_cache_key does) is a prerequisite.",
+  "An auto-growing merchant registry is invisible to the running web process: SOURCE_REGISTRY is fixed at import (source_router.py:532), and price-warmer runs stale code with its push trigger off. Registry growth needs a per-call read or a restart contract.",
+  "Cached or KB-served verdicts are persisted in full_response and re-served through History and share. Without lang and prompt-version in the key and row, an Arabic or older-prompt verdict reaches other viewers. B1-stamped non-supported rows must never seed the verdict cache."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A9, R9, A6, R8)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/main.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/metro.cacheVersion.pb1.test.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/.github/workflows/ci.yml"
+ ]
+}

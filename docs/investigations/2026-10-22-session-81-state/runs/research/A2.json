@@ -1,0 +1,237 @@
+{
+ "topic": "A2: Data layer today and what an owned, auto-growing product knowledge base + merchant registry needs (code at 95cf6f86)",
+ "summary": "Short answer: the data layer today is a cache, not a knowledge base. The S80 data_supply digest still holds at 95cf6f86. Images and identity are still never stored, and the L2 price read still drops fetched_at.\n\nL1 (Redis) keys are md5 hashes of brand|name|variant:\n- specs:<h12> for 7 days.\n- price:<h12> sized by build_size_aware_price_cache_key: 7 days for a genuine Bahrain price, 24 h for converted or estimated.\n- nogenuine:<price key> for 30 days (24 h when transient).\n- reviews:<h12> for 7 days.\n\nL2 is three migration-012 tables. Their product_key is that same prefixed L1 string, so specs, price and reviews rows for one product never share an id:\n- product_specs: upsert, 30-day window.\n- product_prices: append-only, 7-day / 24-hour windows, no retention.\n- product_reviews: upsert, 14-day window.\n\nOn a full cache hit a compare still pays three things: the parse LLM, the gpt-4o verdict, and a fresh image lookup (paid Serper Images or GPT, because the unified search is skipped). The unified-search gate checks L1 only, so a product that misses L1 but hits L2 still buys a Serper search.\n\nNever persisted today:\n- images;\n- identity resolution (parse and vision output);\n- per-host health beyond provider circuit breakers and 30-day hit counters;\n- citation snippets (attached after the cache write);\n- robots state (only a 2026-08-31 robots_allowed snapshot in search_descriptors.json; the live price path runs no robots check);\n- the feedback-to-product join;\n- the `products` table (its upsert has zero callers).\n\nComparisons are saved only for signed-in users.\n\nThe registry is two parts merged once, at import:\n- 40 literal Source rows;\n- data/bh_gcc_sources.json: 368 rows, of which 275 are live, 61 dead, 18 provider-test-candidate and 14 render-only; 95 carry a search descriptor.\n\nThe loader drops the country and genuine_method fields. Because the merge happens at import, ENABLE_BH_GCC_CATALOG_SOURCES needs a restart, unlike the per-call flags. Host matching is first-suffix-wins unless ENABLE_LONGEST_HOST_MATCH is on.\n\nSupabase:\n- The 012 policies are USING(true) for every role, so the public anon key can read, insert and update the product tables (repo SQL; the live database is not verified). That is a poisoning risk for an owned knowledge base.\n- New tables should follow the 032/035/044 pattern: RLS on, service-role-only.\n- The next free migration number is 045 (035 and 036 are unapplied, 039 is reserved, 044 is applied).\n- Writes go through get_admin_supabase_client plus run_db, fire-and-forget.\n\nBuilding a knowledge base that grows with every request needs:\n- one canonical product id (derived from the existing identity token) instead of three prefixed hashes;\n- variants as a separate entity;\n- offers per merchant with captured_at, stock and URL;\n- an image table;\n- specs with citations;\n- reviews with source and provenance;\n- a merchant table holding platform, adapter, health, robots state and last crawl;\n- one write point after build_comparison_response that runs for every compare, not only signed-in ones.",
+ "findings": [
+  {
+   "claim": "L1 specs/reviews keys are generate_cache_key(prefix, brand,name,variant) = '<prefix>:'+md5(lower-joined)[:12]; specs folds the identity token (concentration/size) when ENABLE_EXACT_PRICE_GATE is on. TTL specs 7d, reviews 7d.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2779-2811 - generate_cache_key + specs/price/reviews key builders",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1643 - SPECS_CACHE_TTL 7d",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py:42 - REVIEWS_CACHE_TTL 7d"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Price L1 key is build_size_aware_price_cache_key (legacy key when no size token, else extra composite token). TTL by price_cache_ttl: 7d genuine-BH source_method, 24h otherwise. Sentinel nogenuine:{price_key} holds the last non-genuine result 30d, or 24h when guard_rejected/transient/degraded; stamped with _sitemap_cold_domains.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:9381-9436 - size-aware key",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:134,148-149,195-211,287-293 - TTLs + negative_cache_key",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:9461-9481 - sentinel TTL branch + write"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "L2 = 3 tables (migration 012 + 033 title + 034 in_stock). product_specs(product_key UNIQUE, brand, name, variant, category, specs jsonb, source='gpt', fetched_at) upsert, 30d. product_prices(product_key, brand, name, variant, region, amount, currency, retailer, url, source_method, estimated, fetched_at [+title,in_stock]) append-only insert, read newest 1 (or 5 under clobber guard), 7d/24h by method. product_reviews(product_key UNIQUE, ..., reviews jsonb, source='gpt') upsert, 14d. source is hard-coded 'gpt' regardless of real provenance.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:4-60",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:18-30,200-247,249-364,367-409"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "product_key stored in L2 is the full prefixed L1 key (specs:/price:/reviews:<hash>), not md5(brand|name|variant) as 012's header claims, so specs, price and reviews rows for one product carry three unrelated keys and cannot be joined except by free-text brand/name/variant.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:2 - header claim",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6492,6576 - save_specs(cache_key=get_specs_cache_key)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6747,9168-9178 - price key into save_price"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "L2 price read still drops fetched_at (captured_at never reaches the response) - digest finding still valid at 95cf6f86.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:290-297 - result dict omits fetched_at"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Trace, text compare: compare_from_text -> parse_product_query LLM (always, unless ENABLE_PARSE_PRESPLIT) -> _fetch_product_data x2 -> unified Serper search ONLY if specs or reviews L1 missed -> Phase 1 gather of specs/price/reviews/image -> compute_scores -> generate_comparison (gpt-4o, never cached) -> build_comparison_response -> behaviour profile write; route then fire-and-forgets log_search and (signed-in only) save_comparison_and_track_cohort.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:3957,4347-4348,4451,4473,4602,4697",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5854-5888 - unified search gate",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:709-717,756-765"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Per-leg read order: specs L1 -> L2 (promote to L1) -> spec spine (flag, empty) -> extract_specs LLM -> write L1+L2. Price L1 (identity revalidated) -> L2 (should_cache_price gate under title flag, promote with remaining TTL under flag) -> nogenuine sentinel -> tier cascade -> L1 write + L2 append. Reviews L1 -> L2 -> search+extract_reviews LLM -> L1+L2. D5 timeout payloads never cached.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6487-6582 - _get_specs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6740-6860 - _get_price L1/L2/sentinel",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py:663-740 - get_reviews"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Full hit still costs: 1 parse LLM, 1 gpt-4o verdict, and an image resolution with no free input (unified_search is None, so only paid Serper Images or GPT). On an L1-miss/L2-hit the unified Serper search is still bought because the gate reads L1 only, then _get_specs finds L2 and discards it.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5858-5860 - specs_hit/reviews_hit from _cache_get_async only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5976-5990 - image task fed unified_search"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Never persisted: images (image_service has no get/set_cached); identity resolution (parse + vision output); citation snippets (_search_snippets attached after the cache write; only _spec_citation_confidence under ENABLE_SPEC_CONFIDENCE_CACHE); per-host health (only provider circuit breakers and tier15:source_hits:{domain}:{day} counters, 30d); robots verdicts; feedback-to-product join (comparison_feedback keyed by comparison_id).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py - grep set_cached/get_cached: 0 hits",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6545-6580 - snippets post-cache",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:233,249-270 - tier15 source_hits counters",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:247 - feedback insert"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The `products` table (002, RLS service-role since 032) is never written: upsert_products_from_comparison has zero callers. comparisons.full_response is the only durable compare record, written only for signed-in users and only when renderable (schema_version 2).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:809-850 - upsert_product(s); grep callers = 0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:413-470 - save_comparison record fields",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/032_b1_pre_hardening.sql:57-75"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Source row fields: domain, tier, categories, weight, usage, is_shopify, is_render_only, is_algolia, requires_super, locale_paths, subdomain_patterns, currency, discovery_query_templates, mechanism, pdp_url_pattern, sample_url, status, priority_rank, search_descriptor. No platform, health, robots, last-crawl or country field.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:28-95 - Source dataclass"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "bh_gcc_sources.json: 368 rows, fields domain/tier/weight/categories/mechanism/is_shopify/is_algolia/is_render_only/currency/country/genuine_method/sample_url/priority_rank/status (+search on 95, note/measured on 4). status live 275, dead 61, provider-test-candidate 18, render-only 14; tier gcc 236, bahrain 132; mechanism '' 247. Live rows by category: fragrances 95, skincare 77, makeup 57. The four candidate files hold 85+214+83+18 = 400 research rows with a richer shape (platform, api_endpoint, evidence).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - parsed with python -I",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_source_candidates*.json - parsed"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Merge: _load_catalog_rows admits only status=='live' and tier in {bahrain,gcc}, drops country/genuine_method/note/measured, dedups against literal apexes, and runs ONCE at import (SOURCE_REGISTRY = _LITERAL_ROWS + _load_catalog_rows()), so ENABLE_BH_GCC_CATALOG_SOURCES needs a restart, unlike per-call flags. About 40 literal rows.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:415-470,473-529,532"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Host match: _registry_row_for_host does a www-stripped exact-or-suffix scan; first-match-wins unless ENABLE_LONGEST_HOST_MATCH (per call), then the longest domain wins. Used by match_registry_apex, registry_tier and descriptor_for_host.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:545-646",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py:195-222"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "search_descriptors.json: 95 hosts {kind, url_template, robots_allowed, discovered_via, resolved_at}; kind platform_api 43, sitemap 42, none 6, onsite_html 4; robots_allowed True 93/False 2; 47 templates. The robots state is a one-time 2026-08-31 snapshot. Live robots checks exist only in the off-clock sitemap builder (memoised per build, fail-closed) and the descriptor resolver; the live price fetch path does not consult robots.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json - parsed",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:364-424 - robots gate",
+    "grep 'robots' app/: only robots_eval, search_descriptor_service, sitemap_discovery_service"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Seed/warm data: spec_spine.json is {} (4 bytes) and 035 is unapplied; the warmer warms gold-truth queries (200 total, default smoke20) MERGED with warmer_catalog.json (42 queries). The digest's 'limited to the gold-truth catalog' understated the merge. usable_exact_genuine_truth holds 18 KPI SKUs. Sitemap index lives in Redis discovery:sitemap:{domain}:meta / :t:{token} at 24h, for registry sitemap-mechanism domains only.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_warm_price_cache.py:88,160-198,284",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:76-83",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_index_sitemaps.py:96-116"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "RLS: the 012 policies are FOR SELECT/INSERT/UPDATE USING(true)/WITH CHECK(true) with no TO role, so in repo SQL the public anon key can read, insert and update product_specs/prices/reviews; no later migration hardens them. Newer data tables use RLS-on, service-role-only (032 products, 035 spec_spine, 044 explicit REVOKE + GRANT). The live policy state was not read.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:18-21,40-42,57-60",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql - service_role policy",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/044_apple_siwa_tokens.sql:1-40"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "DB access: get_admin_supabase_client (service role; memoised singleton under ENABLE_SUPABASE_CLIENT_REUSE) for every L2 read and write; get_user_supabase_client(token) is anon+JWT for RLS user data. Every L2 call goes through run_db (asyncio.to_thread only when ENABLE_SYNC_DB_OFFLOAD, else inline on the loop); writes are fire-and-forget with logged failures.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:239-297",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:30-41",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:200-213"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Migration numbering: files 001-044 exist; 035 and 036 are written but unapplied, 039 is reserved, 044 was applied 2026-10-18. The next free number is 045.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/ - ls",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:92 - dated apply record"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Reusable identity and dedup helpers: dedup_brand_name (display name), _shopping_cache_key (size-aware full_name), size_variant_token, _identity_cache_token, _strip_identity_axes (price_service), result_gate.same_identity, is_placeholder_identity, token_jaccard, identity_coherence, and spec_spine_service.spine_key (fragrance identity: category|brand|name|conc|ml).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/text_sanitize.py:24",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1237-1255",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:4238",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/result_gate.py:128-209",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:210"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Mint ONE canonical product id: kb_product_id = a hash of (category, normalised brand via dedup_brand_name, base name with _strip_identity_axes), plus a variant row keyed by _identity_cache_token (size/concentration). Today's three prefixed hashes cannot be joined.",
+  "Migration 045 (one file, dark): kb_products, kb_variants, kb_offers (variant_id, merchant_id, amount, currency, source_method, url, title, in_stock, captured_at), kb_images (variant_id, url, source, identity_checked, captured_at), kb_specs (field, value, source_url, snippet hash, extractor, model), kb_reviews (source, rating, count, pros/cons, provenance), kb_merchants (domain, country, platform, adapter, robots_state, robots_checked_at, health_ok/fail counts, last_crawl_at, status). RLS on, service-role only, REVOKE from anon/authenticated (the 044 pattern).",
+  "Write point: one fire_and_forget(kb_ingest(result, products)) right after build_comparison_response on REST, stream and camera, for every delivered compare (not only signed-in), behind a new ENABLE_KB_INGEST default OFF read per call. It is a no-op when OFF, so flag-OFF stays byte-identical.",
+  "Read point: consult kb_* before L1 misses become paid calls. Specs: kb_specs rows that carry a citation. Offers: genuine and in-stock within 7d. Images: identity-checked within 30d. Feed this into the unified-search gate so an L2/KB hit no longer buys a Serper search (the gate checks L1 only today).",
+  "Freshness: offers genuine 7d / converted 24h (keep price_cache_ttl); images 30d with a HEAD recheck; specs 90d with citations (facts are stable); reviews 14-30d; robots 24h with fail-closed on unreadable (the ruling); merchant health a rolling 7-day window. Re-crawl only off-clock (cron), never on the live clock.",
+  "Persist robots state per merchant and enforce it on the LIVE fetch path too. Today only the off-clock sitemap and descriptor builders check robots, so a KB-driven crawler must read kb_merchants.robots_state and skip unreadable or disallowed hosts.",
+  "Fold the registry into kb_merchants. Seed it from bh_gcc_sources.json, including the dropped country/genuine_method, the 400 candidate rows as status=candidate, and the descriptors. Read it per call (or with a TTL memo) so admitting a host no longer needs a restart.",
+  "Harden or retire the 012 product tables before using them as a source of truth: their USING(true) policies let the public anon key insert or update rows. Add a REVOKE/service-role policy in the same 045 migration, after a live policy read by the owner.",
+  "Store provenance honestly: replace the hard-coded source='gpt' with the real producer (snippet / spine / tier2 / tier3 / adapter). Exclude tier-3 model-knowledge specs from KB evidence (the result_gate R-A4 rule).",
+  "Join feedback to the KB: when comparison_feedback carries winner/price/specs_correct, write a kb_feedback row keyed by (kb_product_id, field), so wrong-price and wrong-spec answers can invalidate or downweight the offer or spec row.",
+  "Retention: product_prices is append-only with no cleanup. Give kb_offers a 'latest per (variant, merchant)' view or upsert plus a history table, and a pruning cron.",
+  "Validate in the harness without prod writes (CLAUDE.md gotcha (e), no-prod-write-in-harness): unit tests with a fake admin client; apply 045 only via the owner's SQL-editor PRECHECK/POSTCHECK flow; ship the flag OFF until after App Review."
+ ],
+ "open_questions": [
+  "Live RLS state of product_specs/prices/reviews (does anon still hold SELECT/INSERT/UPDATE?) - needs an owner-run pg_policies read.",
+  "Row counts and growth of product_prices in production (append-only, no retention) - not readable from code.",
+  "Are ENABLE_PRICE_TITLE_PERSIST, ENABLE_SPEC_CONFIDENCE_CACHE, ENABLE_LONGEST_HOST_MATCH and ENABLE_SYNC_DB_OFFLOAD set on web? Production flag state is not readable here.",
+  "Should the KB own images as URLs only (Notes v3 B forbids hosting copies) or store hashes or thumbnails? Owner and legal call.",
+  "Should anonymous (not signed-in) compares feed the KB? It is product data, not user data, but the privacy policy wording should confirm.",
+  "Does a provider switch to Anthropic web_search change which citation URLs can be stored (Anthropic terms on storing search results)? Unverified."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/DEFECT_LEDGER.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (sections: Migrations, Two-layer cache, gotchas)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/result_gate.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/033_product_prices_title.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/034_product_prices_in_stock.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/032_b1_pre_hardening.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/044_apple_siwa_tokens.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_warm_price_cache.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_index_sitemaps.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_source_candidates*.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/spec_spine.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/warmer_catalog.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/validation_gold_truth.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/usable_exact_genuine_truth.json"
+ ]
+}

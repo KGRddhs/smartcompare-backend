@@ -1,0 +1,267 @@
+{
+ "topic": "R12: Data collection channels for the learning brain: what to log per compare, where, within the privacy rules; and which honest numbers can be shown to users",
+ "summary": "Answer: no store holds a complete per-compare record today. The pieces are spread over five places. search_logs has query, cost, duration and success, but no categories, sources or tokens. comparisons.full_response.metadata has the OpenAI cost ledger, timings, cache_hit and, behind a flag, result_status. Feedback (comparison_feedback), events (user_events) and verdict_critiques hold the rest. Account deletion (043) wipes search_logs, comparisons, events and feedback, so a brain built on them loses its training data every time someone deletes. Recommendation: one new de-identified table, compare_runs, with no user_id. It is written once per compare, fire-and-forget, behind a dark ENABLE_COMPARE_RUN_LEDGER flag. Field names follow the OpenTelemetry GenAI conventions: role, provider, model, input/output tokens, cache read/write, web-search count, cost, latency, stop reason. Outcomes (share, store tap, feedback, re-compare) join through comparison_id, which is set to null when the user is deleted. Privacy policy §8/§9 already allows keeping de-identified comparison data after deletion. Raw query text stays out; a peppered hash and the KB product IDs go in instead.\n\nClient: add coming_soon_tap, share_channel_selected and store_cta_tap. image_load_failed and the six scan_* events are already allowlisted (feedback_routes.py:91-92) but nothing fires them. The allowlist test only checks one direction, so widening it is safe. Event payloads have no per-type property schema (only a 10 KB size cap), so add one.\n\nPostHog vs in-house: use PostHog for funnels only (EU host, the server unit is a WIP commit that must not merge, adversary F1 still open). Brain training data stays in Supabase. Do not use PostHog's LLM analytics or Langfuse, which add a processor that receives prompt text.\n\nPrivacy text: switching to Anthropic means rewriting §4/§5/§7, the consent sheet, AI_CONSENT_VERSION 3 plus its sha fence, processors.json and the date anchors. PostHog adds §5/§7/§8 text (1-year retention). The 3-per-day device rule changes the Terms.\n\nHonest numbers: the \"73%\" strings are no longer rendered. CohortBadge shows a real survey n, but its wording \"leaned the same way\" is false. Replace it with counts from our own data, shown only above set thresholds: compare count ≥20, feedback ≥20 raters (shown as a count, not a percentage), plus exact store counts and how fresh each price is.",
+ "findings": [
+  {
+   "claim": "POST /events takes any allowlisted event_type with a free-form event_data dict, checked only for size (≤10 KB). The six S80 scan_* types and image_load_failed are allowlisted, but no client code fires them; the only live trackEvent sites are Home, Results and Onboarding.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:60-93 - VALID_EVENT_TYPES incl. scan_*, image_load_failed",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:146-151 - only a 10KB size check on event_data",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:103 - onError only swaps placeholder, no event"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The share events record neither the channel nor a comparison_id. The share event's method is hard-coded 'text_only', and share_completed carries only cta_variant and lifetime_invites_remaining. The store click (source_click) sends the full retailer URL, query string included, even though api.ts promises event payloads carry no URLs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:544,547,558-561 - share events, no comparison_id/channel",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:588 - source_click {source_name, url}",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:1018-1022 - privacy invariant comment"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The feedback card always sends useful: true plus one chip, so comparison_feedback has never recorded a negative answer (prior MYEZ-023). The delta at 95cf6f86 is server-side only: B1 added the six reason chips and the three optional answers winner_correct / price_correct / specs_correct (each correct, wrong or unsure). No client code sends them yet.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:53-55 - useful:true, mattered_most:[chipKey]",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:44-50,107-111 - widened chips + Literal correctness fields",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/027_comparison_feedback_correctness.sql - CHECK correct|wrong|unsure"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "search_logs is the only row written for every compare. Its columns are query (raw text), input_type, products_found, success, error_message, cost, duration_ms and is_synthetic (042). It has no category, sources, tokens, cache status or result status. The admin analytics read only search_logs and products.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/002_search_logs_and_products.sql:5-16 - DDL",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:753-799 - log_search record",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/analytics_service.py:24-198 - daily/popular/cost/error/product stats"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Most of what the per-compare record needs is already computed, but it is stored only in comparisons.full_response.metadata. That covers the OpenAI ledger (calls, prompt/cached/completion tokens, cost_usd, by_model), stage_timings_ms, cache_hit and the B1 result_status / identity_confidence / data_coverage / section_status / product_categories fields. The ledger groups by MODEL, not by role (parse / specs / verdict / vision). An Anthropic model id prices as null (cost_complete False) until a price table is added.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:164-201 - summarize_openai_ledger by_model",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py:46-69 - cache_hit observability",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (SESSION 80 B1 flag row) - result_status keys",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - claude id prices null"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Account deletion hard-deletes the user's user_events, comparison_feedback, comparisons and search_logs rows. Any brain trained on those tables therefore loses data on every deletion. Privacy policy §9 already allows keeping de-identified comparison data and statistics after deletion.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/043_delete_user_cascade_full_erasure.sql:173-186 - DELETE user_events/feedback/comparisons/search_logs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:117 - de-identified comparison data may be kept"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The one live learning loop, the behaviour-profile update, probably fails silently. It selects comparisons.category_used / products and user_events.metadata, but the code writes comparisons rows with full_response, query, input_type, product_names and schema_version, and writes user_events with event_data. No migration in the repo creates either table, so the live schema is unknown.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5693-5701 - selects category_used, products, metadata; warns on failure",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:459-470 - comparisons insert columns",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:254-315 - user_events writes event_data",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/037_security_definer_grants_and_rls.sql:122 - no migration CREATEs user_events"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Behind its flag, B1's per-compare Sentry info message comparison_result_status carries only enum and int tags (status, identity_confidence, reasons, data_coverage, bucketed vision_ms / compare_ms). Each one counts as an error event against the Sentry quota, and the stream path skips it if the client leaves early. That makes it good for monitoring but not as training data.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sentry_service.py:634,671-697 - capture_result_status",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (B1 stated limits) - info message counts as error event"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The PostHog server unit exists only as WIP commit d3a7dc9e and must not merge (adversary F1: save_preferences erases analytics_enabled). Its design: EU Cloud, GeoIP off, $ip dropped, distinct_id = user id, no capture for anonymous users or users who opted out, and two events (server_compare_completed / server_compare_failed). The query is truncated to 200 characters and links are reduced to host plus path. Rulings PH1-PH11 bind it: PH3 sets 1-year retention, PH4 requires person deletion to be ON before capture, PH7 excludes session replay.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2 git show d3a7dc9e:app/services/product_analytics_service.py:1-80",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/specs/RULINGS_S77_POSTHOG.md:9-48 - PH1-PH11",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/specs/POSTHOG_UNIT_SPEC.md:237-246 - warehouse link to Supabase rejected"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The OpenTelemetry GenAI inference span has these attributes. Required: gen_ai.operation.name, gen_ai.provider.name. Conditionally required: gen_ai.request.model, error.type. Recommended: gen_ai.response.model, response.id, response.finish_reasons, usage.input_tokens / output_tokens, usage.cache_read.input_tokens, usage.cache_write.input_tokens, request.max_tokens and temperature. gen_ai.input.messages and output.messages are opt-in because they carry sensitive data. Tool spans require gen_ai.tool.name. Everything GenAI-specific is at Development stability (only error.type and server.address are Stable). Repo licence Apache-2.0.",
+   "evidence": [
+    "https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/client-inference.md - span table (read 2026-10-22)",
+    "https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/gen-ai-spans.md - execute_tool (read 2026-10-22)",
+    "https://github.com/open-telemetry/semantic-conventions-genai - Apache-2.0, 670 commits, last-commit date not visible (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic's usage object exposes input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, a cache_creation split by TTL, server_tool_use (web_search_requests) and service_tier. That is enough to record tokens, cache hits and web-search count per role.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - SDK types read in S80",
+    "https://platform.claude.com/docs/en/api/messages - response section not reached in fetch (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The taxonomy guides agree on fixed snake_case names in an object_action pattern, with variations passed as properties and never baked into dynamic names. PostHog prefers present-tense verbs; Amplitude prefers past tense. MYEZ already uses object_action past tense (share_completed, onboarding_completed), so new events should match that style rather than trigger a rename.",
+   "evidence": [
+    "https://posthog.com/docs/product-analytics/best-practices - static names, object_adjective props, is_/has_ booleans (read 2026-10-22)",
+    "https://amplitude.com/explore/data/event-taxonomy - object-action, typed properties (search result 2026-10-22)",
+    "https://segment.com/docs/protocols/tracking-plan/best-practices/ - HTTP 403, not read"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Langfuse (MIT except ee/, ~36.2k stars, self-hostable) models traces → observations (generation/span/tool) → sessions. Scores (NUMERIC / CATEGORICAL / BOOLEAN / TEXT) attach to a traceId or observationId, which fits user feedback and LLM-judge critique. PostHog's LLM analytics ($ai_generation: $ai_model, token, cache and cost fields) sends $ai_input / $ai_output_choices unless privacy mode is set. Either tool adds a processor that receives prompt text.",
+   "evidence": [
+    "https://langfuse.com/docs/observability/data-model (read 2026-10-22)",
+    "https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk (read 2026-10-22)",
+    "https://github.com/langfuse/langfuse - MIT except ee, ~36.2k stars, last-commit date not visible (read 2026-10-22)",
+    "https://posthog.com/docs/llm-analytics/generations (read 2026-10-22)",
+    "https://github.com/PostHog/posthog - MIT expat (ee separate), ~40.4k stars (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Apple: 5.1.1(ii) requires consent for usage-data collection even when the data is anonymous. 5.1.1(iii) requires collecting only what the task needs. 5.1.2(i) requires disclosing, and getting explicit permission for, sharing with third-party AI. 2.3.1 forbids misleading marketing. The App Privacy page counts data collected by third-party SDKs, and answers must be updated when practices change. They can be edited without a new build.",
+   "evidence": [
+    "https://developer.apple.com/app-store/review/guidelines/ - 2.3.1, 5.1.1, 5.1.2 (read 2026-10-22)",
+    "https://developer.apple.com/app-store/app-privacy-details/ - Product Interaction, Search History, linked, third-party partners (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The build-2 privacy manifest already declares Product Interaction, Search History, User ID, Other User Content and Performance Data, all Linked, used for Analytics, with no Tracking. coming_soon_tap, share_channel_selected, store_cta_tap and image_load_failed all fit inside Product Interaction / Performance Data. No new data type is needed, provided no device ID or location goes to analytics.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/specs/POSTHOG_UNIT_SPEC.md:447-468 - manifest mapping",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:40-47 - §3.4 in-app activity already disclosed"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Bahrain PDPL Article (3) and GDPR Art. 5(1)(c)/(e) both require data to be 'adequate, relevant and not excessive' and not kept in identifiable form once its purpose is met. Both allow further processing for statistics. PDPL attaches the condition that the data must not support decisions about an individual.",
+   "evidence": [
+    "https://www.lloc.gov.bh/FullEn/K3018.docx - Law 30/2018 Art.(3) (unofficial EN translation, read 2026-10-22)",
+    "https://gdpr-info.eu/art-5-gdpr/ - Art.5(1)(b),(c),(e) (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The consent sheet and policy §4 name OpenAI and its data-sharing programme in wording pinned by a sha256 fence, with AI_CONSENT_VERSION = 2. A switch to Anthropic, including its server web_search, therefore requires new text, a version bump that re-asks every user, a re-pinned fence, and updates to processors.json and §5/§7.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:703-707 - aiConsent.body names OpenAI",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46 - AI_CONSENT_VERSION = 2",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:63-69,73-99 - §4, §5, §7"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Invented numbers left in the UI. The 73% loading tip was removed from the defaults (S69 U6). results.tips.cohort_priority ('73% of {{country}} shoppers...') is still in en.json, but no render site was found. LoadingRings still defaults counterTarget to 2074. CohortBadge shows the real survey cohort n but says those shoppers 'leaned the same way', which implies they chose this product.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx:173-180 - 73% removed",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:285,753,759 - 73% strings, cohort_badge copy",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx:129 - counterTarget = 2074",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5627 - peer_count = cohort_match n"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Small-count suppression is a standard practice: CMS forbids reporting cells of 1-10, including values derivable from other cells or from percentages, and downstream products commonly show '<11'. That gives a citable floor for showing community counts. The existing cohort code already gates on n ≥ 5.",
+   "evidence": [
+    "https://resdac.org/node/1506 - CMS cell size suppression 1-10 (search result 2026-10-22)",
+    "https://www.medicaid.gov/faq/2020-04-09/91831 - <11 suppressed (search result 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cohort_service.py:140-165 - n>=5 gates"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The free-tier limit (3/day, 10/month) is enforced per account. Anonymous compares are counted per device fingerprint (anon:{fp}) only when ENABLE_ANON_USAGE_GATE is on. Since U13, every compare requires sign-in. The policy says the device identifier is used to stop abuse of the free limits, but the Terms text would need to change to 'per device'.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:25-62,138-147 - anon gate, TIER_LIMITS",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:42 - device identifier purpose",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (usage_service row) - Terms state 3/day + 10/month"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "(a) Add migration 045 compare_runs, de-identified with no user_id. Fields: run_id, created_at, comparison_id (nullable; 043 sets it to null), input_type, requested_category, category_used, product_categories, refusal_reason, query_hash (HMAC-SHA256 of the normalised query with a server pepper held in an env var), kb_product_ids[2], sources_used [{kind, merchant_id/host, count, kb_hit}], cache {l1,l2,kb}, llm_calls [{role, provider, model, input/output tokens, cache_read/write, web_search_requests, cost_usd, latency_ms, stop_reason, is_error}], stage_timings_ms, wall_ms, result_status, identity_confidence, data_coverage, section_status, partial_stage, critique_scores. Write it with fire_and_forget behind ENABLE_COMPARE_RUN_LEDGER (default OFF, read per call). Reason: today's tables are erased on account deletion and do not record roles or sources.",
+  "Key the cost ledger by ROLE as well as model, and name its fields after the OTel GenAI attributes (gen_ai.request.model, usage.cache_read.input_tokens, ...). Add an Anthropic price table in the same exact-key style as openai_pricing.py, including a per-search price. Reason: per-role cost is the brain's budget signal, and an unpriced Claude call currently records cost as null.",
+  "Join outcomes to compare_runs.run_id/comparison_id rather than copying them in: comparison_feedback (the correctness answers), user_events (share_channel_selected, store_cta_tap, image_load_failed, coming_soon_tap), and a re-compare flag derived server-side from the same query_hash and user within 24 h. Store the flag on the run, never the user id.",
+  "(b) Append coming_soon_tap {category}, share_channel_selected {channel enum: whatsapp|instagram|snapchat|x|telegram|copy_link|system_sheet|other, comparison_id} and store_cta_tap {comparison_id, product_index, merchant_id, placement, is_sponsored} to VALID_EVENT_TYPES. Deploy that backend change before any OTA fires them. image_load_failed and scan_* are already allowlisted; fire image_load_failed from ProductImage onError with {product_index, image_host, tier}. The superset test only checks one direction, so it still passes; add a test that the allowlist only grows.",
+  "Add a per-event-type property allowlist (key → type/enum) for event_data behind a dark flag. Strip query strings and fragments from source_click.url, and pass comparison_id on every share event. Reason: event_data is currently an unchecked dict, which contradicts the promise in api.ts that payloads carry no URLs.",
+  "(c) Use PostHog for product funnels only (taps, screens, share, CTA), after fixing F1 and applying PH1-PH11, with person deletion ON first. Keep brain training data in Supabase (compare_runs). Do not adopt Langfuse or PostHog LLM analytics. Reason: they add a processor that receives prompts and outputs and would need new policy text, while the in-house ledger needs no new disclosure.",
+  "(d) Do the provider switch as one legal unit through the U8 machinery after approval: rewrite §4/§5/§7 for Anthropic, including web search terms going to Anthropic's search provider; set AI_CONSENT_VERSION = 3 with a re-pinned EN+AR sha fence; update processors.json; bump all twelve date anchors (RL1). Add PostHog (EU, 1-year retention) and the per-device 3/day rule in the same window, so users are re-asked for consent only once.",
+  "Because CTA placements are paid, label sponsored store CTAs in the UI. Store-facing reporting should use aggregated counts only (policy §2 already allows selling aggregated stats). Never send per-user tap data to stores.",
+  "(e) Replace CohortBadge's 'leaned the same way' with a true line from our own data, e.g. 'Compared {{n}} times on MYEZ' (count of compare_runs with the same KB pair), shown only when n ≥ 20. Below that, show nothing.",
+  "Show feedback as counts, never percentages: '{{k}} of {{n}} people who rated this said the winner was right' from comparison_feedback.winner_correct, only when n ≥ 20 and k ≥ 11. This follows the CMS rule that no value of 1-10 may be shown or be derivable from other figures.",
+  "Always show provenance numbers that need no threshold because they are exact: 'Prices checked at {{n}} stores' (sources_used), 'Price checked {{relative time}}' (product_prices fetched_at), and the rating source with its review_count. Delete results.tips.cohort_priority / loading.tip.peer_prioritize, and change LoadingRings' default counterTarget to undefined.",
+  "Before trusting behaviour-profile signals, check the live columns of comparisons (category_used, products) and user_events (metadata vs event_data) with a read-only information_schema query run by the owner. Reason: the select at structured_comparison_service.py:5693-5696 probably fails every call."
+ ],
+ "open_questions": [
+  "Live column sets of user_events and comparisons: no migration creates either table, so does user_events.metadata exist and does comparisons.category_used exist? (owner, read-only information_schema query)",
+  "Is a peppered query_hash plus KB product IDs 'de-identified' enough for privacy policy §9, or does query_hash count as pseudonymous personal data because the pepper allows linkage? Decide whether to drop the hash for runs older than N days.",
+  "Does RN Share.share's result expose activityType reliably on iOS? It is needed to fill share_channel_selected automatically; otherwise the channel must come from MYEZ's own per-platform buttons (unverified).",
+  "Does the PostHog project plan honour the 1-year retention that PH3 states, and will the owner keep PostHog at all once the in-house compare_runs table exists?",
+  "The Anthropic usage object field names were not re-read from the live docs page (the fetch was truncated). Confirm server_tool_use.web_search_requests and the web-search price before writing the price table.",
+  "What survey date and n does CohortBadge's cohort count rest on (data/cohort_priors.json), and is n ≥ 5 an acceptable floor for showing it at all?"
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/analytics_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sentry_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/result_gate.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cohort_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/consent_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/002_search_logs_and_products.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/010_enable_rls.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/027_comparison_feedback_correctness.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/037_security_definer_grants_and_rls.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/043_delete_user_cascade_full_erasure.sql",
+  "git show d3a7dc9e (--stat and app/services/product_analytics_service.py)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/consent.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/onboarding/Step14Loading.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CohortBadge.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/feedback_and_allowlists.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/prod_recheck.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/category_metrics_claims.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/specs/RULINGS_S77_POSTHOG.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-11-session-77-state/specs/POSTHOG_UNIT_SPEC.md",
+  "https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/client-inference.md (read 2026-10-22)",
+  "https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/gen-ai-spans.md (read 2026-10-22)",
+  "https://github.com/open-telemetry/semantic-conventions-genai (read 2026-10-22)",
+  "https://posthog.com/docs/product-analytics/best-practices (read 2026-10-22)",
+  "https://posthog.com/docs/llm-analytics/generations (read 2026-10-22)",
+  "https://github.com/PostHog/posthog (read 2026-10-22)",
+  "https://langfuse.com/docs/observability/data-model (read 2026-10-22)",
+  "https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk (read 2026-10-22)",
+  "https://github.com/langfuse/langfuse (read 2026-10-22)",
+  "https://amplitude.com/explore/data/event-taxonomy (search result 2026-10-22)",
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22)",
+  "https://developer.apple.com/app-store/app-privacy-details/ (read 2026-10-22)",
+  "https://gdpr-info.eu/art-5-gdpr/ (read 2026-10-22)",
+  "https://www.lloc.gov.bh/FullEn/K3018.docx (read 2026-10-22, unofficial translation)",
+  "https://resdac.org/node/1506 (search result 2026-10-22)",
+  "https://www.medicaid.gov/faq/2020-04-09/91831 (search result 2026-10-22)",
+  "https://platform.claude.com/docs/en/api/messages (read 2026-10-22, response section not reached)"
+ ]
+}

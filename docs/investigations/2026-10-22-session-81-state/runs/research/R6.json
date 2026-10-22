@@ -1,0 +1,247 @@
+{
+ "topic": "R6: Per-platform share flow in React Native / Expo (channel matrix, landing OG, implementation order)",
+ "summary": "No session-80 digest covers sharing, so this is new work. contract_freeze.json only notes that comparison_id gates the sheet and that ENABLE_COMPARISON_ID_ECHO would change what reviewers see.\n\nToday (95cf6f86) a fresh compare has no comparison_id, so Share sends plain text with no link. The text also prints \"undefined\" when a product name is missing. The ShareBottomSheet (WhatsApp, Copy, X, Telegram, Snapchat) only shows for History reopens. Its message is the same generic line on every target and ignores the comparison, and it contains an unverified claim (\"ends the debate in 30 seconds\").\n\nWhatsApp is checked with Linking.canOpenURL('whatsapp://…'), but app.json declares no LSApplicationQueriesSchemes (iOS) and no Android <queries>. So that check most likely always returns false and WhatsApp falls back to the system sheet. \"Copy\" also opens the system sheet instead of copying, even though expo-clipboard is already in the binary.\n\nLink previews are poor. open.html, the page served for /c/ /r/ /q/, has no Open Graph tags, and no landing page has an og:image. Every shared link previews the same way, with no card image. assetlinks.json still holds a placeholder fingerprint, so Android App Links cannot verify. open.html's APP_STORE_URL is empty, so a phone without the app gets no install path.\n\nRecommended flow per channel:\n- WhatsApp: https://wa.me/?text=. It works without the app and needs nothing native.\n- Telegram: t.me/share/url?url=&text=.\n- X: x.com/intent/tweet, with text, url and hashtags as separate parameters, within 280 characters (the link counts as 23).\n- SMS and Email: sms: and mailto:.\n- Copy: Clipboard.setStringAsync.\n- Snapchat, Instagram, TikTok and anything else: the system sheet (\"More\"). Copy-link stays as the fallback.\n\nInstagram Stories needs an image or sticker plus a Facebook App ID and a native module. Snapchat Creative Kit needs a Snap Kit app. TikTok Share Kit takes only images or video and needs a client key and review. All three wait for 1.0.1 and an image share card.\n\nOrder: (1) Landing only, not the app: static OG tags and a 1200x630 brand image (aim under 300KB) on open.html and the index pages; fix assetlinks; fill APP_STORE_URL after approval. (2) Backend, dark: a flagged HTML preview for /c/<token> with per-comparison OG that respects the privacy toggles. (3) Client OTA after approval: a per-channel message builder, openURL with fallback instead of canOpenURL, a real Copy, removing \"30 seconds\", and a link in the text-only path. (4) 1.0.1 native: the react-native-share config plugin (query schemes), a view-shot image card, Instagram Stories and Snapchat Creative Kit. Bot evasion is not involved anywhere.",
+ "findings": [
+  {
+   "claim": "A fresh compare has no comparison_id, so Share takes the text-only path: 'Comparing A vs B / Winner / recommendation'. That text has no link, no app name and no store URL, and it prints 'undefined' if a product name is missing. The referral sheet only mounts when an id exists (History reopen).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:532-548 - text-only Share.share, no URL",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:943-955 - sheet gated on sharableComparisonId",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:98 - ENABLE_COMPARISON_ID_ECHO env read (dark)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The sheet sends one generic message to every target (messageWithLink). It ignores product names, the winner and the privacy toggles, and carries the unverified speed claim '30 seconds'. That conflicts with the remove-fabricated-numbers goal.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:138-139 - buildOutgoing uses messageWithLink only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:874 - 'ends the debate in 30 seconds'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/ar.json:871 - same claim in AR",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:445 - unused per-comparison 'referrals.share.message' template exists"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "WhatsApp goes through Linking.canOpenURL('whatsapp://send?text=') before opening. app.json has no LSApplicationQueriesSchemes in ios.infoPlist and no Android <queries> for whatsapp. On iOS canOpenURL then returns false (or rejects), so WhatsApp always drops to the system sheet. On Android 11+ it is likely the same. The device behaviour itself was not tested.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:189-197 - canOpenURL gate then fallback",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:152-154 - infoPlist only ITSAppUsesNonExemptEncryption",
+    "https://reactnative.dev/docs/linking - iOS9+ needs LSApplicationQueriesSchemes or canOpenURL false; Android 11 needs <queries> (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The 'Copy' and 'Snapchat' targets both open Share.share instead of copying. expo-clipboard is already a dependency and is imported elsewhere, so a real copy-to-clipboard can ship by OTA.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:184-187 - copy/snapchat -> Share.share",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json:30 - expo-clipboard ~8.0.8",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/clipboardFallbackService.ts:22 - expo-clipboard imported"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "X uses x.com/intent/post with the full message, link included, in the text parameter. The documented endpoint is x.com/intent/tweet, which takes separate text, url (counted at t.co length), hashtags and via parameters within 280 characters. Telegram already uses the documented t.me/share/url?url=&text= form.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:81-85 - x and telegram intents",
+    "https://docs.x.com/x-for-websites/post-button/guides/web-intent.md - params and 280 limit (read 2026-10-22)",
+    "https://core.telegram.org/widgets/share - t.me/share/url url+text URL-encoded (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "RN Share.share: message works on both platforms, url is iOS-only and title is Android-only. Android always reports sharedAction; only iOS reports dismissedAction. So 'share_completed' and the Loop-1 toast cannot prove anything was sent. The current code puts the link inside message, which is the portable choice. The claim that iOS drops message when url is set was not confirmed by any source.",
+   "evidence": [
+    "https://reactnative.dev/docs/share - field/platform table and actions (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:202-207 - onShared fires even on intent failure"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "expo-sharing only sends local files (shareAsync(fileUrl)). It cannot share text or a URL, so it only matters if an image share card is built.",
+   "evidence": [
+    "https://docs.expo.dev/versions/latest/sdk/sharing/ - file-oriented, included in Expo Go (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "react-native-share: MIT licence, about 3.9k stars, npm 12.3.1 (published around May 2026, inferred from registry metadata). It ships an Expo config plugin with ios (LSApplicationQueriesSchemes) and android (<queries> packages) options and needs prebuild, so it is native and waits for 1.0.1. Per the shareSingle table: Twitter is iOS-only, Snapchat Android-only, Instagram/Facebook Stories need appId, and TikTok is not listed.",
+   "evidence": [
+    "https://github.com/react-native-share/react-native-share - MIT, ~3.9k stars, config plugin (read 2026-10-22)",
+    "https://registry.npmjs.org/react-native-share/latest - 12.3.1 MIT (read 2026-10-22)",
+    "https://react-native-share.github.io/react-native-share/docs/share-single - target matrix (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Instagram Stories requires a Facebook App ID (since January 2023), the instagram-stories query scheme, and a background image (at least 720x1280, 9:16) or a sticker image. There is no documented way to pre-fill text or a link. Instagram feed and DM sharing take media only. This is native plus an image card, so 1.0.1.",
+   "evidence": [
+    "https://developers.facebook.com/docs/instagram-platform/sharing-to-stories/ - appId, pasteboard keys, sizes (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "TikTok Share Kit shares only images or video. It needs a developer app, a client key and the Share Kit product, plus photo-library access on iOS. It cannot share text or a link, so it does not fit a link-first flow.",
+   "evidence": [
+    "https://developers.tiktok.com/docs/en/share-kit-ios-quickstart-v2 - via search result summary (read 2026-10-22)",
+    "https://developers.tiktok.com/docs/en/share-kit-android-quickstart-v2 - MediaContent only (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Snapchat Creative Kit for Web is a share button with an optional app ID that attaches a public URL. The mobile Creative Kit shares media plus one sticker and now needs no SDK, but it needs a Snap Kit portal app. The exact mobile URL format (snapchat.com/scan?attachmentUrl=) is not documented on the page read. The system sheet stays the right OTA path for Snapchat.",
+   "evidence": [
+    "https://developers.snap.com/snap-kit/creative-kit/web - attachmenturl param, no setup (read 2026-10-22)",
+    "https://developers.snap.com/snap-kit/creative-kit/overview - media + one sticker (read 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "WhatsApp https://wa.me/?text=<encoded> opens the contact picker with the text filled in. When the app is absent it goes to WhatsApp's web page instead of failing. Only third-party guides confirm the no-number form; the official FAQ body did not render.",
+   "evidence": [
+    "https://www.unipile.com/es/?p=275019 - wa.me/?text opens contact list (read 2026-10-22)",
+    "https://faq.whatsapp.com/5913398998672934 - body not retrievable (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "No landing page has og:image. open.html, served for every /c/ /r/ /q/ path, has no OG or Twitter tags at all. index.html says 'Coming soon to the App Store' in og:description. The landing README already lists og:image as not shipped. A shared link therefore previews as a bare or generic card with no image, and the preview is identical for every comparison.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:7-10 - only description/robots/title",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/index.html:9-13 - og:title/description/type/url, twitter:card, no image",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template:70-78 - /c/ /r/ /q/ -> static open.html",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/README.md:149 - og:image not yet shipped"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "OG and card requirements: og:title, og:type, og:image and og:url are required; og:image:width, height and alt are recommended. Meta recommends 1200x630 (600x315 minimum for large previews, 8MB cap). X summary_large_image is about 2:1 (min 300x157, under 5MB, per third-party guides). Third parties report WhatsApp previews need an image under about 300KB (not officially confirmed).",
+   "evidence": [
+    "https://ogp.me/ - required/optional props (read 2026-10-22)",
+    "https://developers.facebook.com/docs/sharing/webmasters/images - 1200x630, 200x200 min, 8MB (via search, read 2026-10-22)",
+    "https://support.wix.com/en/article/recommended-social-share-image-size - WhatsApp <300KB claim (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Universal Links: the AASA uses the legacy apps/paths format with appID 8K562M549D.com.qaren.app for /r/* /c/* /q/*, matching associatedDomains and the Android intentFilters. assetlinks.json holds a placeholder fingerprint ('ANDROID_SIGN…'), so autoVerify fails and Android links open in the browser or a chooser.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/.well-known/apple-app-site-association - legacy paths",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/.well-known/assetlinks.json - placeholder fingerprint",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:24,164-172 - applinks + autoVerify filters",
+    "https://developer.android.com/training/app-links/verify-applinks - unverified domains need manual association (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "When the app is absent, open.html's only action is a qaren:// link, which does nothing if the app is not installed, and the store button is hidden because APP_STORE_URL is ''. Universal links also do not fire on same-domain navigation, typed URLs, or inside many in-app browsers (an Apple-documented pattern plus general knowledge), so open.html is the real landing page for most WhatsApp and Instagram taps.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:103 - APP_STORE_URL = ''",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:116-127 - handoffTarget builds qaren:// only",
+    "https://developer.apple.com/documentation/xcode/supporting-associated-domains - (page body not rendered; summary from general knowledge, read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Referral share_link is https://getmyez.com/c/<token>?ref=<code>, and the in-app linking config resolves c/:share_token, r/:code and q/:share_token. The public views strip personalization: get_shared_comparison drops personalized, personalization_factors and personalization_prompt, plus metadata.openai, and resolve_invite sanitizes budget and preferences. A per-comparison OG renderer can reuse resolve_invite's sanitized output.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:50,348 - APP_BASE_URL + share_link",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/navigation/linking.ts:47-60 - prefixes and paths",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:674-679 - personalization strip",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py:65-76 - metadata.openai strip",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/referral_routes.py:256-279 - /invite/{token} sanitized"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The legacy /api/v1/share endpoint returns share_url pointing at the raw Railway JSON API (not a human page), and the client's shareComparison() wrapper has no callers. It is dead code and should not become the share link.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py:17,48 - SHARE_BASE_URL railway /api/v1/share",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:1132 - shareComparison defined, no call sites found"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The client uses CNG (no android/ or ios/ folders) with runtimeVersion policy appVersion. Any infoPlist, queries, config-plugin or native-module change (react-native-share, react-native-view-shot, Snap/TikTok SDKs) needs a new binary, i.e. 1.0.1. Changes to JS, i18n and Linking URLs can ship by OTA after approval.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:272-277 - runtimeVersion appVersion, expo updates",
+    "ls SmartCompareApp/android, ios - not present"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Telegram's tg://msg_url?url=&text= deep link is documented, but no source confirmed it per platform. The https t.me/share/url form already in use opens the app if installed and the web otherwise, so it is the safer one.",
+   "evidence": [
+    "https://core.telegram.org/api/links - msg_url syntax (via search, read 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  }
+ ],
+ "recommendations": [
+  "CHANNEL MATRIX (mechanism | native? | OTA? | text/link/image | if app absent):\n- WhatsApp: https://wa.me/?text= | no | yes | text+link | WhatsApp web page.\n- Telegram: https://t.me/share/url?url=&text= | no | yes | text+link | web.\n- X: https://x.com/intent/tweet?text=&url=&hashtags=MYEZ | no | yes | text+link, 280 max | x.com web composer.\n- SMS/iMessage: sms:&body= (iOS) or sms:?body= (Android) | no | yes | text+link | always present.\n- Email: mailto:?subject=&body= | no | yes | text+link | no mail app: openURL rejects, fall back to the sheet.\n- Copy: Clipboard.setStringAsync plus a toast | no | yes | link.\n- Snapchat: system sheet now, Creative Kit in 1.0.1 | 1.0.1 | text via sheet.\n- Instagram Stories: react-native-share plus FB App ID | yes | no | image or sticker only | 1.0.1.\n- TikTok: no direct target, copy link only. Share Kit is media-only and needs review.\n- 'More': Share.share({message}).",
+  "Templates for WhatsApp, Telegram and SMS: 1-2 lines, link alone on the last line so the preview card renders, no hashtags, at most one emoji. EN: 'I compared {A} and {B} on MYEZ. {winner} suits me better. See why:\\n{link}'. AR: 'قارنت {A} و{B} على ميّز، و{winner} أنسب لي. شوف ليش:\\n{link}'. When show_result is off, drop the winner: EN 'Can't decide between {A} and {B}? Compare them on MYEZ:\\n{link}' / AR 'محتار بين {A} و{B}؟ قارنهم على ميّز:\\n{link}'.",
+  "X template: link in url= and hashtags=MYEZ as separate parameters, text kept under 250 characters. EN '{A} vs {B}: {winner} wins for my needs. Compare yours on MYEZ'. AR '{A} أو {B}؟ {winner} الأنسب لي. قارن بنفسك على ميّز'. Email template: subject EN '{A} vs {B}: my MYEZ comparison' / AR '{A} و{B}: مقارنتي على ميّز', body is the WhatsApp text. Snapchat and copy: EN 'Which would you pick? {link}' / AR 'أيّهم تختار؟ {link}'.",
+  "Arabic and RTL: keep the link on its own line, never mid-sentence, so bidi reordering cannot garble it. Put Latin product names on their own segment, or wrap them in U+2068/U+2069 isolates, but test that in WhatsApp first because isolate support there is unverified. Use Eastern or Western digits consistently, and choose the template by UI language (per the localization digest).",
+  "OTA (after approval): replace the canOpenURL gate with a direct Linking.openURL in a try/catch, falling back to Share.share. The gate is false without query schemes, and calling openURL directly needs no plist change.",
+  "OTA (after approval): make Copy actually copy via expo-clipboard, already in the binary. Add Email, SMS and More targets. Build the message per channel from the unused referrals.share.message template and the privacy toggles. Delete the '30 seconds' claim from en.json:874 and ar.json:871 (task item 5).",
+  "OTA (after approval): fix the text-only path at ResultsScreen.tsx:538-543. Add the getmyez.com link (or the store URL once known), guard against undefined names, and drop the LLM recommendation from shared text. Only turn on ENABLE_COMPARISON_ID_ECHO after approval, because the review notes describe the text-only behaviour.",
+  "Landing, not the app: add og:title, og:description, og:image (1200x630, PNG or JPG under 300KB, with og:image:width, height and alt), og:url, og:locale ar_BH plus alternate en_US, and twitter:card summary_large_image with twitter:image to open.html, index.html and ar/index.html. Change 'Coming soon to the App Store' once approved. Keep noindex on open.html; it does not block preview crawlers.",
+  "Backend, dark (ENABLE_SHARE_PREVIEW_HTML, default OFF, read per call): add a GET HTML route that renders per-comparison OG for /c/<token>?ref=. Use resolve_invite's sanitized data, respect show_name, show_result and show_reasons, and never include budget. Render a cached 1200x630 card image server-side (Pillow). nginx proxies /c/ to it only when the flag is on and keeps open.html's hand-off script in the HTML. With the flag off, output stays byte-identical to today.",
+  "Owner actions with no secrets involved (signing fingerprints and app IDs are public identifiers): put the real Play app-signing SHA-256 into assetlinks.json. Set APP_STORE_URL in open.html once the App Store id exists. Optionally move the AASA to the components format. Verify with adb pm get-app-links and Apple's CDN.",
+  "1.0.1 native batch: react-native-share with its config plugin. List ios schemes [whatsapp, tg, twitter, instagram-stories, snapchat] and the matching android packages. Add react-native-view-shot for an image card; expo-sharing is an option for file share. Register a Meta app for the Instagram Stories FB App ID and a Snap Kit app for Creative Kit. Skip TikTok Share Kit unless a video or image card exists. Update the privacy manifest and photo-library strings if images are saved.",
+  "Measurement: on Android, Share.share always reports sharedAction, and the sheet calls onShared even when the intent fails. Track 'share_target_opened' instead of 'share_completed', and measure real conversion through /c/ landing visits and ref redemptions on the backend."
+ ],
+ "open_questions": [
+  "Does the owner want an image share card (needed for Instagram Stories, Snapchat and TikTok) in 1.0.1, or a link-first flow only?",
+  "Is getmyez.com now served by the landing service in production? The nginx comment says it served an unrelated page on 2026-10-10, which this review could not verify without production access.",
+  "Should per-comparison OG previews show product names and the winner by default, given the privacy toggles default ON (ShareBottomSheet.tsx:125)? Or should the preview stay generic unless show_result is true?",
+  "Has a Meta (Facebook) app and a Snap Kit app been registered? Both are prerequisites for Stories and Creative Kit.",
+  "Does WhatsApp keep Unicode bidi isolates (U+2068/U+2069) in pre-filled text? This needs a device test before Arabic templates rely on them.",
+  "Does WhatsApp actually require preview images under 300KB? Only third parties claim it, so it should be tested."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/navigation/linking.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/clipboardFallbackService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/referral_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/index.html",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/ar/index.html",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/Dockerfile",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/README.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/.well-known/apple-app-site-association",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/.well-known/assetlinks.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/contract_freeze.json (share mentions only)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json (share mentions only)",
+  "https://react-native-share.github.io/react-native-share/docs/share-single (read 2026-10-22)",
+  "https://react-native-share.github.io/react-native-share/docs/install (read 2026-10-22)",
+  "https://github.com/react-native-share/react-native-share (read 2026-10-22)",
+  "https://registry.npmjs.org/react-native-share/latest (read 2026-10-22)",
+  "https://reactnative.dev/docs/share (read 2026-10-22)",
+  "https://reactnative.dev/docs/linking (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/sharing/ (read 2026-10-22)",
+  "https://docs.x.com/x-for-websites/post-button/guides/web-intent.md (read 2026-10-22)",
+  "https://core.telegram.org/widgets/share (read 2026-10-22)",
+  "https://core.telegram.org/api/links (via search, read 2026-10-22)",
+  "https://developers.facebook.com/docs/instagram-platform/sharing-to-stories/ (read 2026-10-22)",
+  "https://developers.facebook.com/docs/sharing/webmasters/images (via search, read 2026-10-22)",
+  "https://developers.snap.com/snap-kit/creative-kit/web (read 2026-10-22)",
+  "https://developers.snap.com/snap-kit/creative-kit/overview (read 2026-10-22)",
+  "https://developers.tiktok.com/docs/en/share-kit-ios-quickstart-v2 (via search, read 2026-10-22)",
+  "https://ogp.me/ (read 2026-10-22)",
+  "https://developer.android.com/training/app-links/verify-applinks (read 2026-10-22)",
+  "https://developer.apple.com/documentation/xcode/supporting-associated-domains (body not rendered, read 2026-10-22)",
+  "https://www.unipile.com/es/?p=275019 (third-party wa.me guide, read 2026-10-22)",
+  "https://support.wix.com/en/article/recommended-social-share-image-size (third-party WhatsApp 300KB claim, read 2026-10-22)"
+ ]
+}

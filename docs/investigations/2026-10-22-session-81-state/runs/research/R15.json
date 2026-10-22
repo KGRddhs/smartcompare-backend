@@ -1,0 +1,237 @@
+{
+ "topic": "R15 Coverage and growth model for an owned GCC fragrance knowledge base: seeding, coverage, refresh, local data, risks",
+ "summary": "Answer: an owned fragrance knowledge base (KB) can carry most single-product lookups after about 2,000 fragrances. Full pair compares need closer to 10,000. Seeding must come from the merchant registry's own feeds, because the data we already hold is tiny.\n\nWhat we hold is about 44 distinct fragrances, at zero network cost: 18 gold pairs, 20 warmer queries and 4 trending names. On top of that sit 92 Gulf PDPs and 414 global pages. Those pages carry price 84%, image 82%, size 81%, concentration 82% and gender 67% of the time, but notes only 38% and longevity 32%. The spec spine store is empty and migration 035 has not been applied.\n\nThe registry is the real seed. It has 130 fragrance rows: 95 live, and 24 with a bulk feed (Shopify 9, Woo 10, Salla 2, Magento 2, Algolia 1). 14 of the feed hosts are Bahrain stores.\n\nCoverage model (Zipf, inferred). With 20k active fragrances and s=1:\n- 500 seeded: 65% of single lookups hit, 42% of pairs.\n- 2,000 seeded: 78% single, 61% pair.\n- 10,000 seeded: 93% single, 87% pair.\n\nPessimistic case (50k active, s=0.8): 33/11, 47/22 and 69/48. Pair figures assume independence and are a lower bound. Each figure is then multiplied by per-field completeness.\n\nThe KB also decays. The market sees 1,000+ launches a year (2011 figure) and 10k+ new database entries a year, so the KB needs growth driven by user requests.\n\nCosts from the Anthropic pricing page (read today):\n- Haiku 5.5 batch: $0.05/$0.25 per MTok, so one spec extraction per fragrance is about $0.0005. 10k fragrances cost about $5.\n- web_search: $10 per 1,000. 10k discovery searches would use $100 of the $400 credits, so discovery should come from feeds, not web search.\n\nRefresh policy:\n- Price: daily for the head, weekly for the tail.\n- Specs: once, then re-seed only thin rows.\n- Images: monthly link check.\n- Reviews: monthly.\n- Current TTLs are price 1 day (genuine 7 days), specs 30 days, reviews 14 days.\n\nLocal data: product_prices already stores region, currency, retailer, url, source_method, fetched_at, title and in_stock. It lacks size_ml, concentration, list vs sale price and first/last-seen dates, and the read path drops fetched_at. The registry 'country' field means \"serves BH\": 17 BH rows price in AED, USD, SAR or QAR. Currency truth must therefore come from page evidence.\n\nRisks found in the guards:\n- The counterfeit filter is a plain substring match. It drops every genuine Maison Margiela 'Replica' listing (gold query frag-018) and any title containing 'infused' (it matches 'used').\n- The luxury-brand list contains 'lv', which matches 'silver' and 'velvet'.\n- spine_key includes the bottle size in ml. A query with no size therefore misses rows seeded from 100ml PDPs, even though the spine is meant to hold per-juice facts.\n\nExisting guards: the exact-price gate (default ON), size-aware price keys, sample/decant/tester regexes, and the converted-only status of grey-market USD prices.",
+ "findings": [
+  {
+   "claim": "The fragrance seed we already hold is about 44 distinct fragrances: 18 gold-truth pairs (2 of them in the smoke subset), 20 warmer queries (6 single-SKU KPI seeds, 6 designer pairs, 8 Lattafa/Armaf/Rasasi/Al Haramain/Swiss Arabian) and 4 trending names (Tom Ford TV/Oud Wood, Creed Aventus/Royal Oud). There are about 33 brands, a mix of global designer houses and Arabian houses.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/validation_gold_truth.json - 200 queries, fragrances=18 (frag-001..018)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/warmer_catalog.json - 42 queries, fragrances=20",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/trending_curated.json - 6 regions, 1 fragrance pair each, 4 distinct names",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/eval_smoke_subset.json - 20 ids, frag-001 and frag-006"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The merchant registry is the real seeding asset. It has 368 rows (bahrain tier 132, gcc tier 236), of which 130 are tagged fragrances: 95 live, 24 dead. Of the 95 live fragrance hosts, 24 expose a bulk feed (woo 10, shopify 9, magento_graphql 2, salla 2, algolia 1), 14 of those in BH. The other 71 are JSON-LD page scrapes. All 95 have a search descriptor.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - counts computed with python -I",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json - 95 hosts: platform_api 43, sitemap 42, none 6, onsite_html 4; robots_allowed 93/95"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Currency truth cannot come from the registry's country column. 17 rows labelled country=BH price in another currency (AED 9, USD 4, SAR 3, QAR 1): faces.ae, ounass.ae, parisgallery.ae, rasasistore.com and swissarabian.com (USD) among them. All bahrain-tier rows are BHD. The column reads as 'serves BH', not 'priced in BHD'.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - country==BH and currency!=BHD: 17 rows; tier==bahrain and currency!=BHD: 0"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The spec-spine design (per-fragrance facts, citation-or-omit, one LLM call per fragrance) exists but holds nothing: data/spec_spine.json is {} and migration 035 is written but not applied. SPINE_FIELDS is scent_family, notes_top/heart/base, longevity, sillage, season, occasion and concentration. The seeder reads files only, and its LLM call is still OpenAI.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/spec_spine.json - empty dict",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql:3-9 - NOT APPLIED banner",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:94-104 - SPINE_FIELDS",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:17-25 - no network; only the OpenAI completion"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "spine_key folds bottle size (ml) into the key, while the same module says volume is a per-listing fact. A sizeless query such as 'Dior Sauvage EDP' gets an ml='-' key and so misses spine rows seeded from 100ml PDPs. Each size also duplicates the same notes row, so the per-fragrance saving is lost.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:216-222 - key <cat>|<brand>|<identity>|<conc>|<ml>",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:25-27 - volume is per-LISTING"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "How complete each field is in the held corpora (414 cached pages, pre-LLM): price 84%, identity 77%, image 82%, size 81%, concentration 82%, gender 67%, notes 38%, longevity 32%, ratings 30%, review text 15%. Scraping can feed the commerce fields. Notes and longevity need a licensed source; Fragrantica and Parfumo are banned. Size-aware Shopify variants carry nothing: 0 of 999 products have two ml variants, so size has to be read from tags and body_html.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:822 - scorecard",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:861-869 - Fragrantica/Parfumo ban",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:879-880 - 0 of 999 Shopify",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:912-913 - 92 Gulf PDPs, global corpus"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Delta vs session 80: FragranceX is still out. All 3 probes got a Cloudflare challenge, the robots ruling is fail-closed, prices are USD only, and the 13 offers carry no size. The cached sitemap child listed 7,513 PDPs across 676 brands, which gives a useful sense of how big a global discounter's catalogue is. CJ Affiliate remains a legal track only.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json - summary and finding 1",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md:32,71 - R-A11, D1 FRAGRANCE-BRAIN"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Our own demand data is too thin to fit a demand curve. 88.57% of the 13,237 search_logs rows were 13 probe strings. The organic series is 1,513 rows (80% success, p50 22 s), or 1,808 rows (82%, p50 20.9 s) once probe #1 is excluded. Migration 042 (is_synthetic) was applied 2026-09-30, so organic rows can now be separated.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql:24-33",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:92 - 042 applied 2026-09-30"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Coverage model: Zipf demand over N active GCC fragrances, seeding the true top-n, pair hit rate = p squared (a lower bound, because popular pairs are correlated). With N=20k and s=1: 500 → 65%/42%, 2,000 → 78%/61%, 10,000 → 93%/87%. With N=20k and s=1.1: 76/58, 86/74, 96/92. With N=50k and s=0.8: 33/11, 47/22, 69/48. These are identity hits only; multiply by field completeness, e.g. about 0.84 for price.",
+   "evidence": [
+    "computed with python -I sum(k^-s) for N in {20000, 50000} and s in {0.8, 1.0, 1.1}",
+    "https://dspace.mit.edu/handle/1721.1/74642 - Brynjolfsson et al.: online top 20% of products ≈ 70% of sales vs 80% in catalogue (read 2026-10-22, via search summary)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Size of the catalogue: Michael Edwards' Fragrances of the World database holds 36,000+ fragrances (50,000+ per BeautyMatter). Releases were about 1,200 in 2011, up from 372 in 2001. Golden Scent says it lists about 20,000 products from 1,000+ brands, 100+ of them Saudi. Nice One lists 28,000+ products from 1,200+ brands. A plausible active GCC universe is therefore about 20k–50k juices, before sizes.",
+   "evidence": [
+    "https://www.fragrancesoftheworld.com/OurWork - 36,000+ (read 2026-10-22, via search snippet)",
+    "https://boisdejasmin.com/2011/11/fragrance-trends-from-1991-to-2011.html - 76/372/1,200 releases (read 2026-10-22, snippet)",
+    "https://www.imagesretailme.com/the-scent-of-success/ - Golden Scent 20k products/1,000 brands, company-sourced (read 2026-10-22)",
+    "https://www.agbi.com/people-lifestyle/2024/11/saudi-beauty-ecommerce-site-nice-one-announces-ipo/ - 28k products/1,200 brands (read 2026-10-22, snippet)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Demand shape in the GCC: Arabic perfumes hold the majority of GCC perfume value (IMARC: about USD 3.0B in 2024, 5.1% CAGR, Saudi Arabia leading). Kenresearch names Al Haramain, Ajmal, Swiss Arabian, Rasasi, Afnan and Arabian Oud as leading players. So the head of GCC demand is Arabian houses plus global designer pillars, not niche brands.",
+   "evidence": [
+    "https://www.imarcgroup.com/gcc-perfume-market (read 2026-10-22, via search summary)",
+    "https://www.kenresearch.com/industry-reports/gcc-fragrances-market (read 2026-10-22, via search summary)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Platforms of the main fragrance retailers, per our registry: goldenscent.com is algolia (BHD storefront, local_bhd); faces.ae and faces.sa are JSON-LD pages plus sitemap; ounass.ae is JSON-LD with no search descriptor; niceonesa.com is a provider-test-candidate (SAR); lookfantastic.ae is render-only; en-kwt.ajmal.com is Magento GraphQL; bh.jashanmal.com is Shopify; namshi.com is dead. Noon, Sephora ME and Boutiqaat have no registry row. Salla reports 68,000+ active merchants.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - per-domain rows",
+    "https://salla.com/en/ai-info/ - 68,000+ active merchants, company-reported (read 2026-10-22, snippet)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Current refresh windows in code: L2 price 1 day (genuine-BH 7 days via GENUINE_PRICE_CACHE_TTL_SECONDS), specs 30 days, reviews 14 days. L1 is prices 24 h, specs 7 days, reviews 7 days. product_prices stores product_key, region, amount, currency, retailer, url, source_method, estimated and fetched_at, plus title (033) and in_stock (034). The read path drops fetched_at.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:3-4,18-29",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:23-39",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json - fetched_at dropped (product_data_service:283-296)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Cost per field on Anthropic (pricing page read 2026-10-22):\n- Haiku 5.5 is $0.10/$0.50 per MTok, halved in batch to $0.05/$0.25. A spine extraction of about 6k tokens in and 0.8k out costs about $0.0005 in batch, so about $5 for 10k fragrances.\n- Sonnet 5.5 is $2/$10.\n- web_search is $10 per 1,000 searches. Discovering 10k fragrances that way costs $100 of the $400 credits.\n- Web fetch has no surcharge.\nPrice refresh from feeds or curl has no LLM cost.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing - model table, batch table, web search $10/1,000, web fetch no extra charge (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Counterfeit-filter false positives: is_counterfeit_listing is a plain substring test over COUNTERFEIT_KEYWORDS, which include 'replica', 'used', 'inspired', 'copy' and 'vintage'. It drops every genuine Maison Margiela 'Replica' listing, which is gold query frag-018, and any title containing 'infused'. 'Inspired by' would also drop legitimate clone-house titles. app/ has no exception for any of these.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:528-534 - keywords",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:1014-1022 - any(kw in title_lower)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:1012, algolia_service.py:633, noon_service.py:226 - callers",
+    "grep '(?i)margiela|infused' app/ - 0 matches"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "is_luxury_brand is a substring match over LUXURY_BRAND_KEYWORDS, which includes 'lv'. 'Silver Mountain Water' and any 'Velvet' fragrance are therefore classed as luxury and pick up the luxury price-floor and flagship behaviour.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:537-542",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:1290-1293"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Guards already in the repo that the KB should reuse:\n- The exact-price gate is default ON.\n- The size-aware price cache key builder.\n- The sample/decant/tester/vial title regex and a rule that a ≤10ml listing at ≥30 BHD counts as a decant.\n- Decant-house glass-vessel handling.\n- Authorized and GCC luxury retailer lists.\n- Grey-market or global USD prices are only ever shown as 'converted'.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:4294-4298 - exact_gate_enabled default true",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:9381-9395 - build_size_aware_price_cache_key",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:1766-1778 - sample/decant",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:580-590 - luxury retailer sets"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Growth curves of open community databases:\n- Open Food Facts went from 648 products at launch (May 2012) to 1M (Oct 2019), about 2.3M (May 2022), about 3.5M (2024) and 4,828,711 today.\n- Open Beauty Facts went from about 2,300 at its 2016 launch to 78,526 today.\nThe lesson is that a niche beauty database grows roughly 60x slower than food without barcode scanning by a mass user base. Our KB growth should not rely on users contributing; each compare should write back.",
+   "evidence": [
+    "https://world.openfoodfacts.org/ - 4,828,711 products (read 2026-10-22)",
+    "https://ca.openfoodfacts.org/product-count - 648 at launch 2012 (read 2026-10-22)",
+    "https://world.openbeautyfacts.org/ - 78,526 products (read 2026-10-22)",
+    "https://en.wikipedia.org/wiki/Open_Food_Facts - 1M Oct 2019, 2.3M May 2022 (read 2026-10-22, snippet)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Fragrance prices in the GCC move with events such as Ramadan, White Friday and noon flash sales (up to 50–80% off), rather than continuously. No source measured how often fragrance prices change. A daily refresh for the head and weekly for the tail, with an extra refresh around events, is an inference, not a measured optimum.",
+   "evidence": [
+    "https://www.khaleejtimes.com/ramadan/lower-prices-than-2023-uae-retailers-slash-costs-ahead-of-ramadan-offer-discounts-up-to-80 (read 2026-10-22, snippet)",
+    "https://www.tradearabia.com/news/RET_347856.html - Souq White Friday incl. perfumes (read 2026-10-22, snippet)",
+    "https://nber.org/papers/w22142 - Cavallo online/offline prices identical 72% (read 2026-10-22, snippet)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "The trending_curated.json view_count values (for example 1247 and 2104) are hand-written approximations: the schema says '<int approx>', and the update cadence is 'weekly via PR'. If the UI shows them, that conflicts with the no-fabricated-numbers rule. Whether they are rendered was not traced.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/trending_curated.json - _meta.schema view_count '<int approx>', update_cadence 'weekly via PR'"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Seed in order of expected query share. First, the about 44 held fragrances (zero network). Second, a feed walk of the 24 live, robots-allowed fragrance feed hosts, Bahrain's 14 first. Rank products by how many merchants stock them; a product at 3 or more GCC stores is the best free proxy for demand. Third, the 71 JSON-LD hosts through their sitemaps, only for PDPs we have already ranked. Fourth, write back on every compare miss. This reaches 2,000 fragrances without web_search.",
+  "Split the key into two levels. Specs and notes go per juice: brand|line|concentration. Price, availability and image go per SKU: plus ml plus merchant. The current spine_key includes ml (spec_spine_service.py:216-222), so sizeless queries miss and the notes are stored once per size.",
+  "Add the local-data columns to a new dark-flagged price-observation table, not into product_prices: size_ml, concentration, merchant_domain, merchant_country, observed_currency, currency_evidence_rung, list_vs_sale, in_stock, first_seen_at, last_seen_at, source_method. Surface captured_at on the wire, since fetched_at is dropped today.",
+  "Refresh policy:\n- Price daily for the top 500 (feed hosts in bulk; JSON-LD hosts one GET per PDP), weekly for the tail, plus a forced pass in Ramadan and White Friday weeks.\n- Specs once, re-seeding only rows built from a single page (seed_pages).\n- Images: a monthly HEAD check on the store's own URL; never host copies.\n- Reviews monthly.",
+  "Run spine extraction on Haiku 5.5 through the Batch API with citation-or-omit. It costs about $0.0005 per fragrance, about $5 for 10k. Reserve Sonnet 5.5 for disputed identity merges, and keep web_search ($10 per 1,000) for misses only, so the $400 credits are not spent on discovery.",
+  "Fix the counterfeit filter's false positives behind a new dark flag: word-boundary matching, a brand-line allowlist for Maison Margiela 'Replica', and no bare 'used'. Pin it with gold query frag-018 and an 'infused' title. The same applies to the 'lv' token in LUXURY_BRAND_KEYWORDS.",
+  "Treat the registry's country field as 'serves this market'. Take currency truth from the page-evidence hierarchy, and never default to BHD because country=BH: 17 BH rows price in another currency.",
+  "Measure the real demand curve before sizing beyond 2,000. Pull organic search_logs (is_synthetic IS NULL/false, migration 042) and fit the Zipf exponent once there are more than 5k organic fragrance rows. Today's 1.5–1.8k rows cover all categories and are too few.",
+  "Track KB health metrics: identity hit rate, pair hit rate, per-field completeness and the median age of the price. Compare them weekly against the model's 65/78/93% single-hit predictions to validate or correct the assumed exponent.",
+  "Keep notes and longevity as a licensing track (the CJ feed or a commercial provider), since the corpus covers only 38% and 32%. Never fill them from model memory, because a spine row persists without TTL decay.",
+  "Add Noon (adapter exists), Sephora ME and Boutiqaat to the registry assessment. They have no rows today, and any whose robots.txt is unreadable stays skipped under the 2026-08-31 ruling.",
+  "Confirm whether trending_curated view_count values reach the UI. If they do, remove the numbers or replace them with measured k-anonymous counts, per rule 5."
+ ],
+ "open_questions": [
+  "What is the real Zipf exponent of GCC fragrance demand? We have no retailer bestseller data, and organic search_logs are too few.",
+  "Do Golden Scent (algolia), Nice One and Faces allow bulk catalogue reads under their robots.txt and terms? Their robots files were not re-read this session.",
+  "How many stores run on Zid, and which GCC fragrance merchants run on it? Not found.",
+  "Licensing for notes and longevity: are CJ feed terms usable, and is there a commercial fragrance-spec provider? Unresolved.",
+  "How should decant houses (scentsplit-class) be handled? Still Ahmed's product decision (CLAUDE.md:823).",
+  "Does the trending view_count value render in the client? Not traced."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/trending_curated.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/warmer_catalog.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/eval_smoke_subset.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/validation_gold_truth.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/spec_spine.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+  "https://platform.claude.com/docs/en/about-claude/pricing (read 2026-10-22)",
+  "https://world.openfoodfacts.org/ (read 2026-10-22)",
+  "https://ca.openfoodfacts.org/product-count (read 2026-10-22)",
+  "https://world.openbeautyfacts.org/ (read 2026-10-22)",
+  "https://en.wikipedia.org/wiki/Open_Food_Facts (search snippet 2026-10-22)",
+  "https://www.fragrancesoftheworld.com/OurWork (search snippet 2026-10-22)",
+  "https://boisdejasmin.com/2011/11/fragrance-trends-from-1991-to-2011.html (search snippet 2026-10-22)",
+  "https://www.imagesretailme.com/the-scent-of-success/ (search snippet 2026-10-22)",
+  "https://www.agbi.com/people-lifestyle/2024/11/saudi-beauty-ecommerce-site-nice-one-announces-ipo/ (search snippet 2026-10-22)",
+  "https://salla.com/en/ai-info/ (search snippet 2026-10-22)",
+  "https://www.imarcgroup.com/gcc-perfume-market (search snippet 2026-10-22)",
+  "https://www.kenresearch.com/industry-reports/gcc-fragrances-market (search snippet 2026-10-22)",
+  "https://dspace.mit.edu/handle/1721.1/74642 (search snippet 2026-10-22)",
+  "https://nber.org/papers/w22142 (search snippet 2026-10-22)",
+  "https://www.khaleejtimes.com/ramadan/lower-prices-than-2023-uae-retailers-slash-costs-ahead-of-ramadan-offer-discounts-up-to-80 (search snippet 2026-10-22)",
+  "https://www.tradearabia.com/news/RET_347856.html (search snippet 2026-10-22)"
+ ]
+}

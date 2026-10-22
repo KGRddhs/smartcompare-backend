@@ -1,0 +1,264 @@
+{
+ "topic": "A5: Client surfaces the pivot touches (categories, fabricated numbers, share flow, feedback card) at origin/main 95cf6f86",
+ "summary": "Read-only at C:/Users/SynAckITPC/Documents/AI/sc-s80-b2 (95cf6f86). No S80 digest covered fabricated numbers or share. Category and feedback context from category_metrics_claims, category_walk_and_q5q9 and feedback_and_allowlists still holds. The deltas are below.\n\nCATEGORIES. The chip list is one array, CategorySelector.tsx:38-50 (9 entries, 'other' included). The chip is only a hint. HomeScreen sends selected_category only when a chip is tapped (HomeScreen.tsx:126, 414, 567; api.ts:686, 832, 972). The backend's name detection overrides the chip (scs:483-486). So hiding six chips does NOT limit what users can compare: typing \"iPhone vs Galaxy\" still runs electronics. A real fragrance-only rule needs a dark backend gate.\nOther client surfaces still advertise hidden categories:\n- QuickCategories tiles electronics/skincare/supplements/makeup (HomeEditorialSections.tsx:260-265).\n- SMART_PICK_CATEGORY_KEYS (:49-58).\n- Placeholders \"e.g. iPhone 15 / Galaxy S24\" and the onboarding quote \"Galaxy or iPhone?\" (en.json:729-730, 537).\nNo coming-soon key or event exists. A tap event must be added to VALID_EVENT_TYPES before any client fires it. Two tests pin nine chips: CategorySelector.test.tsx:12-39 and the s3 integration mock.\n\nFABRICATED NUMBERS. S69 and S74 already removed most of them. What remains:\n- CohortBadge renders \"{{count}}+ shoppers in {gov} leaned the same way\". The count is real: cohort_priors n, 5-30, from 388 survey responses. But the claim is false: n is the survey cohort size, not shoppers who picked this winner. It shows on Results and Referral.\n- The InviteeQuiz match % falls back to an invented 78.\n- LoadingRings still defaults counterTarget=2074 with showCounter=true. Every current caller turns it off, but the snapshot pins it.\n- The share text claims \"ends the debate in 30 seconds\".\n- The savings banner reads \"~N BHD shopped smarter\" (loser price minus winner price).\n- Seven orphan i18n keys still hold 73% or {{count}} claims.\n\nSHARE. Two paths:\n1. Fresh compares have no comparison_id, so they fall back to a hardcoded ENGLISH Share.share text with no link (ResultsScreen.tsx:532-546).\n2. With an id, ShareBottomSheet offers WhatsApp/Copy/X/Telegram/Snapchat. All use one generic catalog message. Snapchat and Copy both just open the OS sheet.\nProblems:\n- app.json declares no LSApplicationQueriesSchemes, so WhatsApp's whatsapp:// check likely fails on iOS and falls back to the OS sheet.\n- No Instagram target; adding one needs a migration-014 CHECK change plus the referral_routes Literal.\n- The /c/ hand-off page has no OG tags, is noindex, and APP_STORE_URL is empty.\n- The legacy /share route points at the raw Railway host, and its client function is imported but never called.\n\nFEEDBACK. FeedbackCard is three positive-only chips that always send useful:true. Nothing reads mattered_most. The B1 correctness fields and C6 reason chips are accepted by the server but no client sends them. The only useful:false rows are ContactUs bug reports, so behavior_service winner_agreement and vw_cohort_feedback_lift measure nothing.",
+ "findings": [
+  {
+   "claim": "The Home chip list is a single 9-entry array including 'other', rendered by HomeScreen only when canCompare. selected_category starts null and is sent only after a chip tap, on all three compare sites. Hiding six chips is a one-array client edit.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CategorySelector.tsx:38-50 - CATEGORIES 9 entries, testID category-chip-<value> :67",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:126,414,567,1009-1014 - null default, conditional spread",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:686-688,832,972 - selected_category omitted when unset"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Hiding chips client-side does not restrict categories. The backend lets name detection override the chip on the explicit and vision paths, the camera route takes no chip, and all 9 categories keep schemas and dimensions. A typed electronics pair still runs as electronics, so 'only fragrances work' needs a dark backend gate (e.g. a category allowlist flag that returns an abstain or coming-soon status).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:483-492 - det=name_cat; chip only flags category_switched",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:142 - CATEGORY_SPEC_SCHEMAS; :102 PRODUCT_PARSER_PROMPT",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/scoring_service.py:25 - CATEGORY_DIMENSIONS",
+    "S80 digest r0/category_walk_and_q5q9.json - image_routes has no category param (still valid)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Other Home and onboarding surfaces still advertise categories that will be hidden: QuickCategories tiles (electronics, skincare, supplements, makeup), SmartPick category pill keys, the compare-box placeholders 'e.g. iPhone 15 / Galaxy S24', and the onboarding quote 'Galaxy or iPhone?'.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx:260-265 - QUICK_CATS",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx:49-58 - SMART_PICK_CATEGORY_KEYS",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:537,729-730 - Galaxy/iPhone copy",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:1134-1137 - onPickCategory sets the category"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Tests that pin the 9-chip list: CategorySelector.test.tsx asserts all 9 testIDs and exactly 9 icons. The HomeScreen s3 integration test uses its own 9-key mock and presses electronics, then fragrances. No snapshot contains category chips.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/components/CategorySelector.test.tsx:12-39 - 9 values, mockIcons.length 9",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/HomeScreen.bundleE.s3.integration.test.tsx:103-128,269,393 - mock CATS + presses",
+    "grep of all __tests__ .snap files - no category-chip or home.categories hits"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "There is no 'coming soon' key and no category-tap event today. A new event_type must be added to VALID_EVENT_TYPES before any client fires it: an unknown type gets a 422 that drops the whole batch, and tests/test_events_allowlist_superset.py greps literal trackEvent args in the client. /events accepts anonymous calls, is limited to 60/min, and writes user_events fire-and-forget.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:52-93 - allowlist and superset note; :153-160 validator",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_events_allowlist_superset.py:33-40 - trackEvent/fireEvent/fireAnalytics regexes",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:997-1030 - trackEvents swallows errors",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/clientTruth/copyTruth.s74.test.ts:73-83 - an S74 pin already removed one 'coming soon' string"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "CohortBadge shows a real number under a false claim. peer_count is cohort_match.n from cohort_priors.json: the survey sample size of the user's age/gender/governorate/language cell, n 5-30, 388 responses in total. The copy says '{{count}}+ shoppers in {{governorate}} leaned the same way', which implies they picked this winner. It renders on Results when ENABLE_COHORT_PERSONALIZATION is on (ON in prod per CLAUDE.md:246) and a match exists.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5619-5664 - peer_count = cohort_match['n']",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/cohort_priors.json - total_responses 388, 21 cohorts, n 5..30",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CohortBadge.tsx:62-68 - copy",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/results/ResultsContent.tsx:533-543; ResultsScreen.tsx:897,987-996",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:759 / ar.json:756"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The ReferralLanding CohortBadge never renders: the backend always sends cohort_match None. Removing it is dead-code cleanup only. Pins: CohortBadge.test.tsx (6 tests) and about 17 test files that mention cohort_summary/cohortPeerCount.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:457 - 'cohort_match': None",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ReferralLandingScreen.tsx:141-144,223-227",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/components/CohortBadge.test.tsx - 6 it()"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "LoadingRings still defaults counterTarget=2074 and showCounter=true. All three live callers turn it off: Home passes showCounter={false}, Results passes showCounter={false}, and Step14 shows it only with a real count, which OnboardingFlow never passes. So 2,074 is latent, not visible. The LoadingRings snapshot and LoadingRings.test.tsx pin 2074 and its formatting.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx:129,132,211",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:1152-1159; ResultsScreen.tsx:750",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/onboarding/Step14Loading.tsx:143-164; OnboardingFlow.tsx:615-621 (no cohortPeerCount)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/hero/LoadingRings.test.tsx:14-34 + __snapshots__/LoadingRings.test.tsx.snap:3,150",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/honestLoaders.u6.test.tsx:77-125; honestCounts.s69.test.tsx:146-186"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The InviteeQuiz match % uses CounterTicker with an invented fallback of 78 when scoring is missing, and labels a product score as 'match for you'. CounterTicker.tsx line 4 is only a doc comment about '388 GCC shoppers'; the component has no hardcoded number.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/InviteeQuizScreen.tsx:165-170,199-212 - '?? 78', suffix %",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CounterTicker.tsx:4 - comment only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Seven orphan i18n keys carry fabricated or survey-count claims and have no render site: loading.tip.peer_prioritize (73%), results.tips.cohort_priority (73%), results.tips.cohort_match, cohort.trainedBy ({{count}} survey), onboarding.s14.cohort_footer, profile.styleProfile.basedOn, profile.styleProfile.peersInGovernorate. Step13's defaultValue still has a 73% string but is unreachable because the key exists. honestLoaders pins that peer_prioritize never rotates in.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:285,417,423,662,753,756,960",
+    "grep src/**/*.ts(x): no t() reader for these keys",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/onboarding/Step13Anticipation.tsx:122-127",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx:173-180"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Survey copy still rendered: s12 title and bullets ('Based on answers from real GCC shoppers'), s14 tip_2 and loading.cohort.caption (shown only with a real count, so never), and s15.subtitle 'Informed by a survey of GCC shoppers'. None has a digit; copyTruth CT-C3 pins s12.title digit-free. The survey is real (388 responses), so this is a wording choice, not a fabrication.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/onboarding/Step12CohortProof.tsx:116-139",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/onboarding/Step15Reveal.tsx:187-188,199-240 - StatBlocks show text, not numbers",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/clientTruth/copyTruth.s74.test.ts:101-117"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Two numeric marketing claims remain. (1) The share message 'MYEZ ends the debate in 30 seconds': S80 measured cold text compares at 30.2-30.8 s and scans at about 40 s. (2) The SavingsBanner '~N BHD shopped smarter' sums max(loser price - winner price, 0) across 3 or more compares; that is a price gap, not money saved, and prices can be estimates.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json - referrals.share.messageWithLink",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json - summary timings",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/home_routes.py:207-251; HomeEditorialSections.tsx:324-329"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Share path 1: fresh compares have no comparison_id, so they fall back to Share.share with a hardcoded ENGLISH body ('Comparing A vs B / Winner: X / recommendation'). It carries no link, no app name and no Arabic. Since comparison_id echo is off, this is the usual path.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:520-546",
+    "S80 digest contract_freeze.json - ENABLE_COMPARISON_ID_ECHO changes Share behaviour (text_routes.py:73-79)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Share path 2, ShareBottomSheet (only with a saved id): five targets, WhatsApp/Copy/X/Telegram/Snapchat. Every target gets the same generic catalog message, which has no product names. Snapchat and Copy both open the OS share sheet. WhatsApp uses whatsapp://send, but app.json declares no LSApplicationQueriesSchemes, so on iOS canOpenURL likely returns false and it falls back to the OS sheet. Telegram passes the link twice (in url= and inside the text). There is no Instagram target. The icons are generic lucide glyphs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:67-92,138-200",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:20-24 - ios block, no LSApplicationQueriesSchemes (repo-wide grep 0 hits)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json - referrals.share.message (product-aware) is unused"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The share link has the form https://getmyez.com/c/<token>?ref=CODE. nginx serves the static open.html for /c/, /r/ and /q/. The page has no og:title/og:image (so link previews are generic), is robots noindex, and has APP_STORE_URL='' so the store button stays hidden. The legacy POST /api/v1/share returns a raw Railway URL; shareComparison is imported in ResultsScreen but never called.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:50,348",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template:61-78",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:4-10,77-88,103",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py:17,46-50; ResultsScreen.tsx:84",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/navigation/linking.ts:47-55"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Adding a share target such as Instagram needs a DB change, not just client work: share_target is a Pydantic Literal plus a CHECK in migration 014. The Deep Review credit is still granted server-side, but S74 removed every client claim about it and shareTruth CT-S1/S2/S3 pin that.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/referral_routes.py:80,111",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/014_referral_system.sql:22",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:253-323",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/clientTruth/shareTruth.s74.test.tsx:155-250; i18n/brand.myez.s69.test.ts:80"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "FeedbackCard is three positive-only chips (Accurate/Detailed/Fast) under 'Was this helpful?'. Every tap sends useful:true with mattered_most:[chip], and comparison_id is null on fresh compares. There is no negative path and no free text, and it never sends winner_correct/price_correct/specs_correct or the C6 reason chips the server now accepts.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:18-22,47-63",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:44-50,102-111 - B1 fields + C6 chips",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/results/ResultsContent.tsx:600-604",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/FeedbackCard.designChips.test.tsx"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "What the feedback collects in practice is close to nothing usable. No backend code reads mattered_most or the correctness columns. behavior_service.winner_agreement counts useful true/false, but the only false rows come from ContactUs bug reports (useful = category !== 'bug'), so agreement is near 100% by design. vw_cohort_feedback_lift.useful_pct has the same flaw. analytics_service.py reads only search_logs and products.",
+   "evidence": [
+    "grep app/**/*.py mattered_most|winner_correct - only feedback_routes/feedback_service writers",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/behavior_service.py:99-102",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5695 - select('useful')",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ContactUsScreen.tsx:32-34,87-98",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/013_demographics_cohort.sql:44-57",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/analytics_service.py:31-182 - search_logs/products only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No migration contains CREATE TABLE for comparison_feedback; the base table was created out of band (7 columns per the 2026-06-08 inventory). Migration 027 adds the three correctness columns with CHECK (correct|wrong|unsure). Any new question columns, such as a correct-price value or a wrong-product note, need a new additive migration.",
+   "evidence": [
+    "grep -i 'create table.*comparison_feedback' migrations - 0 hits",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/027_comparison_feedback_correctness.sql:27-61",
+    "S80 digest r0/feedback_and_allowlists.json - inventory doc 2026-06-08 :83-93"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "category_switched still has no client render site; only types.ts declares it. If the backend reroutes a hidden category to fragrances or abstains, the user will not see why unless new client copy ships.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/types/types.ts:298-299",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/resultHonesty.ts:70 - reads category_used only"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Categories (client, merge now, ship by OTA after approval): replace CATEGORIES with fragrances (active) plus skincare and makeup as disabled 'coming soon' chips, and drop 'other'. Also cut QUICK_CATS and the SmartPick keys down to those three. Update CategorySelector.test.tsx:12-39 and the s3 integration mock. Reason: one array plus two tests, all client-side.",
+  "Before any client fires it, add one event type such as 'category_coming_soon_tap' with event_data {category} to VALID_EVENT_TYPES. This is an unflagged, additive widening following the S80 C7 precedent. Reason: otherwise the whole event batch 422s and the superset test fails.",
+  "Enforce fragrance-only on the backend behind a dark flag (e.g. ENABLE_CATEGORY_ALLOWLIST, read per call, OFF byte-identical). When the resolved category_used is not allowed, return an honest 'not supported yet' status. Reason: the chip is only a hint and name detection runs every category today.",
+  "Replace the electronics example copy (home.compare.box_a_text/box_b_text, onboarding.s1.quote_1) with fragrance examples in EN and AR. Reason: it contradicts the three-category app.",
+  "Remove CohortBadge from ResultsContent and ReferralLanding, delete the seven orphan keys, delete the LoadingRings 2074 default and the InviteeQuiz 78 fallback (hide the % when no score), and rewrite the '30 seconds' and 'shopped smarter' copy. Update the LoadingRings snapshot, CohortBadge.test and the honestCounts/honestLoaders pins. Reason: these are every remaining invented or misattributed number.",
+  "Before shipping a 'coming soon' chip, check Apple Guideline 2.1/2.3 on placeholder features against official docs. Reason: an S74 pin already removed one 'coming soon' string, and build 3 is still in App Review.",
+  "Share text-only path: use a localized, product-aware catalog key (referrals.share.message already exists, unused) and append the getmyez.com link. Reason: Arabic users currently share hardcoded English with no link.",
+  "Per-platform share: WhatsApp needs LSApplicationQueriesSchemes (a native change, so 1.0.1) or should go through the OS sheet. Stop passing the link twice on Telegram. Instagram Stories needs a native SDK plus a migration-014 CHECK and Literal widening. Reason: the platform deep links are partly fake today.",
+  "Landing: add og:title/og:description/og:image to open.html, ideally per token from the backend, and fill APP_STORE_URL once approved. Reason: shared links preview as a generic 'Open in MYEZ' page with no store button.",
+  "Feedback: replace the three positive chips with a two-step card. Step 1: 'Did we pick the right winner?' yes/no/unsure, written to winner_correct. Step 2 on a 'no': the C6 reason chips plus an optional free-text 'correct price/spec' field. Use only fields the backend already accepts so it stays additive. Reason: today every row says useful:true and nothing reads mattered_most.",
+  "Stop ContactUs writing to comparison_feedback.useful (route it to its own table or a tagged column), or exclude rows with a null comparison_id from winner_agreement. Reason: bug reports are the only useful:false rows and they distort the behaviour profile.",
+  "Build the critique loop's offline reader (the pivot's point 4) on winner_correct, the reason chips and comparison_id. Requires the comparison_id echo (ENABLE_COMPARISON_ID_ECHO) so feedback rows can be joined. Reason: without the id, feedback cannot be tied to a comparison."
+ ],
+ "open_questions": [
+  "Is ENABLE_COMPARISON_ID_ECHO ON in prod? If not, almost every share uses the English text-only path and every feedback row has comparison_id null (not verified; Railway not read).",
+  "Should skincare and makeup 'coming soon' chips be tappable (to record the tap) and still let the user compare, or be fully disabled? The backend fully supports both categories today.",
+  "Does the owner keep the 388-response survey copy (onboarding s12/s15 'Informed by a survey of GCC shoppers'), which is true, or remove all cohort and survey language?",
+  "Does iOS canOpenURL('whatsapp://') really return false on build 3 with no LSApplicationQueriesSchemes? Inferred from Apple's rule, not device-tested.",
+  "Should the hidden-category backend response be an abstain, a 'not supported yet' status, or a redirect to fragrances? This affects the share-refusal and history paths (B2 rulings are still owed)."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/category_metrics_claims.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/contract_freeze.json (share/feedback excerpts)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/quota_profile_onboarding.json (CohortBadge excerpt)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/identity_winner.json (share excerpt)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json (summary)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/feedback_and_allowlists.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/category_walk_and_q5q9.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/DEFECT_LEDGER.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CategorySelector.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CohortBadge.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CounterTicker.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/onboarding/Step12CohortProof.tsx, Step13Anticipation.tsx, Step14Loading.tsx, Step15Reveal.tsx, OnboardingFlow.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/InviteeQuizScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ReferralLandingScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/results/ResultsContent.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ContactUsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/navigation/linking.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json and ar.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__ (CategorySelector, HomeScreen.bundleE.s3.integration, LoadingRings + snap, honestCounts.s69, honestLoaders.u6, clientTruth/copyTruth.s74, clientTruth/shareTruth.s74, CohortBadge)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/share_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/referral_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/behavior_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/analytics_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/home_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/cohort_priors.json (metadata and n only)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/013_demographics_cohort.sql, 014_referral_system.sql, 027_comparison_feedback_correctness.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html, landing/nginx.conf.template",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_events_allowlist_superset.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:246,341 (grep)"
+ ]
+}

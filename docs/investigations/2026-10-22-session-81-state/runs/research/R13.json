@@ -1,0 +1,253 @@
+{
+ "topic": "R13: Open-source codebases MYEZ can learn from (shopping assistants, price engines, product knowledge bases, review summaries, FastAPI+Supabase+Expo patterns)",
+ "summary": "Answer: there is no production-grade open-source LLM shopping or comparison assistant worth copying. The best GitHub results are small tutorials, for example ShoppingGPT (162 stars, last push 2024) and REcall (21 stars). MYEZ's own price pipeline is already ahead of the open-source price trackers: its JSON-LD parser handles AggregateOffer, which changedetection.io's extractor does not. What is worth borrowing is patterns and schemas, not code:\n(1) Robotoff's prediction, insight and per-device vote model, for the self-growing knowledge base and genuine feedback questions;\n(2) Shopify's official UCP Catalog MCP (search_catalog at /api/ucp/mcp), a sanctioned way to search Shopify stores;\n(3) Splink plus RapidFuzz (both MIT) for offline product matching, with Claude Haiku judging only the ambiguous pairs, which the published research supports;\n(4) Claude citations for pros/cons grounding, keeping in mind that citations cannot be combined with structured outputs;\n(5) Inspect AI or promptfoo (MIT) for the evaluation loop;\n(6) the Open Prices price fields (discount, proof, duplicate_of);\n(7) a GTIN check-digit rule;\n(8) react-native-share plus react-native-view-shot (MIT) for per-platform sharing. These are native modules, so they wait for 1.0.1.\nLicences: the Open Food Facts server, Robotoff, Open Prices, SearXNG and Unleash are AGPL-3.0, so borrow ideas only. PriceBuddy's licence bans commercial use. PriceGhost has no licence.\nOpen data cannot seed the fragrance knowledge base: Open Beauty Facts has 447 perfumes and no Gulf fragrance houses in its brand list, and Wikidata has 131 perfume items with a manufacturer. The knowledge base has to be owned.\nOne in-repo anti-pattern should not be copied into new knowledge-base tables: migration 012 gives the three cache tables anon-writable policies (USING true / WITH CHECK true), already logged as CD-db-rls-03 and still unchanged in the repo. New tables should copy spec_spine's service-role-only policy.\nDelta from session 80: none of the session-80 research or r0 JSON files mention any GitHub or open-source repo (grep returned nothing), so everything here is new. GitHub figures are from the GitHub API, read 2026-10-22.",
+ "findings": [
+  {
+   "claim": "BORROW #1 (effort M): Robotoff's two-step data model fits MYEZ's self-growing knowledge base and its genuine feedback questions. Raw model guesses go in a Prediction table (confidence, predictor_version, automatic_processing). Questions shown to users come from a ProductInsight table (annotation -1/0/1/2, n_votes, process_after, campaign). Each answer is an AnnotationVote row carrying device_id. A fact is applied automatically only when it is confident; otherwise it becomes a question for users, and votes settle it. Robotoff is AGPL-3.0, so copy the idea and schema only, not code. MYEZ today has only per-comparison feedback (migration 027) and verdict critiques (migration 030), with no per-fact candidate or vote table.",
+   "evidence": [
+    "https://raw.githubusercontent.com/openfoodfacts/robotoff/main/robotoff/models.py - Prediction/ProductInsight/AnnotationVote fields (read 2026-10-22)",
+    "https://openfoodfacts.github.io/robotoff/explanations/predictions/ - automatic_processing, process_after, /questions API (read 2026-10-22)",
+    "https://api.github.com/repos/openfoodfacts/robotoff - AGPL-3.0, 116 stars, pushed 2026-10-20",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/027_comparison_feedback_correctness.sql:13 - per-comparison correct/wrong/unsure only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql:40 - verdict_critiques table"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #2 (effort S-M): Shopify now offers an official agent interface, the UCP Catalog MCP at POST https://{store}/api/ucp/mcp, with search_catalog, lookup_catalog and get_product. It returns variant price in minor units with a currency code, plus availability. Every request must carry a meta.ucp-agent.profile URL. MYEZ already reads the per-product /products/{handle}.json feed (flag ENABLE_UCP_JSON_PRICE, its probe was 'no MCP handshake') but has no catalog search through this interface. That makes it a candidate discovery channel for the Shopify merchants in the registry. Apply the robots fail-closed ruling, and call tools/list first.",
+   "evidence": [
+    "https://shopify.dev/docs/agents/catalog/storefront-mcp - endpoint, tools, agent profile requirement, UCP spec 2026-08-25 (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:620-672 - existing UCP .json adapter, flag OFF",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:626 - probe made no MCP handshake"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Shopify API churn is real. Shopify's own Claude-based reference agent (shop-chat-agent) is archived because Shopify removed search_shop_catalog from /api/mcp. Community threads report the rename to search_catalog and a migration deadline that has already passed. Any UCP integration should pin the spec version and check tools/list at run time.",
+   "evidence": [
+    "https://github.com/Shopify/shop-chat-agent - archived, catalog/cart tools removed (read 2026-10-22)",
+    "https://community.shopify.dev/t/storefront-mcp-search-shop-catalog-returning-tool-not-found-renamed-to-search-catalog/33256 - rename report (search result 2026-10-22)",
+    "https://api.github.com/repos/Shopify/shop-chat-agent - NOASSERTION, 150 stars, pushed 2026-10-13"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #3 (effort M): for offline merging of the same product listed by different merchants, use Splink (MIT, probabilistic record linkage on DuckDB) with RapidFuzz (MIT) to shortlist candidates. Send only the ambiguous pairs to Claude Haiku as a match judge. Peeters and Bizer (EDBT 2025) found that LLM matchers with zero or a few examples match fine-tuned models trained on thousands of pairs and handle unseen products better. They also found no single prompt works best, so prompts need tuning. This would run off-clock next to MYEZ's existing identity key code, not replace it.",
+   "evidence": [
+    "https://api.github.com/repos/moj-analytical-services/splink - MIT, 2525 stars, pushed 2026-10-21",
+    "https://api.github.com/repos/rapidfuzz/RapidFuzz - MIT, 4174 stars, pushed 2026-10-21",
+    "https://arxiv.org/abs/2310.11244 - LLM entity matching findings (read 2026-10-22)",
+    "https://api.github.com/repos/wbsg-uni-mannheim/MatchGPT - no licence, 68 stars, pushed 2024-10-18 (prompts reference only)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:30-40 - spine_key reuses price_service._identity_tokens_ps"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Open product data cannot seed a fragrance knowledge base. Open Beauty Facts lists 447 perfumes. Its brand list has about 390 entries, with no Lattafa, Ajmal, Rasasi, Arabian Oud, Swiss Arabian, Dior or Chanel, and YSL only as an abbreviation. Wikidata has only 131 perfume items that name a manufacturer. Open Beauty Facts data is ODbL (share-alike on the database) and its API discourages bulk scraping. MYEZ's knowledge base must therefore be owned and built from its own merchant pages.",
+   "evidence": [
+    "https://world.openbeautyfacts.org/category/perfumes - 447 products (read 2026-10-22)",
+    "https://raw.githubusercontent.com/openfoodfacts/openfoodfacts-server/main/taxonomies/beauty/brands.txt - ~390 entries, no Gulf houses (read 2026-10-22)",
+    "https://query.wikidata.org/sparql (P31/P279* Q131746 with P176) - count 131 (read 2026-10-22)",
+    "https://world.openbeautyfacts.org/data - ODbL/DbCL/CC-BY-SA, no API scraping (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #4 (effort S): copy the Open Food Facts taxonomy text format (synonyms on one line separated by commas, a '<' line naming the parent, an optional wikidata id) for MYEZ's brand alias data. The aliases are currently hard-coded as a Python tuple in an 11,000-line file. Moving them into a data file the knowledge base can grow is the useful part. The OBF server is AGPL-3.0, so copy the format only, not code or data.",
+   "evidence": [
+    "https://raw.githubusercontent.com/openfoodfacts/openfoodfacts-server/main/taxonomies/beauty/brands.txt - format (read 2026-10-22)",
+    "https://api.github.com/repos/openfoodfacts/openfoodfacts-server - AGPL-3.0, 1187 stars, pushed 2026-10-22",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:5101 - _BRAND_ALIAS_GROUPS hard-coded tuple"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #5 (effort S): the Open Prices Price model (AGPL, so fields only) records several things MYEZ's price table does not: price_is_discounted, price_without_discount, discount_type, price_per, a proof link, duplicate_of, owner and source, plus history. MYEZ's product_prices table stores amount, currency, retailer, url, source_method and estimated, and migrations 033/034 add title and in_stock. It has no discount or was-price, proof or duplicate_of column. Those fields are what a 'no fabricated numbers' price history needs.",
+   "evidence": [
+    "https://raw.githubusercontent.com/openfoodfacts/open-prices/main/open_prices/prices/models.py - Price fields (read 2026-10-22)",
+    "https://api.github.com/repos/openfoodfacts/open-prices - AGPL-3.0, 110 stars, pushed 2026-10-19",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:23-37 - product_prices columns"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #6 (effort S): validate GTIN check digits and store the GTIN as the strongest match key. MYEZ already collects gtin from JSON-LD into its candidate data, but no check-digit code turned up in app/, and no migration has a gtin column. python-stdnum (LGPL-2.1) is fine as an unmodified server dependency; the checksum is also about 10 lines to write in-house.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10659 - _WIDE_CANDIDATE_GTIN_FIELDS",
+    "grep 'check_digit' over app/ - no hits; grep gtin/barcode over migrations/*.sql - no column",
+    "https://api.github.com/repos/arthurdejong/python-stdnum - LGPL-2.1, 605 stars, pushed 2026-08-15"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #7 (effort S): Claude's citations feature returns the exact source passage behind each claim. That text is not billed as output tokens and is guaranteed to point into the supplied documents, which fits pros/cons and review summaries. However, citations cannot be combined with structured outputs (output_config.format). A pros/cons step needs either a cited prose call followed by a separate JSON-shaping call, or MYEZ's existing cite-or-omit prompt.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/citations - cited_text not counted, incompatible with structured outputs (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql:74-76 - existing citation-or-omit seed contract"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #8 (effort S-M): for the evaluation loop, Inspect AI (MIT, Python) or promptfoo (MIT, Node/CLI) can run offline regression tests comparing Haiku and Sonnet against MYEZ's gold-truth files, writing into the existing eval_runs table. Anthropic's claude-cookbooks (MIT) has relevant notebooks: misc/building_evals.ipynb, misc/prompt_caching.ipynb, multimodal/best_practices_for_vision.ipynb, tool_use/customer_service_agent.ipynb.",
+   "evidence": [
+    "https://api.github.com/repos/UKGovernmentBEIS/inspect_ai - MIT, 3061 stars, pushed 2026-10-21",
+    "https://api.github.com/repos/promptfoo/promptfoo - MIT, 26264 stars, pushed 2026-10-22",
+    "https://api.github.com/repos/anthropics/claude-cookbooks - MIT, 53662 stars, pushed 2026-10-17",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/031_eval_runs.sql:37 - eval_runs table"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "BORROW #9 (effort M, native, so 1.0.1): react-native-share (MIT) shareSingle sends directly to WhatsApp, Instagram, Instagram Stories, Facebook Stories, Telegram, SMS and Email on both iOS and Android, X on iOS only, and Snapchat on Android only. Instagram and Facebook Stories need a Facebook appId. react-native-view-shot (MIT) can render the results card as an image. Neither is in MYEZ's package.json, and today sharing falls back to Share.share. Bluesky's sharing.ts (MIT) shows a JS-only platform split (iOS {url}, Android {message}, web clipboard plus toast) that could ship before 1.0.1.",
+   "evidence": [
+    "https://react-native-share.github.io/react-native-share/docs/share-single - targets, appId (read 2026-10-22)",
+    "https://api.github.com/repos/react-native-share/react-native-share - MIT, 3899 stars, pushed 2026-08-31",
+    "https://api.github.com/repos/gre/react-native-view-shot - MIT, 2953 stars, pushed 2026-10-07",
+    "https://raw.githubusercontent.com/bluesky-social/social-app/main/src/lib/sharing.ts - platform split (read 2026-10-22); repo MIT 18353 stars",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:534-541 - Share.share fallback"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "BORROW #10 (effort S): for '3 compares per day per device fingerprint', upstash ratelimit-py (MIT, async) offers fixed window, sliding window and token bucket limits through limit(identifier). MYEZ already depends on upstash-redis 1.7.0 and slowapi. The library is small (36 stars), so wrapping the existing usage_service counters may be simpler than adding it.",
+   "evidence": [
+    "https://github.com/upstash/ratelimit-py - algorithms, asyncio (read 2026-10-22); API: MIT, 36 stars, pushed 2026-09-18",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:186 - upstash-redis==1.7.0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:144 - slowapi==0.1.10"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "DO NOT BORROW (MYEZ is already ahead): changedetection.io's price extractor (Apache-2.0) takes the first JSON-LD 'price' key it finds. It does not check @type and does not read lowPrice/highPrice. MYEZ's JSON-LD parser already handles AggregateOffer, lowercase keys, and the single-price case where low equals high. scrapinghub's price-parser (BSD) overlaps MYEZ's own parse_money function.",
+   "evidence": [
+    "https://raw.githubusercontent.com/dgtlmoon/changedetection.io/master/changedetectionio/processors/restock_diff/pure_python_extractor.py - fallback chain (read 2026-10-22); repo Apache-2.0 35202 stars",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:11696-11718 - AggregateOffer handling",
+    "https://api.github.com/repos/scrapinghub/price-parser - BSD-3-Clause, 348 stars"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "DO NOT ADD: react-native-sse (MIT, last push 2025-07). MYEZ already streams comparison results with real ReadableStream support through expo/fetch, so a second SSE stack would be duplicate code.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:839-852 - expo/fetch + getReader",
+    "https://api.github.com/repos/binaryminds/react-native-sse - MIT, 374 stars, pushed 2025-07-01"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "LICENCE ANTI-PATTERN: PriceBuddy (1434 stars, PHP) uses a custom 'GPL-3.0 WITH MODIFICATIONS' licence that bans commercial use, including use inside any revenue-earning product. PriceGhost (1129 stars) has no licence. Discount-Bandit has no licence in the API, though awesome-selfhosted lists it as GPL-3.0. None of their code can be copied into MYEZ.",
+   "evidence": [
+    "https://raw.githubusercontent.com/jez500/pricebuddy/main/LICENSE.md - commercial-use ban (read 2026-10-22)",
+    "https://api.github.com/search/repositories?q=price+tracker+self-hosted - PriceGhost license null, pushed 2026-02-03",
+    "https://api.github.com/repos/Cybrarist/Discount-Bandit - license null, 754 stars, pushed 2026-10-22"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "AGPL ANTI-PATTERN: the Open Food Facts server, Robotoff, Open Prices, SearXNG (38727 stars) and Unleash (13895 stars) are AGPL-3.0. Copying their code into MYEZ's backend, which serves users over the network, would oblige MYEZ to publish its source. Running SearXNG as a search backend would also mean scraping upstream engines, which conflicts with MYEZ's no-evasion rulings.",
+   "evidence": [
+    "https://api.github.com/repos/searxng/searxng - AGPL-3.0, pushed 2026-10-19",
+    "https://api.github.com/repos/Unleash/unleash - AGPL-3.0, pushed 2026-10-22",
+    "https://api.github.com/repos/openfoodfacts/open-prices - AGPL-3.0"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "IN-REPO ANTI-PATTERN for the new knowledge base: migration 012 opens product_specs, product_prices and product_reviews to anon inserts and updates (policies USING true / WITH CHECK true). The M18 review logged this as an anon cache-poisoning path into user-served prices (CD-db-rls-03), and no later migration in the repo changes it. spec_spine's FOR ALL TO service_role policy is the right template for new knowledge-base and merchant tables. Production policy state is unverified.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:18-20,39-40,57-59 - USING(true)/WITH CHECK(true)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-09-01-m18-product-app-load-review.md:169-171,305 - CD-db-rls-03",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql:96-104 - service_role-only policy"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No production-grade open-source LLM shopping or comparison assistant exists. The top GitHub results by stars are ShoppingGPT (MIT, 162 stars, last push 2024-09), REcall (MIT, 21 stars) and GenPark agent skills with no licence. WebShop (MIT, 608 stars, 2024) is a research benchmark, not a product. ChatGPT's shopping research mode (launched 2025-11-25) is closed and serves only as a UX reference. Google's adk-samples (Apache-2.0) has a retail-product-search sample, not reviewed further.",
+   "evidence": [
+    "https://api.github.com/search/repositories?q=shopping+assistant+llm - ShoppingGPT 162 MIT 2024-09-29 (read 2026-10-22)",
+    "https://api.github.com/repos/surya-3699/REcall - MIT, 21 stars",
+    "https://api.github.com/repos/princeton-nlp/WebShop - MIT, 608 stars, pushed 2024-09-06",
+    "https://github.com/google/adk-samples - contrib/python/retail-product-search (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No reusable open-source review aggregator or pros/cons summariser exists either; all GitHub hits have 2 stars or fewer, or no licence. PyABSA (MIT, 1105 stars) does aspect-level sentiment but would add a PyTorch model to a Railway API. A Claude prompt with citations over the review text MYEZ already collects (Judge.me and Yotpo adapters exist) is the cheaper option.",
+   "evidence": [
+    "https://api.github.com/search/repositories?q=review+summarization+pros+cons - max 9 stars (read 2026-10-22)",
+    "https://api.github.com/repos/yangheng95/PyABSA - MIT, 1105 stars, pushed 2026-10-22",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/judgeme_service.py - existing review API adapter",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/yotpo_service.py - existing review API adapter"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Pieces MYEZ already has, so nothing should be proposed from scratch: a fragrance spec index (spec_spine with citation-or-omit seeding), a verdict self-critique service, eval_runs, a merchant registry kept as a JSON file (data/bh_gcc_sources.json, loaded by source_router with live status and tiers), per-call feature flags plus hash_bucket rollouts, and expo/fetch streaming. FastAPI+Supabase templates (for example fastapi_supabase_template, MIT, 352 stars) are generic and less mature than MYEZ's dual-client RLS design.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:1-20",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:1-25",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:406-535 - catalog rows, _ADMITTED_STATUSES, tiers",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/feature_bucket.py:35 - hash_bucket",
+    "https://api.github.com/repos/AtticusZeller/fastapi_supabase_template - MIT, 352 stars, pushed 2026-10-05"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Rank 1 (effort M, ships dark): model the new knowledge-base enrichment on Robotoff. Add a kb_prediction table and a kb_insight table (value, confidence, predictor_version, automatic_processing, process_after) plus kb_vote (insight_id, device_fingerprint, value -1/0/1). Write to them service-role only, using the policy pattern from migration 035. A fact is auto-applied only above a confidence threshold, and the rest become feedback questions. This delivers 'every request enriches the KB' and 'genuine feedback questions' with an audit trail.",
+  "Rank 2 (effort S): run a read-only probe of /api/ucp/mcp tools/list and search_catalog against the Shopify hosts already in data/bh_gcc_sources.json, with an agent profile URL, robots fail-closed, and the existing request spacing. If it returns currency-labelled prices, add it as a flag-OFF discovery channel in source_router. It is an official channel that needs no scraping.",
+  "Rank 3 (effort M, off-clock): build a merchant-listing to fragrance-identity merge job using RapidFuzz shortlisting, Splink scoring, and Claude Haiku as judge on ambiguous pairs only, keyed on spine_key, with a valid GTIN as the strongest match signal. This is what grows the owned knowledge base without paid search.",
+  "Rank 4 (effort S): add GTIN check-digit validation, a gtin column, discount and was-price fields, and a duplicate_of link to the price and knowledge-base tables, following the Open Prices field set. Stops strike-through prices and duplicate listings from being reported as separate numbers.",
+  "Rank 5 (effort S): for pros/cons and review summaries on Claude, use citations in a prose call, then a separate step that turns the result into JSON, since citations cannot be combined with structured outputs. Drop any pro or con without a cited_text. Fits the 'no fabricated numbers' rule, and cited_text is not billed as output tokens.",
+  "Rank 6 (effort S-M): use Inspect AI (Python, MIT) to replay the gold-truth files for Haiku versus Sonnet and write the results to eval_runs. Use the claude-cookbooks building_evals and prompt_caching notebooks as templates. Gives the critique loop a measured regression gate.",
+  "Rank 7 (effort S, JS-only now): follow Bluesky's sharing.ts platform split (iOS url, Android message, clipboard fallback) in ResultsScreen's share handler. Plan react-native-share shareSingle plus react-native-view-shot for 1.0.1 (native), including a Facebook appId for Instagram and Facebook Stories.",
+  "Rank 8 (effort S): implement the per-device 3/day rule as a sliding window on the existing Upstash client. Use upstash ratelimit-py only if wrapping usage_service turns out messier. No new feature-flag server: Unleash is AGPL, and MYEZ's per-call os.getenv plus hash_bucket already works.",
+  "Before any knowledge-base table goes live, fix or replicate-around CD-db-rls-03. Never copy migration 012's USING(true)/WITH CHECK(true) policies.",
+  "Do not copy code from PriceBuddy (commercial-use ban), PriceGhost (no licence), or any AGPL repo (OFF server, Robotoff, Open Prices, SearXNG, Unleash). Borrow schemas and ideas only, with attribution in design docs.",
+  "Do not seed the knowledge base from Open Beauty Facts or Wikidata (447 and 131 perfume items, no Gulf houses), or from any Fragrantica- or Parfumo-derived dataset (the standing ban). Seed only from merchant pages MYEZ fetches itself.",
+  "Do not add react-native-sse, changedetection.io's extractor or price-parser. MYEZ's expo/fetch streaming, AggregateOffer-aware JSON-LD parser and parse_money already do more."
+ ],
+ "open_questions": [
+  "Does production Supabase still carry migration 012's anon-writable policies on product_specs, product_prices and product_reviews? The repo shows no fix, and production was not checked (MCP access is forbidden).",
+  "Do the GCC Shopify merchants in the registry expose /api/ucp/mcp search_catalog without restrictions, and does robots.txt or the store's terms allow agent access? Needs a throttled probe that obeys the robots ruling.",
+  "Shopify's agent-profile requirement implies a public profile URL describing MYEZ's agent. Is Ahmed willing to publish one (for example on getmyez.com)?",
+  "How many of the knowledge base's fragrance listings carry a valid GTIN on GCC merchant pages? Not measured; it decides whether GTIN or the token identity is the primary key.",
+  "Is ODbL share-alike acceptable if any Open Beauty Facts cosmetics data is used later for skincare or makeup? This is a legal decision, deferred until those categories leave 'coming soon'.",
+  "The GitHub code-search API returned 401, so file-level paths inside google/adk-samples retail-product-search were not verified."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:94-200 (Architecture, Price pipeline)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py (function list)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py (function list, 406-535)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:1-40",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:1-25",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:80-100,620-672",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:5101,10640-10700,11696-11718",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/035_spec_spine.sql:60-110",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-09-01-m18-product-app-load-review.md:165-175,305",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx (grep share/skeleton)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:613-852",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json, requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/*.json and runs/r0/*.json (grep: no open-source repo mentions)",
+  "https://api.github.com/repos/* for openfoodfacts-server, robotoff, open-prices, openfoodfacts-python, smooth-app, jez500/pricebuddy, Cybrarist/Discount-Bandit, splink, dedupe, RapidFuzz, python-stdnum, megagonlabs/ditto, MatchGPT, extruct, price-parser, searxng, Unleash, open-feature/python-sdk, upstash/ratelimit-py, claude-quickstarts, claude-cookbooks, promptfoo, inspect_ai, PyABSA, Shopify/flash-list, react-native-share, react-native-sse, react-native-view-shot, bluesky-social/social-app, google/adk-samples, Shopify/shop-chat-agent, princeton-nlp/WebShop, surya-3699/REcall, fastapi_supabase_template (all read 2026-10-22)",
+  "https://raw.githubusercontent.com/openfoodfacts/robotoff/main/robotoff/models.py (2026-10-22)",
+  "https://openfoodfacts.github.io/robotoff/explanations/predictions/ (2026-10-22)",
+  "https://raw.githubusercontent.com/openfoodfacts/open-prices/main/open_prices/prices/models.py (2026-10-22)",
+  "https://raw.githubusercontent.com/openfoodfacts/openfoodfacts-server/main/taxonomies/beauty/brands.txt (2026-10-22)",
+  "https://world.openbeautyfacts.org/data and /category/perfumes (2026-10-22)",
+  "https://query.wikidata.org/sparql perfume count (2026-10-22)",
+  "https://raw.githubusercontent.com/jez500/pricebuddy/main/LICENSE.md (2026-10-22)",
+  "https://raw.githubusercontent.com/dgtlmoon/changedetection.io/master/changedetectionio/processors/restock_diff/pure_python_extractor.py (2026-10-22)",
+  "https://shopify.dev/docs/agents/catalog/storefront-mcp (2026-10-22)",
+  "https://github.com/Shopify/shop-chat-agent (2026-10-22)",
+  "https://community.shopify.dev/t/storefront-mcp-search-shop-catalog-returning-tool-not-found-renamed-to-search-catalog/33256 (search result 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/citations (2026-10-22)",
+  "https://arxiv.org/abs/2310.11244 (2026-10-22)",
+  "https://react-native-share.github.io/react-native-share/docs/share-single (2026-10-22)",
+  "https://raw.githubusercontent.com/bluesky-social/social-app/main/src/lib/sharing.ts and src/view/com/util/LoadingPlaceholder.tsx (2026-10-22)",
+  "https://github.com/upstash/ratelimit-py (2026-10-22)",
+  "https://github.com/anthropics/claude-cookbooks (2026-10-22)",
+  "https://github.com/google/adk-samples (2026-10-22)"
+ ]
+}

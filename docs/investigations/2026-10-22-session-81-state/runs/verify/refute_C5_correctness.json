@@ -1,0 +1,101 @@
+{
+ "cluster": "C5 Client surfaces: categories, honest numbers, share (digests A5, R6, R12)",
+ "lens": "correctness and implementability at 95cf6f86",
+ "verdicts": [
+  {
+   "recommendation": "C5.1 Fragrance-only category chips, coming-soon chips, copy, coming_soon_tap event",
+   "verdict": "weakened",
+   "reason": "The chip array, QUICK_CATS and copy keys exist as described, and adding an event to the allowlist is additive (the S80 scan_* entries set the precedent). But SMART_PICK_CATEGORY_KEYS only labels a server-sent pick. Trimming it hides the label, not the electronics pick, and reddens honestCopy.b3a r32, which is unnamed. A disabled TouchableOpacity never fires onPress, so the tap event cannot fire from a truly disabled chip.",
+   "evidence": [
+    "SmartCompareApp/src/components/HomeEditorialSections.tsx:93-96 - SMART_PICK keys gate only the pill label",
+    "SmartCompareApp/__tests__/b3a/honestCopy.b3a.test.tsx:370-373 - pins the electronics smart-pick label",
+    "app/api/feedback_routes.py:60-93 - VALID_EVENT_TYPES (additive precedent scan_* :91-92)"
+   ],
+   "fix": "Keep SMART_PICK_CATEGORY_KEYS and filter non-fragrance smart picks and trending server-side behind the allowlist flag. Render coming-soon chips as enabled-but-inert (onPress fires the event plus a toast, accessibilityState disabled). Add honestCopy.b3a r32 to the pins to update."
+  },
+  {
+   "recommendation": "C5.2 Remove CohortBadge, fabricated defaults; show thresholded real counts",
+   "verdict": "weakened",
+   "reason": "The removals are correct: CohortBadge is mounted at ResultsContent:538 and ReferralLanding:223, LoadingRings defaults to 2074 at :129 and InviteeQuiz falls back to 78 at :169. But the pin list misses ResultsContent.render.test:213,250 (badge slot and mock render) and InviteeQuizScreen.matchScore.m18:165-167, which explicitly pins the 78 fallback. 'Seven orphan keys' does not match: only 3 keys carry 73% or {{count}}+, and 2 are still referenced. Compare and rater counts and price timestamps exist in no payload, so they need a dark backend field.",
+   "evidence": [
+    "SmartCompareApp/__tests__/InviteeQuizScreen.matchScore.m18.test.tsx:165-167 - pins the 78 fallback",
+    "SmartCompareApp/__tests__/components/ResultsContent.render.test.tsx:213,250 - pins the cohort badge slot and render",
+    "app/models/product_schema.py:91,96 - only review_count exists; no price checked_at field"
+   ],
+   "fix": "Do the removals as one OTA after approval and add the m18 and ResultsContent.render pins. Ship the replacement counts only after a dark ENABLE_* backend field carries compare_count, rater k/n and price_checked_at (build 3 ignores unknown fields), and render nothing until that field is present."
+  },
+  {
+   "recommendation": "C5.3 Per-channel share builder, openURL fallback, fix text-only path",
+   "verdict": "weakened",
+   "reason": "The message template, expo-clipboard and the canOpenURL gate are real, and openURL with a Share.share fallback works. But every target first POSTs createShare with a share_target that the Literal and the migration 014 CHECK limit to whatsapp|copy|x|telegram|snapchat|other, so SMS, Email and More cannot be recorded without a migration. The text-only path has no comparison_id, so it has no /c/ token to link, and APP_STORE_URL is empty.",
+   "evidence": [
+    "app/api/referral_routes.py:80 - ShareTarget Literal (6 values)",
+    "migrations/014_referral_system.sql:22 - share_target CHECK (same 6 values)",
+    "SmartCompareApp/src/screens/ResultsScreen.tsx:532-546 - text-only path has no id, so no tokenised link exists"
+   ],
+   "fix": "Map SMS, Email and More to share_target 'other' (or add a dark migration 045 plus a Literal widening first). In the text-only path link only the generic https://getmyez.com landing until ENABLE_COMPARISON_ID_ECHO is on after approval. Rewrite the Loop-2 reward block in the same OTA."
+  },
+  {
+   "recommendation": "C5.4 Landing OG tags, assetlinks, dark /c/ preview route via nginx",
+   "verdict": "weakened",
+   "reason": "index.html and ar/index.html already carry og:title/description/url and twitter:card; only og:image, the en locale and open.html are missing. The Dockerfile COPYs named files, so a new card image is not served unless added. Static nginx cannot read a backend flag. Proxying /c/ reddens test_landing_fallback_pages_s69:45 and the APP_STORE_URL pin :102. Reusing resolve_invite writes first_viewed_at, so a crawler unfurl would count as a view.",
+   "evidence": [
+    "landing/nginx.conf.template:73-75 + tests/test_landing_fallback_pages_s69.py:45 - /c/ pinned to try_files open.html",
+    "app/services/referral_service.py:437-441 - resolve_invite writes first_viewed_at",
+    "landing/Dockerfile:22-31 - explicit per-file COPY; landing/index.html:9-13 already has OG"
+   ],
+   "fix": "Add only the missing og:image/locale tags plus a COPY line for the image. Gate the proxy with a landing-side env var rendered by envsubst, never the backend flag. Build the preview on a read-only lookup that requires ?ref, writes nothing and returns open.html bytes when the flag is off. Update the s69 nginx and APP_STORE_URL pins."
+  },
+  {
+   "recommendation": "C5.5 Native 1.0.1 react-native-share, view-shot, Stories, Snap, metrics",
+   "verdict": "weakened",
+   "reason": "Waiting for the 1.0.1 native build is correct (runtimeVersion appVersion, app.json:272-274). But share_target_opened is not in VALID_EVENT_TYPES. An Instagram target needs the 014 CHECK and the Literal widened. Snapchat Creative Kit is not part of react-native-share (it needs Snap's own SDK). /c/ visits are not logged anywhere: nginx serves static open.html, and first_viewed_at is only set when the app resolves the invite.",
+   "evidence": [
+    "app/api/feedback_routes.py:60-93 - no share_target_opened",
+    "landing/nginx.conf.template:73-81 - /c/ /r/ /q/ served statically, no visit record",
+    "migrations/014_referral_system.sql:22 - no instagram/tiktok share_target"
+   ],
+   "fix": "Before 1.0.1, add share_target_opened and share_channel_selected to the allowlist and a dark migration widening share_target. Plan the Snap Kit SDK separately. Measure conversion from referral_invites.first_viewed_at and redemption rows, with bot user-agents excluded, not from /c/ hits."
+  }
+ ],
+ "new_risks": [
+  "The share sheet reward block promises the Loop-2 bonus (bonus comparisons for 7 days, up to the lifetime cap). That contradicts the single 3-per-day device quota, and shareTruth.s74 CT1/CT2 pin that copy. No recommendation re-scopes it or the usage_service referral bonus.",
+  "Fresh compares never get a comparison_id unless ENABLE_COMPARISON_ID_ECHO is on (text_routes.py:98), so the whole per-channel sheet is reachable only from History reopens. Flipping the flag changes what reviewers see, so it must be sequenced after approval and before the share OTA.",
+  "A /c/ preview proxied through nginx collapses every crawler to one rate-limit key while ENABLE_PROXY_AWARE_RATELIMIT is off (rate_limiter.py:53). The 20/min limit on the invite route would then throttle all link unfurls together.",
+  "The nginx comment (nginx.conf.template:61-66) records getmyez.com serving an unrelated page on 2026-10-10. Until DNS points at the landing service, the OG tags, AASA and open.html hand-off are invisible, and Universal Links cannot verify.",
+  "Server-sent smart pick, trending and History content can still show electronics and other categories after the chip trim. Nothing filters those feeds to fragrances.",
+  "The source_click event sends the full retailer URL (ResultsScreen.tsx:588), against the api.ts no-URL invariant. A new share_channel_selected or store_cta_tap event built the same way would leak query strings."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CategorySelector.tsx:38-50",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx:49-58,93-96,260-265",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/b3a/honestCopy.b3a.test.tsx:370-383",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/components/CategorySelector.test.tsx:11-39",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:60-93",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_events_allowlist_superset.py:85-121",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/results/ResultsContent.tsx:533-542",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ReferralLandingScreen.tsx:219-228",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx:129-146",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/InviteeQuizScreen.tsx:162-169",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/InviteeQuizScreen.matchScore.m18.test.tsx:157-167",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/components/ResultsContent.render.test.tsx:100-110,213,250",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/honestCounts.s69.test.tsx:133-144",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:520-548,584-590,943-955",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:134-209",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/referral_routes.py:80,111,256-280",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/014_referral_system.sql:22",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:430-458",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:24,152-154,164-181,272-274",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template:56-81",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/Dockerfile:22-31",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/.well-known/assetlinks.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/index.html:8-13",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/ar/index.html:8-14",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:8,103",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_landing_fallback_pages_s69.py:43-45,102",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/clientTruth/shareTruth.s74.test.tsx:155-255",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/models/product_schema.py:91-96",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:53",
+  "J1 digests A5, R6; J2 digest R12"
+ ]
+}

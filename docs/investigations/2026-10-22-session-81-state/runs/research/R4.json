@@ -1,0 +1,202 @@
+{
+ "topic": "R4: Open and licensable product data for fragrances, skincare and makeup; image sources; what is legally usable",
+ "summary": "For fragrances, no open dataset is worth seeding from. The legally clean base is data we already hold: our own zero-network corpora (92 Gulf PDPs, about 330-500 global pages) and the JSON-LD of robots-allowed GCC retailer pages we already fetch on every compare. Both go into the empty spec spine with citation-or-omit extraction. Wikidata (CC0) covers brands; open data covers skincare and makeup only thinly; paid fragrance data needs a written licence.\n\nWhat I measured:\n- Open Beauty Facts (database ODbL, contents DbCL, images CC BY-SA 3.0; commercial use allowed). Coverage is thin: Saudi 915, UAE 416, Qatar 293, Kuwait 80, Bahrain and Oman 0. About 450-1,000 perfume items, mostly Dutch-tagged. It is useful later for skincare and makeup barcodes and INCI lists. Bulk use must go through its nightly JSONL or Parquet dumps, because its API rule is one call per real user scan. ODbL share-alike applies if we merge it into our own table, so it must live in a separate collective table with visible attribution.\n- Wikidata (CC0): 379 perfume items, 21 with an image, 84 with a brand. It is good for brand entities (official site, parent company, Arabic labels), not for products.\n- GTIN services:\n  - UPCitemdb: free tier of 100 requests a day; DEV plan $99 a month. Its licence is \"solely for Customer's operations\" and does not mention caching.\n  - Go-UPC: $74.95 for 5,000 calls; its terms page returned 404.\n  - Verified by GS1: free for 30 queries a day; API access only through a GS1 member organisation.\n  - None of them clearly lets us store the data permanently in our own database.\n- Fragrance vendors:\n  - Fragella: 100k+ fragrances, $12-49 a month. Its terms forbid caching that would \"circumvent the need to access our API\", so we could not own the data. Its data is aggregated from community sources and filled in by machine learning, so it may derive from Fragrantica (inferred).\n  - Fragrances of the World and Noteboxd: licence terms are unknown.\n  - The FragranceX CJ feed: still an owner and legal track (see the S80 digest).\n- Anthropic web_search costs $10 per 1,000 searches and returns only url, title, page_age and encrypted_content, so it cannot find image URLs. web_fetch returns only text, HTML or PDF, refuses URLs blocked by robots.txt, and can only fetch URLs already seen in the conversation. Images must therefore come from our own robots-gated fetch of a retailer page (JSON-LD image or og:image). The code already captures that image as cand[\"image\"] at price_service.py:10962-10964.\n- Images: link to the image URL on the page we priced, and never re-host it. That matches the Notes v3 B posture and Apple guideline 5.2.2. The US \"server test\" (Hunley, 9th Cir. 2023) protects embedding only inside the US; GCC law is unverified. Wikimedia Commons calls hotlinking \"not recommended\", and every Commons or OBF image needs per-image attribution.\n\nDelta from S80: the repo has no open-data integration at all. seed_spec_spine.py is still OpenAI-only and must be moved to Haiku. bh_gcc_sources.json now has 368 rows, of which 275 are live (CLAUDE.md says 274), with 95 fragrance, 77 skincare and 57 makeup rows. The S80 decision to reject a FragranceX crawl still stands.",
+ "findings": [
+  {
+   "claim": "Open Beauty Facts licences: the database is ODbL 1.0, contents are DbCL 1.0 and images are CC BY-SA 3.0. Commercial use is allowed with attribution and share-alike. Images may contain packaging trademarks that the licence does not cover.",
+   "evidence": [
+    "https://world.openbeautyfacts.org/terms-of-use - ODbL/DbCL/CC BY-SA 3.0, 'including commercial use' (read 2026-10-22)",
+    "https://world.openbeautyfacts.org/data - 'Prominent UI attribution' with clickable links (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "OBF covers the GCC thinly: Saudi Arabia 915, UAE 416, Qatar 293, Kuwait 80, Bahrain and Oman not listed. Perfume categories are small and mostly Dutch-tagged (Parfum 588, Perfumes 447). Sunscreen 617, facial creams 477, Makeup 952.",
+   "evidence": [
+    "https://world.openbeautyfacts.org/facets/countries - per-country counts (read 2026-10-22)",
+    "https://world.openbeautyfacts.org/facets/categories - category counts (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "OBF access: nightly MongoDB, JSONL and CSV dumps, a 14-day delta and a Hugging Face beauty.parquet; images via AWS Open Data. The API rule is '1 API call = 1 real scan by a user' and scraping through the API gets blocked. Open Food Facts' own API limits are 15 product reads and 10 searches per minute per IP, with a custom User-Agent required.",
+   "evidence": [
+    "https://world.openbeautyfacts.org/data - exports and API usage rule (read 2026-10-22)",
+    "https://openfoodfacts.github.io/openfoodfacts-server/api/ - 15/10 req/min/IP, UA 'AppName/Version (ContactEmail)' (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "ODbL: just displaying query results is a Produced Work and needs only a notice (s4.3). Storing a cleaned or merged copy creates a Derivative Database, which must be offered under ODbL once publicly used (s4.4, s4.6). Keeping OBF in a separate table as a Collective Database (s4.5a) leaves our own knowledge base free of share-alike.",
+   "evidence": [
+    "https://opendatacommons.org/licenses/odbl/1-0/ - sections 4.3-4.6 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Open Food Facts model is open source: Product Opener (AGPL-3.0, about 1.2k stars, pushed 2026-10-22) and Robotoff (AGPL-3.0, about 116 stars, pushed 2026-10-20). Robotoff turns predictions from images and OCR into 'insights' that are applied automatically when confidence is high or validated by human annotators (Hunger Games). It is a design model for our auto-growing knowledge base; AGPL means we should copy the pattern, not the code.",
+   "evidence": [
+    "https://api.github.com/repos/openfoodfacts/openfoodfacts-server - AGPL-3.0, 1187 stars (read 2026-10-22)",
+    "https://api.github.com/repos/openfoodfacts/robotoff - AGPL-3.0, 116 stars (read 2026-10-22)",
+    "https://openfoodfacts.github.io/robotoff/explanations/predictions/ - insights auto-applied or human-validated (search snippet 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Wikidata structured data is CC0. It holds only 379 perfume items (P31/P279* Q131746): 21 have an image (P18) and 84 have a brand (P1716). It is useful for brand entities, not for perfume products.",
+   "evidence": [
+    "https://www.wikidata.org/wiki/Wikidata:Licensing - CC0 (read 2026-10-22)",
+    "https://query.wikidata.org/sparql - COUNT query n=379, withimg=21, withbrand=84 (run 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "UPCitemdb: free tier of 100 combined and 20 search requests a day; DEV $99 a month (20k lookups a day); PRO $699 a month. Its licence is limited to use 'solely for Customer's operations', and it says nothing on caching, redistribution or images.",
+   "evidence": [
+    "https://www.upcitemdb.com/wp/docs/main/development/plan/ - plans (search snippet 2026-10-22)",
+    "https://www.upcitemdb.com/terms - licence wording, sustainable-rate clause (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Go-UPC costs $74.95 for 5k, $245 for 45k and $795 for 450k calls a month; its terms page returned 404. The barcodelookup.com API page returned 403, so its terms are unverified. Verified by GS1 is free for 30 queries a day; API access needs a GS1 member organisation, and nothing was found for GS1 Bahrain or GS1 UAE.",
+   "evidence": [
+    "https://go-upc.com/plans/api - pricing (read 2026-10-22)",
+    "https://www.barcodelookup.com/api - HTTP 403 (2026-10-22)",
+    "https://support.gs1.org (search snippet) - 30 queries/day free, API via member org (2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Fragella offers 100k+ fragrances with notes, accords, longevity and images. Plans: free tier 20 requests a month, $12 for 5k, $49 for 20k. Its terms (updated 2026-05-04, s3.3) forbid caching 'large portions' in a way that would circumvent the API, and s4 claims ownership of the images and the compilation. Its data comes from 'numerous public sources' plus machine-learning predictions, so a taint risk from Fragrantica-derived data is likely (inferred).",
+   "evidence": [
+    "https://api.fragella.com/ - fields, pricing, provenance (read 2026-10-22)",
+    "https://api.fragella.com/terms-of-use.html - s3.3, s4 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The FragranceX CJ feed is still unconfirmed. Directories conflict on whether a product catalog feed exists, and the CJ agreement leaves image and link use to each advertiser's program terms. The S80 digest's 'Option B = owner and legal track only' still stands.",
+   "evidence": [
+    "https://account.fmtc.co/cp/program_directory/details/m/4581 - feed claim (search snippet 2026-10-22)",
+    "https://www.lawinsider.com/contracts/6gRW15RYpHO - CJ PSA: advertiser may permit image use (snippet 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json - Option B recommendation"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Anthropic web_search returns only url, title, page_age and encrypted_content per result, plus citations of up to 150 characters. It returns no image URLs. It costs $10 per 1,000 searches plus tokens, and citations must be shown when outputs are displayed directly to users.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool - Search results fields; pricing (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic web_fetch returns only text, HTML or PDF (anything else gives unsupported_content_type). It refuses URLs blocked by robots.txt (url_not_allowed), can only fetch URLs that appeared earlier in the conversation, and does not render JavaScript. It cannot fetch images. Fragrantica's robots.txt disallows Claude-User, so routing around that block through this tool is out.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool - error codes, URL validation (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:862-869 - Fragrantica names Claude-User; Parfumo decoys"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The code already extracts JSON-LD images from retailer pages into cand['image'] (price_service.py:10822, 10962-10964). S80 measured that this value is then dropped, which is the cheapest legal image source. There is still no image storage, no open-data client and no GTIN integration anywhere in app/, scripts/ or data/.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10822,10962-10964 - _jsonld_image_urls -> cand['image']",
+    "grep openbeautyfacts|wikidata|upcitemdb|go-upc|barcodelookup over app scripts data - 0 hits",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json - image path 5 dropped"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The spec spine is still empty and dark. data/spec_spine.json is {}; SPINE_FIELDS covers scent_family, the three note tiers, longevity, sillage, season, occasion and concentration; migration 035 is unapplied. seed_spec_spine.py reads only from files with citation-or-omit, but it is wired to OpenAI only and must be moved to Haiku for the pivot.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:94-104 - SPINE_FIELDS",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:1-41,69,509 - offline, OPENAI_API_KEY gate",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:349 - ENABLE_SPEC_SPINE, 035 unapplied"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Repo fragrance assets:\n- search_descriptors.json: 95 hosts (updated 2026-08-31; 47 usable {q} templates per CLAUDE.md:349).\n- bh_gcc_sources.json: 368 rows, 275 live (CLAUDE.md:341 says 274). Live rows by category: fragrances 95, skincare 77, makeup 57. Tiers: gcc 236, bahrain 132.\n- Corpora in sc-scraper-proof: _proof/html has 92 Gulf PDPs; global/corpus.json has 328 rows; global/html has 501 files. The docs say 429 (CLAUDE.md:912) and 414 pages for the byte-identity gate (CLAUDE.md:365).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - Counter status/tier/categories",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json - hosts=95",
+    "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html (92 files), _proof/global/corpus.json n_rows=328",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:341,349,365,910-914"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Images: the US server test (Perfect 10 v. Amazon 2007; Hunley v. Instagram, 9th Cir. 2023) holds that embedding an image hosted elsewhere is not a display by the embedding site, but other courts reject it. Wikimedia Commons calls hotlinking 'possible, but is not recommended' and requires crediting the creator and the licence. GCC (Bahrain) linking law is unverified.",
+   "evidence": [
+    "https://dwt.com/insights/2023/08/server-test-instagram-case-ninth-circuit - server test reaffirmed (snippet 2026-10-22)",
+    "https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia - hotlinking, attribution (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Fact-versus-expression line: a note pyramid, concentration, size or GTIN is a fact. Retailer and brand prose descriptions, compiled community databases (EU sui generis right for Parfumo, which is in Germany) and photos are protected. That is why the spine stores only short normalised fields with a source URL, never copied prose or re-hosted images.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:24-33 - citation-or-omit, persists once",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:868-869 - 'needs a licensing conversation or a commercial provider'"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Fragrance seeding step 1 ($0 network): port seed_spec_spine.py from OpenAI to Claude Haiku 5.5, keeping the citation-or-omit prompt, and run it over the 92 Gulf PDPs plus the global corpus. Write rows with source_url and captured_at. These pages are already cached, so this needs no new legal basis.",
+  "Fragrance seeding step 2 (auto-growth): behind a new ENABLE_* flag, default OFF, persist identity from every compare. Store JSON-LD name, brand, gtin13/sku, size and the image URL (cand['image'], price_service.py:10962) only from live, robots-allowed bh_gcc_sources rows. This grows the knowledge base by one product per request with zero extra fetches.",
+  "Images: store and serve the retailer or brand CDN URL taken from the JSON-LD or og:image of the page we priced, plus the page URL and captured_at. Never download, re-host or edit the image. Fall back to the placeholder. This is the Notes v3 B and guideline 5.2.2 posture, and the Anthropic tools cannot supply image URLs anyway.",
+  "Brand registry: import Wikidata brand entities (CC0) once by SPARQL: official site P856, country, parent company, Arabic and English labels. Use them to seed the merchant and brand registry and brand-site discovery. Do not use Wikidata for perfume products (only 379 items, 21 with images).",
+  "Skincare and makeup (coming soon): load the OBF beauty.parquet or nightly JSONL off-clock into a separate obf_products table (ODbL collective database). Join it by GTIN only. Show 'Data: Open Beauty Facts (ODbL)' with a link wherever it is used, and do not merge it into the owned knowledge base. Use OBF images only with per-image CC BY-SA attribution, or skip them.",
+  "GTIN resolution: if needed, use the UPCitemdb free tier (100 requests a day) only to map a scanned GTIN to a query string. Keep just the GTIN-to-our-identity mapping, not their title or images, until written terms allow storage. Do not buy Go-UPC or barcodelookup until their terms on storage are read.",
+  "Do not adopt Fragella as a knowledge-base source. Its s3.3 forbids the bulk caching an owned database needs, and its community/ML provenance risks importing Fragrantica-derived data. If wanted, use it only as a live per-request enrichment with no persistence, after counsel review.",
+  "Licensed fragrance data (owner track): ask Fragrances of the World (Michael Edwards) and the FragranceX CJ program for a written licence that explicitly permits permanent storage, display in a GCC consumer app and image use. Engineering waits for that licence.",
+  "Anthropic web_search: always pass blocked_domains for fragrantica.com, parfumo.com and basenotes.com, and set max_uses to 1-3. At $10 per 1,000 searches, the $400 credit buys about 40k searches before tokens, so the knowledge base must serve repeat compares first. Show the citations it returns where the output is displayed.",
+  "Legal red lines:\n- Never scrape, fetch or search-derive data from Fragrantica, Parfumo or Basenotes.\n- Never evade Cloudflare or robots.txt; robots stays fail-closed.\n- Never re-host retailer, brand, OBF or Commons images without the licence's attribution.\n- Never copy retailer prose into the knowledge base.\n- Never merge ODbL data into the owned table.\n- Never persist vendor data whose terms forbid caching.\n- Never write vendor keys into the public repo.",
+  "Legal text: a provider switch to Anthropic plus new data sources (OBF, Wikidata) means the privacy policy and AI-consent sheet must name Anthropic and the attribution notices. Budget this with the consent re-ask.",
+  "Re-baseline the repo docs: CLAUDE.md:341 says 274 live rows (measured 275), and CLAUDE.md:912 says 429 global pages (corpus.json has 328 rows, the folder has 501 files). Fix these before any plan cites them as gates."
+ ],
+ "open_questions": [
+  "Do the Go-UPC, barcodelookup and UPCitemdb paid terms allow storing returned titles and images permanently? Go-UPC's terms page returned 404 and barcodelookup returned 403.",
+  "What do Noteboxd's and Fragrances of the World's data licences say on storage and redistribution? I could not find either in the sources.",
+  "Do GS1 Bahrain or GS1 UAE offer Verified by GS1 API access to a non-brand-owner app, and at what price?",
+  "Under Bahrain and GCC copyright law, does inline display of a retailer-hosted image URL count as a communication to the public? The US server test does not carry over; counsel is needed.",
+  "Is the FragranceX CJ product catalog feed live, and does it accept a Bahrain publisher with image and description rights? (Carried over from S80.)",
+  "What are Basenotes' terms and robots rules for Claude agents? Not checked; treated as forbidden per the task.",
+  "How much does Wikidata cover Gulf and Arabian fragrance brands (Lattafa, Rasasi, Ajmal, Swiss Arabian, Arabian Oud)? Not queried.",
+  "Should migration 035 (DB-backed spine) be applied before seeding, or should the JSON store be used first?"
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 341, 349, 365, 862-869, 910-914)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py:94-104",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:1-69,509",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10822,10962-10964",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json, data/search_descriptors.json, data/spec_spine.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html, _proof/global/corpus.json, _proof/global/html",
+  "https://world.openbeautyfacts.org/terms-of-use (read 2026-10-22)",
+  "https://world.openbeautyfacts.org/data (read 2026-10-22)",
+  "https://world.openbeautyfacts.org/facets/countries (read 2026-10-22)",
+  "https://world.openbeautyfacts.org/facets/categories (read 2026-10-22)",
+  "https://openfoodfacts.github.io/openfoodfacts-server/api/ (read 2026-10-22)",
+  "https://opendatacommons.org/licenses/odbl/1-0/ (read 2026-10-22)",
+  "https://api.github.com/repos/openfoodfacts/openfoodfacts-server (read 2026-10-22)",
+  "https://api.github.com/repos/openfoodfacts/robotoff (read 2026-10-22)",
+  "https://www.wikidata.org/wiki/Wikidata:Licensing (read 2026-10-22)",
+  "https://query.wikidata.org/sparql (perfume count query, 2026-10-22)",
+  "https://www.upcitemdb.com/terms (read 2026-10-22)",
+  "https://www.upcitemdb.com/wp/docs/main/development/plan/ (search snippet 2026-10-22)",
+  "https://go-upc.com/plans/api (read 2026-10-22)",
+  "https://support.gs1.org (Verified by GS1 FAQ, search snippet 2026-10-22)",
+  "https://api.fragella.com/ and https://api.fragella.com/terms-of-use.html (read 2026-10-22)",
+  "https://account.fmtc.co/cp/program_directory/details/m/4581 (search snippet 2026-10-22)",
+  "https://www.lawinsider.com/contracts/6gRW15RYpHO (CJ PSA snippet 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool (read 2026-10-22)",
+  "https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia (read 2026-10-22)",
+  "https://dwt.com/insights/2023/08/server-test-instagram-case-ninth-circuit (search snippet 2026-10-22)"
+ ]
+}

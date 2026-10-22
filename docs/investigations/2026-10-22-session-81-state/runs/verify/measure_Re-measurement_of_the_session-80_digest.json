@@ -1,0 +1,284 @@
+{
+ "topic": "Re-measurement of the session-80 digest figures: Artificial Analysis latency, web_search latency, repo-measured S78/S80 numbers, Railway headers, Supabase Auth limits, Expo SDK 54 / Sentry defaults, RN Share, search-API retirements (checked 2026-10-22)",
+ "facts": [
+  {
+   "claim": "(1a) Artificial Analysis, Haiku 5.5 low: 7.8 s to the first answer token at 166 tok/s (10K-token input)",
+   "status": "refuted",
+   "evidence": [
+    "https://artificialanalysis.ai/models/claude-haiku-5-5-low/providers (read 2026-10-22): 6.61 s TTFAT, 171.3 tok/s, 9.52 s E2E for 500 tokens, 10,000-token input, Anthropic only",
+    "Latency figures are P50 over a rolling 72 h with no fixed date, so the digest's 7.83 s / 166 tok/s / 10.8 s was an earlier snapshot"
+   ],
+   "correction": "Today it reads 6.61 s TTFAT, 171.3 tok/s and 9.52 s end to end. Cite it as a rolling 72 h median with the read date, not as a fixed number."
+  },
+  {
+   "claim": "(1b) Artificial Analysis, Haiku 5.5 medium: 12.6 s to the first answer token",
+   "status": "refuted",
+   "evidence": [
+    "https://artificialanalysis.ai/models/claude-haiku-5-5-medium/providers (read 2026-10-22): 9.61 s TTFAT, 177.8 tok/s, 12.42 s E2E for 500 tokens, 10K input",
+    "A search-engine snippet of the same page still shows 12.63 s, so the digest copied an older rolling value"
+   ],
+   "correction": "Today it reads 9.61 s TTFAT, and 12.42 s is the 500-token end-to-end time. The figure moves from window to window."
+  },
+  {
+   "claim": "(1c) Artificial Analysis, Sonnet 5.5 high: 11.3 s TTFT and 16.4 s end to end for 500 tokens",
+   "status": "refuted",
+   "evidence": [
+    "https://artificialanalysis.ai/models/claude-sonnet-5-5-high/providers (read 2026-10-22): 'Claude Sonnet 5.5 (high with fallback)', 11.01 s TTFAT, 103.6 tok/s, 15.84 s E2E for 500 tokens, 10K input, Anthropic only"
+   ],
+   "correction": "Today it reads 11.01 s TTFAT and 15.84 s end to end at 103.6 tok/s. The digest's 11.3 s, 16.4 s and about 98 tok/s came from an earlier 72 h window. Both readings are close."
+  },
+  {
+   "claim": "(1d) Artificial Analysis publishes thinking-off (non-reasoning) variants of Haiku 5.5 and Sonnet 5.5",
+   "status": "refuted",
+   "evidence": [
+    "https://artificialanalysis.ai/models/claude-haiku-5-5-non-reasoning and .../claude-sonnet-5-5-non-reasoning both return HTTP 404 (2026-10-22)",
+    "Search (2026-10-22) shows only effort variants for 5.5 (Haiku low/medium/high/xhigh/max; Sonnet low/medium/high, 'Adaptive Reasoning ... Default Fallback'). Non-reasoning pages exist only for Sonnet 5, not 5.5"
+   ],
+   "correction": "None is published. A thinking-off Haiku or Sonnet 5.5 latency has to be measured ourselves."
+  },
+  {
+   "claim": "(1e) The Artificial Analysis figures reflect a 2-5K-token prompt",
+   "status": "refuted",
+   "evidence": [
+    "Every page fetched 2026-10-22 states a 10,000-input-token workload (the default since AA changed its benchmark workload to 10k)"
+   ],
+   "correction": "They reflect a 10K-token input. No figure for a 2-5K prompt is published, so a lower TTFT for our smaller prompts is an inference, not a measurement."
+  },
+  {
+   "claim": "(2) Anthropic publishes a per-search latency for the web_search tool",
+   "status": "refuted",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22): no timing figure. It only says 'There is a pause while the search runs' (streaming) and that long turns may return pause_turn",
+    "Same page: $10 per 1,000 searches; 'Simple factual queries typically use 1–3 searches'; Batches API throttles web search per org"
+   ],
+   "correction": "No latency is published, so it must be measured. The digest's 'several seconds per search' is an inference. Its Brave/Exa/SerpAPI p50s are third-party benchmarks."
+  },
+  {
+   "claim": "(3a) Serper legs take 6-13 s",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/captures/web_logs_0700.txt: 13 serper_shopping delta_ms values = 3145 5872 5968 6250 6365 7909 8341 8835 10599 11496 11784 11828 13143 (median 8.3 s), window 2026-10-14T03:48:30Z-03:59:46Z",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md:29 says 'today 5.9-13.1 s'"
+   ],
+   "correction": "The range is 3.1-13.1 s, median 8.3 s (n=13), Serper Shopping only, S78 window 03:48-03:59Z on 2026-10-14. '6-13 s' drops the 3.1 s minimum and applies only to the shopping leg."
+  },
+  {
+   "claim": "(3b) Serper p95 16.9 s with about 45% failed",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json (Serper evidence): Sentry span.domain *.serper.dev, 14 d, 'ok 240 (p50 3,527 ms, p95 12,385 ms) vs internal_error 200 (p50 5,882 ms, p95 16,910 ms)', extrapolated from 4 sampled traces, 2026-10-08T14:55Z to 2026-10-14T04:27Z"
+   ],
+   "correction": "Two qualifiers. The 16.9 s p95 belongs to the FAILED spans; the successful spans have p95 12.4 s. And 45% (200/440) is Sentry-extrapolated from 4 sampled traces at 10% sampling. Window: 2026-10-08 to 10-14. Not re-run here."
+  },
+  {
+   "claim": "(3c) The price race missed 23 of 30",
+   "status": "confirmed",
+   "evidence": [
+    "web_logs_0700.txt: 23 'Phase 1 race timeout for price (limit 15.0s)' lines; 30 products = 6 warm-up pairs x 2 runs + 3 capture pairs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md:33"
+   ],
+   "correction": "Window: 2026-10-14 03:48-03:59Z (S78 07:05 entry). All 54 Phase-1 timeouts in the log: 23 price, 20 image_url, 6 reviews, 5 specs."
+  },
+  {
+   "claim": "(3d) The image race timed out 20 times",
+   "status": "confirmed",
+   "evidence": [
+    "web_logs_0700.txt: 20 'Phase 1 race timeout for image_url (limit 5.0s)' lines, first 2026-10-14T03:49:57Z"
+   ],
+   "correction": "These are 20 timeouts out of 30 products, same S78 window, against a 5.0 s limit."
+  },
+  {
+   "claim": "(3e) The unified search timed out 5 times",
+   "status": "confirmed",
+   "evidence": [
+    "web_logs_0700.txt: 5 '[L2.6] unified search timeout (limit 12.0s)' lines, 03:50:39Z-03:58:47Z",
+    "ledger.md:33 'unified Serper 12 s bound, timed out 5x'"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(3f) Phase 1 ended with 1.1-7.9 s left",
+   "status": "confirmed",
+   "evidence": [
+    "web_logs_0700.txt: 20 'phase 2 skipped residual=' lines, min 1.1 and max 7.9 (knob 8, before the 08:00 flip to 12)"
+   ],
+   "correction": "Measured with PHASE2_MIN_RESIDUAL_SECONDS=8. After the flip to 12, the 08:05 canary logged residuals of 8.2/9.5/11.6 (ledger.md:37)."
+  },
+  {
+   "claim": "(3g) The verdict+moderation tail is 6.1 s",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md:19-20: 'iPhone needed 6.1 s from the same point to finish'; TAIL_RESERVE_SECONDS 6.5 = 'the measured 6.1 s from Phase-1 end to moderation'"
+   ],
+   "correction": "This is ONE observation (the iPhone pair, S78 window), not a distribution. Ledger.md:33 rounds it to '~6 s'."
+  },
+  {
+   "claim": "(3h) A cache-warm second run took 22.7-30.8 s",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/warmup_2026-10-14.txt: run 2 = 27.9, 30.9, 30.1, 30.4, 30.8, 22.7 s; run 1 = 27.7-32.5 s",
+    "ledger.md:30 says '~30-32 s' for the warm run"
+   ],
+   "correction": "Run 2 measured 22.7-30.9 s, because Bose/Sony run 2 took 30.9 s. Only Tom Ford/Creed came in under 27.9 s. These are client wall times for 6 pairs, admin caller, 2026-10-14 07:05 local."
+  },
+  {
+   "claim": "(3i) /health p95 8.4 s",
+   "status": "confirmed",
+   "evidence": [
+    "prod_evidence.json, finding 'Event-loop stall signal': health_check about 49 sampled (about 490 extrapolated), p50 6 ms, p95 8,372 ms, Sentry http.server, 14 d window ending about 2026-10-19"
+   ],
+   "correction": "Read it as p95 8.37 s over about 49 sampled traces. The p50 is 6 ms, so the figure shows loop stalls, not a slow route."
+  },
+  {
+   "claim": "(3j) usage_status p50 4.2 s",
+   "status": "confirmed",
+   "evidence": [
+    "prod_evidence.json: 'usage_status p50 4,164 ms' (Sentry 14 d, 10% sampling); a single trace (5915a2b6, 2026-10-18) shows usage_status 4,266 ms with child spans under 0.8 s"
+   ],
+   "correction": "The sample count is not stated. Per-route p50s rest on 1-5 sampled traces, as prod_evidence itself notes."
+  },
+  {
+   "claim": "(3k) Supabase p50 381 ms per read",
+   "status": "refuted",
+   "evidence": [
+    "prod_evidence.json: 'GET /rest/v1/product_specs 30 and GET /rest/v1/product_reviews 30 extrapolated (about 3 sampled each), all in text_compare_get, 2026-10-14 03:50-04:26Z, p50 381 ms', status invalid_argument (4xx)"
+   ],
+   "correction": "381 ms is the p50 of FAILED (4xx) L2 cache reads: about 6 sampled spans in the window 2026-10-14 03:50-04:26Z. It is not a general per-read Supabase latency."
+  },
+  {
+   "claim": "(3l) Organic search_logs p50 22 s and 80% success, with 88.6% of rows being probe strings",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql:24-33: 13 strings tag 11,724 of 13,237 rows (88.57%); organic 1,513 rows / 79.97% / p50 21,954 ms; with the probe-#1 exclusion 1,808 / 82.08% / p50 20,937 ms",
+    "Window 2026-06-01 21:55Z to 2026-09-02 01:05Z (same file)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:444 'a compare whose p50 is 22 s'"
+   ],
+   "correction": "The window is 2026-06-01 to 2026-09-02, so the data predates S78-S80 by more than 6 weeks. The digest cites migration 042 for it, but 042 holds a review pull, not a fresh query."
+  },
+  {
+   "claim": "(4) Railway documents X-Real-IP and X-Forwarded-For and says whether it overwrites or appends client values",
+   "status": "unknown",
+   "evidence": [
+    "https://docs.railway.com/networking/public-networking/specs-and-limits (read 2026-10-22): documents X-Real-IP ('for identifying client's remote IP'), X-Forwarded-Proto (always https), X-Forwarded-Host, X-Railway-Edge, X-Railway-Request-Id. It does NOT mention X-Forwarded-For and states no overwrite/append rule",
+    "https://docs.railway.com/reference/edge-networking (read 2026-10-22): only says the edge 'terminates TLS, adds headers'",
+    "https://station.railway.com/questions/x-forwarded-for-behavior-edge-overwrit-e3663b39 and https://station.railway.com/questions/does-the-edge-strip-client-x-forwarded-f-613e5cb6 (search 2026-10-22): staff answers contradict each other (strip vs append); staff say the docs give no anti-spoofing guarantee"
+   ],
+   "correction": "Only X-Real-IP is documented, and only by name. X-Forwarded-For handling is undocumented and the forum reports conflict. It could be settled by a written Railway answer or our own spoof test (send a fake X-Forwarded-For/X-Real-IP to a non-prod service and log what arrives)."
+  },
+  {
+   "claim": "(5) Supabase Auth limits: sign-ups 30 per 5 min per IP, /token 150 per 5 min per IP, built-in email 2 per hour per project, and Sb-Forwarded-For needs new secret API keys plus a dashboard toggle",
+   "status": "confirmed",
+   "evidence": [
+    "https://supabase.com/docs/guides/auth/rate-limits (read 2026-10-22): /signup,/recover,/resend,/magiclink,/otp,/user 30 per 5 min per IP (burst 30); /token 150 per 5 min per IP (burst 30; password, refresh, ID token, PKCE); built-in email '2 emails per hour' per project",
+    "Same page: Sb-Forwarded-For needs a secret API key ('Publishable API keys and legacy anon/service_role API keys are not supported') and 'must be explicitly enabled for new projects' under Authentication > Rate Limits > IP Address Forwarding, or via the Management API security_sb_forwarded_for_enabled"
+   ],
+   "correction": "Precision: the 30/5 min bucket is shared by sign-up, recover, resend, magic link, OTP and /user. Password sign-in goes through /token (150/5 min). /verify is 30/5 min; anonymous sign-ins 30/h; MFA 15/min."
+  },
+  {
+   "claim": "(6a) Expo SDK 54 tree shaking: default state and env gates in @expo/cli 54.0.x",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/@expo/cli/build/src/utils/env.js:193-197 (cli 54.0.24): EXPO_UNSTABLE_TREE_SHAKING and EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH both boolish default false",
+    "Same tree, build/src/start/server/metro/instantiateMetro.js:186-187 throws 'EXPO_UNSTABLE_TREE_SHAKING requires EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH'; middleware/metroOptions.js:63,69 apply them only in production and outside node",
+    "https://docs.expo.dev/guides/tree-shaking/ (read 2026-10-22): 'Enabled by default in SDK 54 and later' sits under the experimentalImportSupport step; the guide still asks for EXPO_UNSTABLE_TREE_SHAKING=1"
+   ],
+   "correction": "Tree shaking is OFF by default. Only experimentalImportSupport is on by default, true in @expo/metro-config 54.0.15. Both env vars must be set, and the CLI throws when TREE_SHAKING is set without OPTIMIZE_GRAPH; the docs wrongly call that var optional. Caveat: verified on installed cli 54.0.24 in a sibling worktree. sc-s80-b2 has no node_modules and its lockfile pins @expo/cli 54.0.27 (package-lock.json:7028). The repo sets neither var and its metro.config.js is stock plus cacheVersion."
+  },
+  {
+   "claim": "(6b) expo-updates defaults: checkAutomatically ON_LOAD, fallbackToCacheTimeout 0",
+   "status": "confirmed",
+   "evidence": [
+    "https://docs.expo.dev/versions/v54.0.0/config/app/ (read 2026-10-22): checkAutomatically 'ON_LOAD (default value)'; fallbackToCacheTimeout 'Defaults to 0' (range 0-300000 ms)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:275-277: updates block sets only url, so the defaults apply (expo-updates 29.0.20 per package-lock.json:7497-7498)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(6c) getSentryExpoConfig accepts includeWebReplay and includeWebFeedback",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/@sentry/react-native/dist/js/tools/metroconfig.d.ts:16 (7.2.0): includeWebReplay?: boolean (default true; on ios/android the replay package resolves empty when undefined, metroconfig.js:125-128). No includeWebFeedback",
+    "https://raw.githubusercontent.com/getsentry/sentry-react-native/main/CHANGELOG.md (read 2026-10-22): includeWebFeedback added in 8.10.0 (#6025)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js: uses expo/metro-config getDefaultConfig, not getSentryExpoConfig; @sentry/react-native ~7.2.0 (package.json:22)"
+   ],
+   "correction": "In the pinned 7.2.0 only includeWebReplay exists. includeWebFeedback needs @sentry/react-native 8.10.0 or later, which is a major bump and a native change, so it waits for 1.0.1. The repo does not use getSentryExpoConfig at all today."
+  },
+  {
+   "claim": "(7a) React Native Share.share on iOS drops message when url is present",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/react-native/React/CoreModules/RCTActionSheetManager.mm:225-251 (RN 0.81.5): adds BOTH message and URL to the UIActivityViewController items",
+    "https://reactnative.dev/docs/share (read 2026-10-22): no statement that message is dropped"
+   ],
+   "correction": "RN passes both on iOS. Whether a given share target (an app extension) uses only the URL is that target's behaviour, which RN does not control and nobody here has measured. The opposite holds on Android: Libraries/Share/Share.js:107-112 forwards only title and message, so url is dropped there."
+  },
+  {
+   "claim": "(7b) Android always reports sharedAction",
+   "status": "confirmed",
+   "evidence": [
+    "https://reactnative.dev/docs/share (read 2026-10-22): 'In Android, returns a Promise which will always be resolved with action being Share.sharedAction'; dismissedAction is iOS-only",
+    "node_modules/react-native/Libraries/Share/Share.js:52 (0.81.5)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(8a) Google Programmable Search JSON API is closed to new customers and ends 2027-01-01",
+   "status": "confirmed",
+   "evidence": [
+    "https://developers.google.com/custom-search/v1/overview (read 2026-10-22, page 'Last updated 2026-02-18'): 'closed to new customers'; existing customers 'have until January 1, 2027 to transition'; 100 free/day then $5 per 1,000 up to 10k/day; Vertex AI Search suggested for up to 50 domains"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(8b) Bing Search APIs were retired 2025-08-11",
+   "status": "confirmed",
+   "evidence": [
+    "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement (ms.date 2025-05-15, read 2026-10-22): 'Bing Search APIs will be retired on August 11, 2025'; migrate to Grounding with Bing Search (Azure AI Agents)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(8c) Brave Search API image pricing: about $5 per 1,000 with images included and $5 free credit a month",
+   "status": "confirmed",
+   "evidence": [
+    "https://brave.com/search/api/ (read 2026-10-22): Search plan '$5 per 1,000 requests', '$5 in free credits every month', 50 QPS, covers 'URLs, text, news, images, and more'; Answers $4 per 1,000 plus $5 per M tokens"
+   ],
+   "correction": "No separate per-1,000 price for the Images endpoint is published. Image calls fall under the Search plan, which is an inference from the plan text. Older doc tiers ($3 Base / $5 Pro) and third-party resellers ($3) conflict, so confirm on the Brave dashboard."
+  }
+ ],
+ "sources": [
+  "https://artificialanalysis.ai/models/claude-haiku-5-5-low/providers (2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-haiku-5-5-medium/providers (2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-sonnet-5-5-high/providers (2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-haiku-5-5-non-reasoning (404, 2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-sonnet-5-5-non-reasoning (404, 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22)",
+  "https://docs.railway.com/networking/public-networking/specs-and-limits (2026-10-22)",
+  "https://docs.railway.com/reference/edge-networking (2026-10-22)",
+  "https://station.railway.com/questions/x-forwarded-for-behavior-edge-overwrit-e3663b39 (2026-10-22)",
+  "https://station.railway.com/questions/does-the-edge-strip-client-x-forwarded-f-613e5cb6 (2026-10-22)",
+  "https://supabase.com/docs/guides/auth/rate-limits (2026-10-22)",
+  "https://docs.expo.dev/guides/tree-shaking/ (2026-10-22)",
+  "https://docs.expo.dev/versions/v54.0.0/config/app/ (2026-10-22)",
+  "https://raw.githubusercontent.com/getsentry/sentry-react-native/main/CHANGELOG.md (2026-10-22)",
+  "https://reactnative.dev/docs/share (2026-10-22)",
+  "https://developers.google.com/custom-search/v1/overview (2026-10-22)",
+  "https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement (2026-10-22)",
+  "https://brave.com/search/api/ (2026-10-22)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/captures/web_logs_0700.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/warmup_2026-10-14.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package-lock.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/@expo/cli/build/src/utils/env.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/@expo/cli/build/src/start/server/metro/instantiateMetro.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/@sentry/react-native/dist/js/tools/metroconfig.d.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/react-native/React/CoreModules/RCTActionSheetManager.mm",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s79-b3client/SmartCompareApp/node_modules/react-native/Libraries/Share/Share.js"
+ ]
+}

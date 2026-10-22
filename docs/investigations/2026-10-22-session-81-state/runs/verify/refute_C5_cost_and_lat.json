@@ -1,0 +1,79 @@
+{
+ "cluster": "C5: Client surfaces: categories, honest numbers, share (digests A5, R6, R12)",
+ "lens": "cost and latency",
+ "verdicts": [
+  {
+   "recommendation": "C5.1 Fragrance chip plus coming-soon chips, copy, event, backend allowlist",
+   "verdict": "weakened",
+   "reason": "The client edits and the fire-and-forget event cost nothing. The claim of refusals at zero cost does not hold. _resolve_pair_category runs after parse_product_query on the q= path and after classify_category_llm when the names give no category. The camera path pays for vision first. Only Serper and the verdict are saved. A coming-soon tap invites typed skincare queries, and each one still pays for the parse.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:3957,4303,4347 - parse LLM, then category resolve, then fetch",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:483-491 - classify_category_llm fallback",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:230 - /events is fire_and_forget"
+   ],
+   "fix": "Keep the client changes. Add a deterministic keyword pre-check before any LLM call (name classifier or KB lookup) for the zero-cost refusal, keep the post-parse check as a backstop, never charge a refusal against the 3/day quota, and measure what share of refusals still pays for a parse or vision call."
+  },
+  {
+   "recommendation": "C5.2 Remove CohortBadge and fake numbers; add thresholded real counts",
+   "verdict": "weakened",
+   "reason": "The removals cost nothing and stand. The replacements are unbuilt and unpriced. compare_runs and KB pair ids do not exist yet. A per-compare count query on the hot path adds about 381 ms unless it is precomputed. Price age is popped internally and never sent on the wire. At 100-1000 compares/day under a 3/day device cap, n>=20 per pair and >=20 raters per pair will almost never be met. Removing the badge also saves no backend cost.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6820 - _l2_age_seconds popped, not on wire",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/hero/LoadingRings.tsx:129-132 - 2074 default",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5619-5664 - cohort_summary still computed server-side"
+   ],
+   "fix": "Ship the removals now. Serve counts only from an off-path aggregate (nightly or cached by KB pair, never a live count on the compare path). Add price age and store count as additive wire keys behind a flag. Accept that the thresholded lines will rarely render, and measure how often they do."
+  },
+  {
+   "recommendation": "C5.3 Per-channel share builder, openURL fallback, fixed text-only path",
+   "verdict": "weakened",
+   "reason": "The builder costs no tokens and the text-only fix is free. But each channel tap awaits the fingerprint plus POST /referrals/share before opening anything. That route makes about 5 sequential sync Supabase calls (users read, comparisons read, invites insert, credits insert, users read), roughly 1.5-2 s. Each tap also writes a new invite row and a deep-review credit row. SMS, Email and More are rejected by the backend's share-target set and the 014 CHECK unless mapped to other.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:162-199 - fingerprint+createShare awaited per tap",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:297-353 - sequential reads/inserts per share",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:31 - _VALID_SHARE_TARGETS lacks sms/email"
+   ],
+   "fix": "Create the invite once when the sheet opens, or cache share_link per comparison, so channel taps open instantly and do not write duplicate invite and credit rows. Map SMS, Email and More to 'other' until the migration widens the CHECK."
+  },
+  {
+   "recommendation": "C5.4 Landing OG tags plus dark per-comparison OG route",
+   "verdict": "weakened",
+   "reason": "Static OG tags and one image cost nothing and stand. The dynamic route does not. nginx is a static template (envsubst sets PORT only), so it cannot follow a per-call backend flag. Each crawler fetch through resolve_invite costs 3 reads (one of them full_response) plus a first_viewed_at write that bots trigger. Pillow is in dev requirements only. Render time, cache location and crawler timeouts are unmeasured.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template:1-3,67-75 - static /c/ -> open.html",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:398-441 - RPC+2 selects+first-view update",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements-dev.txt:78 - pillow dev-only"
+   ],
+   "fix": "Ship the static OG now. For per-comparison OG, write a small sanitized preview snapshot and pre-rendered image once at share time. Serve them from a read-only cached route that never writes first_viewed_at. Switch nginx with its own landing env plus a redeploy, not the backend flag."
+  },
+  {
+   "recommendation": "C5.5 Native 1.0.1 share kits, image card, measurement",
+   "verdict": "weakened",
+   "reason": "No server or token cost. But the plan to measure conversion through /c/ visits has no backend counter: /c/ is static nginx, so the only data is landing access logs inflated by preview crawlers. The device time for a view-shot capture of a 720x1280 Stories card is unmeasured.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template:67-69 - /c/ served statically",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:438-441 - first_viewed_at only via resolve_invite"
+   ],
+   "fix": "Count conversion from in-app resolve_invite opens and referral redemptions with crawler user agents excluded, and measure view-shot capture time on a low-end Android before committing to image cards."
+  }
+ ],
+ "new_risks": [
+  "Loop 2 still grants bonus comparisons for 7 days when an invited friend signs up. That conflicts with the single 3-per-day device rule, and a better share flow would raise LLM spend through it.",
+  "Anonymous and fresh compares have no comparison_id, so they never get a real link. Turning on ENABLE_COMPARISON_ID_ECHO adds a 285 ms insert RTT to every compare and requires ENABLE_SUPABASE_CLIENT_REUSE first (CLAUDE.md:444).",
+  "Preview crawlers (WhatsApp, Telegram, iMessage, X) set first_viewed_at and inflate /c/ hits, which skews every share-conversion metric.",
+  "Supabase calls are synchronous and run on the event loop while ENABLE_SYNC_DB_OFFLOAD is OFF. New share, OG and count routes block the loop and add latency to concurrent compares (p50 already 22 s).",
+  "Removing CohortBadge leaves the backend demographics read and the cohort prompt context running under ENABLE_COHORT_PERSONALIZATION. Its cost and tokens stay until that flag is reviewed.",
+  "Coming-soon refusals: there is no rule saying a refused skincare or makeup compare is not counted against the 3/day quota or refunded."
+ ],
+ "sources": [
+  "J1 A5, R6 digests; J2 R12 digest",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:430-492,3957,4303-4348,5600-5625,6820",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/referral_service.py:31,270-470",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:162-232",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:525-565",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/nginx.conf.template",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:186-230",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:444",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements-dev.txt:78"
+ ]
+}

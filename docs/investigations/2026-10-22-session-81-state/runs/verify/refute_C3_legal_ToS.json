@@ -1,0 +1,104 @@
+{
+ "cluster": "C3: Latency architecture and app speed (digests A9, R9, A6, R8)",
+ "lens": "legal, ToS, App Review and privacy",
+ "verdicts": [
+  {
+   "recommendation": "C3.1 ENABLE_KB_FIRST_SERVE: one-round-trip KB read, gated versioned cards, budgets",
+   "verdict": "weakened",
+   "reason": "The flag pattern and the 25 s cap hold. But the KB would permanently store review, rating and video signals taken from third parties. YouTube API data must be deleted or refreshed within 30 days, and today's cache is 14 days. Google ratings taken via Serper and Yotpo widget data would be redistributed from our own store. The confidence gate also does not keep out tier3_synthesis values.",
+   "evidence": [
+    "app/services/youtube_service.py:19,50 (14d cache today)",
+    "https://developers.google.com/youtube/terms/developer-policies III.E.4.c (read 2026-10-22): delete/refresh after 30 days",
+    "app/services/structured_comparison_service.py:822-828 (tier3 = training-knowledge synthesis)"
+   ],
+   "fix": "Persist in the KB only merchant or first-party facts, each with its source and fetched_at; keep third-party review signals (YouTube, Serper/Google ratings, Yotpo) on a TTL of 30 days or less with refresh; never write tier3_synthesis or uncited fields; keep images as URLs, not re-hosted copies."
+  },
+  {
+   "recommendation": "C3.2 KB price with age, bounded per-merchant PDP refresh, no Serper",
+   "verdict": "weakened",
+   "reason": "The live 'one bounded PDP fetch' would reuse fetch_page_price. That function fetches with curl_cffi impersonate=chrome, never calls robots_eval, and can fall back to the Magento GraphQL adapter, which exists to get past a Cloudflare 403 wall. That breaks the robots fail-closed and challenge-means-stop rulings. Showing stale prices with an as-of date is acceptable.",
+   "evidence": [
+    "app/services/price_service.py:14760-14770 (impersonate=\"chrome\", no robots check)",
+    "app/services/magento_graphql_service.py:195,204-205 (walks past the Cloudflare wall)",
+    "app/services/robots_eval.py:42-45 (only search_descriptor and sitemap_discovery enforce fail-closed)"
+   ],
+   "fix": "Do the refresh with a named-UA (QarenBot) fetcher that checks robots fail-closed per host, stops on any 403/429/5xx/challenge with no fallback adapter, and excludes the ENABLE_MAGENTO_GQL_ADAPTER path."
+  },
+  {
+   "recommendation": "C3.3 Background KB enrichment for smart fallback/Tier 2/Tier 3; residual guard",
+   "verdict": "weakened",
+   "reason": "Tier 3 fills blanks from GPT-4o training knowledge. Moving it into KB enrichment would turn inferred numbers into stored 'owned' facts, which breaks the no-fabricated-numbers rule. A background job is a crawler, and fetch_page_price has no robots gate. Prioritising by request count must keep no device or user identifiers, or the policy's promise to delete on account deletion is broken.",
+   "evidence": [
+    "app/services/structured_comparison_service.py:617-629,822-828",
+    "app/services/price_service.py:14760-14770",
+    "app/legal/privacy_policy.md:115 (immediate deletion promise)"
+   ],
+   "fix": "Drop Tier 3 (and any uncited Tier 2 value) from KB writes, run the enrichment job only through robots-gated, challenge-stop fetchers, and key the priority queue by product_key counts only."
+  },
+  {
+   "recommendation": "C3.4 Cache base verdict per versions/lang/model/prompt/persona; freeze crown",
+   "verdict": "stands",
+   "reason": "The base verdict is unpersonalised. Persona-bucket patterns are already disclosed. Cached rows carry no user identifier, so the deletion promise is unaffected. Putting model and prompt version in the key means a provider switch invalidates OpenAI-made verdicts. Freezing the crown cuts the risk of a misleading flip. One caveat: the existing get_comparison_cache_key uses only country and names, so it must not be reused as-is.",
+   "evidence": [
+    "app/services/cache_service.py:722-725,775-778",
+    "app/legal/privacy_policy.md:65"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C3.5 Haiku 5.5 live path, Sonnet off hot path, 20-call spike, fix stalls",
+   "verdict": "weakened",
+   "reason": "Putting Haiku on the live path is a provider switch. The consent sheet and privacy policy name only OpenAI and its data-sharing programme. Apple 5.1.2(i) requires naming the third-party AI and getting explicit permission, so this must ship after approval along with new legal text and a consent re-ask. Anthropic deletes API data within 30 days, and the policy must say so. The spike key must never reach the public repo.",
+   "evidence": [
+    "SmartCompareApp/src/i18n/en.json:704; app/legal/privacy_policy.md:63-69",
+    "https://developer.apple.com/app-store/review/guidelines/ 5.1.2(i) (read 2026-10-22)",
+    "https://privacy.claude.com/en/articles/7996866 (read 2026-10-22): 30-day API retention"
+   ],
+   "fix": "Make the Haiku live path depend on the post-approval legal-text rewrite and a consent version bump that re-asks, run the spike with synthetic product names only and a key held in an env var, and leave numbers uncommitted until then."
+  },
+  {
+   "recommendation": "C3.6 Per-product SSE events, SSE flip after pinning check, camera split",
+   "verdict": "weakened",
+   "reason": "Per-product events and an SSE flip behind a pinning device check are fine to ship by OTA. The camera identify-then-compare split, with staged UI, real cancel and a refund, is a new user-facing feature. Guideline 2.3.1(a) and 2.5.2 point to shipping it in a reviewed binary. AI consent is enforced only on the client (no server-side consent check found), so any new identify endpoint must keep the client gate.",
+   "evidence": [
+    "https://developer.apple.com/app-store/review/guidelines/ 2.3.1(a) (read 2026-10-22)",
+    "SmartCompareApp/src/config/features.ts:52",
+    "grep: no ai_consent check under app/ (95cf6f86)"
+   ],
+   "fix": "Ship the backend identify endpoint dark, but put the camera split's client UX in 1.0.1 with Notes for Review; send by OTA only the SSE flip and per-product event rendering, and only after the pinning check."
+  },
+  {
+   "recommendation": "C3.7 Client speed OTA set and native 1.0.1 items, Atlas measurement",
+   "verdict": "weakened",
+   "reason": "Most items are neutral on privacy, and removing the Sentry replay/feedback code shrinks the privacy surface. Image.prefetch is covered by policy section 6. Cairo, Geist and expo-image licences are permissive. Two gaps: a persisted stale-while-revalidate History cache would be new on-device data that the storage section does not list, and nothing says to keep .expo/atlas.jsonl (source plus inlined EXPO_PUBLIC values) out of the public repo.",
+   "evidence": [
+    "app/legal/privacy_policy.md:147 (enumerated app storage)",
+    "app/legal/privacy_policy.md:95 (images load directly from retailer)",
+    "R8 digest: never commit .expo/atlas.jsonl"
+   ],
+   "fix": "Keep the History/Home stale-while-revalidate cache in memory only (or add it to policy section 147 and clear it on sign-out and delete), and gitignore .expo/atlas.jsonl before any Atlas export."
+  }
+ ],
+ "new_risks": [
+  "Chrome impersonation is the default for every PDP fetch (price_service.py:14767), and CLAUDE.md:142 praises defeating Cloudflare walls; the challenge-means-stop ruling is enforced only on the search-descriptor and sitemap paths, not on price capture.",
+  "AI consent is checked only on the client; no server endpoint checks it, so a stale client or a direct API call can send user input to the AI provider without a recorded permission.",
+  "If Anthropic web_search is used on the cold path or for enrichment, its citation-display obligation to end users is not designed for in any card or verdict UI.",
+  "Store-paid CTAs: neither the crown freeze nor the cached verdicts guarantee or disclose that paid placement never affects the winner, which matters for misleading-advertising rules (GCC consumer protection) and App Review honesty.",
+  "Prices up to 30 days old under stale-if-error can mislead under GCC consumer-protection rules (for example Bahrain Law 35/2012) unless the as-of date sits next to every price and in shares.",
+  "Background Sonnet or Batch 'gold verdict' jobs must send product data only; any persona or user preference sent there needs the same consent and retention disclosure (Anthropic 30-day retention) as the live path."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:14760-14770",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/magento_graphql_service.py:188-236",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:34-45",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:617-629,822-838,1656",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:722-778",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/youtube_service.py:19,50",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:15,63-69,95,115,147",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:704",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52",
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22)",
+  "https://developers.google.com/youtube/terms/developer-policies (read 2026-10-22)",
+  "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data (read 2026-10-22)"
+ ]
+}

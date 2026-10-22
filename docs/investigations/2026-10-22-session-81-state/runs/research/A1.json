@@ -1,0 +1,233 @@
+{
+ "topic": "A1: LLM provider seam and every dispatch site at 95cf6f86 (what a real Anthropic adapter must cover)",
+ "summary": "The S80 digests (openai_flows_provider, anthropic_prereqs, R-A12) still hold at 95cf6f86. Only openai_service.py changed in a way that matters: B3 added a 16th chat site, `_identify_products_v2` (openai_service.py:473). It sits behind ENABLE_VISION_IDENTITY_V2 and is the only site that uses strict json_schema, reads finish_reason/refusal and runs under wait_for.\n\nAll 16 chat sites go through `guarded_llm_create` (api_budget_service.py:954). Moderation (content_safety_service.py:252) is the 17th call to OpenAI and goes direct.\n- Response modes: 6 sites use json_object (targeted, synth, disambig, verdict x2, critic), plus price-fallback when its flag is ON. 1 uses json_schema (vision V2). The other 8 are prose: classify returns a plain label; parse, specs, price, reviews, tier3, URL and vision V1 return prose JSON with a fence strip.\n- None of them needs tool use. Every JSON site maps to `output_config.format`, and the V2 schema (anyOf + additionalProperties:false) carries over almost unchanged. Only the two vision sites need base64 image blocks.\n- A real adapter must cover more than the prompts:\n  1. Haiku 5.5 and Sonnet 5.5 return a 400 on a non-default temperature, and every site sends one.\n  2. Thinking is on by default and counts toward max_tokens. The 10/60/120/150-token caps would end before any text.\n  3. Callers read `.choices[0].message.content`, and usage as `prompt_tokens` / `completion_tokens` / `total_tokens`, in more than 20 places.\n  4. Costs hardcoded to gpt-4o-mini rates (vision, `_track_gpt_cost`), plus model_router's DAILY_4O_CAP.\n  5. store=False has no Anthropic equivalent.\n  6. Moderation has no Anthropic equivalent.\n- Cost ledger: `record_openai_response` reads `prompt_tokens`/`completion_tokens`, and the price table has exact gpt-* keys only. Unchanged, every Claude call would record as unpriced and `cost_complete` would read false. Anthropic reports `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` and `server_tool_use`, and each needs mapping.\n- Web search: the best candidates are the three sites that use training data (targeted fill, synth, price fallback) and Tier-3 images. It costs $10 per 1,000 searches. It needs blocked_domains for Fragrantica and Parfumo, and our robots fail-closed ruling does not cover Anthropic's own fetching. That last point is a policy question.\n- Tests and text a switch reddens: the pins in (d) go red, while three pins (store, model literal, T7b) would miss Claude calls. OpenAI is named in 4 legal docs (24 lines), 4 landing pages, the consent copy (sha fence, version 2) and the onboarding copy. It is also named in native Info.plist strings (app.json:220,228; locales/en.json and ar.json), which can only change in 1.0.1. So a truthful switch on the camera path waits for a native build.",
+ "findings": [
+  {
+   "claim": "There are 16 chat sites at 95cf6f86 (S80 counted 15; B3 added the V2 vision call), all through `guarded_llm_create`, plus 1 direct moderations.create. The comment at api_budget_service.py:935-941 still says 14.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:954-1035 - chokepoint; store=False :980",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:473 - new V2 vision site (git diff 683f56c0..95cf6f86 +451 lines)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py:252 - moderations.create, fail-open"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "extraction_service sites (role / mode / max_tokens / T / consumer): classify :1385 standard / plain label / 10 / 0.0 / wait_for 4 s, any error -> 'other'. parse :1525 standard / prose JSON / 500 / 0.1 / (dict, usage). specs :1583 standard / prose / 1000 / 0.1 / (cleaned, usage). price :1742 standard / prose / 300 / 0.1. price fallback :1791 standard / prose, or json_object under ENABLE_PRICE_FALLBACK_MAY_DECLINE / 200 / 0.2 or 0. reviews :1847 standard / prose / 600 / 0.2. Verdict :2643 uses model_router get_model(high) / json_object / 1000 / 0. Verdict fallback :2685 uses standard_model via with_options(max_retries).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1368-1400 - classify",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2528-2529 - verdict model via model_router_service",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2665-2678 - fallback keyed on '429'/'rate'/'quota' substrings"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "openai_service sites: vision V2 :473 / json_schema strict (VISION_RESPONSE_FORMAT_V2 :207-254) / 1000 / T0 / wait_for VISION_TIMEOUT_SECONDS (default 20 s). It raises LLMUnavailableError on a refusal or None reply. Vision V1 :638 / prose JSON array / 500 / T0 / inline prompt, and crashes on None content. targeted :749 standard / json_object / 200. synth :824 verdict_model (gpt-4o) / json_object / 300. disambig :886 standard / json_object / 60 / T0, consumed at price_service.py:9120.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:457-576 - V2 body, finish_reason/refusal reads :489-500",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:437-455 - _vision_image_parts (image_url data URI, detail auto)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:660 - V1 response.choices[0].message.content without a None guard"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Remaining sites: image_service :179 Tier-3 image / standard / prose JSON / 120 / 0.1 / returns a URL or None. url_extraction :434 extract_with_ai / standard / prose JSON / 800 / 0.1 / on error returns {'error': str(e)}. verdict_critique :174 / critic role / json_object / 150 / 0.0 / returns CritiqueResult or None, never raises. All of them build FINISHED prompt strings (SEARCH_RESULTS_GUARD plus a template), so an adapter can take these strings unchanged.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:166-207",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/url_extraction_service.py:421-454",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:146-190"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The OpenAI response shape is read outside the chokepoint, so the adapter must return an OpenAI-shaped object or every caller has to migrate. That covers `.choices[0].message.content` at every site and the usage dicts {prompt_tokens, completion_tokens} returned from parse and specs (and likewise price and reviews). It also covers `usage.total_tokens` fed to model_router.record_usage, vision costs hardcoded at 0.15/0.60 per M, `_track_gpt_cost` using mini rates, and DAILY_4O_CAP routing.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1543-1547, 1706-1710, 2700-2706",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:569-574, 676-684 - hardcoded mini price",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:9606-9610 - _track_gpt_cost",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_router_service.py:3-5, 39, 70-89 - 4o daily cap"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Each cost ledger entry is {model, prompt_tokens, completion_tokens, cached_tokens, cost_usd}, priced from an exact-key table with gpt-* keys only (an unknown id gets cost None). The summary is metadata.openai {calls, priced_calls, unpriced_calls, token sums, cost_usd, cost_complete, by_model, basis, price_table_as_of}. For Anthropic: prompt = input_tokens + cache_creation_input_tokens + cache_read_input_tokens, and cached = cache_read. Cache writes cost more than base input, so a 2-rate formula under-prices them; claude-* rows are needed and server_tool_use web searches need a separate charge.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:38-44, 60-78, 121-144, 164-202",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py:2134-2135 - metadata.openai written",
+    "claude-api skill shared/prompt-caching.md + SKILL table (cached 2026-10-06) - usage field names"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "/admin/costs reads full_response->metadata->openai and labels it OpenAI list price. OPENAI_COST_NOTE says OpenAI's free daily allowance under data sharing applies, which would be false under Anthropic. /costs/api returns openai_list_usd.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:132-145 - note and JSON-path select",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:305-361, 944-1000"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Structured outputs: all 6 json_object sites and the price fallback map to output_config.format json_schema. The V2 vision schema works there as-is: it uses anyOf, enum, type arrays and additionalProperties:false, with no min/max constraints. The prose-JSON sites (parse, specs, price, reviews, tier3, URL, vision V1) and classify (enum) would gain schemas without any prompt byte changing. Tool use is not needed, and forced tool_choice returns a 400 on Sonnet 5.5.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:207-254 - schema body",
+    "claude-api skill shared/tool-use-concepts.md:537-556 - SO supported models incl. Haiku 5.5; unsupported constraints",
+    "claude-api SKILL.md Common Pitfalls - forced tool_choice 400 on Sonnet 5.5"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Sampling and thinking: Haiku 5.5 and Sonnet 5.5 return a 400 on non-default temperature, and every site sends one, so sampling_kwargs must return {} for claude-*. Thinking is on by default and counts toward max_tokens, so the 10/60/120/150 caps would hit stop_reason max_tokens before any text. Haiku 5.5 accepts thinking disabled at effort high or below (default effort medium). Sonnet 5.5 rejects disabled and takes between_tools instead. Content must be read by block type, not content[0].",
+   "evidence": [
+    "claude-api skill shared/model-migration.md (Migrating to Claude Haiku 5.5) - temperature must be 1; disabled ok <= high; thinking counts toward max_tokens",
+    "claude-api SKILL.md thinking table - Sonnet 5.5 between_tools",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config_enforced.py:228-241 - shipped caps"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Vision: only the two identify sites send images. Each data-URI image_url part becomes {type:'image', source:{type:'base64', media_type, data}}. jpeg/png/gif/webp match what the camera route accepts. V1 builds its parts inline (openai_service.py:624-635) and does not use the helper at :437-455, so the adapter needs one shared converter. Haiku 5.5 uses a tokenizer that produces about 30% more tokens than Haiku 4.5's, so image and text token counts need re-baselining.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:624-635, 437-455",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - ImageBlockParam media types on anthropic 1.11.0",
+    "claude-api skill shared/model-migration.md - Haiku 5.5 tokenizer +30%"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Server web_search fits where the model is told to use training data today: targeted fill (openai_service.py:711), synth (:773), price fallback (extraction_service.py:1771), and Tier-3 image (it could ground image URLs). The URL extractor should NOT use web_fetch, because our robots fail-closed gate would be skipped. web_search_20260209 is listed for Sonnet 5.5, but Haiku 5.5 is not in that list, so the variant Haiku 5.5 accepts is unverified. Price is $10 per 1,000 searches. Errors return HTTP 200 with an error object. Fragrantica and Parfumo must go in blocked_domains.",
+   "evidence": [
+    "claude-api SKILL.md Server Tools table - web_search_20260209 model list; error-object rule",
+    "claude-api skill shared/managed-agents-core.md:205 - web searches $10 per 1,000",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:804 - synth prompt says use training data"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "OpenAI-only features:\n- moderations.create (L3/L4 output moderation, which fails open) has no Anthropic equivalent. Keeping it keeps OpenAI as a named processor.\n- store=False (forced at the chokepoint) has no Anthropic kwarg, and passing it raises TypeError on SDK 1.11.0.\n- json_object maps to output_config.format.\n- finish_reason 'length'/refusal maps to stop_reason max_tokens/refusal. Haiku 5.5 refusals have no server-side fallback.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py:234-262",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:980-983",
+    "claude-api skill shared/model-migration.md - Haiku 5.5 refusals, no server-side fallback"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Fail-open paths an adapter must keep:\n- LLMUnavailableError (its message must avoid '429'/'rate'/'quota') becomes 503 LLM_UNAVAILABLE on the camera route.\n- The critic returns None.\n- Classify returns 'other'.\n- Tier 3 returns None.\n- URL returns {'error'}.\n- Moderation allows the text.\nRisk: an Anthropic 429 body names 'rate_limit_error', so the substring fallback fires and retries on the same org's standard model.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:340-358 - LLMUnavailableError or _openai_failure_is_transient -> 503",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:702-709, 890-932",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2665-2671"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Pins that redden when a provider changes:\n- test_model_config.py:25-29 LEGACY_DEFAULTS; :76 verdict == gpt-4o.\n- test_model_config_enforced.py:140 (>=15 sites); :228-241 SHIPPED kwargs, asserted at :267; :274 resolved_models.\n- test_prompt_truth.py:584-586 (every W4-11 fixture key incl. *_kwargs).\n- test_price_fallback_may_decline.py:196-198.\n- test_prompt_fence.py:687 (verdict_benign_user sha).\n- test_u3c_store_false_pin.py:235, 303, 359-360.\n- test_openai_key_log_hygiene_s69.py:37-63.\n- test_s75_fanout_identity.py:278 FY25 (moves if metadata.openai bytes change).\n- test_sentry_channels_u8d.py:971 BASE_INTEGRATIONS (AnthropicIntegration auto-enables).\n- test_s80_b3_vision_identity_v2.py:598-603, 628-632, 744-747.\n- test_legal_s78.py:900-921 R22.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/fixtures/w4_11_prompt_render_digests.json - verdict/targeted/url/tier3/synth/price_fallback kwargs incl. model, temperature, store",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_sentry_channels_u8d.py:192-197, 971",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_s80_b3_vision_identity_v2.py:744-747"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Three pins are blind to Claude calls and must be widened before the adapter lands:\n- The model-literal regex matches only gpt-* and omni-moderation-* (test_model_config.py:135).\n- The U3c no-bypass AST rule matches only 'chat.completions.create' (test_u3c_store_false_pin.py:99).\n- T7b CLIENT_CONSTRUCTORS lacks AsyncAnthropic (test_legal_docs_u8.py:763).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config.py:131-135",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_u3c_store_false_pin.py:99",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_legal_docs_u8.py:763"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Where OpenAI is named in legal and web text (unchanged since S80):\n- privacy_policy.md and its _ar twin, lines 15, 28, 38, 55, 58, 63, 65, 67, 69, 75, 87, 109.\n- terms_of_service.md and its _ar twin, lines 53 and 91.\n- processors.json openai row (:56-76; hosts api.openai.com, 7 modules).\n- landing/privacy.html:192-283 (10 lines); landing/ar/privacy.html:186-277 (12 lines); landing/terms.html:216, 247; landing/ar/terms.html:207, 238.\nThe policy, terms and the landing privacy page also describe OpenAI's data-sharing and training programme, which would have to be rewritten.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:63 - section 4 heading names OpenAI",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/privacy.html:245-248 - section 4 + data-sharing",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/processors.json:56-76"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "In-app consent and onboarding copy:\n- aiConsent.body names OpenAI and its training use (en.json:704; ar.json:701).\n- onboarding.s5 'What reaches OpenAI' (en.json:574-575; ar.json:571-572; Step05Trust.tsx:94 defaultValue).\n- AI_CONSENT_VERSION = 2 (aiConsent.ts:46). Changing the body requires a version bump, which re-asks every user, and a new sha pin (aiConsentVersion.s69.test.ts:36, asserted at :50). That is client work for an OTA after approval.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:703-707",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/consent/aiConsentVersion.s69.test.ts:36,50"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "New finding, not in the S80 digests: the iOS camera and photo-library permission strings (Info.plist) say photos are 'sent to OpenAI'. They are in app.json:220 and :228, locales/en.json:4-5, and locales/ar.json NSCameraUsageDescription and NSPhotoLibraryUsageDescription (Arabic 'أوبن إيه آي'). These are native and cannot change by OTA. Until 1.0.1 ships, moving vision to Claude would make the permission prompt untrue.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:220,228",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/locales/en.json:4-5",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/locales/ar.json - NSCameraUsageDescription / NSPhotoLibraryUsageDescription"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Prices (skill table cached 2026-10-06, not checked live): Haiku 5.5 is $0.10 in / $0.50 out per MTok up to a 100K prompt, against gpt-4o-mini's $0.15 / $0.60. Sonnet 5.5 is $2 / $10 against gpt-4o's $2.50 / $10. Output cost will be dominated by billed thinking tokens unless effort is low or thinking is disabled, so the $400 of credit cannot be sized until a token profile is measured.",
+   "evidence": [
+    "claude-api SKILL.md Current Models table (cached 2026-10-06)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:34-35"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "SDK pin delta: S80 pinned anthropic==1.11.0, whose Model literal lacks claude-haiku-5-5 (the str union still sends it). By today's 14-day rule (2026-10-22) releases up to 1.12.1 (2026-10-08) qualify, and 1.13.0 qualifies tomorrow. Whether any of them adds the Haiku 5.5 literal is unverified. Nothing anthropic is in requirements.in/txt at 95cf6f86.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - release dates, Model literal",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.in:12 - openai only"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Keep R-A12's design, a new llm_adapter.py whose methods take finished prompt strings, with one change: the Anthropic branch returns an OpenAI-shaped result (choices[0].message.content, usage.prompt_tokens/completion_tokens/total_tokens, finish_reason). The 20+ shape reads at each call site then stay untouched, and the W4-11 prompt digests stay single-source.",
+  "Add a separate guarded_anthropic_create chokepoint with its own breaker key and no store kwarg. Classify failures with the typed SDK exceptions and status codes, not by message substring. Do not let Anthropic's 'rate_limit_error' text trigger the substring fallback at extraction_service.py:2665-2671.",
+  "Add model_config._ANTHROPIC_ROLE_DEFAULTS (standard/vision/critic claude-haiku-5-5, verdict claude-sonnet-5-5) and make sampling_kwargs return {} for claude-*. Then set token caps per site for thinking: either thinking disabled at effort low on Haiku 5.5 for the 10/60/120/150-token sites, or raised caps. Measure both on a smoke set before choosing.",
+  "Use output_config.format json_schema at every JSON site. Reuse the V2 vision schema body verbatim, and give classify an enum schema. Because it is a kwarg, not prompt text, the prompt digests hold. No site needs tool use.",
+  "Put web_search only on the training-data sites (targeted, synth, price fallback) and Tier-3 image, behind its own dark flag. Set max_uses, put fragrantica.com and parfumo.* in blocked_domains, and price server_tool_use at $10 per 1,000. Get an owner ruling first on whether Anthropic's crawler satisfies the robots fail-closed policy. Never use web_fetch on the URL path.",
+  "Extend openai_pricing (or add a neutral llm_pricing) with claude-* rows: input, cache_write, cache_read, output. Normalise prompt = input + cache_creation + cache_read. Keep the metadata.openai key byte-identical while the flag is OFF so FY25 holds, and add metadata.llm only when the flag is ON.",
+  "Widen the blind pins in the same PR as the adapter: the claude-* model-literal regex, messages.create in the U3c AST rule, AsyncAnthropic in T7b, and AnthropicIntegration(include_prompts=False) with an updated BASE_INTEGRATIONS. Re-record the W4-11 and FY25 fixtures only if flag-OFF bytes actually move.",
+  "Keep moderation on OpenAI for now (free; content_safety fails open). Then OpenAI stays a named processor, and the legal text names both providers rather than swapping one for the other. Alternatively make L3/L4 a Haiku classifier behind a flag and drop OpenAI completely later.",
+  "Sequence the switch around the iOS permission strings that name OpenAI. Text sites can go first only after the privacy policy, terms, landing pages, processors.json and consent v3 change, shipped after approval. Camera/vision waits for 1.0.1, which carries new Info.plist strings.",
+  "Fix the hardcoded gpt-4o-mini cost formulas (openai_service.py:569-574, 676-684; structured_comparison_service.py:9606-9610) and make model_router's DAILY_4O_CAP provider-aware. Otherwise cost telemetry will be wrong as soon as Claude serves a call.",
+  "Re-pick the anthropic SDK pin today: the newest release at least 14 days old, now up to 1.12.1. Check whether its Model literal includes claude-haiku-5-5, and re-measure exceptions and retries on that exact pin, per the memory rule.",
+  "Update the stale comment at api_budget_service.py:935-941 (it says 14 dispatches; there are 16) and the CLAUDE.md census so the adapter spec counts the right sites."
+ ],
+ "open_questions": [
+  "Which web_search tool version does claude-haiku-5-5 accept on the Claude API? The skill lists web_search_20260209 only for Opus and Sonnet.",
+  "Does Anthropic's web_search crawler obey robots.txt in a way that satisfies the fail-closed ruling (docs/policies/2026-08-31-robots-unreadable-ruling.md)? It needs an owner/legal ruling.",
+  "What are Anthropic's API data-retention and no-training terms for this org? They decide the new privacy and consent wording that replaces the OpenAI data-sharing paragraphs. Not read; needs a primary source.",
+  "Keep OpenAI moderation (two processors named) or replace it with a Claude classifier (one processor)?",
+  "Is the camera/vision move deferred to 1.0.1 because of the native permission strings, or does the owner accept a text-only switch first?",
+  "What is the per-compare token profile on Haiku 5.5 at low and medium effort, with thinking on vs off? It is needed to size the $400 of credit and the max_tokens caps; it needs a smoke run, which costs money and needs owner approval.",
+  "Does anthropic 1.12.x or 1.13.0 add claude-haiku-5-5 to the Model literal, and do they change any exception or retry behaviour measured on 1.11.0?"
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/openai_flows_provider.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md (R-A12 :33, B10 :66)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/url_extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_router_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/llm_provider.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sentry_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/*.md, app/legal/processors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/privacy.html, terms.html, ar/privacy.html, ar/terms.html",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json, locales/en.json, locales/ar.json, src/i18n/en.json, src/i18n/ar.json, src/services/aiConsent.ts, src/components/AiConsentSheet.tsx, __tests__/consent/aiConsentVersion.s69.test.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_model_config.py, test_model_config_enforced.py, test_prompt_fence.py, test_prompt_truth.py, test_price_fallback_may_decline.py, test_u3c_store_false_pin.py, test_openai_key_log_hygiene_s69.py, test_s75_fanout_identity.py, test_sentry_channels_u8d.py, test_s80_b3_vision_identity_v2.py, test_legal_docs_u8.py, fixtures/w4_11_prompt_render_digests.json",
+  "git diff --stat 683f56c0 95cf6f86 (code root)",
+  "claude-api skill bundle 2.1.304: SKILL.md, shared/model-migration.md, shared/tool-use-concepts.md, shared/platform-availability.md, shared/managed-agents-core.md (model table cached 2026-10-06; read 2026-10-22)"
+ ]
+}

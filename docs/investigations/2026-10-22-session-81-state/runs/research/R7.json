@@ -1,0 +1,214 @@
+{
+ "topic": "R7: Critique-and-improve loop and genuine feedback collection for MYEZ (Anthropic pivot)",
+ "summary": "The current loop cannot improve the product. It has five problems. (1) The only critic, ENABLE_SELF_CRITIQUE (OFF), runs inline on the response path with an 8 s bound and one regeneration. It scores only prose style, it never sees the prices, specs or scores it is asked to check, and it cannot run on Haiku 5.5 as written: the temperature=0 call returns a 400 on that model. (2) FeedbackCard always sends useful:true plus a positive chip, so no negative label exists. (3) A fresh compare has no comparison_id on the client: the echo is OFF, and its precondition flag was rolled back in S77. So user feedback cannot be joined to a compare except on a History reopen. (4) eval_runner checks prod over HTTP. It is owner-run only, and smoke20 has only 2 fragrance cases. (5) Nothing joins judge output, user answers and gold.\n\nProposed loop:\n- **No inline regeneration.** Inline, only the deterministic B1/B2 result gate runs. Intrinsic self-correction without external evidence does not help (Huang 2023); tool-grounded critique does (CRITIC).\n- **One judgement record per compare, written after the response.** It holds programmatic checks (free, 100 %) plus a Claude Haiku 5.5 rubric judge with atomic yes/no checks. It runs through the Batch API at about $0.0004 per compare (inferred). Claude Sonnet 5.5 is escalated on every negative user answer, every Haiku flag and a 5 % random drift sample (about $0.008 with batch). A web_search-grounded verification (max_uses 3, merchant-registry allowlist, Fragrantica/Parfumo blocked) runs only on disputes plus 2 % random, at about $0.02-0.03 each.\n- **Feedback: one neutral, specific question per compare.** First \"Did we compare the right products?\" (Yes / No / Not sure). Then one rotating price, specs or choice question that maps to the existing winner_correct / price_correct / specs_correct and mattered_most fields, joined by a client-generated compare_request_id.\n- **A nightly offline job.** It joins judge records, user answers, search_logs and events, clusters failures by category x source x field, and emits three outputs: (a) KB correction proposals that need grounded evidence plus agreement from at least 2 devices; (b) versioned exemplar sets for the cached prefix, built only from compares the judge passed and the user confirmed; (c) human-ratified eval cases.\n- **Proof.** Keep smoke20 54b603e8 as the guardrail (read the axis averages). Add a 60+ case fragrance set at 2 reps. Run hash-bucketed A/B by prefix_version, plus a frozen-input pairwise replay. Calibrate the judge to at least 90 % agreement with the owner's labels.\n- **Never stored:** photos, free text inside exemplars or the public repo, user ids or emails in any prefix or eval file, raw fingerprints, keys, data from Cloudflare-challenged hosts or Fragrantica/Parfumo.\n\nA provider switch changes privacy section 4, processors.json and the consent copy, and bumps AI_CONSENT_VERSION.",
+ "findings": [
+  {
+   "claim": "The existing critic scores prose style on 5 axes (0-10) and asks 'is the winner justified by the scoring data', but its user message carries only verdict prose fields and product names, never scores, prices or specs. So bias_score and missing_citation_score cannot be checked against evidence.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:62-80 - system prompt with the 5 axes",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:119-145 - message holds only winner_reason, pros/cons and similar prose"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The critique runs INLINE after the verdict under asyncio.wait_for(8.0), with at most one regeneration. That adds latency to the compare path, which works against goal (6).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:9553-9570 - 8 s bound, timeout serves the original",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:364-381 - one regeneration hard cap"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Porting the critic to Haiku 5.5 as written would fail: it sends temperature 0.0, and Haiku 5.5 returns a 400 for non-default sampling parameters. Determinism must come from structured outputs plus measured grader variance.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:181-184 - sampling_kwargs(_model, 0.0), json_object",
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:87 - Haiku 5.5: non-default sampling params 400; $0.10/$0.50 per MTok; tokenizer about +30 %"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Critique rows are written only when a comparison_id exists. Table 030 has style axes and a cost trace, but no fields for identity, price, specs, prompt version or user agreement.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:257-258 - skipped without comparison_id",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql:3-22 - columns, ON DELETE CASCADE"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "FeedbackCard asks 'Was this helpful?' and offers only three positive chips (accurate/detailed/fast), and it always sends useful:true. The question is leading and yields no negative label, as the S80 prod_evidence digest already measured (MYEZ-023).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:18-22, 48-56",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - 'comparison_feedback can only ever say useful'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The backend already accepts the correctness fields and negative chips: winner_correct / price_correct / specs_correct as Literal correct|wrong|unsure, and the chips wrong_product, missing_info, unclear_reasons, slow, wrong_winner, unsure. Only the client OTA is missing, so the question set below needs no new backend enum except an identity-side field.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:44-50, 102-111",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/feedback_and_allowlists.json - extra='ignore', additive-safe for build 3"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The JOIN KEY is missing. Fresh compares carry no comparison_id on the client because the backend never echoes it while ENABLE_COMPARISON_ID_ECHO is OFF. Its precondition, ENABLE_SUPABASE_CLIENT_REUSE, was rolled back in S77. Today feedback can be tied to a compare only on a History or Smart-pick reopen.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:426-436 - 'Fresh compares have NO id'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:75-98 - echo flag reader",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md SESSION 77 block - Supabase client reuse rolled back"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "eval_runner grades 4 axes (price 0.25, specs 0.25, winner 0.30, factual 0.20, factual = forbidden-substring check) against the live prod endpoint. Its gold set is 200 queries ratified by the owner on 2026-06-10 (18 fragrances, 19 skincare, 18 makeup). smoke20 has 2 fragrance cases, so at 1 rep its noise floor is about ±22 points. That is useless for a fragrance-only product.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_runner.py:1-36, 74-79, 856-862",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/validation_gold_truth.json _metadata (ratified_at 2026-06-10) - category counts measured",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/eval_smoke_subset.json - 2 fragrance ids",
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/eval-audit.md section 5 - noise floor about 1/sqrt(n*R)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic's eval guidance (local skill files) points the judge design toward: atomic yes/no checks over blended scores; structured outputs; a judge that is never the model under test; position, verbosity and label-deference controls; at least 90 % agreement with human labels on clear cases; known-negative tests; a held-out split; and reference outputs frozen once for pairwise comparison. Gold built from a model under comparison rewards imitation.",
+   "evidence": [
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/eval-audit.md - 'When the grader is an LLM judge'",
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/build-eval.md:47, 82-85",
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/eval-hillclimb.md:205-239 - train/test split; analyzer reads train only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Batch API gives 50 % off every token, cache reads and writes included, which suits an offline judge. Web search costs $10 per 1,000 searches and works in batches (throttled per organisation). It supports max_uses and allowed_domains or blocked_domains (not both). Answers shown to users must carry citations.",
+   "evidence": [
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md:149-154",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool - pricing, batch, domain filtering, citations (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Estimated judge cost per compare (my arithmetic, not measured): Haiku 5.5 pointwise at about 6K input and 0.4K output is about $0.0008, or $0.0004 with batch. Sonnet 5.5 ($2/$10) is about $0.016, or $0.008 with batch. A grounded check with 2 searches is about $0.02 plus about $0.002 of tokens. At 500 compares a day with 100 % Haiku, 10 % Sonnet and 5 % grounded, that is about $1.2 a day (about $37 a month) out of the $400 credits.",
+   "evidence": [
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:85,87 - list prices",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool - $10 per 1,000 (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Research support for moving critique offline and grounding it: Self-Refine (Madaan 2023, NeurIPS, arXiv 2303.17651) gains come from same-model feedback on open-ended tasks. 'LLMs Cannot Self-Correct Reasoning Yet' (Huang 2023, ICLR'24, arXiv 2310.01798) finds intrinsic self-correction without external feedback can degrade results. CRITIC (Gou 2023, ICLR'24, arXiv 2305.11738) improves through tool-verified critique. MYEZ's failures (identity, price) are factual, so a critic is only useful if it is grounded.",
+   "evidence": [
+    "https://arxiv.org/abs/2303.17651 (read 2026-10-22)",
+    "https://arxiv.org/abs/2310.01798 (read 2026-10-22)",
+    "https://arxiv.org/abs/2305.11738 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "LLM-judge agreement with humans can match human-human agreement (above 80 %, MT-Bench), but position, verbosity and self-enhancement biases are documented. EvalGen (Shankar et al., UIST 2024) shows 'criteria drift': grading changes the criteria, so the rubric needs owner labels and iteration.",
+   "evidence": [
+    "https://arxiv.org/abs/2306.05685 (read 2026-10-22)",
+    "https://arxiv.org/abs/2404.12272 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "OSS tooling, with licence, stars and last push read 2026-10-22: promptfoo MIT, about 26.3k, 2026-10-22; DSPy MIT, about 38.7k, 2026-10-21; Langfuse MIT core with ee/ dirs under a separate licence, about 36.2k, 2026-10-22; DeepEval Apache-2.0, about 19.0k, 2026-10-19; Ragas Apache-2.0, about 16.1k, 2026-02-24; openai/evals NOASSERTION, about 19.6k, 2026-04-14; braintrust autoevals MIT, about 1.1k, 2026-10-21. None of these is needed in production. promptfoo (a CI eval runner) or DSPy KNNFewShot / BootstrapFewShot (about 10 examples) / MIPROv2 (200 or more) are the only candidates worth considering, and all are optional.",
+   "evidence": [
+    "https://api.github.com/repos/promptfoo/promptfoo (read 2026-10-22)",
+    "https://api.github.com/repos/stanfordnlp/dspy (read 2026-10-22)",
+    "https://raw.githubusercontent.com/langfuse/langfuse/main/LICENSE (read 2026-10-22)",
+    "https://api.github.com/repos/confident-ai/deepeval (read 2026-10-22)",
+    "https://api.github.com/repos/explodinggradients/ragas (read 2026-10-22)",
+    "https://api.github.com/repos/openai/evals (read 2026-10-22)",
+    "https://api.github.com/repos/braintrustdata/autoevals (read 2026-10-22)",
+    "https://github.com/stanfordnlp/dspy/blob/main/docs/docs/learn/optimization/optimizers.md (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Feedback design practice, which supports one explicit, specific question tied to the trace id: Langfuse attaches explicit feedback (thumbs) as a score on the trace id and uses human feedback as ground truth for judges; it notes low explicit response rates. PAIR says to ask useful questions at the right level of detail, to tell users what feedback is for, and to let them opt out.",
+   "evidence": [
+    "https://langfuse.com/docs/observability/features/user-feedback (read 2026-10-22)",
+    "https://pair.withgoogle.com/chapter/feedback-controls/ (search snippet 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Policy limits on stored data: photos are not stored; feedback is kept until the user deletes it or the account, and deletion removes it; de-identified comparison data that cannot identify the user may be kept. OpenAI is the only named AI processor, so an Anthropic judge needs edits to section 4, a processors.json row and an AI_CONSENT_VERSION bump (a re-ask).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:28,31,65-69,103,109,115-117",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46 - AI_CONSENT_VERSION = 2"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "B1 already computes the free programmatic layer of a per-compare critique: result_status, identity_confidence, data_coverage (auditable and literal), section_status and price_showable. The judge should consume these rather than re-derive them.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md SESSION 80 B1 flag row - app/services/result_gate.py assess_result / telemetry_tags"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "(1) Per-compare record, new table e.g. compare_judgements: service-role RLS, FK to comparisons ON DELETE CASCADE like 030. Fields: comparison_id, compare_request_id, created_at, category, input_type, prompt_version, exemplar_set_version, model id per stage, the B1 programmatic tags, judge_model, rubric_sha, atomic booleans (identity_match_a/b, price_plausible_a/b, unsupported_spec_claims int, verdict_supported_by_scores, verdict_cites_missing_data, lang_ok), explanation of 300 characters or less with no user text, grounded {searches, cited hosts, verdict}, judge usage, cost_usd, latency_ms. It is written AFTER the response, never inline. Reason: it keeps compare latency flat and gives the judge the evidence it currently lacks.",
+  "Judge tiers. Haiku 5.5 runs through the Batch API on every compare (about $0.0004), with structured outputs, no temperature, and a cached rubric prefix. Sonnet 5.5 is escalated on every user 'No', every Haiku flag and a 5 % random sample. The judge must never be the model that produced the field it grades (self-preference). A web_search-grounded check (max_uses 3, allowed_domains = the merchant registry, so Fragrantica and Parfumo are never searched; a request cannot carry allowed_domains and blocked_domains together) runs only on identity or price disputes plus a 2 % sample. Reason: the failures are factual, and CRITIC shows grounding helps while Huang 2023 shows ungrounded self-correction does not.",
+  "Retire the inline regenerate-on-style-axes path: leave ENABLE_SELF_CRITIQUE OFF and keep only the B1/B2 deterministic gate inline. Reason: the critic cannot see evidence (verdict_critique_service.py:119-145), costs up to 8 s, and its temperature 0 call returns a 400 on Haiku 5.5.",
+  "Add a client-generated compare_request_id (UUID) sent on the compare request and on /feedback and /events. It is an optional request field (pydantic extra='ignore' is additive-safe) stored in comparisons and search_logs. Reason: the comparison_id echo is blocked by the rolled-back Supabase client-reuse flag, so feedback cannot join to fresh compares. This is JS-only and ships by OTA after approval.",
+  "Question 1 always, one tap, shown after 8 seconds or more of dwell or when the user scrolls to the verdict; never on a History reopen; at most once per compare. EN 'Did we compare the right products?' with Yes / No / Not sure. AR 'هل قارنّا المنتجين الصحيحين؟' with نعم / لا / لست متأكدًا. On No: 'Which one was wrong?' First / Second / Both (AR 'أيّهما كان خطأ؟' الأول / الثاني / كلاهما), then an optional 'Correct name (optional, no personal details)' field (AR 'الاسم الصحيح (اختياري، بدون معلومات شخصية)'), stored as mattered_most ['wrong_product'] plus a new identity_correct field and side index. Reason: identity is the top failure and the user can answer it reliably.",
+  "Question 2: one per compare, rotating by hash(compare_request_id) and asked only after a Q1 'Yes'. Price: 'Is the price shown for {name} about right in Bahrain?' with Yes / No, it's different / I don't know (AR 'هل السعر المعروض لـ {name} قريب من سعره في البحرين؟' نعم / لا، السعر مختلف / لا أعرف), mapped to price_correct. Specs: 'Is anything important wrong or missing about these products?' with Nothing missing / Something is wrong or missing / Not sure (AR 'هل هناك معلومة مهمة خاطئة أو ناقصة عن المنتجين؟' لا شيء ناقص / هناك خطأ أو نقص / لست متأكدًا), mapped to specs_correct, with a missing_info chip. Choice: 'Which would you buy?' with {A} / {B} / Need more info (AR 'أيّهما ستشتري؟' {A} / {B} / أحتاج معلومات أكثر), stored as a preference, never as a correctness label. Drop 'Was this helpful?' and the positive-only chips. Reason: neutral, specific questions that collect correct data.",
+  "Nightly offline job, off-clock like price-warmer and reading from the DB only. It joins compare_judgements, comparison_feedback, search_logs and user_events, buckets failures into identity_wrong / price_wrong / spec_missing / spec_wrong / verdict_unsupported / verdict_wrong, and clusters them by category x source_method or host x field. A cluster is systematic when it holds 3 or more cases in 7 days from 2 or more distinct devices, with judge and user agreeing. Outputs: (a) KB correction proposals with the grounded citation URL, applied only after the grounded check plus agreement from 2 devices, never from free text alone; (b) exemplar_set_vN per category, 3 to 5 examples drawn only from compares the judge passed AND the user confirmed, de-identified, product facts only; (c) candidate eval cases that the owner must ratify, as with the 2026-06-10 gold.",
+  "Proving improvement. Keep the smoke20 regression gate (baseline 54b603e8-4eab-41c9-a34d-a5e391446559, judged by axis averages, owner-run). Add a fragrance set of 60 or more cases at 2 reps (noise about ±9 points) with re-ratified BHD price ranges, since the June prices are stale. Measure: identity accuracy, price-in-range rate, auditable data_coverage, verdict-supported rate, the user 'wrong product' rate per 100 answers, judge-owner agreement (90 % or more on 50 owner-labelled cases, re-checked monthly), judge-user Cohen's kappa, p50/p95 latency and cost per compare. A/B prefix_version by feature_bucket.hash_bucket on the device id, and also run a frozen-input pairwise replay (randomised A/B order, ties allowed, the reference frozen once). Ship a prefix only if the held-out delta clears noise.",
+  "Never store or commit: photos or image bytes in judge records; user free text inside exemplars, cached prefixes or the PUBLIC repo eval files; user_id, email, name, comparison_id or device fingerprints in any prefix or eval file; age or gender anywhere near prompts; JWTs, admin or API keys (the repo is public); the judge's raw search encrypted_content beyond the request (keep the URL and cited_text only); any data from Cloudflare-challenged hosts, robots-unreadable hosts, Fragrantica or Parfumo. Deleting an account must cascade to judgements and feedback-derived rows.",
+  "Legal before the Anthropic judge runs: amend privacy section 4 and the processors.json manifest, update the consent copy and bump AI_CONSENT_VERSION (a re-ask), all through the U8 machinery. Reason: judge calls send compare inputs and outputs to a new processor."
+ ],
+ "open_questions": [
+  "Comparison volume per day is unknown, so the $37/month judge estimate needs a real count from search_logs (owner query).",
+  "Anthropic API data-retention and training terms for judge traffic were not read; confirm before the privacy text is drafted.",
+  "Prompt-cache minimum length and the cache-read rate for Haiku 5.5 were not fetched; confirm before sizing the cached rubric and exemplar prefix.",
+  "Does the owner accept a new identity_correct field on FeedbackRequest plus a migration, or should identity stay as mattered_most chips only?",
+  "The Reflexion paper (Shinn 2023) was not located in this pass, so it is not cited.",
+  "Whether the B2 result gate will abstain before the judge sees a compare, and if so whether abstained compares are still judged.",
+  "Who labels the 50-case calibration set (the owner alone, or the owner and Husain), and in which language (EN, AR or both)."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:9540-9620",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_runner.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/validation_gold_truth.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/eval_smoke_subset.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:426-436",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:75-98",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (sections grepped)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/eval_regression.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/feedback_and_allowlists.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md:79",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/build-eval.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/eval-audit.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/evals/eval-hillclimb.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/test-and-evaluate/develop-tests (search result 2026-10-22)",
+  "https://arxiv.org/abs/2303.17651 (read 2026-10-22)",
+  "https://arxiv.org/abs/2310.01798 (read 2026-10-22)",
+  "https://arxiv.org/abs/2305.11738 (read 2026-10-22)",
+  "https://arxiv.org/abs/2306.05685 (read 2026-10-22)",
+  "https://arxiv.org/abs/2404.12272 (read 2026-10-22)",
+  "https://api.github.com/repos/promptfoo/promptfoo (read 2026-10-22)",
+  "https://api.github.com/repos/stanfordnlp/dspy (read 2026-10-22)",
+  "https://github.com/stanfordnlp/dspy/blob/main/docs/docs/learn/optimization/optimizers.md (read 2026-10-22)",
+  "https://api.github.com/repos/langfuse/langfuse + https://raw.githubusercontent.com/langfuse/langfuse/main/LICENSE (read 2026-10-22)",
+  "https://api.github.com/repos/confident-ai/deepeval (read 2026-10-22)",
+  "https://api.github.com/repos/explodinggradients/ragas (read 2026-10-22)",
+  "https://api.github.com/repos/openai/evals (read 2026-10-22)",
+  "https://api.github.com/repos/braintrustdata/autoevals (read 2026-10-22)",
+  "https://langfuse.com/docs/observability/features/user-feedback (read 2026-10-22)",
+  "https://pair.withgoogle.com/chapter/feedback-controls/ (search snippet 2026-10-22)"
+ ]
+}

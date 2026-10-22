@@ -1,0 +1,235 @@
+{
+ "topic": "R8: React Native / Expo SDK 54 performance (bundle size, startup, perceived speed): validated techniques for MYEZ at 95cf6f86",
+ "summary": "The session-80 digests contain no client-performance digest, so there is nothing to diff against. The nearest one, ux_surfaces_latency (MYEZ-015), still holds: a cold camera scan is about 30 s of compare plus vision. Everything below was read at 95cf6f86. Lever 1 is the biggest. Levers 2 to 7 save bytes and startup time.\n\n1. Biggest perceived-speed lever, already built. The backend SSE stream already emits status, specs, prices and first_paint, but the client never opens it: ENABLE_EXPO_FETCH_SSE_DEFAULT=false. Flipping it via OTA lets text compares paint well before the 30 s cap. The blocker is the device check from #118: confirm certificate pinning still holds over expo/fetch on both platforms.\n2. The camera path needs an additive backend split (identify, then compare), shipped dark. Then the client can show real stages and a cancel that aborts the request. Today cancel does not stop the fetch and the credit is still spent.\n3. Sentry: getSentryExpoConfig(includeWebReplay:false, includeWebFeedback:false). This removes the 198,567 B of dead replay and feedback code that M23 measured. OTA-capable. The P-B1-CACHE cacheVersion line must be kept.\n4. Fonts: Geist is embedded natively by the expo-font plugin (in the binary since May) AND loaded again at runtime by useFonts. The PostScript names Geist-Regular, Geist-SemiBold and Geist-Bold match the fontFamily strings. Dropping the runtime Geist load saves 382,744 B of OTA assets and takes three loads off the splash gate. That is OTA after a device check. Embedding Cairo too, so the splash stops waiting on fonts, is a 1.0.1 change.\n5. Load rarely used screens on demand instead of at boot: Legal (it pulls in the markdown library), Paywall, onboarding and ScanCamera. Optionally add inlineRequires. Both are OTA. The startup gain is unmeasured; third-party claims of 200-600 ms are unverified.\n6. Tree shaking: Expo's docs say it is on by default in SDK 54, but the installed @expo/cli 54.0.27 gates it behind two env vars that both default to false. So it is OFF here. It is experimental and the gain is unknown; measure it with Expo Atlas before deciding.\n7. Already done or already optimal: Hermes, the lucide per-icon rewrite (B1), Cairo per-weight imports (B4), console stripping, and the expo-updates defaults (ON_LOAD with fallbackToCacheTimeout 0, which never blocks launch). The splash floor is already max(ready, 700 ms) with a 1.5 s cap.\n8. Native, for 1.0.1: expo-image (it is not in the lockfile), the Android R8 minify and resource-shrink options, and RTL handling for Arabic. Today the app reloads the JS bundle once on the first Arabic launch.\n9. Rejected: lazy Sentry init. It contradicts W3-12, which requires Sentry to start before anything else.\n\nMeasure every change the same way. Before and after: run `EXPO_ATLAS=true npx expo export` and compare the Hermes .hbc and asset sizes. Never commit .expo/atlas.jsonl; it contains source and the inlined EXPO_PUBLIC values. Also read Sentry cold-start numbers (only 10% of sessions are traced), the Xcode Organizer launch-time pane, and client time to first_paint versus time to complete.",
+ "findings": [
+  {
+   "claim": "Rank 1 (perceived speed, OTA): the backend SSE stream already emits status/specs/prices/reviews/first_paint/scores/verdict and checks for client disconnects, but the client never opens it because ENABLE_EXPO_FETCH_SSE_DEFAULT=false. Every text compare waits for the full REST body, which is 30.2-30.8 s cold per the S80 digest. The flip is OTA-capable because expo/fetch ships inside the expo package already in the binary. The gate is the #118 device check: does certificate pinning still apply over expo/fetch on both platforms?",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:33-52 - flag false; flip only after pinning device check",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:744-751 - flag OFF goes straight to runRestCompare",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:842 - require('expo/fetch') stream path",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1036-1050,1202,1219 - event contract incl first_paint; is_disconnected",
+    "https://github.com/frw/react-native-ssl-public-key-pinning - pins via OkHttp/TrustKit; expo/fetch coverage not documented (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Rank 2 (perceived speed, backend dark + OTA): the camera scan is one blocking request with no stage events and no cancel that aborts it. The S80 ux_surfaces_latency digest still holds. Staged progress, an estimate and a cancel need an additive identify-then-compare split, or a camera stream route, behind a flag. NN/g guidance for waits over 10 s: show what is happening, a rough time estimate, and allow cancel.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json - MYEZ-015 root cause (measured at 683f56c0)",
+    "https://www.nngroup.com/articles/progress-indicators/ - percent-done for 10 s+, explain, allow cancel (2014; read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Rank 3 (size, OTA): metro.config.js uses the stock getDefaultConfig, so the @sentry replay/feedback browser packages are bundled. M23 measured them as 198,567 B of provably dead code. Sentry documents getSentryExpoConfig(..., {includeWebReplay:false, includeWebFeedback:false}), which resolves those packages to empty modules and does not touch native integrations. Keep the qarenCacheVersion line.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js:2,7,15 - stock config + cacheVersion pin",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:712 - 198,567 B @sentry replay/feedback dead",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package-lock.json - @sentry-internal/replay 10.12.0, @sentry/browser 10.12.0",
+    "https://docs.sentry.io/platforms/react-native/guides/expo/manual-setup/metro/ - includeWebReplay/includeWebFeedback default true (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Rank 4 (size + startup, OTA after a device check): Geist is embedded natively by the expo-font config plugin (app.json since 1bfc3ca0, 2026-05-06, so it is in build 3) AND loaded again at runtime through useFonts. The runtime load ships 382,744 B of TTF as OTA assets and gates the splash. The TTF PostScript names (Geist-Regular, Geist-SemiBold, Geist-Bold) equal the fontFamily strings, so iOS should resolve the embedded fonts by name; on Android the file name becomes the family name. Expo says useFonts is only for fonts the plugin cannot embed.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:179-187 - expo-font plugin embeds 3 Geist TTFs (approximate line range)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts:43-53 - runtime useFonts also loads Geist",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/assets/fonts - 126,048+127,872+128,824 B; name table nameID6 read with python",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:173,346-349 - splash gated on fontsLoaded",
+    "https://docs.expo.dev/versions/latest/sdk/font/ - plugin more efficient; useFonts only if plugin not possible (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Cairo (Arabic) is still loaded only at runtime. Embedding it through the expo-font plugin in 1.0.1 would remove the runtime font wait from the splash entirely. Native change, so it waits for 1.0.1.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts:26-28,47-49 - Cairo per-weight runtime imports",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json - expo-font plugin lists Geist only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Rank 5 (startup, OTA): App.tsx imports every screen at the top level, so all their modules are evaluated at boot. That includes LegalScreen (react-native-markdown-display), Paywall, the onboarding flows, EditPreferences, ScanCamera, InviteeQuiz and ReferralLanding. React Native docs recommend lazy-loading screen components and inline requires. The ms gain is unmeasured here.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:37-72 - static screen imports",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LegalScreen.tsx:23 - markdown import",
+    "https://reactnative.dev/docs/optimizing-javascript-loading - lazy screens, inline requires, side-effect caveat (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "inlineRequires is false in Expo's default transformer options; experimentalImportSupport is true. Enabling it changes when modules are evaluated. That matters here because api.ts sets up certificate pinning in its module body, and the W3-12 boot-order pin depends on module order. Gains quoted by third parties (200-600 ms) are unverified.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s76-domain/SmartCompareApp/node_modules/expo/node_modules/@expo/metro-config/build/ExpoMetroConfig.js:319-324 - experimentalImportSupport true, inlineRequires false (54.0.17, same version as the 95cf6f86 lockfile)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:27 - setupCertificatePinning() module side effect",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/index.ts:6 - sentryBootstrap first (W3-12)",
+    "https://reactnativerelay.com/article/react-native-startup-time-optimization-tti-hermes-2026 - third-party numbers (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Contradiction with the official docs: Expo's tree-shaking guide says tree shaking is enabled by default in SDK 54. The installed @expo/cli 54.0.27 instead sets usedExports = optimize && EXPO_UNSTABLE_TREE_SHAKING, with optimize requiring EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH; both default to false. So tree shaking is OFF in this repo's exports unless both env vars are set at eas update/build time.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s76-domain/SmartCompareApp/node_modules/expo/node_modules/@expo/cli/build/src/start/server/middleware/metroOptions.js:63,69 - gating",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s76-domain/SmartCompareApp/node_modules/expo/node_modules/@expo/cli/build/src/utils/env.js:193-197 - both default false",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package-lock.json - @expo/cli 54.0.27",
+    "https://docs.expo.dev/guides/tree-shaking/ - claims default in SDK 54; production only; ESM only; very experimental (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Already done: the B1 lucide per-icon rewrite (Hermes -1,749,282 B; 3,832 to 2,192 modules), the B4 Cairo per-weight imports (-469,608 B of assets), the production console strip, Hermes (the SDK 54 default), and a splash that ends at max(ready, 700 ms) with a 1.5 s cap.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/babel.config.js:196-203 - console strip, lucide plugin, reanimated last",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:674,708 - B1/B4 measured deltas",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/SplashScreen.tsx:28-29 - MIN 700 / MAX 1500"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "expo-updates is already on the fastest cold-start policy: app.json sets no checkAutomatically and no fallbackToCacheTimeout, so the defaults apply (ON_LOAD and 0 ms). Launch never blocks on the network, and a new OTA applies on the next cold start. Raising fallbackToCacheTimeout would add launch latency.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:248-253 - runtimeVersion appVersion, updates.url only",
+    "https://docs.expo.dev/versions/v54.0.0/config/app/ - checkAutomatically default ON_LOAD; fallbackToCacheTimeout default 0 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "On the first launch after the app switches to Arabic, bootstrapRtl calls Updates.reloadAsync() once, a full JS restart. That roughly doubles the first cold start for those users. expo-localization exposes supportsRTL/forcesRTL as config-plugin options, so any change here is native (1.0.1) and needs device testing.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/rtlBootstrap.ts:44-63 - reload once per direction",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:198-200 - boot calls bootstrapRtl",
+    "https://docs.expo.dev/guides/localization/ - supportsRTL/forcesRTL plugin options (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "ProductImage uses the React Native built-in Image (no memory-disk cache policy, no downscaling, no recyclingKey). expo-image adds all of these but is not in the lockfile, and it is a native module. With runtimeVersion appVersion, an OTA that adds native code to 1.0.0 would fail and roll back, so expo-image is 1.0.1 only. As an OTA-safe interim, Image.prefetch on the result image URLs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx:24-29 - built-in Image, no native deps",
+    "https://docs.expo.dev/versions/latest/sdk/image/ - cachePolicy, allowDownscaling, recyclingKey, prefetch; SDWebImage/Glide (read 2026-10-22)",
+    "https://docs.expo.dev/eas-update/runtime-versions/ - native code change needs new build (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "FlashList v2 is JS-only (Shopify removed all native code) and built for the New Architecture (newArchEnabled is true here), so it is OTA-capable in principle. The only candidate is HistoryScreen's SectionList, which makes this low priority and adds a dependency and a lockfile change.",
+   "evidence": [
+    "https://shopify.engineering/flashlist-v2 - no native code, no estimates (2025-07-31; read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx:1004 - SectionList",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:9 - newArchEnabled true"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "freezeOnBlur defaults to false in React Navigation 7 (native-stack and bottom-tabs), and no navigator here sets it. Results, Paywall and the others are modals over Main, so the tab screens can keep re-rendering while a compare is showing. Bottom tabs are already lazy by default. react-native-screens 4.16 is in the binary, so enableFreeze/freezeOnBlur is an OTA change.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx:98-100,362-363 - navigators, no freezeOnBlur",
+    "https://reactnavigation.org/docs/native-stack-navigator/ - freezeOnBlur default false (read 2026-10-22)",
+    "https://reactnavigation.org/docs/bottom-tab-navigator/ - lazy default true (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Android binary size, native (1.0.1): expo-build-properties android.enableMinifyInReleaseBuilds plus enableShrinkResourcesInReleaseBuilds are not set. Leave enableBundleCompression false: Expo notes compression may slow startup. On iOS, App Store app thinning is automatic; no Expo option was found that matters for size.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:226-236 - expo-build-properties sets ios only",
+    "https://docs.expo.dev/versions/latest/sdk/build-properties/ - R8 minify/shrink; bundle compression slows startup (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Measurement tooling: Expo Atlas (EXPO_ATLAS=true npx expo export) writes .expo/atlas.jsonl containing source and inlined EXPO_PUBLIC_ values. .expo/ is gitignored, but on a public repo the file must never be committed or attached. Sentry cold and warm app start is automatic but only on traced sessions (tracesSampleRate 0.1). Other options: the Xcode Organizer launch-time pane, MetricKit, and react-native-performance marks.",
+   "evidence": [
+    "https://docs.expo.dev/guides/analyzing-bundles/ - Atlas usage + sharing caution (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/.gitignore:7 - .expo/",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentry.ts:271-281 - tracesSampleRate 0.1",
+    "https://expo.dev/guides/react-native-startup-metrics-explained - TTR/TTI definitions, tools (2026; read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Rejected: lazy or deferred Sentry init. W3-12 requires sentryBootstrap to be the first import, so boot crashes and the certificate-pinning-failure alarm reach Sentry. Deferring init would recreate exactly that gap. Also rejected: RAM bundles, which Hermes does not support.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/index.ts:1-6 - W3-12 ordering",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentryBootstrap.ts:1-25",
+    "https://reactnative.dev/docs/optimizing-javascript-loading - RAM bundles non-Hermes only (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Reanimated 4.1.7 plus worklets 0.5.1 are imported by 25 client files. No source found quantifies their startup cost. The splash only animates tagline opacity. Not a ranked lever until a Hermes profile shows reanimated init on the critical path.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package-lock.json - react-native-reanimated 4.1.7",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/SplashScreen.tsx:3-8,60-63"
+   ],
+   "confidence": "unverified"
+  }
+ ],
+ "recommendations": [
+  "1. Flip ENABLE_EXPO_FETCH_SSE_DEFAULT via OTA after approval, but only after an EAS preview device check on both platforms that a mismatched certificate is still rejected over expo/fetch. Render first_paint as a progressive results skeleton. It is the largest perceived-speed win and the backend already exists. Measure: client time to first_paint and to complete (p50/p90) from the wall-time tracker, before vs after.",
+  "2. Camera path: add a dark, additive identify-then-compare split (or a camera stream route) with a disconnect check and refund. Then OTA a staged checklist with a rough estimate and a Cancel that aborts the AbortController. Widen VALID_EVENT_TYPES first, as the S80 digest requires. Measure scan_start, then identity_resolved, then comparison_ready.",
+  "3. Switch metro.config.js to getSentryExpoConfig(__dirname, {includeWebReplay:false, includeWebFeedback:false}) and keep config.cacheVersion = qarenCacheVersion(...). This is OTA and expected to remove about 198,567 B of source. Measure the Hermes .hbc size and module count with Expo Atlas, before vs after. Afterwards, confirm a test crash still symbolicates.",
+  "4. Remove the three Geist entries from appFontMap (OTA), only after verifying on the build-3 TestFlight that Geist text still renders on iOS and Android from the embedded fonts. Saves 382,744 B of OTA assets and three runtime loads. In 1.0.1, also embed the Cairo 400/600/700 weights through the expo-font plugin and drop useFonts from the splash gate.",
+  "5. Defer screens that are not needed at boot: Legal (markdown), Paywall, onboarding hosts, EditPreferences, ScanCamera, InviteeQuiz and ReferralLanding, via React Navigation getComponent or React.lazy. OTA. Keep sentryBootstrap first. Expect the App.* source-scanning tests to need deliberate pin updates. Measure with a Hermes sampling profile and Sentry app-start, before vs after.",
+  "6. Run inlineRequires:true as a separate experiment, after step 5. Add api.ts (pinning side effect) and the i18n init to nonInlinedRequires, or verify the order. Accept it only if the measured cold start improves and the pinning-failure alarm path still fires.",
+  "7. Run tree shaking only as a measured experiment. Set EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH=1 and EXPO_UNSTABLE_TREE_SHAKING=1 for an `expo export` and compare the Atlas output. Adopt it only if it saves at least about 100 KB and the full jest suite plus a device smoke test are green. The env vars must then also be set for every eas update, or bundles diverge.",
+  "8. Enable freezeOnBlur on the Main tabs (OTA), so tab screens stop re-rendering under the Results modal. Verify that History and Home refresh on focus, using useFocusEffect, not on background state changes.",
+  "9. Keep the expo-updates defaults (ON_LOAD, fallbackToCacheTimeout 0). Never raise the timeout: it trades cold-start time for update freshness.",
+  "10. For 1.0.1 (native): add expo-image to ProductImage (memory-disk cache, recyclingKey, prefetch of both result images); set Android enableMinifyInReleaseBuilds plus enableShrinkResourcesInReleaseBuilds; evaluate the expo-localization RTL options to avoid the first-launch Arabic reload. Measure IPA/AAB size from the EAS artifacts and Xcode Organizer launch time.",
+  "11. Use one before/after protocol for every unit. Run EXPO_ATLAS=true npx expo export --platform ios and android: bundle bytes, asset bytes, module count. Never commit or share .expo/atlas.jsonl. Add Sentry cold start (10% sample) and Xcode Organizer p50/p90. Optionally add react-native-performance marks (runJsBundleStart to contentAppeared) on a preview build."
+ ],
+ "open_questions": [
+  "Does react-native-ssl-public-key-pinning (TrustKit/OkHttp) cover expo/fetch's native client on iOS and Android? No documentation found; only the #118 device test can settle it, and it gates rank 1.",
+  "Does build 1.0.0 (3) resolve fontFamily 'Geist-Regular' / 'Geist-SemiBold' / 'Geist-Bold' from the embedded fonts with the runtime load removed? Inferred yes on iOS from the PostScript names; needs a TestFlight check.",
+  "How large is the actual Hermes bytecode delta for removing Sentry replay/feedback, and for tree shaking? M23 measured source bytes, not .hbc, for the Sentry code.",
+  "Did M23's 'experimental tree-shaker is absent' comment (fonts.ts:14-15) mean the env-gated serializer was missing, or just not enabled? The installed 54.0.17 serializer has treeShakeSerializerPlugin, gated by env vars.",
+  "What is the cold-start baseline on build 3 (Sentry app-start p50/p90, Xcode Organizer)? Nothing in the repo records it, so ms targets cannot be set yet."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package-lock.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/eas.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/babel.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/index.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/App.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentryBootstrap.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/sentry.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/SplashScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/rtlBootstrap.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/primitives/ProductImage.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/assets/fonts/*.ttf (name tables)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 436, 674, 708-712)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s76-domain/SmartCompareApp/node_modules/expo/node_modules/@expo/metro-config/build/ExpoMetroConfig.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s76-domain/SmartCompareApp/node_modules/expo/node_modules/@expo/cli/build/src/start/server/middleware/metroOptions.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s76-domain/SmartCompareApp/node_modules/expo/node_modules/@expo/cli/build/src/utils/env.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json",
+  "https://docs.expo.dev/guides/tree-shaking/ (read 2026-10-22)",
+  "https://docs.expo.dev/guides/analyzing-bundles/ (read 2026-10-22)",
+  "https://docs.expo.dev/versions/v54.0.0/config/app/ (read 2026-10-22)",
+  "https://expo.dev/changelog/sdk-54 (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/font/ (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/image/ (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/build-properties/ (read 2026-10-22)",
+  "https://docs.expo.dev/eas-update/runtime-versions/ (read 2026-10-22)",
+  "https://docs.expo.dev/guides/localization/ (read 2026-10-22)",
+  "https://expo.dev/guides/react-native-startup-metrics-explained (read 2026-10-22)",
+  "https://docs.sentry.io/platforms/react-native/guides/expo/manual-setup/metro/ (read 2026-10-22)",
+  "https://reactnative.dev/docs/optimizing-javascript-loading (read 2026-10-22)",
+  "https://reactnavigation.org/docs/native-stack-navigator/ (read 2026-10-22)",
+  "https://reactnavigation.org/docs/bottom-tab-navigator/ (read 2026-10-22)",
+  "https://shopify.engineering/flashlist-v2 (2025-07-31; read 2026-10-22)",
+  "https://shopify.github.io/flash-list/docs/ (read 2026-10-22)",
+  "https://github.com/frw/react-native-ssl-public-key-pinning (search result, read 2026-10-22)",
+  "https://www.nngroup.com/articles/progress-indicators/ (2014; read 2026-10-22)",
+  "https://reactnativerelay.com/article/react-native-startup-time-optimization-tti-hermes-2026 (third-party, unverified; read 2026-10-22)"
+ ]
+}

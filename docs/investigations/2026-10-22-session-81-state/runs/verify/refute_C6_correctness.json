@@ -1,0 +1,118 @@
+{
+ "cluster": "C6: Learning loop, feedback, reviews, data ledger, legal unit (digests A8, R7, R10, R12)",
+ "lens": "correctness and implementability at 95cf6f86",
+ "verdicts": [
+  {
+   "recommendation": "C6.1 compare_runs de-identified ledger, migration 045, fire_and_forget writer",
+   "verdict": "weakened",
+   "reason": "045 is free and the service-role RLS pattern fits. Five problems. 043 detaches FKs by hand, so a NO ACTION FK to comparisons would block delete_user_cascade; it must be ON DELETE SET NULL. The id is unknown when the flag is OFF and is never created for anonymous compares. The ledger has no role, latency or stop_reason. The re-compare-by-user flag needs a user link. stage_timings and refusal_reason do not exist.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/043_delete_user_cascade_full_erasure.sql:175-186 (manual SET NULL then DELETE comparisons/search_logs)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:719,757 (comparisons row only when user_id; flag-OFF save is fire_and_forget, id never returned)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:139-145 (ledger entry = model/tokens/cost only, no role/latency/stop_reason)"
+   ],
+   "fix": "Write the row at the same delivery exits as capture_result_status (sentry_service.py:671). Use comparison_id uuid NULL REFERENCES comparisons ON DELETE SET NULL, back-filled from track_after_persist. Put role, latency and stop_reason in a separate ContextVar ledger so metadata.openai stays byte-identical. Drop the per-user re-compare flag or key it on a device hash."
+  },
+  {
+   "recommendation": "C6.2 post-response Batch judge, compare_judgements FK cascade, retire self-critique",
+   "verdict": "weakened",
+   "reason": "Retiring self-critique is safe: it defaults OFF and sampling_kwargs only drops temperature for GPT-5, so a Haiku port would still send 0. The table design breaks the loop, though. The FK to comparisons ON DELETE CASCADE skips every anonymous compare and erases labels when an account is deleted. A Batch judge runs hours later, so evidence must be stored, and anonymous compares have none. No anthropic SDK or code exists yet.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:121-123 (temperature only dropped for completion-token models)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:95-119 (follow-ups gated on truthy comparison_id; anonymous never persisted)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt (no anthropic package; grep -rl anthropic app = none)"
+   ],
+   "fix": "Key compare_judgements on compare_runs.run_id with comparison_id nullable ON DELETE SET NULL. Store a de-identified evidence snapshot (specs, prices with source_method, review counts, dimension winners) on the run so the Batch judge can read it later. Add the Anthropic client and its processors.json row before turning the judge on."
+  },
+  {
+   "recommendation": "C6.3 client compare_request_id UUID as feedback/events join key",
+   "verdict": "weakened",
+   "reason": "Pydantic's default extra=ignore keeps build 3 safe. But adding a field to TextCompareRequest or the stream Query params changes the OpenAPI operation that T23 pins, so T23 reddens and its UR11 fixture must be re-recorded. The id would be stored only in comparisons and search_logs, not in comparison_feedback or user_events, so feedback rows still carry no join key. search_logs is also deleted on account deletion.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_s71_u13_compare_auth_required.py:982-1000 (T23 pins full operation JSON + components)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:226-245 (feedback record has no request-id column)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:783-795 (columns written only behind flag, the is_synthetic pattern to copy)"
+   ],
+   "fix": "Add a compare_request_id uuid column to compare_runs, comparison_feedback and user_events as well (written only when the flag is ON, after the migration is applied). Validate it with _validate_optional_uuid, and re-record the T23/UR11 fixture in the same PR."
+  },
+  {
+   "recommendation": "C6.4 Q1 identity question, rotating Q2, drop Was-this-helpful, stop ContactUs useful",
+   "verdict": "weakened",
+   "reason": "useful is a required bool that is always inserted, so dropping the helpful question forces fake values unless the backend makes it Optional. The live column's NOT NULL state is unknown and the 013 view reads it. identity_correct, side index and preference need a migration and Literal fields. Build 3 keeps sending useful:true chips and ContactUs useful until an OTA. The superset test greps only FeedbackCard.tsx.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:94-102 (useful: bool required; only three 027 Literal fields)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ContactUsScreen.tsx:91-98 (ContactUs posts /feedback with useful)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_feedback_allowlist_superset.py:38-48 (greps FeedbackCard.tsx key: literals only)"
+   ],
+   "fix": "Add migration 046: identity_correct (correct/wrong/unsure), wrong_side (0/1/both), a preference column, and useful made nullable after checking the live schema. Make useful Optional in pydantic. Keep accepting the legacy chips. Move ContactUs to its own endpoint or tag, and point the superset test at the new card file."
+  },
+  {
+   "recommendation": "C6.5 nightly offline clustering job, exemplars, eval proof",
+   "verdict": "weakened",
+   "reason": "The rule of at least 2 devices cannot be computed. Compare, feedback and events routes receive no device id: X-Device-Fingerprint is sent only on auth calls. compare_runs has no device column and anonymous feedback has no user_id. Exemplars load once per process from a repo file through lru_cache, so weekly rotation and an A/B by prefix_version need a loader rewrite and a redeploy or a DB source. The cron needs its own Railway service file.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:478-489 and SmartCompareApp/src/services/authService.ts:154,998 (fingerprint only on auth)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py:35-46 (lru_cache single data/ file)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.warmer.json (cron = separate service config pattern)"
+   ],
+   "fix": "Add a peppered device hash to compare_runs and feedback (client OTA after approval) before relying on the 2-device rule. Store versioned exemplar sets in a DB table read per call by prefix_version, and give the job its own railway.<job>.json service."
+  },
+  {
+   "recommendation": "C6.6 reviews: JSON-LD channel, partner keys, ratings tables, remove GPT ratings",
+   "verdict": "weakened",
+   "reason": "Channel 1 already exists. _jsonld_product_rating is scoped to the Product node (to avoid picking up store ratings) and is carried by _widen_jsonld_candidate behind wide_candidate_enabled, so reuse it. The removals redden pins: deleting judgeme reddens test_m6_c5; the fragrantica row reddens test_rating_tiers:71. RATING_TIER_2 and the reviews prompt are constants, so a dark flag needs per-call variants. A shared deny list already exists in DENY_HOSTS.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10857-10920, 11850-11854 (Product-node aggregateRating behind wide_candidate_enabled)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_rating_tiers.py:71-72 and tests/test_m6_c5_judgeme_html_reviews.py:35",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py:111 (DENY_HOSTS already holds fragrantica/parfumo)"
+   ],
+   "fix": "Build channel 1 on the existing _widen_jsonld_candidate rating and review fields. Route RATING_TIER_2, source_router and DENY_HOSTS through the one DENY_HOSTS constant. Gate the prompt change and the removal of the gpt_review_aggregate and derive_rating_from_scores fallbacks with a per-call flag that selects the prompt. Delete judgeme_service together with its test and fixtures, and re-pin test_rating_tiers, test_decomposed_services:56-62, test_dim_reviews_derived_rating and test_rating_provenance."
+  },
+  {
+   "recommendation": "C6.7 one post-approval legal unit for Anthropic, consent v3, PostHog",
+   "verdict": "weakened",
+   "reason": "The sections match the files (section 4 is OpenAI, section 9 already allows de-identified data) and T6 pins the twelve anchors. Three gaps. AI_CONSENT_VERSION is a client constant, so it needs an OTA. Consent is stored per account and a null user persists nothing, so anonymous devices under the per-device rule can never hold v3 consent. T7c makes each processors.json row name modules that exist, so the unit cannot land before the Anthropic code merges.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46,61,78-80 (version client-side; null user persists nothing)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/processors.json _comment (T7c module/host grep per row)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_legal_docs_u8.py:632-722 (T6 twelve anchors move together)"
+   ],
+   "fix": "Ship the legal unit in the same post-approval OTA as the Anthropic client code. Re-key AI consent to the device (not only the account) so anonymous per-device compares can record v3, and add the device-identifier quota purpose to section 3.4 and the Terms."
+  }
+ ],
+ "new_risks": [
+  "The per-device 3/day quota cannot be enforced against build 3. The client sends X-Device-Fingerprint only on auth calls (authService.ts:154,998), and the compare routes read no device header. The rule needs an OTA plus a backend reader, and until then quota and learning keys fall back to account or IP.",
+  "Feedback poisoning. Anonymous /feedback and /events go through the service-role client, and 010 INSERT policies do not constrain comparison_id (feedback_service.py:214-222). With only a 30/min limit and no device identity, one actor can fake the agreement that the KB-correction rule depends on.",
+  "Cost truth diverges. _track_gpt_cost prices every call at gpt-4o-mini rates (structured_comparison_service.py:9606-9610), and that value feeds search_logs.cost. After the Anthropic switch, compare_runs.cost_usd and search_logs.cost will disagree unless total_cost is rebuilt from the new ledger.",
+  "SSE disconnect and shutdown ordering. Runs and judgements written from the stream generator must be emitted in the M13-35 finally and survive the fire_and_forget shutdown drain (async_utils.py:44). Otherwise abandoned or partial compares, the most informative failures, vanish from the ledger.",
+  "Public repo leakage. Exemplar sets and candidate eval cases mined from real compares would be committed under data/, which verdict_exemplar_loader.py:35 reads, in a public repository. Owner review alone does not strip query text or user-specific phrasing; this needs a de-identification checker in CI.",
+  "Account deletion still erases search_logs and comparison_feedback (043:173-186). Any learning signal stored only there, including the compare_request_id join, is lost. The de-identified copy must be taken into compare_runs at write time, not joined later."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A8, R7)",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_fa7a7126-eef/journal.jsonl (R10, R12)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/043_delete_user_cascade_full_erasure.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ContactUsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/processors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_s71_u13_compare_auth_required.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_feedback_allowlist_superset.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_rating_tiers.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_legal_docs_u8.py"
+ ]
+}

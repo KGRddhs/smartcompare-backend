@@ -1,0 +1,197 @@
+{
+ "topic": "Re-measurement of 15 MYEZ research-digest claims against sc-s80-b2 @ origin/main 95cf6f86",
+ "facts": [
+  {
+   "claim": "(1) POST /text/compare runs in this order: require_paid_route_user (dependency), then the 10/min limiter, then consume_comparison_credit, then compare_from_text. On the q= path the LLM parse (parse_product_query, through _parse_with_budget) runs before _resolve_pair_category knows the category. The deterministic path covers only explicit_pair and vision, plus the flag-gated presplit.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:578-579,619,638",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4250-4303 (explicit_pair/vision use classify_category_from_text; the else branch awaits _parse_with_budget at :4278; _resolve_pair_category at :4303); _resolve_pair_category is defined at :430-494",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:3909-3962 (ENABLE_PARSE_PRESPLIT, default OFF, splits on ' vs ' with no LLM; ENABLE_PARSE_BUDGET is an 8 s stall guard); classify_category_from_text is at extraction_service.py:1307 (keyword words only, $0; a bare brand returns 'other')"
+   ],
+   "correction": "Two details to add. On the q= path the LLM's category is authoritative: name keywords cannot override it and there is no A2b escalation (:461-479). The explicit_pair/vision path escalates to classify_category_llm only when the names are blind and no chip is set (:489)."
+  },
+  {
+   "claim": "(2) usage_service: TIER_LIMITS free = 3 lifetime / 10 monthly / 3 daily, premium = 10/70. Keys are usage:daily:{uid}:{UTC date} and usage:monthly:{uid}:{UTC month}. _atomic_consume_async does INCRBY, cap check and DECRBY rollback, and fails open. There is a refund function. The anon:{fp} gate sits behind its own flag.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:138-149 (TIER_LIMITS), :152-159 (keys use the UTC %Y-%m-%d and %Y-%m), :233-281 (_atomic_consume: daily TTL 86400 set on the first incr, monthly 32 d, DECRBY rollback, None = fail-open on a Redis error), :292-297 (_atomic_consume_async = an optional to_thread dispatch)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:488-505 (refund_comparison_credit takes consumed_keys), :129-135 (refund_anon_comparison_credit), :25-33 (ENABLE_ANON_USAGE_GATE, read per call, default OFF), :44-61 (anon:{fp} uses the free daily/monthly limits)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1384-1407 (the anon gate is wired only on POST /text/quick, which requires the admin dependency) + app/api/image_routes.py:190,224 (/identify when no user is signed in)"
+   ],
+   "correction": "The anon:{fp} gate is NOT on /text/compare (GET, POST or stream). It covers only /text/quick (admin-gated) and /image/identify. The lifetime-free window (first 3 comparisons) bumps the counters without a cap check (usage_service.py:315-328,360)."
+  },
+  {
+   "claim": "(3) The client fingerprint is SHA-256 of applicationId | (Device.osBuildId ?? osInternalBuildId) | a random UUID nonce kept in SecureStore, generated in deviceFingerprint.ts. The X-Device-Fingerprint header is sent only on register, social sign-in and share, never on compare routes (api.ts).",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:12-36 (NONCE_KEY 'device_fp_nonce', Crypto.randomUUID, the order is applicationId|osBuildId|nonce)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts:138,154 (register header), :979,998 and :1142,1160 (social sign-in headers)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:159-167 (share sends device_fingerprint_hash as a BODY field through createShare, not as a header); api.ts has zero fingerprint references"
+   ],
+   "correction": "The composition and the generation site are as claimed. The header goes out only on register, email/social sign-in (two sites) and Apple sign-in. Share carries the hash in the request body (referralService.ts:36), not in X-Device-Fingerprint. Compare routes send neither, so the backend anon gate could never see a fingerprint from the app on compare."
+  },
+  {
+   "claim": "(4) CategorySelector.tsx:38-50 has a CATEGORIES array of 9 entries including 'other'. HomeEditorialSections.tsx:260-265 has QUICK_CATS. SMART_PICK_CATEGORY_KEYS exists. CategorySelector.test.tsx:12-39 and an s3 integration mock pin nine chips.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CategorySelector.tsx:38-50 (electronics, grocery, supplements, makeup, skincare, haircare, fragrances, fashion, other)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx:260-265 (QUICK_CATS = electronics, skincare, supplements, makeup; NO fragrances) and :49-58 (SMART_PICK_CATEGORY_KEYS = the 8 non-other categories)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/__tests__/components/CategorySelector.test.tsx:11-39 (9 testIDs + 9 icons) and __tests__/HomeScreen.bundleE.s3.integration.test.tsx:98-111 (CategorySelector mock)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(5) FeedbackCard always sends useful:true with the chip in mattered_most. VALID_MATTERED_MOST includes the B1 widening, and VALID_EVENT_TYPES includes the scan_* and image_load_failed entries. The superset test checks one direction only.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:48-56 (useful: true, mattered_most: [chipKey])",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:44-50 (price, specs, reviews, brand, value, warranty, ratings, accurate, detailed, fast, wrong_product, missing_info, unclear_reasons, slow, wrong_winner, unsure) and :60-94 (VALID_EVENT_TYPES, ending with scan_start, scan_identity_resolved, scan_comparison_ready, scan_failed, scan_cancelled, image_load_failed); FeedbackRequest has winner_correct/price_correct Literal fields at :103-110",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_feedback_allowlist_superset.py:99-133 (asserts only FE chips ⊆ allowlist and that no old value was removed; nothing checks that every allowlisted value has a producer)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(6) Share: the targets and the generic message; the ResultsScreen text-only fallback with no link; canOpenURL(whatsapp://) with no LSApplicationQueriesSchemes; Copy opens the OS sheet; open.html has no OG tags; assetlinks.json has a placeholder fingerprint; APP_STORE_URL is empty.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx:67-92 (whatsapp, copy, x, telegram, snapchat; whatsapp://send), :187-205 (copy/snapchat call Share.share; others try canOpenURL and fall back to Share.share); en.json:874 messageWithLink = the generic 'ends the debate in 30 seconds' text",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:532-546 (no comparison id: Share.share with names, winner and recommendation, no link); app.json:152-154 infoPlist holds only ITSAppUsesNonExemptEncryption (no LSApplicationQueriesSchemes)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html:4-8 (no og:/twitter: meta); landing/.well-known/assetlinks.json:7 ANDROID_SIGNING_CERT_SHA256_PLACEHOLDER; app/api/version_routes.py:14 os.getenv('APP_STORE_URL','')"
+   ],
+   "correction": "Two caveats. The code only defaults APP_STORE_URL to empty; its production value was not read (env by name only), and earlier docs record it as unset. With no LSApplicationQueriesSchemes, canOpenURL('whatsapp://') returns false on iOS, so WhatsApp always falls back to the OS sheet."
+  },
+  {
+   "claim": "(7) There are 16 OpenAI chat dispatch sites through guarded_llm_create, plus moderations.create at content_safety_service.py:252. The stale comment at api_budget_service.py:935-941 says 14. json_schema is used only by _identify_products_v2; other sites use json_object or prose.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:954 (def guarded_llm_create), :934-953 (the comment says 'WIRED (14 dispatches)' and also lists image_service:173 as NOT WIRED and content_safety at :152; all three are stale)",
+    "Call sites: extraction_service.py:1385,1525,1583,1742,1791,1847,2643,2685; openai_service.py:473,638,749,824,886; image_service.py:179; url_extraction_service.py:434; verdict_critique_service.py:174 (16); content_safety_service.py:252 moderations.create",
+    "Formats: json_schema only at openai_service.py:477 (VISION_RESPONSE_FORMAT_V2, _identify_products_v2); json_object at extraction_service.py:2659,2696, openai_service.py:755,830,892, verdict_critique_service.py:183, and conditionally extraction_service.py:1790 (only when price_fallback_may_decline is enabled); prose (no response_format) at extraction 1385,1525,1583,1742,1847, image_service 179, openai_service 638, url_extraction 434"
+   ],
+   "correction": "Besides the count, the comment is stale in two more ways. image_service's Tier-3 GPT call IS wired through the breaker (W4-11, image_service.py:178-185). The moderation line reference is :252, not :152."
+  },
+  {
+   "claim": "(8) image_service has tiers and a 5 s race. cand['image'] is captured at price_service.py ~10962-10964 and dropped at ~13952-13961. _is_valid_image_url accepts http://, and test_image_service_edges.py:22 pins http as valid. There is no persistent image store.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:241-286 (Tier 1.5 piggyback, 1.5b unified-search KG image, Tier 1 Serper Images, Tier 3 GPT, else None); :52-57 _is_valid_image_url accepts http:// and https://",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5785,5977-5988 (image_url race timeout 5.0)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10962-10964 (cand['image'] under the wide-candidate flag) and :13952-13961 (the page_scrape result dict has no image key); tests/test_image_service_edges.py:22"
+   ],
+   "correction": "Two limits on this check. That the image is dropped downstream is inferred from the result-dict shape at :13952-13961; the full propagation was not traced. 'No persistent image store' was checked only in image_service (no storage or bucket writes)."
+  },
+  {
+   "claim": "(9) L1 keys are specs:/price:/nogenuine:/reviews: with stated TTLs. The L2 tables product_specs/prices/reviews come from migration 012 with USING(true) policies for anon. product_key is the prefixed L1 string. The products-table upsert has zero callers. The next free migration number is 045 (035/036 unapplied, 039 reserved, 044 applied).",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2780-2811 (generate_cache_key builds prefix:md5[:12]; specs, price and reviews keys), price_service.py:293 (nogenuine:{price_key}); TTLs: SPECS_CACHE_TTL 7 d (structured_comparison_service.py:1643), PRICE_CACHE_TTL 24 h / GENUINE 7 d / NEGATIVE 30 d (price_service.py:134,148-149), REVIEWS_CACHE_TTL 7 d (review_service.py:42)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:19-21,41-42,58-60 (SELECT/INSERT/UPDATE policies USING(true)/WITH CHECK(true) with no TO clause, so they apply to PUBLIC incl. anon; only 033/034 touch these tables later); save_specs/get_cached_specs are passed the L1 cache_key (structured_comparison_service.py:6501,6576; review_service.py:691,734)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:809,835,843 (upsert_product is called only by upsert_products_from_comparison, which has zero callers in app/ or scripts/); migrations/ ends at 044 with no 039 file; CLAUDE.md:92 (044 applied, 039 reserved, 035/036 not recorded) and CLAUDE.md:650 ('NOT applied: 035, 036')"
+   ],
+   "correction": "product_key is the hashed form ('specs:<md5-12>'), not the readable name."
+  },
+  {
+   "claim": "(10) SOURCE_REGISTRY is built at import from 40 literal rows plus data/bh_gcc_sources.json (368 rows: 275 live / 61 dead / 18 provider-test / 14 render-only; 95 fragrance / 77 skincare / 57 makeup; 95 with a search descriptor). The loader drops country, genuine_method, locale_paths, discovery templates and pdp_url_pattern. fragrantica.com is a literal row. _record_provider_attempt outcomes are request-scoped and discarded. Robots is enforced only in the sitemap builder and the search-descriptor probe, and every runtime fetcher impersonates Chrome.",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:96-370 (_LITERAL_ROWS: AST count = 44 Source rows), :347 Source('fragrantica.com','global',('fragrances',),1.0), :532 SOURCE_REGISTRY = _LITERAL_ROWS + _load_catalog_rows(); :473-497 (catalog rows load ONLY when ENABLE_BH_GCC_CATALOG_SOURCES is on, default OFF), :415 (only status 'live' admitted), :425-467 (_row_to_source sets no country, genuine_method, locale_paths, discovery_query_templates or pdp_url_pattern)",
+    "data/bh_gcc_sources.json measured: 368 rows; live 275 / dead 61 / provider-test-candidate 18 / render-only 14; the 95/77/57 fragrance/skincare/makeup counts are LIVE rows only (all rows: 130/96/74); 95 rows carry 'search' (all live); no fragrantica/parfumo in the catalog",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:141-169,3528-3556,4582-4590 (attempts are collected per request and then ATTACHED to metadata.source_trace.races.price.attempts on the response, not discarded); robots_eval is imported only by search_descriptor_service.py:62 and sitemap_discovery_service.py:64; curl_cffi impersonate='chrome' in algolia, magento, noon, occ, price_service, rest_json, salla, shopify_pdp, unbxd, woocommerce, yotpo; url_extraction_service.py:93 sends a Chrome UA string over httpx"
+   ],
+   "correction": "Corrections: there are 44 literal rows, not 40. With the flag OFF (the default) the registry equals the literals only. The 95/77/57 category split is for live rows. Provider attempts are not discarded: they ride the response metadata.source_trace, which the FE does not render, and are not stored in any source-health table. The robots and impersonation parts are confirmed; the URL path spoofs a Chrome UA rather than impersonating Chrome's TLS fingerprint."
+  },
+  {
+   "claim": "(11) set_comparison_cache has no callers. first_paint fires only after specs, prices and reviews have all landed. ENABLE_EXPO_FETCH_SSE_DEFAULT is false. Stage caps: 12 s unified search; 8/10/5 s specs/reviews/image; 4 s rating; 5 s smart fallback; 4 s tier2; 3 s tier3; 15 s price race; 30 s overall cap.",
+   "status": "refuted",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:775 (def only; zero callers in app/); structured_comparison_service.py:5222-5229 (first_paint is yielded after the specs/prices/reviews events, before scoring and the verdict); SmartCompareApp/src/config/features.ts:52 ENABLE_EXPO_FETCH_SSE_DEFAULT = false",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5769-5786 (specs 8, price _PRICE_RACE_TIMEOUT 15 from :1713, reviews 10, image 5), :1982 rating 4.0, :8904 smart fallback 5.0, :613 tier2 4.0, :836 tier3 3.0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1656 STREAM_HARD_CAP_SECONDS default 25.0 (env-overridable; it wraps only Phase 1 unless ENABLE_FULL_STREAM_DEADLINE is on); :1819-1821 and :5863-5886 (the 12 s unified-search bound applies only under ENABLE_UNIFIED_SEARCH_BOUND, default OFF; with the flag off the search is unbounded)"
+   ],
+   "correction": "The overall cap defaults to 25 s, not 30 s; '30s' survives only in a stale comment at :5780. The production env value of STREAM_HARD_CAP_SECONDS was not read. The 12 s unified-search cap is dark (flag OFF). Everything else holds."
+  },
+  {
+   "claim": "(12) The behaviour profile selects user_events column 'metadata' while the writers use event_data. scripts/cron_few_shot_rotation.py sits behind ENABLE_FEWSHOT_ROTATION with no cron registration. verdict_exemplars.json has 0 exemplars / 22 anti-patterns. variant_hint_learned.json has no reader. The critique uses critic_model, temperature 0, 150 max tokens and an 8 s bound, and writes verdict_critiques (030) only for signed-in users.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5696 (select 'event_type, metadata'), behavior_service.py:113-148 (reads e['metadata']); writers use event_data (feedback_service.py:270,304; feedback_routes.py:223); 013_demographics_cohort.sql:48 reads event_data; migrations/037...sql:122 says 'No migration CREATEs user_events'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_few_shot_rotation.py:33,86 (flag, fail-closed); railway.json / railway.warmer.json register only cron_warm_price_cache; data/verdict_exemplars.json: 9 categories × 0 exemplars, anti_patterns total 22; data/variant_hint_learned.json is touched only by the writer _varhint_append_learned (price_service.py:9080-9096, a read-modify-write), with no lookup reader",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:167,181-183 (critic_model, 150 tokens, temperature 0.0, json_object), structured_comparison_service.py:9554-9565 (wait_for timeout=8.0), verdict_critique_service.py:258-259 (persist is skipped when comparison_id is None, i.e. unsaved/anonymous comparisons) and :279 the verdict_critiques insert"
+   ],
+   "correction": "Correction on the schema: no migration defines user_events itself. The event_data column name is evidenced by the writers and by the 013 view. The critique runs only when ENABLE_SELF_CRITIQUE is on (verdict_critique_service.py:333)."
+  },
+  {
+   "claim": "(13) The extraction_service reviews prompt asks for average_rating and an estimated total_reviews (~:982-983). The verdict prompt forces 4-6 pros and never-empty cons (~:1065). rating_service puts fragrantica in RATING_TIER_2. yotpo_service and judgeme_service have zero importers.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:982-983 ('average_rating': 0.0-5.0 or null, 'total_reviews': estimated_count or null)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1065 ('4-6 pros, 2-4 cons ... NEVER return empty pros[] or cons[]'); rating_service.py:33-39 RATING_TIER_2 includes 'fragrantica'",
+    "grep of app/ and scripts/ finds no 'import ... yotpo_service|judgeme_service' (scripts/seed_spec_spine.py:130 mentions judgeme only in a comment); only tests import them (tests/test_yotpo_reviews.py, tests/test_m6_c5_judgeme_html_reviews.py)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(14) metro.config.js has no Sentry replay/feedback stub and inlineRequires is off. The Geist fonts are both embedded via the expo-font plugin and loaded at runtime. expo-image is not installed. History refetches 50 rows on every focus. Home pings /health on focus.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js:1-17 (stock getDefaultConfig + cacheVersion only; no Sentry metro, no resolver stubs, no inlineRequires transformer option)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:193-198 (expo-font plugin embeds Geist-Regular/SemiBold/Bold) + src/theme/fonts.ts:44-53 (the same TTFs require()d and loaded through useFonts at runtime); package.json lists expo-font, expo-image-manipulator and expo-image-picker but no expo-image",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx:694,718-722 (useFocusEffect -> getComparisonHistory(50,0)); HomeScreen.tsx:268-286,297-303 (useFocusEffect -> InteractionManager.runAfterInteractions(checkServer -> healthCheck))"
+   ],
+   "correction": "inlineRequires is off only by default: nothing in metro.config.js sets it. The Home /health ping is deferred behind the interaction queue but still runs on every focus."
+  },
+  {
+   "claim": "(15) The S80 result_gate.py helpers (is_placeholder_identity, same_identity, dedup_brand_name, _shopping_cache_key, size_variant_token, _strip_identity_axes, _identity_cache_token) exist at the named modules.",
+   "status": "confirmed",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/result_gate.py:128 is_placeholder_identity, :171 same_identity",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/text_sanitize.py:24 dedup_brand_name; structured_comparison_service.py:1237 _shopping_cache_key (+ :1247 _shopping_cache_key_or)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:4238 size_variant_token, :9339 _identity_cache_token, :9369 _strip_identity_axes"
+   ],
+   "correction": "Only is_placeholder_identity and same_identity live in result_gate.py. The other five are spread across text_sanitize.py, structured_comparison_service.py and price_service.py."
+  }
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/version_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/result_gate.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/037_security_definer_grants_and_rls.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/verdict_exemplars.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_few_shot_rotation.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_feedback_allowlist_superset.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_image_service_edges.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/ShareBottomSheet.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/CategorySelector.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/HomeEditorialSections.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HistoryScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/theme/fonts.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/open.html",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/landing/.well-known/assetlinks.json"
+ ]
+}

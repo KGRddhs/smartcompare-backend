@@ -1,0 +1,103 @@
+{
+ "cluster": "C2: Knowledge base, merchant registry, crawler, data sources (digests A2, A3, R3, R4, R13, R15)",
+ "lens": "cost and latency",
+ "verdicts": [
+  {
+   "recommendation": "C2.1 Migration 045 kb_* seven-table schema with canonical kb_product_id",
+   "verdict": "weakened",
+   "reason": "The schema is sound and costs nothing to define. But a product card spread over 7 normalised tables is read through PostgREST, which can take one Supabase round trip per table. At the measured product_specs p50 of 381 ms, 4-5 reads per product x 2 products is 3-4 s before anything renders. Nothing in the recommendation specifies a single-round-trip read or the indexes on the new keys.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:200-213,249-268,367-372 - one run_db Supabase call per leg today",
+    "R9 finding (prod_evidence.json finding 8/9): Supabase product_specs p50 381 ms, Upstash p50 289 ms / p95 1.5 s",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:35-41 - run_db is inline on the loop when ENABLE_SYNC_DB_OFFLOAD is OFF"
+   ],
+   "fix": "Keep the schema, and also add a kb_product_card view or RPC that returns product + variant + latest offer + image + cited specs in ONE call keyed by kb_product_id, with indexes on (kb_product_id) and (variant_id, merchant_id, captured_at desc), plus a measured p50 gate (no more than 1 Supabase round trip per product)."
+  },
+  {
+   "recommendation": "C2.2 kb_ingest write on every compare, KB read before paid calls, freshness windows",
+   "verdict": "weakened",
+   "reason": "fire_and_forget is only an asyncio task. With ENABLE_SYNC_DB_OFFLOAD OFF, every Supabase call runs inline and blocks the event loop. About 10-20 upserts per compare at about 381 ms each is 4-8 s of loop stall shared by all users, at 100, 300 or 1000 compares a day. The KB read also stacks on L1 (2 serial Upstash GETs) and L2, so every miss pays an extra 0.4-0.8 s before the unified search. On a cold KB the hit rate starts near 0 and no Serper saving is quantified.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/async_utils.py:44 - fire_and_forget = create_task on the same loop; db_offload.py:39-41 inline when flag OFF",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5858-5860 - two sequential awaited L1 GETs before the unified search gate",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:58-61 - Serper 2200 lifetime credits"
+   ],
+   "fix": "Require ENABLE_SYNC_DB_OFFLOAD (or an async client) as a precondition for ENABLE_KB_INGEST. Batch each compare's ingest into one RPC upsert. Have the KB REPLACE the L2 read rather than add to it, as one gathered read run in parallel with the L1 GETs. Measure the KB hit rate and the Serper calls saved per 100 compares before claiming savings."
+  },
+  {
+   "recommendation": "C2.3 persistent merchant registry table, TTL memo, health feed, platform classification",
+   "verdict": "weakened",
+   "reason": "A TTL memo avoids the 381 ms per-call read, but the health feed is unbounded. The fan-out records one _record_provider_attempt per host attempt, which is tens per product. At 1000 compares a day that is tens of thousands of Supabase writes, or Upstash INCRs (289 ms p50 each, plus command billing). Classifying the 199 blank rows has an uncertain payoff, because detect_platform returns unknown on about 43% (R3).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:141-169 - request-scoped _record_provider_attempt list",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:532 - registry built once at import (memo replaces this)",
+    "R3 digest recommendation (a): detect_platform returns unknown on 43%"
+   ],
+   "fix": "Aggregate the provider attempts in-process per request and flush ONE pipelined counter write per compare, rolled up into the registry off-clock. Make the memo per process with a 5-15 min TTL. Report the 199-row classification as a measured count of promoted rows before claiming any Serper saving."
+  },
+  {
+   "recommendation": "C2.4 owned crawler: named UA, live robots gate, politeness, CC CDX, library choices",
+   "verdict": "weakened",
+   "reason": "Off-clock crawling fits these costs. Enforcing robots on the LIVE fetch path does not, as written. The existing robots fetch has a 20 s timeout against a 12 s fan-out budget. A cold robots read inline either blows the budget or fails closed and drops the host. Only 95 of 275 live hosts have even a robots snapshot. A per-host 2 s delay with concurrency 1, if applied live, serialises pair compares that share a retailer and needs a cross-replica Upstash lock.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:31 - _ROBOTS_TIMEOUT = 20",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1766-1773,8235-8260 - FAN_OUT_BUDGET_SECONDS 12 s",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json - robots_allowed recorded for 95 hosts only"
+   ],
+   "fix": "Precompute the robots state for every live host off-clock before the flag flips. On the live path read only the memoised registry state (no inline robots fetch; a missing or expired entry = skip and queue an off-clock re-read). Apply the 2 s / concurrency-1 politeness to the crawler only, and keep the live path at one PDP GET per host per compare."
+  },
+  {
+   "recommendation": "C2.5 port seed_spec_spine to Haiku, persist identity per compare, Wikidata, OBF separation",
+   "verdict": "weakened",
+   "reason": "The cost is small even if the figure is off by 10x: 4 pages x 4000 chars is about 5-6k tokens, about $0.0005 in batch, and the held corpus is only about 44 distinct fragrances. But the figure assumes no thinking output. R9 says Haiku 5.5 has adaptive thinking ON by default, and thinking tokens bill as output and add latency. max_tokens=900 could then truncate the JSON. The coverage gain from about 44 fragrances is negligible against the 65/42% model at 500 seeded.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:85,89,388 - MAX_PAGE_TEXT_CHARS 4000, 4 pages, max_tokens 900",
+    "R9 finding: Haiku 5.5 adaptive thinking ON by default (effort medium)",
+    "R15 finding: about 44 distinct fragrances held; $0.0005/fragrance batch is computed, not measured"
+   ],
+   "fix": "Port with thinking explicitly disabled and output_config JSON, run it through the Batch API, and log the real usage tokens on the first 20 rows to confirm the per-fragrance figure before the global run. Treat the seed as a correctness fixture, not a coverage lever."
+  },
+  {
+   "recommendation": "C2.6 Robotoff-style predictions/votes, RapidFuzz+Splink+Haiku merge, Shopify UCP MCP, Open Prices fields",
+   "verdict": "weakened",
+   "reason": "The off-clock matching and the GTIN checks are close to $0. Two parts are unmeasured. The share of ambiguous pairs sent to Haiku is not counted, so the judge cost has no bound. The UCP MCP needs initialize + tools/list + search_catalog per host, at least 3 RTTs before any data. As a live discovery channel on 33 Shopify hosts it cannot fit the 12 s fan-out, and Shopify's tool renames add failed calls. Per-device vote writes also add Supabase writes on the request.",
+   "evidence": [
+    "R13 finding: Shopify removed search_shop_catalog / renamed to search_catalog; agent-profile header required",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:620-672 - existing UCP probe made no MCP handshake",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - 33 live shopify-mechanism rows (A3 count)"
+   ],
+   "fix": "Keep UCP MCP strictly off-clock (a catalog walk that writes kb_offers) with a cached tools/list. Cap the Haiku judge at a measured ambiguous-pair budget per run. Write votes fire-and-forget through the offloaded client only."
+  },
+  {
+   "recommendation": "C2.7 image cascade with Haiku URL check, Serper fallbacks, HEAD recheck, pHash",
+   "verdict": "weakened",
+   "reason": "A Haiku yes/no check costs about 1.6k image tokens, so about $0.0002. But its latency is unmeasured (AA: 7.8 s TTFT at 10k input, low thinking), and it sits after a Serper Images call (p50 3.5 s, p95 12.4 s) inside a 5 s image cap, so it cannot fit the hot path. Serper Images is capped at 500/day: 300 compares x 2 products already needs 600 without KB hits. The 'free' Serper KG/organic tier exists only when the unified search ran, which the KB read point removes.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py:23 - _DEFAULT_SERPER_IMAGE_DAILY_BUDGET = 500",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5769-5786 - image race cap 5 s; A9: Serper ok p50 3.5 s / p95 12.4 s",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10962-10964 - JSON-LD image captured into cand['image']"
+   ],
+   "fix": "On the live path serve only the KB or retailer JSON-LD image (or the placeholder). Move the Serper and Haiku validation, the HEAD recheck and pHash to an off-clock or background enrichment that writes kb_images. Size the Serper Images budget to the measured KB image-miss rate at 300 and 1000 compares a day."
+  }
+ ],
+ "new_risks": [
+  "Event-loop stall: every Supabase call runs inline on the asyncio loop while ENABLE_SYNC_DB_OFFLOAD is OFF (db_offload.py:39-41), so KB writes and reads add loop-blocking time for ALL concurrent requests. /health p95 is already 8.4 s (R9).",
+  "Serper lifetime accounting is 2200 credits (api_budget_service.py:58-61). At roughly 8-15 Serper calls per cold compare, 100 compares a day exhausts it in about 2 days while the KB is still cold. No recommendation sequences KB seeding ahead of that cliff or models the KB hit-rate ramp.",
+  "Upstash round trips stack serially: 2 sequential L1 GETs at the gate (structured_comparison_service.py:5858-5859), the per-device quota counter, robots and registry memos, and health counters. Each is 289 ms p50 / 1.5 s p95, and nobody budgets the total or the Upstash command bill at 1000 compares a day.",
+  "Batch API turnaround (up to 24 h) means Batch-run enrichment is warm the next day, not on the next request. The 'every request enriches the KB' promise needs a synchronous or background non-batch path, which costs 2x the batch price.",
+  "Anthropic web_search (if used on KB misses) bills $10 per 1,000 searches, and its result tokens count as input on later turns. A few searches can push a Haiku prompt past 100K, where it jumps to $0.50/$2.50 per MTok. No cap on result tokens was set.",
+  "Storage growth: kb_offers and per-device kb_vote rows are append-heavy, like product_prices (no retention). At 1000 compares a day with multi-merchant offers this grows by tens of thousands of rows a day, with no pruning or index plan, and Supabase read p50 degrades with table size."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A2, A3, A9, R3, R4, R9)",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_fa7a7126-eef/journal.jsonl (R13, R15)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/async_utils.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py"
+ ]
+}

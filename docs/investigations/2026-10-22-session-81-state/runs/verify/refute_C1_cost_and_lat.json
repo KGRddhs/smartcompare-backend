@@ -1,0 +1,105 @@
+{
+ "cluster": "C1: Provider adapter and cost (digests A1, R1, R2, R14, R9)",
+ "lens": "cost and latency",
+ "verdicts": [
+  {
+   "recommendation": "C1.1 OpenAI-shaped llm_adapter with a separate Anthropic chokepoint, no temperature, json_schema everywhere",
+   "verdict": "weakened",
+   "reason": "The shape plan is sound, but it says no tool use on the live path while C1.3 puts web_search there, which brings server_tool_use, pause_turn, error objects and citations that an OpenAI-shaped flattening drops. The 4 s classify wait_for and the 20 s vision timeout are tuned to gpt-4o-mini's 1.4-1.9 s. Haiku TTFT at our prompt sizes is unmeasured, and a classify timeout turns into 'other', which means a wrong refusal. Schema compile on first use is not counted.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1365 - _CLASSIFY_LLM_TIMEOUT 4.0; :1384-1396 timeout degrades to 'other'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2665-2678 - verdict fallback keyed on '429'/'rate'/'quota' substrings (an Anthropic 529 'overloaded' would not match)",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22, via R14) - errors arrive as HTTP 200 objects, citations always on"
+   ],
+   "fix": "Keep the OpenAI-shaped adapter for the plain-text and JSON sites. Give the web_search route its own result type that keeps citations and tool errors. Cap Anthropic SDK retries the way OPENAI_MAX_RETRIES does, and map 529/overloaded in the typed classifier. Re-measure the 4 s classify and 20 s vision timeouts on Haiku before the flag flips."
+  },
+  {
+   "recommendation": "C1.2 Haiku 5.5 for every role, Sonnet verdict a second flag",
+   "verdict": "weakened",
+   "reason": "Haiku-first is the right call. But '$0.003, over a year of runway at 300/day' assumes zero web_search, no nightly batches and an x1.3 tokenizer guess. At launch the KB is empty, so most compares miss: 2-4 searches add $0.02-0.04 per compare, and runway at 300/day falls to about 1-2 months. The latency side is unmeasured too: the 6.5 s tail reserve was measured with a 2.3 s gpt-4o verdict, and Haiku TTFT is 7.8 s on AA's 10K-token benchmark.",
+   "evidence": [
+    "R1 finding (inferred): Haiku-only + 3 searches $109/$324/$1,078 per month, runway 3.7/1.2/0.4 months at 100/300/1000",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:466 - TAIL_RESERVE_SECONDS 6.5 s = the measured Phase-1-end to moderation tail (OpenAI)",
+    "R9 finding: AA Haiku 5.5 low TTFT 7.83 s at 10k input, thinking on; gpt-4o verdict 2.3 s in trace V09"
+   ],
+   "fix": "Ship Haiku for every role, but state runway as a function of KB miss rate and search count. Gate the flip on a count_tokens and TTFT spike on 20 real fragrance compares with thinking disabled, re-checking TAIL_RESERVE_SECONDS and the classify timeout."
+  },
+  {
+   "recommendation": "C1.3 web_search only on KB miss, max_uses 1-2, Serper for discovery",
+   "verdict": "weakened",
+   "reason": "Search on a miss only is the main cost lever, but it is unbounded at the miss rate: max_uses 1-2 per product is 2-4 searches, $0.02-0.04 per compare, 7-13x the target. The wall time does not fit. A miss path runs Supabase (p50 381 ms) + Upstash (p50 289 ms, p95 1.5 s) + Serper (p95 16.9 s, about 45% failed) + an unmeasured web_search model turn + Haiku, all under 25-30 s. Whether web_search combines with output_config.format is also unconfirmed.",
+   "evidence": [
+    "R9 finding: Serper p95 16.9 s; Upstash p50 289 ms / p95 1.5 s; Supabase product_specs p50 381 ms (prod_evidence.json finding 8/9)",
+    "R2 open question: web_search plus output_config.format compatibility unverified; R14: Haiku 5.5 web_search_20260209 support unverified",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1713 - _PRICE_RACE_TIMEOUT 15.0 already eats half the cap"
+   ],
+   "fix": "On the live path, allow at most one web_search per compare (not per product), and only when the residual budget is above a measured search p95. Otherwise return an honest gap and queue the miss for background enrichment. Add a daily dollar cap on search spend."
+  },
+  {
+   "recommendation": "C1.4 Cache layout, 1-hour TTL, max_tokens 0 pre-warm at boot, cache_read probe",
+   "verdict": "weakened",
+   "reason": "The layout (sorted tools, frozen system, per-category breakpoint) stands. The pre-warm does not. max_tokens 0 is a 400 when output_config.format is set, and setting a structured-output format breaks the cache, so a warm call without the format writes a prefix the json_schema sites from C1.1 will never read. On Haiku a hit saves about $0.0003 and the TTFT gain on 3-6K prompts is unmeasured. The critic prompt (about 300 tokens) is below 512 and cannot cache.",
+   "evidence": [
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/prompt-caching.md:295 - max_tokens 0 rejected with output_config.format, stream or Batches",
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/cost-optimization.md:109 - setting or changing a structured-output format is a cache-breaker",
+    "R1 finding: critic system about 300 tokens, below the 512 minimum"
+   ],
+   "fix": "Keep the layout and the cache_read_input_tokens probe. On structured-output routes, drop the max_tokens 0 pre-warm in favour of the 1-hour TTL, or a real first request at boot that carries the same format. Choose the TTL by the measured start-to-start gap, not by daily volume."
+  },
+  {
+   "recommendation": "C1.5 Messages + structured outputs + streaming live; Batches nightly; Railway cron; no agents",
+   "verdict": "weakened",
+   "reason": "The choice of surfaces holds. The cost does not: a nightly Sonnet judge over every compare is about $0.0085 each (R14: $4.25 per 500), about $77 a month at 300/day. That is more than the whole Haiku live bill, and C1.2's runway leaves it out. Batch cache hits are best-effort (30-98%). Streaming gives no user-visible gain until the client SSE default flips after approval, and a json_schema reply cannot render partially.",
+   "evidence": [
+    "R14 finding (computed): 500 compares at 6K in / 500 out = about $4.25 Sonnet batch vs about $0.21 Haiku batch",
+    "R2 finding: batch cache hits best-effort 30-98%; batches reject fallbacks and max_tokens 0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52 - ENABLE_EXPO_FETCH_SSE_DEFAULT false (REST only)"
+   ],
+   "fix": "Run the nightly judge as a Haiku batch over all compares and send only a flagged or sampled subset to Sonnet, under a nightly dollar cap counted in the runway. Count streaming as a latency win only once the client SSE flip ships."
+  },
+  {
+   "recommendation": "C1.6 Provider-aware price table, normalised usage, metadata.llm, fix hardcoded costs",
+   "verdict": "weakened",
+   "reason": "The ledger work is needed, but it is incomplete. Normalising prompt = input + cache_creation + cache_read loses the 5-minute vs 1-hour write split, so writes are mispriced. There are no Batch (50%) or inference_geo rows. The per-request ContextVar ledger cannot see nightly batch or enrichment spend. /admin/costs reads only metadata.openai, so Anthropic spend would show as $0 there.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:37-44,49-51 - gpt-* exact keys, per-request ContextVar ledger",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:140-143 - cost source is full_response->metadata->openai only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_router_service.py:39 - DAILY_4O_CAP"
+   ],
+   "fix": "Price writes from the usage cache_creation 5m/1h breakdown, add batch-rate and per-search rows, add a separate off-clock spend ledger for batches and crons, and extend /admin/costs to read metadata.llm alongside metadata.openai."
+  },
+  {
+   "recommendation": "C1.7 Legal sequencing, camera waits for 1.0.1, moderation provider owner call",
+   "verdict": "weakened",
+   "reason": "The sequencing is right. But on cost and latency the moderation choice is not even: OpenAI moderation is billed at $0 today, while a Haiku classifier adds tokens and a model call to the post-Phase-1 tail, which is unbounded with ENABLE_FULL_STREAM_DEADLINE off. And vision stays on OpenAI until 1.0.1, so the 'one processor' option brings no legal gain before then.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:614 - 'the D2 moderation cost 0.0'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:337 - verdict/critique/moderation tail runs unbounded past the stream cap",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py:252 - moderations.create, fail-open"
+   ],
+   "fix": "Keep moderation on OpenAI at least until 1.0.1, when vision moves too. Reopen the one-processor Haiku classifier only with a measured tail-latency and cost figure."
+  }
+ ],
+ "new_risks": [
+  "Anthropic SDK retries and 529 overloaded errors: the SDK's default retry and backoff, plus the substring-keyed verdict fallback (extraction_service.py:2665-2678), can push a compare past the 30 s cap and pay for calls twice. No recommendation caps Anthropic retries the way OPENAI_MAX_RETRIES=1 does.",
+  "Timeouts calibrated on OpenAI (classify 4 s, VISION_TIMEOUT_SECONDS 20 s, TAIL_RESERVE_SECONDS 6.5 s, tier-guard walls) will misfire if Haiku TTFT at our sizes is closer to AA's 7.8 s. A classify timeout becomes 'other', which means wrongful fragrance refusals.",
+  "The real cash bill rises even where list price falls. OpenAI's free daily allowance ends with the switch, and the paid Serper and BrightData search legs (BrightData armed on web) stay outside the $400 Anthropic credits. Those legs are larger per compare than Haiku tokens.",
+  "No hard dollar ceiling: the 3-per-device quota does not bound total daily volume, and nothing proposes a per-day Anthropic spend breaker in code or a Console workspace limit. The Evaluation tier's limits are unknown.",
+  "Hot-path KB I/O and platform stalls (Supabase p50 381 ms per read, Upstash p95 1.5 s, /health p95 8.4 s) can eat the latency won from caching. KB-first lookups done one after another, before the miss decision, are not budgeted anywhere.",
+  "Structured-output schema compile runs on first use and is cached for 24 h. Per-category schemas, low traffic and nightly Railway redeploys mean the first compare of each day pays an unmeasured compile delay on every JSON route."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A1, R1, R2, R9)",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_fa7a7126-eef/journal.jsonl (R14)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_router_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/content_safety_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/prompt-caching.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.299/32105f920f738fdb3ac3b3425837c81a/claude-api/shared/cost-optimization.md"
+ ]
+}

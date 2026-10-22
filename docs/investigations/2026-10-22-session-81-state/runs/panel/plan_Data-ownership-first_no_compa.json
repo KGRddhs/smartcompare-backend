@@ -1,0 +1,719 @@
+{
+ "angle": "Data-ownership-first: no comparison ends with missing data",
+ "thesis": "Measure per-field completeness of today's pipeline first. Then build the owned KB (045) and a persisted registry carrying robots, ToS and blocked state. Seed it off-clock from the held corpora, the 24 feed hosts and ranked JSON-LD PDPs. Every compare writes back, and every miss becomes a kb_gaps row that a channel ladder fills, ending at the operator path. Inferred reach: 500 juices after the Bahrain feed walk, 2,000 after all feeds plus 71 JSON-LD hosts (no web_search), 10,000 only with write-back plus partner or licence data. Deferred: provider flip, quota, share, speed.",
+ "milestones": [
+  {
+   "id": "M0",
+   "title": "Inherited finish and the completeness baseline",
+   "goal": "Merge B4 URL-MODE-V2 first (owner decision 1). Record the 'before' per-field completeness of today's pipeline and the inputs every later spec rests on (organic fragrance volume, 012 RLS, robots readability, CDX density). Without these, no fill can be shown to work.",
+   "exit_metric": "B4 PR merged green. baseline_completeness.json in the s81 state folder gives per-field rates (identity, image, price+freshness, size, concentration, specs, rating, reviews) over the fixture corpus, each tagged measured or inferred and reproduced by a second agent. The owner SQL answers are logged as dated ledger lines."
+  },
+  {
+   "id": "M1",
+   "title": "Owned store, guards and the registry with blocked state (dark)",
+   "goal": "Ship, all dark: migrations 045 kb_*, 047 012-REVOKE and 048 compare_runs; one DENY_HOSTS module and the guard fixes (Replica, infused, lv); kb_merchants read per call with status and blocked_reason; robots persisted off-clock for every live host as QarenBot; the per-field completeness ledger plus gap queue, so misses are recorded from the first post-approval flip.",
+   "exit_metric": "045/047/048 applied via PRECHECK/POSTCHECK. 275/275 live hosts carry a persisted robots verdict with fetched_at. 0 deny hosts reachable through the router, rating tiers, URL mode or any KB writer (pinned). field_status matches the D02 hand tally on 20 fixtures. Every flag-OFF identity pin is green."
+  },
+  {
+   "id": "M2",
+   "title": "Seed to 500, then 2,000 fragrances, off-clock",
+   "goal": "Fill the KB without user traffic: held corpora, then a polite named-UA walk of the 24 feed hosts (14 Bahrain first, ranked by merchant count), then ranked PDPs on the 71 JSON-LD hosts, plus a Haiku Batch citation-or-omit spec extraction. R15 model (inferred, N=20k, s=1): 500 gives 65% single / 42% pair hits; 2,000 gives 78% / 61% (pessimistic 33/11 and 47/22). The pace is bounded by owner ToS verdicts, not crawl time: a 2 s delay allows about 43k requests per host per day.",
+   "exit_metric": "Distinct fragrance juices in kb_products reach at least 500, then at least 2,000. Each has at least one offer from a robots-allow host with captured_at and a currency evidence rung. 0 rows from deny hosts. The first-20-row Haiku usage is logged, and the cost per juice is measured rather than assumed."
+  },
+  {
+   "id": "M3",
+   "title": "Every compare writes back; KB-first serve",
+   "goal": "Delivered compares ingest cited facts after moderation. The KB card replaces the L2 read in one round trip. Robots is enforced on the live path from the persisted verdict. An out-of-process worker keeps prices fresh, so freshness is never paid inline. All of this flips only after approval, with the canary.",
+   "exit_metric": "In the canary: KB read uses at most 1 Supabase round trip per product, and its p50 is measured. Ingest write failures are logged and below the agreed gate. A full-hit pair makes 0 Serper calls. No smoke20 regression and no rise in WINNER_INDEX_MISMATCH. robots_skip counts appear per host."
+  },
+  {
+   "id": "M4",
+   "title": "Gap loop: every miss becomes a fill",
+   "goal": "Each missing required field on a delivered compare is a demand-ranked kb_gaps row. Nightly it walks the ladder: adapter search, then sitemap/CDX PDP, then capped web_search with registry allowed_domains, then the operator queue for blocked hosts, then the licence queue for notes and longevity. A weekly coverage report compares real hit rates against the R15 path to 10,000 (93% / 87%).",
+   "exit_metric": "Reconciling compare_runs against kb_gaps shows 100% gap capture. Fill rate is reported per channel each week. One blocked-host gap is filled end to end through the operator path on staging. The weekly report sets the measured pair hit rate beside the model and states n."
+  },
+  {
+   "id": "M5",
+   "title": "Honest surfaces, fragrance gate, B2 on the new brain, legal",
+   "goal": "The UI shows an honest 'unknown' with its reason, plus a price as-of date. The fragrance-only gate is zero-cost. B2 abstains only when KB plus live evidence cannot support a winner, and every abstain writes gaps. The legal unit discloses the KB, operator capture, crawler identity and Anthropic in one consent window.",
+   "exit_metric": "A 50-compare audit finds 0 fabricated values (rating, count, percentage, price). Every missing field renders the honest line in EN and AR. The legal docs and consent v3 are live before any Anthropic, gate or ledger flip. B2 flips only after D18 reports the pair hit rate."
+  }
+ ],
+ "units": [
+  {
+   "id": "D01",
+   "title": "B4 URL-MODE-V2 finish (inherited)",
+   "milestone": "M0",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_URL_MODE_V2",
+   "files": [
+    "app/services/url_extraction_service.py",
+    "app/api/url_routes.py",
+    "app/middleware/error_handler.py",
+    "tests/test_s80_url_mode_v2.py",
+    "tests/test_retro_w2_1.py",
+    "tests/test_model_config_enforced.py",
+    "tests/test_prompt_fence.py",
+    "tests/w4_11_prompt_digest_recorder.py"
+   ],
+   "scope": "In worktree sc-s80-b4 (83daa8cb): write RULINGS_FIX3_B4, run fix round 3, two adversaries, rebase onto origin/main 95cf6f86, post-rebase gates, PR via pr_rest.py, merge on green. No new scope. Data-first ruling recorded for D12: URL-mode JSON-LD name, brand, size and image become KB facts only for registry hosts. Link-mode URLs from non-registry hosts are never persisted.",
+   "tests": [
+    "flag-OFF identity: the test_retro_w2_1 400 pins and the W4-13 ledger fixture stay green",
+    "typed outcomes STORE_UNREADABLE, UNRESOLVED_PRODUCT, TIMEOUT replace the 'Unknown Product' success",
+    "JSON-LD image normalised to https absolute (@graph, ProductGroup, og:image key-presence)",
+    "post-rebase full gate under pyt.py bounds",
+    "pins known to redden: test_model_config_enforced, test_prompt_fence, the w4_11 digest recorder (re-recorded in B4; re-checked after rebasing over #365)"
+   ],
+   "preconditions": [
+    "owner decision 1",
+    "RULINGS_FIX3_B4 written by Fable"
+   ],
+   "risk": "Rebasing over B3 (#365) can collide on shared model-config and prompt-digest pins, forcing a stated re-record."
+  },
+  {
+   "id": "D02",
+   "title": "MEASURE-BASELINE: completeness before, and the spec inputs",
+   "milestone": "M0",
+   "lane": "ops",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "docs/investigations/2026-10-22-session-81-state/runs/measure/baseline_completeness.json",
+    "docs/investigations/2026-10-22-session-81-state/runs/measure/owner_sql.json",
+    "docs/investigations/2026-10-22-session-81-state/runs/measure/robots_and_cdx.json"
+   ],
+   "scope": "Read-only. (a) Per-field completeness tally over tests/fixtures/lane1 responses, the smoke20 fragrance cases and the 414-page corpus; this is the 'before'. (b) Distinct juices in the held corpora via spine_key minus ml. (c) Owner SQL: organic fragrance volume (is_synthetic), repeat-pair share, product_prices rows, pg_policies on 012. (d) QarenBot robots readability of the 95 live fragrance hosts, written locally only. (e) CDX density on 10 hosts after the CC sign-off.",
+   "tests": [
+    "every number tagged measured or inferred, with file:line or URL",
+    "a second agent reproduces tally (a) exactly",
+    "no production write and no Supabase or Railway MCP read (harness rule)",
+    "robots probe uses the named UA and stops on any challenge",
+    "CDX part skipped and stated if the owner has not signed off"
+   ],
+   "preconditions": [
+    "owner action 2 (read-only SQL)",
+    "owner action 3 (CC Terms sign-off) for part e"
+   ],
+   "risk": "The fixture corpus is not production-shaped, so the 'before' figure is a lower bound until B1 telemetry flips after approval."
+  },
+  {
+   "id": "D03",
+   "title": "DENY-AND-GUARDS: one deny list, unbiased counterfeit and luxury guards",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_DATA_GUARDS_V2",
+   "files": [
+    "app/services/deny_hosts.py",
+    "app/services/source_router.py",
+    "app/services/search_descriptor_service.py",
+    "app/services/rating_service.py",
+    "app/services/price_service.py",
+    "tests/test_s81_data_guards.py",
+    "tests/test_counterfeit_filter.py",
+    "tests/test_luxury_brands.py"
+   ],
+   "scope": "One DENY_HOSTS module (fragrantica, parfumo, basenotes, fimgs.net; suffix match), read per call by router consumers (the :347 literal is skipped at use and SOURCE_REGISTRY is untouched), the rating tiers, descriptors and every KB writer. Under the flag, is_counterfeit_listing uses word boundaries, drops bare 'used' and allowlists Maison Margiela Replica and 'infused'. The 'lv' token is word-bounded. Edge cases: 'used tester' is still dropped; 'Silver Mountain Water' and 'Velvet Orchid' are not luxury.",
+   "tests": [
+    "flag-OFF identity: guard outputs equal base over the existing pin corpus; SOURCE_REGISTRY byte-identical (test_bh_gcc_registry_loader, test_registry_liveness_gate)",
+    "ON: gold frag-018 Replica and an 'infused' title survive; 'used tester' still dropped",
+    "ON: 'Silver Mountain Water' not luxury; 'Louis Vuitton' still luxury",
+    "deny suffix: www.fragrantica.com denied, notfragrantica.com not denied",
+    "pins known to redden ON: test_counterfeit_filter, test_luxury_brands; test_search_descriptor_d3 kept green by a DENY_HOSTS re-export"
+   ],
+   "preconditions": [],
+   "risk": "Word-boundary matching can let some true counterfeit phrasings through ('replicas'), so the ON corpus is pinned explicitly."
+  },
+  {
+   "id": "D04",
+   "title": "KB-SCHEMA: migrations 045 and 047, kb_identity, kb_store",
+   "milestone": "M1",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "none",
+   "files": [
+    "migrations/045_kb_core.sql",
+    "migrations/047_revoke_012_product_tables.sql",
+    "migrations/rollback/045_kb_core_rollback.sql",
+    "app/services/kb_identity.py",
+    "app/services/kb_store.py",
+    "tests/test_migration_045_kb_core.py",
+    "tests/test_migration_047_revoke_012.py",
+    "tests/test_kb_identity.py"
+   ],
+   "scope": "045 (service-role RLS, 044 REVOKE): kb_products; kb_variants (conc+ml); kb_offers (observed_currency, evidence rung, size_ml, list_vs_sale, in_stock, first/last_seen, captured_at, canonical url) + latest view; kb_images (url+provenance); kb_specs keyed (product, concentration); kb_reviews (source enum, aggregates); kb_merchants; kb_gaps; kb_coverage_daily; RPCs kb_product_card, kb_ingest_compare. 047: 012 REVOKE + postcheck. id = spine_key brand axis + tokens - padding, no ml; empty tokens = no id.",
+   "tests": [
+    "045/047 pins modelled on test_migration_044: RLS on, REVOKE anon/authenticated, no USING(true)",
+    "'Dior Sauvage EDP' and 'Christian Dior Sauvage Eau de Parfum 100ml' share kb_product_id and specs key, but differ in variant",
+    "Sauvage vs Sauvage Elixir and Aventus vs Aventus for Her stay distinct (flanker guard over the gold pairs)",
+    "empty identity tokens yield no id (dose-merge guard); an Arabic-script brand is folded via the alias groups",
+    "AST pin: kb_store is imported only from flagged callers and scripts (inert at runtime)"
+   ],
+   "preconditions": [
+    "D02(c) live pg_policies read before 047",
+    "next free number 045 (046 reserved for the feedback lane)"
+   ],
+   "risk": "An identity key that is too coarse merges flankers and poisons specs; the golden pair list is the guard."
+  },
+  {
+   "id": "D05",
+   "title": "COMPLETENESS-LEDGER: field_status, compare_runs (048), gap capture",
+   "milestone": "M1",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_COMPLETENESS_LEDGER",
+   "files": [
+    "app/services/completeness.py",
+    "app/services/provider_attempts.py",
+    "app/services/structured_comparison_service.py",
+    "app/services/sentry_service.py",
+    "migrations/048_compare_runs.sql",
+    "tests/test_s81_completeness.py",
+    "tests/test_migration_048_compare_runs.py"
+   ],
+   "scope": "Pure field_status(result) per product: identity, image, price (fresh|stale|unknown with as_of and currency rung), size, concentration, spec fields, rating, review_count, each {state, source, reason}. Under the flag, at the B1 exits after moderation: additive metadata.field_status, Sentry tags, one compare_runs insert (no user_id, HMAC query_hash, field states, sources_used from a contextvar attempt recorder, FK ON DELETE SET NULL), and kb_gaps upserts per missing field via to_thread.",
+   "tests": [
+    "flag-OFF identity: REST, stream and camera bodies and the stored full_response are byte-identical, with 0 Supabase calls",
+    "field_status equals the D02 hand tally on 20 fixtures",
+    "a moderation-refused or timeout-partial compare writes a run with its result_status, and no gaps for refused rows",
+    "PII pin: no user id, email, device id or raw query in compare_runs or kb_gaps",
+    "gap upsert is idempotent and increments the demand count; pin known to redden ON: the B1 capture_result_status tag-allowlist pin"
+   ],
+   "preconditions": [
+    "D04 applied",
+    "ENABLE_SYNC_DB_OFFLOAD ON before the flip",
+    "B1 ENABLE_RESULT_STATUS_METADATA ON after approval",
+    "D22 (compare_runs retention in privacy s8) before the flip"
+   ],
+   "risk": "With offload OFF, the extra write per compare stalls the single event loop, so the flip is gated on offload."
+  },
+  {
+   "id": "D06",
+   "title": "MERCHANT-REGISTRY-V2: kb_merchants with status and blocked_reason",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_MERCHANT_REGISTRY_V2",
+   "files": [
+    "app/services/merchant_registry.py",
+    "scripts/seed_kb_merchants.py",
+    "tests/test_s81_merchant_registry.py",
+    "tests/test_bh_gcc_registry_loader.py",
+    "tests/test_registry_liveness_gate.py"
+   ],
+   "scope": "Seed kb_merchants off-clock from bh_gcc_sources.json (368 rows, keeping country, genuine_method and descriptors; candidates as candidate; deny hosts as denied). Read per call through a 5-15 min per-process memo; a failed read falls back to the frozen import-time registry. status live|candidate|blocked|dead|render_only|denied. blocked_reason robots_disallow|robots_unreadable|challenge|tos_denied|dead. tos {reviewed_at, verdict, terms_url}. Promotion needs robots, probe, a validated PDP and ToS. Partner/CTA fields stay out of scoring.",
+   "tests": [
+    "flag-OFF identity: SOURCE_REGISTRY byte-identical; the loader and liveness pins green",
+    "seed counts: 368 total, 275 live, 0 deny hosts live (fixture copy, fake admin client)",
+    "memo TTL and a Supabase outage fall back to the frozen registry, never an empty one",
+    "candidate to live refused without a ToS verdict and a validated PDP",
+    "AST pin: scoring_service never imports partner fields; seed output never written to data/ (public repo)"
+   ],
+   "preconditions": [
+    "D03",
+    "D04 applied"
+   ],
+   "risk": "Memo misses landing on the request path add latency; the fallback must always be the import-time registry."
+  },
+  {
+   "id": "D07",
+   "title": "ROBOTS-STATE cron: persisted verdicts, challenge parking",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_ROBOTS_REGISTRY_CRON",
+   "files": [
+    "scripts/cron_robots_registry.py",
+    "app/services/robots_registry.py",
+    "app/services/robots_eval.py",
+    "tests/test_s81_robots_registry.py",
+    "tests/test_robots_unreadable_ruling.py"
+   ],
+   "scope": "A daily off-clock robots read of every live and candidate host as QarenBot (contact page landing/bot). 404/410 = allow; any other non-2xx or a timeout = unreadable, which marks the host blocked. Persist state, status, body_sha, fetched_at, next_reread_at and crawl_delay (new parse), plus separate QarenBot and '*' verdicts, so the live path can apply the most restrictive. A challenge sets blocked/challenge with parked_until. Never retry under another identity. Protego is a dev-only test oracle.",
+   "tests": [
+    "fail-closed: 403, 5xx or timeout gives blocked robots_unreadable; 404 gives allow",
+    "klinq-style Mozilla group: the most restrictive of QarenBot and '*' wins",
+    "a challenge HTML fixture parks the host and stops that host's loop",
+    "Protego differential over 20 fixture robots files agrees with robots_eval; can_fetch outputs unchanged by crawl-delay parsing",
+    "flag-OFF: the cron exits 0 with no network (the cron_index_sitemaps posture)"
+   ],
+   "preconditions": [
+    "D06"
+   ],
+   "risk": "Adding crawl-delay to robots_eval must not change any can_fetch verdict; the ruling pins guard it."
+  },
+  {
+   "id": "D08",
+   "title": "JSONLD-WIDEN: image, GTIN, size and AggregateRating through the price result; no fabricated ratings",
+   "milestone": "M2",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_IMAGE_PIPELINE_V2 + ENABLE_JSONLD_RATINGS",
+   "files": [
+    "app/services/price_service.py",
+    "app/services/extraction_service.py",
+    "app/services/review_service.py",
+    "app/services/judgeme_service.py",
+    "tests/test_s81_jsonld_widen.py",
+    "tests/test_wide_candidate_dict.py",
+    "tests/test_m6_c5_judgeme_html_reviews.py"
+   ],
+   "scope": "Create the B7 flag. Carry cand image[0] (https, public, raster, allowlisted registry/brand/CDN host, never fimgs/fragrantica), gtin8-14 (check digit), sku, size and AggregateRating {value, count} through the reduced result (:13951-13961). Ratings only from robots-allow, unchallenged hosts. Under the rating flag, the LLM average_rating/total_reviews asks and _apply_gpt_review_aggregate_fallback are removed. judgeme_service is deleted.",
+   "tests": [
+    "flag-OFF identity: the reduced price dict is byte-identical (test_wide_candidate_dict green OFF)",
+    "ON: the JSON-LD image survives select_best and _finalize_fan_winner; an http:// image is rejected",
+    "GTIN check-digit validator, including gtin14",
+    "AggregateRating read from a Nice One fixture; none from a host whose robots disallows '*'",
+    "pins known to redden: test_m6_c5_judgeme_html_reviews (deleted with the service), the w4_11 review-prompt digest (re-recorded ON only)"
+   ],
+   "preconditions": [
+    "D03",
+    "D06"
+   ],
+   "risk": "Moving the review-prompt digest and the T23 fixtures has to be stated in the PR, or the diff review rejects it."
+  },
+  {
+   "id": "D09",
+   "title": "FEED-WALKER: polite named-UA catalogue walk of the 24 feed hosts",
+   "milestone": "M2",
+   "lane": "backend-B",
+   "kind": "data-offclock",
+   "flag": "ENABLE_KB_FEED_WALK",
+   "files": [
+    "scripts/cron_kb_feed_walk.py",
+    "app/services/kb_feed_walker.py",
+    "tests/test_s81_feed_walker.py",
+    "tests/fixtures/kb_feed_walk/catalog_fixtures.json"
+   ],
+   "scope": "Off-clock walk of live fragrance feed hosts (Woo 10, Shopify 9, Salla 2, Magento 2, Algolia 1; Bahrain's 14 first) with a ToS-ok verdict and QarenBot robots allow. Paginated catalogue reads, concurrency 1, delay max(crawl-delay, 2 s), Retry-After backoff; a challenge parks the host and stops. D03 guards, kb_identity, size from title/tags/body_html. Currency only from evidence (Shopify products.json is currency-blind, so price comes from the PDP JSON-LD). Juices ranked by merchant count. A dry-run writes local JSON.",
+   "tests": [
+    "flag-OFF: the cron makes no network call",
+    "fake-transport walk over fixture catalogues yields the expected kb rows (fake admin client, no prod write)",
+    "Retry-After honoured; a challenge fixture parks the host and ends its loop",
+    "a Shopify currency-blind feed never writes a currency without an evidence rung",
+    "deny or blocked hosts never walked; merchant-count ranking deterministic; dry-run reports capture rate under the named UA per host"
+   ],
+   "preconditions": [
+    "D04 applied",
+    "D06",
+    "D07 verdicts persisted",
+    "owner ToS verdicts per host (action 5)",
+    "owner Railway cron (action 8)"
+   ],
+   "risk": "Capture under the named UA is unmeasured against today's Chrome impersonation; the dry-run measures it and feeds the owner's live-UA ruling."
+  },
+  {
+   "id": "D10",
+   "title": "SPEC-AND-BRAND-SEED: Haiku Batch citation-or-omit, Wikidata brands, SDK pin",
+   "milestone": "M2",
+   "lane": "data",
+   "kind": "data-offclock",
+   "flag": "ENABLE_KB_SPEC_BATCH",
+   "files": [
+    "scripts/cron_kb_spec_batch.py",
+    "scripts/seed_spec_spine.py",
+    "scripts/seed_kb_brands_wikidata.py",
+    "requirements.in",
+    "requirements.txt",
+    "tests/_env_safety.py",
+    "tests/test_s81_spec_batch.py",
+    "tests/test_model_config.py"
+   ],
+   "scope": "Port spine extraction to Haiku 5.5 via Message Batches: thinking disabled, output_config JSON, raised max_tokens, usage logged on the first 20 rows, batches deleted after retrieval. It reads the held corpora and transient D09/D11 PDP text (prose never stored), skipping blocked hosts and notes next to Fragrantica, Parfumo or Basenotes links. Writes kb_specs per (product, concentration) with provenance host. Wikidata CC0 brands (P856, EN/AR). SDK pinned via requirements.in. Key in CREDENTIALS_UNSET and netguard.",
+   "tests": [
+    "netguard: no network in tests; a fake Batch client",
+    "citation-or-omit: a value without a source snippet is dropped; no model-memory field is ever written",
+    "a Fragrantica-adjacent page is skipped; a blocked-host page is skipped",
+    "the daily USD spend breaker halts submission",
+    "pins known to redden: the claude-* literal regex in test_model_config.py:135 is widened; the U3c AST rule is extended so messages/batches calls live only in scripts/cron_*"
+   ],
+   "preconditions": [
+    "D04 applied",
+    "D06",
+    "owner Console workspace with the $400 limit and web search restricted (action 7)",
+    "ANTHROPIC_API_KEY set by name on the cron service only"
+   ],
+   "risk": "If thinking is not explicitly disabled, Haiku's default thinking inflates cost and truncates JSON; the first-20-row usage gate stops the run."
+  },
+  {
+   "id": "D11",
+   "title": "PDP-DISCOVERY: sitemaps and Common Crawl CDX for ranked PDPs on the 71 JSON-LD hosts",
+   "milestone": "M2",
+   "lane": "backend-B",
+   "kind": "data-offclock",
+   "flag": "ENABLE_KB_PDP_DISCOVERY",
+   "files": [
+    "scripts/cron_kb_pdp_discovery.py",
+    "app/services/kb_pdp_discovery.py",
+    "app/services/sitemap_discovery_service.py",
+    "tests/test_s81_pdp_discovery.py"
+   ],
+   "scope": "For the 71 live JSON-LD fragrance hosts, discover PDP URLs from robots-declared sitemaps (the existing fail-closed service) and, behind a CC sub-flag after owner sign-off, from Common Crawl CDX (matchType=domain, status 200, html, one thread, backoff on 503). Fetch only URLs that match RANKED juices (D09 ranks plus kb_gaps demand), as QarenBot with politeness. Parse through the JSON-LD ladder and D08 widen, then write offers, images and ratings. No extruct and no LLM price.",
+   "tests": [
+    "flag-OFF: no network; CC sub-flag OFF means sitemaps only",
+    "unranked URLs never fetched",
+    "a host with robots unreadable is skipped and recorded",
+    "politeness delay respected under a fake clock",
+    "the bolo/boutiqaat fixtures write the expected offer with captured_at and an evidence rung"
+   ],
+   "preconditions": [
+    "D07",
+    "D08",
+    "D09 ranks",
+    "owner CC sign-off (action 3) for the CDX part"
+   ],
+   "risk": "CDX density on .bh/.ae/.sa hosts is unmeasured (D02e); if it is thin, sitemaps alone carry the 2,000 milestone."
+  },
+  {
+   "id": "D12",
+   "title": "KB-INGEST: every delivered compare writes cited facts back",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_INGEST",
+   "files": [
+    "app/services/kb_ingest.py",
+    "app/services/structured_comparison_service.py",
+    "app/services/kb_store.py",
+    "tests/test_s81_kb_ingest.py"
+   ],
+   "scope": "One ingest per compare at the success return after moderation (REST about :4701; stream before the complete yield about :5564; camera through the same path), sent as one kb_ingest_compare RPC via to_thread. Per product it requires high identity confidence and no placeholder. It writes only cited adapter, JSON-LD or Tier-1 facts, never Tier-3 or uncited Tier-2. Offers keep only scheme+host+path on registry hosts with persisted robots allow. All price candidates are kept. Image and GTIN come from D08.",
+   "tests": [
+    "flag-OFF identity: bodies byte-identical and 0 kb calls",
+    "a moderation-refused compare writes nothing; a timeout partial writes only high-identity products",
+    "query strings and fragments stripped; a non-registry link-mode URL is never persisted",
+    "a Tier-3 spec is never written; a registry host with an expired robots verdict drops the offer and adds a gap with reason robots_unknown",
+    "an ingest exception never changes the response"
+   ],
+   "preconditions": [
+    "D04 applied",
+    "D05",
+    "D06",
+    "D07",
+    "D08",
+    "ENABLE_SYNC_DB_OFFLOAD ON and canaried (action 8)",
+    "D22 live"
+   ],
+   "risk": "With offload OFF, the write stalls the loop for every user, so the flag never flips without offload."
+  },
+  {
+   "id": "D13",
+   "title": "KB-FIRST-SERVE: the KB card replaces the L2 read; live legs only for missing fields",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_FIRST_SERVE + ENABLE_KB_SEARCH_SKIP",
+   "files": [
+    "app/services/kb_serve.py",
+    "app/services/structured_comparison_service.py",
+    "app/services/product_data_service.py",
+    "tests/test_s81_kb_first_serve.py",
+    "tests/test_stage_timings.py",
+    "tests/test_smart_fallback.py"
+   ],
+   "scope": "One gathered kb_product_card read for both products, in parallel with the L1 GETs, replacing the L2 read. It serves cited specs, the KB or retailer image, and the latest offer with captured_at (24 h converted / 7 d genuine; older only to clients sending the as-of capability header, else treated as missing and queued to D14). Live legs run only for missing fields. The sub-flag skips the unified search when the card covers specs and image, with an image fallback. Prices are never refreshed inline.",
+   "tests": [
+    "flag-OFF identity, including the L2 read calls",
+    "sub-flag ON: a full-hit pair makes 0 Serper calls",
+    "a partial hit runs only the missing legs; a KB read error falls back to today's path",
+    "a stale price without the capability header is not served and is enqueued",
+    "pins known to redden ON: test_stage_timings, test_smart_fallback (re-pinned under the sub-flag)"
+   ],
+   "preconditions": [
+    "D12 in canary",
+    "KB read p50 measured by D18",
+    "ENABLE_SYNC_DB_OFFLOAD ON"
+   ],
+   "risk": "KB read latency is unmeasured (the 381 ms figure was for failed L2 reads), so the canary gate is load-bearing."
+  },
+  {
+   "id": "D14",
+   "title": "LIVE-ROBOTS and attempt hooks; out-of-process KB refresh worker",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_LIVE_ROBOTS_REGISTRY + ENABLE_KB_REFRESH_WORKER",
+   "files": [
+    "app/services/price_service.py",
+    "app/services/url_extraction_service.py",
+    "app/services/shopify_pdp_service.py",
+    "app/services/woocommerce_service.py",
+    "app/services/algolia_service.py",
+    "app/services/kb_refresh.py",
+    "scripts/worker_kb_refresh.py",
+    "tests/test_s81_live_robots_refresh.py"
+   ],
+   "scope": "Live fetches and adapters look up the persisted registry verdict (most restrictive of QarenBot and '*'), with no inline robots fetch. Missing, expired or disallow means skip, recorded as robots_skip through the D05 contextvar recorder, which also gets curl and adapter attempt hooks. A pasted URL on a blocked host gets the B4 STORE_UNREADABLE. Worker: requested-today queue (single-flight), top-500 daily, tail weekly, 4 s timeout, QarenBot, no fallback adapter, no Magento-GQL wall, 90-day prune.",
+   "tests": [
+    "flag-OFF identity: 0 registry reads and the network-attempt baseline unchanged",
+    "a disallowed or expired host is skipped with a robots_skip attempt; a deny host is never fetched",
+    "URL mode: a blocked host returns the coded refusal before any fetch",
+    "worker: single-flight dedups enqueues; the prune keeps the latest row per (variant, merchant)",
+    "pins at risk ON: test_bh_registry_curl_timeout, test_tier15_registry_gate (re-pinned under the flag only)"
+   ],
+   "preconditions": [
+    "D07 has covered 100% of live hosts before the flip",
+    "D05 recorder module merged",
+    "D09",
+    "owner Railway worker service (action 8)"
+   ],
+   "risk": "Robots verdicts silently expiring drop hosts from live coverage; D18 alarms on robots_skip per host."
+  },
+  {
+   "id": "D15",
+   "title": "GAP-FILLER: the nightly channel ladder that turns misses into fills",
+   "milestone": "M4",
+   "lane": "backend-B",
+   "kind": "data-offclock",
+   "flag": "ENABLE_KB_GAP_FILL + ENABLE_KB_GAP_WEB_SEARCH",
+   "files": [
+    "scripts/cron_kb_gap_fill.py",
+    "app/services/kb_gap_filler.py",
+    "tests/test_s81_gap_filler.py"
+   ],
+   "scope": "Nightly, open kb_gaps ranked by 7-day distinct-compare demand walk a ladder: (1) registry adapter search ($0); (2) sitemap/CDX PDP on robots-allow JSON-LD hosts; (3) behind a sub-flag, Haiku web_search with allowed_domains = live registry hosts, max_uses 1, daily count and USD caps, URLs fetched by our own fetcher (never web_fetch); (4) only blocked hosts stock it, so needs_operator; (5) notes or longevity, so needs_licence. Never model memory. Every attempt is recorded.",
+   "tests": [
+    "the ladder runs in order and stops at the first cited fill",
+    "sub-flag OFF: no Anthropic call (netguard)",
+    "allowed_domains come only from live registry hosts; blocked_domains never sent on the same request",
+    "the spend cap halts the run; result-token cap enforced",
+    "notes never filled without a cited merchant or licensed source; state transitions are idempotent"
+   ],
+   "preconditions": [
+    "D05",
+    "D09",
+    "D11",
+    "D14",
+    "the web_search sub-flag waits for D22, consent v3 and the owner's Console web-search restriction"
+   ],
+   "risk": "web_search result tokens can push Haiku over the 100K price tier; max_uses 1 and the token cap bound it."
+  },
+  {
+   "id": "D16",
+   "title": "OPERATOR-INGEST: blocked list, gap queue and capture tool",
+   "milestone": "M4",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_OPERATOR_INGEST",
+   "files": [
+    "app/api/admin_routes.py",
+    "app/services/kb_operator.py",
+    "app/static/admin/kb.html",
+    "app/static/admin/kb_capture.js",
+    "tests/test_s81_operator_ingest.py",
+    "tests/test_admin_key_and_sentry_scrub.py"
+   ],
+   "scope": "An admin view (X-Admin-Key) shows the blocked list (host, status, blocked_reason, robots fetched_at, ToS), needs_operator gaps ranked by demand, and the coverage rollup. POST /admin/kb/ingest takes a captured payload (page_url, jsonld[], og_image, price_text, currency, captured_at) or a manual entry. The server never fetches the page. It refuses deny hosts and hosts without a capture-allowing ToS verdict, then parses via the JSON-LD ladder with provenance=operator. A bookmarklet opens our admin page and posts the payload with postMessage.",
+   "tests": [
+    "flag-OFF: route absent and the T23 OpenAPI fixture unchanged (re-recorded ON, stated)",
+    "a deny host is refused; a host without tos_reviewed_at is refused",
+    "the admin key is required and rate-limited; Sentry scrub covers the payload",
+    "netguard: the server makes no fetch on ingest",
+    "the capture script sends no admin key into the retailer page context (static check)"
+   ],
+   "preconditions": [
+    "D04 applied",
+    "D06",
+    "D07",
+    "owner ToS review per blocked host (action 5)",
+    "D22 discloses operator capture"
+   ],
+   "risk": "The bookmarklet's trust boundary is the main risk; the adversary lens for this unit is security."
+  },
+  {
+   "id": "D17",
+   "title": "MEASURE-COVERAGE: daily rollup, R15 comparison, flip gates",
+   "milestone": "M4",
+   "lane": "data",
+   "kind": "measurement",
+   "flag": "ENABLE_KB_COVERAGE_ROLLUP",
+   "files": [
+    "scripts/cron_kb_coverage_rollup.py",
+    "app/services/kb_coverage.py",
+    "tests/test_s81_kb_coverage.py"
+   ],
+   "scope": "Daily rollup from compare_runs and kb_* into kb_coverage_daily: identity and pair hit rates, per-field completeness per product and per pair, median price age, robots_skip and challenge counts per host (registry health from sources_used), gap open and fill rates per channel, distinct juices. Weekly comparison against R15 (65/42, 78/61, 93/87; pessimistic 33/11, 47/22, 69/48). Zipf fit once organic fragrance rows pass 5k. Flip gates: KB read round trips and p50, ingest failure rate.",
+   "tests": [
+    "the rollup over fixture rows reproduces hand counts exactly",
+    "synthetic rows (is_synthetic) excluded",
+    "no user id read or written",
+    "model figures labelled inferred and observed figures measured, each with n",
+    "flag-OFF: the cron exits with no Supabase call"
+   ],
+   "preconditions": [
+    "D05",
+    "D12"
+   ],
+   "risk": "Early weeks hold too few organic rows to fit the curve; the report states n and refuses a fit below threshold."
+  },
+  {
+   "id": "D18",
+   "title": "FRAGRANCE-ONLY-GATE: zero-cost refusal with the KB lexicon",
+   "milestone": "M5",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_FRAGRANCE_ONLY_GATE + ENABLE_CATEGORY_RESIDUE_CLASSIFIER",
+   "files": [
+    "app/services/category_gate.py",
+    "app/api/text_routes.py",
+    "app/api/image_routes.py",
+    "app/services/structured_comparison_service.py",
+    "app/api/home_routes.py",
+    "tests/test_s81_fragrance_gate.py"
+   ],
+   "scope": "Pre-consume: a positive non-fragrance word gets a $0 refusal. A KB brand or juice or lexicon hit proceeds. The residue consumes and parses, is refused after _resolve_pair_category and before _fetch_product_data, and is refunded. Refusals meter on a ~10/day budget (device key when the header exists, else account), then 429 unbilled. A coded coming-soon reply uses existing envelopes. Residue Haiku classifier only after consent v3. Smart pick, trending and History are filtered to fragrances. Refusals are logged as category demand.",
+   "tests": [
+    "flag-OFF identity: consume order and envelopes unchanged",
+    "a brand-only pair such as 'Lattafa Asad vs Armaf Club de Nuit' proceeds",
+    "'iPhone 16 vs Galaxy S25' is refused before consume with no LLM, Serper or scraper call (netguard)",
+    "a residue refusal is refunded and never reaches _fetch_product_data",
+    "budget exhausted gives 429 and no credit; the coming_soon_tap allowlist only grows"
+   ],
+   "preconditions": [
+    "D04 (KB lexicon)",
+    "the device header OTA (quota lane) for the device budget",
+    "flip after approval only"
+   ],
+   "risk": "Lexicon false negatives on niche houses go down the residue path, which costs one parse and then a refund."
+  },
+  {
+   "id": "D19",
+   "title": "RESULT-GATE B2 re-specified on the KB brain",
+   "milestone": "M5",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_RESULT_GATE",
+   "files": [
+    "app/services/result_gate.py",
+    "app/services/structured_comparison_service.py",
+    "app/api/image_routes.py",
+    "tests/test_s81_result_gate_v2.py"
+   ],
+   "scope": "Re-spec from B2_UNIT_SPEC, its review BL1/BL2, Q1-Q7 and Q-R1..R7. Abstain (INSUFFICIENT_DATA, reason placeholder_identity|same_identity|category_conflict|no_evidence) only when the KB card plus live evidence cannot support a winner. Every exit follows R-A3: refund with consumed_keys, no lifetime bump, no history row. Each abstain writes high-priority kb_gaps rows, so the next compare of that pair can succeed. Camera refuses before compare via action:'error'.",
+   "tests": [
+    "flag-OFF identity",
+    "a KB-supported pair is not abstained even when the live legs failed",
+    "an abstain refunds, writes no history row, and writes gaps with priority",
+    "the assess_result vocabulary is unchanged (B1 pins green)",
+    "pins known to redden: the BL1/BL2 pins named in the B2 review carry-over"
+   ],
+   "preconditions": [
+    "D05",
+    "D12",
+    "D13",
+    "B1 ON with the abstain rate measured",
+    "D17 reports the pair hit rate"
+   ],
+   "risk": "While the KB is cold the abstain rate can be high; the flip waits for the measured pair hit rate."
+  },
+  {
+   "id": "D20",
+   "title": "HONEST-UNKNOWNS UI and fabricated-number removal",
+   "milestone": "M5",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "none",
+   "files": [
+    "SmartCompareApp/src/components/results/ResultsContent.tsx",
+    "SmartCompareApp/src/components/primitives/ProductImage.tsx",
+    "SmartCompareApp/src/services/api.ts",
+    "SmartCompareApp/src/i18n/en.json",
+    "SmartCompareApp/src/i18n/ar.json",
+    "SmartCompareApp/__tests__/components/ResultsContent.render.test.tsx",
+    "SmartCompareApp/__tests__/ResultsContent.imageUrl.test.tsx"
+   ],
+   "scope": "Render metadata.field_status and section_status. A missing field shows an honest Arabic-first line ('not listed by the stores we can read yet'), never a dash, guess or 0. A price shows its store and as-of date, with stale prices labelled. ProductImage gets a none state. A 'report missing info' chip uses the existing feedback reasons. api.ts sends the as-of capability header on axios, camera and SSE requests. Remove CohortBadge, LoadingRings 2074, InviteeQuiz 78, '30 seconds', 'shopped smarter'. Merge now; OTA only after approval.",
+   "tests": [
+    "payload without field_status renders byte-identically (build-3 shape snapshot)",
+    "an unknown price renders the honest line, not a dash",
+    "the as-of date is derived from captured_at; stale price labelled in EN and AR",
+    "the capability header is present on axios, the camera raw fetch (both attempts) and SSE",
+    "pins known to redden: ResultsContent.render.test:213,250 and the m18 fake-number pins"
+   ],
+   "preconditions": [
+    "D05 server field (dark)",
+    "D13 for as-of",
+    "App Review approval before any production OTA"
+   ],
+   "risk": "The copy must pass the brand-voice and copy policy in Arabic; RTL layout of the date line is the usual failure."
+  },
+  {
+   "id": "D21",
+   "title": "DOCS-LEGAL: Anthropic, owned catalogue, operator capture, crawler identity, consent v3",
+   "milestone": "M5",
+   "lane": "docs-legal",
+   "kind": "docs-legal",
+   "flag": "none",
+   "files": [
+    "app/legal/privacy_policy.md",
+    "app/legal/privacy_policy_ar.md",
+    "app/legal/terms_of_service.md",
+    "app/legal/terms_of_service_ar.md",
+    "app/legal/processors.json",
+    "landing/bot/index.html",
+    "SmartCompareApp/src/services/aiConsent.ts",
+    "tests/test_legal_docs_u8.py"
+   ],
+   "scope": "The full VERIFY legal scope: every OpenAI mention in EN and AR; Anthropic's 30-day retention, 29-day Batch retention and search subprocessor; the PDPL art. 12-13 transfer basis; minors; consent v3 with the sha fence and device keying; twelve date anchors; device and auth TTLs. Plus data-ownership text: an owned catalogue of public product facts from robots-allowed stores, operator capture of blocked stores, image links with provenance (no re-hosting), compare_runs and kb_gaps retention with no user id, the QarenBot contact page, and Sponsored CTA disclosure. Drafted in M1, published in one post-approval window.",
+   "tests": [
+    "sha fence re-pinned in EN and AR; AI_CONSENT_VERSION = 3",
+    "processors.json lists Anthropic (and the SMTP provider when chosen)",
+    "all twelve date anchors bumped",
+    "a pin that no OpenAI mention remains once the flip window opens",
+    "the counsel question list (image hotlinking, stale-price display) attached to the PR"
+   ],
+   "preconditions": [
+    "owner counsel answers (action 10)",
+    "App Review approval; one window together with the consent v3 OTA"
+   ],
+   "risk": "Only one consent re-ask is acceptable, so every disclosure must land in the same window."
+  },
+  {
+   "id": "D22",
+   "title": "FLIP-CANARY measurement: ingest, first-serve, live robots, gate",
+   "milestone": "M3",
+   "lane": "ops",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "docs/investigations/2026-10-22-session-81-state/runs/measure/kb_canary.json"
+   ],
+   "scope": "After approval and D21, owner-run canaries one flag per window in this order: B1, COMPLETENESS_LEDGER, SYNC_DB_OFFLOAD, KB_INGEST, KB_FIRST_SERVE (then SEARCH_SKIP), LIVE_ROBOTS_REGISTRY, FRAGRANCE_ONLY_GATE, RESULT_GATE. Each window records KB read p50 and round trips, ingest failures, smoke20, WINNER_INDEX_MISMATCH, per-field completeness against the D02 baseline, Serper calls saved per 100 compares, and robots_skip per host. Two failed gates mean rollback (flag OFF).",
+   "tests": [
+    "each window records measured values with n and the timestamp of the flag change",
+    "the rollback criterion is stated before the flip",
+    "the smoke and eval harness is exempt from quotas and tagged synthetic",
+    "no production configuration read by agents (names only, owner-run)"
+   ],
+   "preconditions": [
+    "D21 published",
+    "D05, D12, D13, D14 merged",
+    "owner flips (action 9)"
+   ],
+   "risk": "Low compare volume makes single-window canaries noisy; the report states n and extends the window rather than inferring."
+  }
+ ],
+ "cut_or_deferred": [
+  "Live provider adapter, text-role flip, Haiku moderation and camera on Claude: handed to the parallel cost/speed lane (files openai_service, model_config, extraction_service and llm_adapter are disjoint). This plan adds only the SDK pin and the off-clock Batch path in D10.",
+  "Device quota, auth throttles and the fingerprint OTA: quota lane. D18 uses the device key when the header exists and falls back to the account key otherwise.",
+  "Per-platform share flow, landing OG and app startup/bundle speed: second orchestrator lane after M3. They do not touch data files and do not affect completeness.",
+  "Verdict cache, SSE per-product events and the critique/judge loop (feedback migration 046): later lanes. They consume compare_runs from D05, so they come after it.",
+  "Skincare and makeup data (OBF in a separate ODbL table): deferred until fragrance coverage passes 2,000 juices and the chips flip. Fragrance is the only live category.",
+  "Splink merging, the extruct fallback and the Shopify UCP MCP probe: deferred. Deterministic kb_identity comes first; UCP needs the owner's agent profile and Shopify terms.",
+  "Notes and longevity beyond merchant-cited text: no engineering before a written licence (CJ, Fragrances of the World). These fields stay an honest unknown routed to needs_licence.",
+  "Trustpilot, Bazaarvoice and partner review keys: contract-gated through the store CTA programme. Only JSON-LD AggregateRating ships (D08)."
+ ],
+ "owner_actions": [
+  "Approve this plan and confirm that B4 finishes first, with D01 as the opening unit in backend-A and D03 in parallel in backend-B.",
+  "Run the read-only SQL and names-only checks for D02: organic fragrance volume and repeat-pair share in search_logs, product_prices row count, pg_policies on the three 012 tables, and whether ENABLE_SYNC_DB_OFFLOAD, ENABLE_RESULT_STATUS_METADATA and ANTHROPIC_API_KEY are set on web and the cron services (names only).",
+  "Decide on the Common Crawl Terms for CDX discovery. If you decline, D11 runs on sitemaps only.",
+  "Review ToS per host and record tos_reviewed_at, verdict and terms_url: the 14 Bahrain feed hosts first, then the 10 GCC feed hosts, then the 71 JSON-LD hosts, and each blocked host before any operator capture.",
+  "Apply migrations 045, 047 (only after the live pg_policies read) and 048 via the SQL-editor PRECHECK/POSTCHECK flow after each PR merges.",
+  "Create the Anthropic Console workspace with the $400 limit and web search restricted, and set ANTHROPIC_API_KEY on the cron and worker services only (names only, never in the repo).",
+  "Register the Railway cron services (robots registry, feed walk, PDP discovery, spec batch, gap fill, coverage rollup) and the KB refresh worker service. Flip ENABLE_SYNC_DB_OFFLOAD under its canary before any KB flag.",
+  "After App Review approval: publish D21 with the consent v3 OTA in one window, then run the D22 flip order one canary at a time, then ship the D20 client OTA.",
+  "Rule on the live adapter user agent once D09's dry-run has measured capture under QarenBot, and rule on decant-house handling.",
+  "Licence and partner track: the FragranceX CJ application, a Fragrances of the World licence request, partner feeds and review keys through the store CTA contract (Golden Scent, Nice One, Faces), and counsel answers on image hotlinking and stale-price display."
+ ]
+}

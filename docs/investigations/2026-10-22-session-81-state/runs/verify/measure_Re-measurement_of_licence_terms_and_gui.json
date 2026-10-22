@@ -1,0 +1,448 @@
+{
+ "topic": "Re-measurement of licence, terms and guideline claims (A/R digests) against primary sources, read 2026-10-22",
+ "facts": [
+  {
+   "claim": "Protego is BSD-3-Clause",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/scrapy/protego/blob/master/LICENSE (GitHub licence API spdx BSD-3-Clause, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "extruct is BSD-3-Clause",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/scrapinghub/extruct/blob/master/LICENSE (spdx BSD-3-Clause, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "price-parser is BSD-3-Clause",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/scrapinghub/price-parser/blob/master/LICENSE (spdx BSD-3-Clause, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Splink is MIT",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/moj-analytical-services/splink/blob/master/LICENSE (spdx MIT, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "RapidFuzz is MIT",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/rapidfuzz/RapidFuzz/blob/main/LICENSE (spdx MIT, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Inspect AI is MIT",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/UKGovernmentBEIS/inspect_ai/blob/main/LICENSE (spdx MIT, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "promptfoo is MIT",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/promptfoo/promptfoo/blob/main/LICENSE (spdx MIT, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "react-native-share is MIT",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/react-native-share/react-native-share/blob/main/LICENSE (spdx MIT, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "react-native-view-shot is MIT",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/gre/react-native-view-shot/blob/master/LICENSE (spdx MIT, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "imagehash is BSD-2-Clause",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/JohannesBuchner/imagehash/blob/master/LICENSE (spdx BSD-2-Clause, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Firecrawl is AGPL-3.0 for self-hosting, with exceptions",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/firecrawl/firecrawl/blob/main/LICENSE (spdx AGPL-3.0, 2026-10-22)",
+    "Firecrawl README section License (README line 912, 2026-10-22): primarily AGPL-3.0; the SDKs and some UI components are MIT, see per-directory LICENSE files"
+   ],
+   "correction": "Exception: the SDKs (e.g. firecrawl-py) and some UI components are MIT. The server/self-host code is AGPL-3.0."
+  },
+  {
+   "claim": "crawl4ai licence",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/unclecode/crawl4ai/blob/main/LICENSE (spdx Apache-2.0, 2026-10-22)"
+   ],
+   "correction": "Apache-2.0 plus an appended Attribution Requirement in the LICENSE file. Any public use must show a set credit line ('This product includes software developed by UncleCode ... Crawl4AI'), placed in About/Credits for web apps. It is already rejected on measurement."
+  },
+  {
+   "claim": "ultimate-sitemap-parser is GPL-3.0",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/GateNLP/ultimate-sitemap-parser/blob/main/LICENSE (spdx GPL-3.0, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "PriceBuddy licence bans commercial use",
+   "status": "confirmed",
+   "evidence": [
+    "https://raw.githubusercontent.com/jez500/pricebuddy/main/LICENSE.md (read 2026-10-22): titled 'GPL-3.0 WITH MODIFICATIONS'; DISCLOSURE section allows noncommercial use only and forbids any use or change that could count as commercialisation",
+    "https://api.github.com/repos/jez500/pricebuddy (license spdx NOASSERTION, 1434 stars, 2026-10-22)"
+   ],
+   "correction": "The repo is jez500/pricebuddy (not jundaoapp)."
+  },
+  {
+   "claim": "Discount-Bandit has no licence",
+   "status": "confirmed",
+   "evidence": [
+    "https://api.github.com/repos/Cybrarist/Discount-Bandit (license null, 754 stars, 2026-10-22); repo root has no LICENSE file"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "PriceGhost has no licence",
+   "status": "confirmed",
+   "evidence": [
+    "https://api.github.com/repos/clucraft/PriceGhost (license null; root has no LICENSE file, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Open Food Facts server, Robotoff and Open Prices are AGPL-3.0",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/openfoodfacts/openfoodfacts-server/blob/main/LICENSE (AGPL-3.0)",
+    "https://github.com/openfoodfacts/robotoff/blob/main/LICENCE (AGPL-3.0)",
+    "https://github.com/openfoodfacts/open-prices/blob/main/LICENSE (AGPL-3.0) (all 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "SearXNG is AGPL",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/searxng/searxng/blob/master/LICENSE (spdx AGPL-3.0, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Unleash is AGPL",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/Unleash/unleash/blob/main/LICENSE (GitHub spdx AGPL-3.0, 2026-10-22)"
+   ],
+   "correction": "GitHub detects AGPL-3.0 for the core repo. The server-side SDKs live in separate repos with their own licences, which were not checked."
+  },
+  {
+   "claim": "Crawlee is Apache-2.0",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/apify/crawlee/blob/master/LICENSE.md (spdx Apache-2.0, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Scrapy is BSD-3-Clause",
+   "status": "confirmed",
+   "evidence": [
+    "https://github.com/scrapy/scrapy/blob/master/LICENSE (spdx BSD-3-Clause, 2026-10-22)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Open Beauty Facts: database ODbL, contents DbCL, images CC BY-SA 3.0",
+   "status": "confirmed",
+   "evidence": [
+    "https://world.openbeautyfacts.org/terms-of-use (2026-10-22): ODbL database, DbCL contents, images under CC Attribution ShareAlike",
+    "https://world.openbeautyfacts.org/data (2026-10-22): same three licence lines"
+   ],
+   "correction": "ODbL, DbCL and CC BY-SA are confirmed. The pages read do not state the CC BY-SA version number (3.0 is not shown). Images may also contain third-party copyrighted graphics and trademarks that the licence does not cover."
+  },
+  {
+   "claim": "Open Beauty Facts allows commercial use",
+   "status": "confirmed",
+   "evidence": [
+    "https://world.openbeautyfacts.org/terms-of-use (2026-10-22): the licences allow use and reproduction 'for all purposes, including commercial use, under certain conditions' (attribution plus share-alike)"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Open Beauty Facts API rule: one call per real user scan",
+   "status": "refuted",
+   "evidence": [
+    "https://openfoodfacts.github.io/openfoodfacts-server/api/ (2026-10-22): limits are 15 req/min/IP for product reads and 10 req/min/IP for search; limits apply per user when requests come from users' devices; if you need more than a few hundred products, download the CSV/JSONL",
+    "https://openfoodfacts.github.io/openfoodfacts-server/api/tutorial-off-api/ (2026-10-22): no such rule"
+   ],
+   "correction": "No 'one call per real user scan' wording appears on the primary API pages read. The documented rules are 15 product reads/min/IP, 10 searches/min/IP, no search-as-you-type, and bulk use must go through the dumps. Exceeding the limits returns HTTP 503."
+  },
+  {
+   "claim": "Share-alike consequences of merging OBF into an owned table",
+   "status": "confirmed",
+   "evidence": [
+    "https://opendatacommons.org/licenses/odbl/1-0/ (2026-10-22) s4.4: a Derivative Database that is Publicly Used must be under ODbL; publicly using a Produced Work from a Derivative Database also triggers 4.4",
+    "ODbL s4.5: internal use within an organisation is not public; Collective Databases need not be ODbL; s4.6: you must offer the Derivative Database or a diff in machine-readable form; s4.3: Produced Works need a notice"
+   ],
+   "correction": "If OBF rows are merged into the owned product table and the app shows results drawn from it, the merged table is likely a Derivative Database, and serving the results is public use. That means offering the table (or the diff) under ODbL. To avoid this, keep OBF in a separate Collective Database (its own table, attributed). Images carry CC BY-SA obligations on top."
+  },
+  {
+   "claim": "OBF nightly JSONL/Parquet dumps exist",
+   "status": "confirmed",
+   "evidence": [
+    "https://world.openbeautyfacts.org/data (2026-10-22): 'Database dumps and exports are generated nightly'; openbeautyfacts-products.jsonl.gz, MongoDB dump, cosmetics CSV, 14-day delta files; Parquet at huggingface.co/datasets/openfoodfacts/product-database beauty.parquet"
+   ],
+   "correction": "Nightly is confirmed for JSONL, MongoDB and CSV. The page does not state a cadence for the Parquet (Hugging Face) file. Deltas cannot report deletions."
+  },
+  {
+   "claim": "Wikidata structured data is CC0",
+   "status": "confirmed",
+   "evidence": [
+    "https://www.wikidata.org/wiki/Wikidata:Licensing (2026-10-22): main, Property, Lexeme and EntitySchema namespaces released under CC0"
+   ],
+   "correction": "Text in other namespaces is CC BY-SA 4.0."
+  },
+  {
+   "claim": "Common Crawl terms of use on index/data use",
+   "status": "confirmed",
+   "evidence": [
+    "https://commoncrawl.org/terms-of-use (Last Updated March 7, 2024; read 2026-10-22): limited licence to use the Service; no illegal use; no harvesting of personal information (2(l)); crawled content may be subject to the original owners' terms (s2); 'YOU AGREE TO RESPECT THE COPYRIGHTS AND OTHER APPLICABLE RIGHTS OF THIRD PARTIES' (s3)"
+   ],
+   "correction": "The ToU does not treat the CDX/URL index separately. It falls under 'Service'. Rights in the page content stay with the original sites, so a retailer's own terms and robots rules still govern."
+  },
+  {
+   "claim": "Fragella terms forbid caching that circumvents API access",
+   "status": "confirmed",
+   "evidence": [
+    "https://api.fragella.com/terms-of-use.html (Last Updated May 4, 2026; read 2026-10-22) s3.3: may not 'Cache or store large portions of the API data in a way that would circumvent the need to access our API for fresh data, unless explicitly permitted by your subscription plan'; also no reselling or distributing API data as a standalone product"
+   ],
+   "correction": "Note the date: the current terms are dated May 4, 2026, not Nov 8, 2025."
+  },
+  {
+   "claim": "UPCitemdb licence is solely for Customer operations; 100 free requests/day",
+   "status": "confirmed",
+   "evidence": [
+    "https://www.upcitemdb.com/terms (2026-10-22): 'limited, non-exclusive, non-transferable and terminable license to access and use the Service' for the customer's own operations; traffic over 1.75x the tier average QPS may be refused",
+    "https://www.upcitemdb.com/wp/docs/main/development/api-rate-limits/ (2026-10-22): FREE plan allows 100 combined requests/day (searches capped at 40), 6 requests/min"
+   ],
+   "correction": "Add the sub-limits: at most 40 of the 100 can be searches, and the burst limit is 6/min."
+  },
+  {
+   "claim": "Go-UPC pricing $74.95 per 5,000",
+   "status": "confirmed",
+   "evidence": [
+    "https://go-upc.com/plans/api (2026-10-22): Developer 74.95/month for 5,000 requests/month; Startup 245 for 45,000; Enterprise 795 for 450,000"
+   ],
+   "correction": "It is a monthly subscription (5,000 requests per month), not a one-off pack. The page shows no currency symbol."
+  },
+  {
+   "claim": "Verified by GS1: 30 free queries/day; API is member-only",
+   "status": "confirmed",
+   "evidence": [
+    "https://support.gs1.org/support/solutions/articles/43000734070-how-do-i-check-if-a-gs1-gtin-is-valid- (via search 2026-10-22): free for 30 queries maximum per day",
+    "support.gs1.org (via search 2026-10-22): members can get advanced querying such as an API connection from their local GS1 member organisation"
+   ],
+   "correction": "gs1.org pages could not be fetched directly (TLS cert mismatch). Confirmed from the GS1 support-site extracts shown in search. API access goes through the local GS1 Member Organisation."
+  },
+  {
+   "claim": "Trustpilot Data Solutions: 24-hour cache refresh; Deletions API every 28 days",
+   "status": "confirmed",
+   "evidence": [
+    "https://developers.trustpilot.com/ds-caching-best-practices/ (2026-10-22): 'you must refresh your cache every 24 hours' when displaying review data",
+    "https://developers.trustpilot.com/deletions-api (2026-10-22): mirror deletions 'by calling the Deletions API endpoints every 28 days'; 'You must delete returned consumer data'",
+    "Content Refresh Guidelines (legal.trustpilot.com): changes and deletions reflected within 24 hours"
+   ],
+   "correction": "Note the tension. The Content Refresh Guidelines require deletions to show within 24 hours, which is stricter than the 28-day Deletions API note."
+  },
+  {
+   "claim": "Google Places: only place_id may be cached",
+   "status": "confirmed",
+   "evidence": [
+    "https://developers.google.com/maps/documentation/places/web-service/policies (2026-10-22): place ID is 'exempt from the caching restrictions', may be stored indefinitely; must not pre-fetch, cache or store other Places content beyond allowed exceptions"
+   ],
+   "correction": "The policies page points to the Maps Service Terms for other exceptions (e.g. lat/lng). Those were not read."
+  },
+  {
+   "claim": "Google Places reviews cost $25 per 1,000 calls",
+   "status": "confirmed",
+   "evidence": [
+    "https://developers.google.com/maps/billing-and-pricing/pricing (2026-10-22): Place Details Enterprise + Atmosphere $25.00 per 1,000 (up to 100k), 1,000 free per month"
+   ],
+   "correction": "$25/1,000 is the Enterprise + Atmosphere SKU, which is the tier that includes reviews (the pricing page does not list fields). There are 1,000 free calls per month per SKU, and volume tiers are cheaper above 100k."
+  },
+  {
+   "claim": "YouTube Data API: 10,000 units/day; search.list costs 100 units",
+   "status": "refuted",
+   "evidence": [
+    "https://developers.google.com/youtube/v3/determine_quota_cost (Last updated 2026-10-15 UTC; read 2026-10-22): search.list and videos.insert 'have their own quota buckets', default 100 per day, each call costs 1 quota; 10,000 units/day for all other endpoints"
+   ],
+   "correction": "Current rule: search.list has its own bucket of 100 calls/day (1 unit each), separate from the 10,000 units/day for other endpoints. The '100 units per search' figure is stale."
+  },
+  {
+   "claim": "YouTube: 30-day storage limit; no derived metrics (III.E.4.h)",
+   "status": "confirmed",
+   "evidence": [
+    "https://developers.google.com/youtube/terms/developer-policies (2026-10-22) III.E.4.c/d: delete or refresh stored data after 30 calendar days; III.E.4.h: must not replace API Data with independently calculated data or 'access or use API Data to create new or derived data or metrics'; III.E.2.a/b aggregation limits"
+   ],
+   "correction": "New III.L exception: audited developers with analytics use cases may apply for extra derived-metric and storage permissions (from June 1, 2026). This does not apply to MYEZ unless it is audited."
+  },
+  {
+   "claim": "Apple 2.1: completeness, no placeholder content",
+   "status": "confirmed",
+   "evidence": [
+    "https://developer.apple.com/app-store/review/guidelines/ (Last Updated October 16, 2026; read 2026-10-22) 2.1(a): final versions, fully functional URLs; 'placeholder text, empty websites, and other temporary content should be scrubbed before submission'; turn on your back-end service; demo account"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Apple 2.3.1: accuracy, no fake features",
+   "status": "confirmed",
+   "evidence": [
+    "Guidelines 2.3.1(a) (Last Updated Oct 16, 2026): new features must be described with specificity in Notes for Review and be accessible; promoting content or services the app does not actually offer, or a false price, is grounds for removal",
+    "Guidelines 2.5.19 (hidden features): 'Don't include any hidden, dormant, or undocumented features in your app'"
+   ],
+   "correction": "The 'no hidden/dormant/undocumented features' rule is 2.5.19, not 2.3.1. This matters for dark-launched ENABLE_* flags: dormant backend paths are fine, but client UI for features that are not live must not ship in a reviewed build."
+  },
+  {
+   "claim": "Apple 5.1.2 prohibits device fingerprinting (wording)",
+   "status": "refuted",
+   "evidence": [
+    "Guidelines 5.1.2 (Last Updated Oct 16, 2026): word 'fingerprint' absent; (i) permission, disclosure incl. third-party AI, ATT for tracking; (iii) no surreptitious profiles or re-identification of anonymous users",
+    "https://developer.apple.com/app-store/user-privacy-and-data-use/ (2026-10-22) FAQ: 'Per the Apple Developer Program License Agreement, you may not derive data from a device for the purpose of uniquely identifying it'"
+   ],
+   "correction": "The fingerprinting ban is in the DPLA, quoted on the User Privacy and Data Use page, not in 5.1.2. A per-device quota of 3 compares/day should use an Apple-provided mechanism (DeviceCheck/App Attest or IDFV) rather than signals derived from device properties. 5.1.2(i) now also requires disclosure and explicit permission before sharing personal data with third-party AI, which matters for the Anthropic switch."
+  },
+  {
+   "claim": "Apple 5.2.2: third-party content rights",
+   "status": "confirmed",
+   "evidence": [
+    "Guidelines 5.2.2 (Last Updated Oct 16, 2026): 'If your app uses, accesses, monetizes access to, or displays content from a third-party service, ensure that you are specifically permitted to do so under the service's terms of use. Authorization must be provided upon request.'"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "Apple 4.8: Sign in with Apple / login services",
+   "status": "confirmed",
+   "evidence": [
+    "Guidelines 4.8 (Last Updated Oct 16, 2026): apps using third-party/social login for the primary account must also offer an equivalent login service that limits data to name and email, allows a private email, and does not collect interactions for ads without consent; exemptions follow (e.g. company-only accounts)"
+   ],
+   "correction": "The text does not mandate Sign in with Apple by name; any equivalent service with those three features satisfies it."
+  },
+  {
+   "claim": "TN3194 / DeviceCheck notes",
+   "status": "unknown",
+   "evidence": [
+    "https://developer.apple.com/documentation/technotes (index via search 2026-10-22): TN3194 = 'Handling account deletions and revoking tokens for Sign in with Apple'"
+   ],
+   "correction": "TN3194 is about Sign in with Apple account deletion and token revocation, not DeviceCheck. The page body is JS-rendered and could not be read. DeviceCheck docs were not read."
+  },
+  {
+   "claim": "Shopify UCP Catalog MCP endpoint /api/ucp/mcp with search_catalog",
+   "status": "confirmed",
+   "evidence": [
+    "https://shopify.dev/docs/agents/catalog (2026-10-22): Global https://catalog.shopify.com/api/ucp/mcp and Storefront https://{storeDomain}/api/ucp/mcp; tools search_catalog, lookup_catalog (50/10 IDs), get_product"
+   ],
+   "correction": "Material terms on the same page: catalog results and images cannot be cached, and images must render in real time and must not be downloaded to servers. This bars ingesting Shopify catalog data into the owned knowledge base. Endpoint URLs may change."
+  },
+  {
+   "claim": "Shopify UCP requires an agent profile",
+   "status": "confirmed",
+   "evidence": [
+    "https://shopify.dev/docs/agents/catalog: 'Agent profile (no API key needed)'",
+    "https://shopify.dev/docs/agents/profiles (2026-10-22): profile URL passed in meta.ucp-agent.profile, hosted at an HTTPS URL you host",
+    "https://shopify.dev/docs/agents/profiles/auth-and-rate-limiting (2026-10-22): tiers Token / Signed (RFC 9421 vs profile key) / Anonymous; 'Don't use unauthenticated requests for production traffic'; Global Catalog 5 rps per API client"
+   ],
+   "correction": "Partly: the catalog doc says to use a profile, but the auth page lets Anonymous agents call catalog tools at shared per-IP limits not fit for production. Production use needs a hosted profile plus a Signed or Token (Dev Dashboard) tier."
+  },
+  {
+   "claim": "Shopify terms for third-party agents",
+   "status": "unknown",
+   "evidence": [
+    "shopify.dev/docs/agents.txt, /docs/agents/catalog, /docs/agents/profiles/auth-and-rate-limiting (2026-10-22): none links to agent-specific legal terms"
+   ],
+   "correction": "No agent-specific legal terms were found on the pages read. To settle this, read the Shopify API License and Terms of Use (shopify.com/legal/api-terms) and any Dev Dashboard agreement. Paid placements are only for 'approved developers'."
+  },
+  {
+   "claim": "Anthropic usage policy clauses on scraping, search-result storage and competitive use",
+   "status": "confirmed",
+   "evidence": [
+    "https://www.anthropic.com/legal/aup (read 2026-10-22; page lists effective date Nov 12, 2026): no scraping clause; must not infringe third-party IP; must not 'circumvent the guardrails or terms of other platforms or services'; no harvesting private info or compiling profiles; model distillation needs authorization",
+    "https://www.anthropic.com/legal/commercial-terms (effective Jun 17, 2025) D.4: no building a competing product or training competing models, no reselling, no reverse engineering; B: customer owns outputs; D.3: tell users to verify factual assertions",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22): $10 per 1,000 searches; citations must be shown when outputs are displayed directly to end users; encrypted_content must be passed back unchanged"
+   ],
+   "correction": "A comparison app is not a 'competing product'. The binding points are: (1) respect retailer terms and robots, since the AUP bars getting around other platforms' terms; (2) show citations to the source when web-search output reaches users; (3) D.3 notice that outputs should be verified. Neither document has a clause on storing search results. The AUP effective date (Nov 12, 2026) is later than today, so a revised policy is pending; re-read it after that date."
+  }
+ ],
+ "sources": [
+  "https://github.com/scrapy/protego/blob/master/LICENSE",
+  "https://github.com/scrapinghub/extruct/blob/master/LICENSE",
+  "https://github.com/scrapinghub/price-parser/blob/master/LICENSE",
+  "https://github.com/moj-analytical-services/splink/blob/master/LICENSE",
+  "https://github.com/rapidfuzz/RapidFuzz/blob/main/LICENSE",
+  "https://github.com/UKGovernmentBEIS/inspect_ai/blob/main/LICENSE",
+  "https://github.com/promptfoo/promptfoo/blob/main/LICENSE",
+  "https://github.com/react-native-share/react-native-share/blob/main/LICENSE",
+  "https://github.com/gre/react-native-view-shot/blob/master/LICENSE",
+  "https://github.com/JohannesBuchner/imagehash/blob/master/LICENSE",
+  "https://github.com/firecrawl/firecrawl/blob/main/LICENSE",
+  "https://github.com/unclecode/crawl4ai/blob/main/LICENSE",
+  "https://github.com/GateNLP/ultimate-sitemap-parser/blob/main/LICENSE",
+  "https://raw.githubusercontent.com/jez500/pricebuddy/main/LICENSE.md",
+  "https://api.github.com/repos/Cybrarist/Discount-Bandit",
+  "https://api.github.com/repos/clucraft/PriceGhost",
+  "https://github.com/openfoodfacts/openfoodfacts-server/blob/main/LICENSE",
+  "https://github.com/openfoodfacts/robotoff/blob/main/LICENCE",
+  "https://github.com/openfoodfacts/open-prices/blob/main/LICENSE",
+  "https://github.com/searxng/searxng/blob/master/LICENSE",
+  "https://github.com/Unleash/unleash/blob/main/LICENSE",
+  "https://github.com/apify/crawlee/blob/master/LICENSE.md",
+  "https://github.com/scrapy/scrapy/blob/master/LICENSE",
+  "https://world.openbeautyfacts.org/terms-of-use",
+  "https://world.openbeautyfacts.org/data",
+  "https://openfoodfacts.github.io/openfoodfacts-server/api/",
+  "https://opendatacommons.org/licenses/odbl/1-0/",
+  "https://www.wikidata.org/wiki/Wikidata:Licensing",
+  "https://commoncrawl.org/terms-of-use",
+  "https://api.fragella.com/terms-of-use.html",
+  "https://www.upcitemdb.com/terms",
+  "https://www.upcitemdb.com/wp/docs/main/development/api-rate-limits/",
+  "https://go-upc.com/plans/api",
+  "https://support.gs1.org/support/solutions/articles/43000734070-how-do-i-check-if-a-gs1-gtin-is-valid-",
+  "https://developers.trustpilot.com/ds-caching-best-practices/",
+  "https://developers.trustpilot.com/deletions-api",
+  "https://developers.google.com/maps/documentation/places/web-service/policies",
+  "https://developers.google.com/maps/billing-and-pricing/pricing",
+  "https://developers.google.com/youtube/v3/determine_quota_cost",
+  "https://developers.google.com/youtube/terms/developer-policies",
+  "https://developer.apple.com/app-store/review/guidelines/",
+  "https://developer.apple.com/app-store/user-privacy-and-data-use/",
+  "https://shopify.dev/docs/agents/catalog",
+  "https://shopify.dev/docs/agents/profiles",
+  "https://shopify.dev/docs/agents/profiles/auth-and-rate-limiting",
+  "https://www.anthropic.com/legal/aup",
+  "https://www.anthropic.com/legal/commercial-terms",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool"
+ ]
+}

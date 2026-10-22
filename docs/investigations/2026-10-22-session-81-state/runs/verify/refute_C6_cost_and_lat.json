@@ -1,0 +1,103 @@
+{
+ "cluster": "C6 Learning loop, feedback, reviews, data ledger, legal unit (A8, R7, R10, R12)",
+ "lens": "cost and latency",
+ "verdicts": [
+  {
+   "recommendation": "C6.1 compare_runs de-identified ledger, fire_and_forget behind ENABLE_COMPARE_RUN_LEDGER",
+   "verdict": "weakened",
+   "reason": "fire_and_forget does not mean off-loop. run_db calls .execute() inline while ENABLE_SYNC_DB_OFFLOAD is OFF, and prod keeps it OFF. So each ledger insert, a large JSONB row, blocks the single uvicorn loop for one RTT (285 ms p50 insert, 381 ms read). comparison_id exists only after persist_comparison, so the write has to chain after it. The re-compare flag needs an extra query_hash read, which still needs user linkage.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:35-40 (flag OFF -> call() inline)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:796-798 '#115 fire-and-forget but still loop-stalling'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json:310 'Stay OFF: ENABLE_SYNC_DB_OFFLOAD'"
+   ],
+   "fix": "Write compare_runs as ONE insert chained after persist_comparison inside the existing track_after_persist task (or at the delivery exit for anonymous runs). Compute the re-compare flag in the nightly job, not per request. Enable it only after ENABLE_SYNC_DB_OFFLOAD is canaried, or accept and measure about 300 ms of loop stall per compare."
+  },
+  {
+   "recommendation": "C6.2 Batch Haiku judge plus Sonnet escalation plus grounded web_search checks",
+   "verdict": "weakened",
+   "reason": "$0.0004 assumes 6K input and 0.4K output. A real evidence payload for two products is unmeasured and probably 10-20K tokens with the +30% tokenizer, and Haiku/Sonnet 5.5 adaptive thinking bills extra output. Sonnet runs on EVERY Haiku flag with no cap; at a 30% flag rate and 1000/day that is about $10/day. Grounded checks pay $10/1k searches plus search-result tokens, and 'disputes' are uncapped. A Batch result can take up to 24 h, so a chained escalation can lag about 48 h.",
+   "evidence": [
+    "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md (Haiku 5.5 $0.10/$0.50, Sonnet 5.5 $2/$10, adaptive thinking on, +30% tokenizer)",
+    "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md:149-154 (batch within 24 h, expiry not SLA; cache hits in batch best-effort)",
+    "R7 finding: '$0.0004 with batch ... my arithmetic, not measured'"
+   ],
+   "fix": "Measure the evidence-payload tokens and the Haiku flag rate on 50 L2-rebuilt compares first. Disable thinking on the Haiku judge (effort <= high). Add a daily USD cap and a per-day count cap on Sonnet escalations and grounded checks, for example Sonnet at most 10% and grounded at most 3% of compares. Overflow goes to the next night."
+  },
+  {
+   "recommendation": "C6.3 client-generated compare_request_id on compare, /feedback, /events",
+   "verdict": "stands",
+   "reason": "It adds one optional field to inserts that already happen: search_logs and comparisons are written today, and /feedback and /events POSTs already exist. That means zero new round trips, zero LLM cost and no critical-path await, unlike ENABLE_COMPARISON_ID_ECHO, which adds a 285 ms awaited insert. The only cost is an index for the nightly join. I could not break it on cost or latency.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:88-95 (echo moves one Supabase RTT onto the critical path)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:775-798 (existing search_logs insert)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:444 (echo cost 285 ms p50 on a 22 s p50 compare)"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C6.4 Q1 identity question after 8 s dwell plus rotating Q2",
+   "verdict": "weakened",
+   "reason": "Serving cost is negligible: one /feedback insert per answer. But label yield is unmeasured. Q2 is split three ways and gated on a Q1 Yes, so price_correct receives roughly answer-rate x Yes-rate / 3 of compares. At 100/day and a 10% answer rate that is about 2 price labels a day. That starves C6.5's 3-case, 2-device threshold and the Sonnet-on-No trigger. The 8 s dwell figure is unbenchmarked against a 22 s p50 stream.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:18-22,52-56 (today positive-only, no measured answer rate)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:444 (compare p50 22 s)"
+   ],
+   "fix": "Ship Q1 first and measure the answer rate and the dwell distribution for a week. Then set the Q2 rotation weights (for example price-heavy for fragrances) and the C6.5 thresholds from the measured label volume."
+  },
+  {
+   "recommendation": "C6.5 nightly cron, failure clustering, exemplars, eval proof by A/B and 60-case set",
+   "verdict": "weakened",
+   "reason": "The proof plan is not costed. 60 cases x 2 reps = 120 prod-HTTP compares per run, which is about 1.5k Serper credits plus LLM spend at smoke20's 10-15 credits a compare, and they hit the new 3/day per-device quota. An A/B by hash_bucket at 100-300 compares/day needs weeks to clear noise, which conflicts with weekly rotation. Two prefix versions also split the cache, and at under 300/day the 5-min-TTL gaps rarely hit it anyway.",
+   "evidence": [
+    "R7 finding: smoke20 about 100 OpenAI calls plus 200-300 Serper credits per run",
+    "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/prompt-caching.md:144-153 (5-min TTL, write 1.25x; needs requests under 5 min apart)"
+   ],
+   "fix": "Run the fragrance set offline through shadow_experiments over L2-rebuilt inputs ($0 Serper, quota-exempt). Use the frozen-input pairwise replay as the main proof and drop live A/B until volume is above about 1000/day. Size cache TTL from measured inter-arrival gaps."
+  },
+  {
+   "recommendation": "C6.6 review KB from JSON-LD, partner keys, Trustpilot; delete GPT rating fallback",
+   "verdict": "weakened",
+   "reason": "The channel 1 parse is genuinely near-free: price_service already walks the Product node and reads aggregateRating. But coverage is measured at 14.0% (aggregateRating) and 9.3% (reviewBody). Four new tables add per-compare upserts and reads. With offload OFF, a gather of Supabase calls serialises on the loop, so 3 extra reads at a 381 ms p50 add about 1.1 s. Trustpilot is quote-only, with a 24 h refresh. YouTube's quota covers about 49 compares/day, below 300.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:4596-4601 (aggregateRating 14.0%, reviewBody 9.3% of 86 PDPs)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10858-10870 (rating already extracted from the parsed node)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json:322 (L2 reads p50 381 ms, misses)"
+   ],
+   "fix": "Return ratings, excerpts and claims for a product in ONE read (a view or RPC keyed by kb_product_id), write them off the request path in the price-warmer or nightly job, and keep YouTube and Trustpilot out of any per-compare path until a quote and a quota are in hand."
+  },
+  {
+   "recommendation": "C6.7 single post-approval legal window: Anthropic, consent v3, PostHog, Terms",
+   "verdict": "stands",
+   "reason": "No per-compare token or DB cost. Bundling every change into one window means one consent re-ask instead of two, which minimises the one-time friction of the consent gate. PostHog funnels only, without LLM analytics, stay within the free tier at 1000/day (well under 1M events/month at about 20 events per compare). Its SDK queues off the request path. The 29-day Batch retention figure is not verified locally, but it is a disclosure item, not a cost.",
+   "evidence": [
+    "R12 recommendation (d): one legal unit via U8, re-ask once",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:117 (de-identified data retention already allowed)"
+   ],
+   "fix": ""
+  }
+ ],
+ "new_risks": [
+  "With ENABLE_SYNC_DB_OFFLOAD OFF in prod, every new Supabase write or read added by C6.1/C6.2/C6.6 (ledger, judgements, ratings, excerpts, claims) blocks the single uvicorn loop for 285-381 ms and serialises supposedly parallel gathers. No recommendation makes the offload canary a precondition.",
+  "There is no global LLM spend guard across generation, judge, escalation and grounded checks against the $400 credits. A burst of Haiku flags or user No answers could exhaust credits silently, because Batch spend surfaces only up to 24 h later.",
+  "No recommendation exempts the eval and replay harness (smoke20 and the 60-case set over prod HTTP) from the new 3-compares-per-day-per-device quota or from is_synthetic metering, so the proof runs would be blocked or pollute the ledger and feedback stats.",
+  "Prompt-cache economics are assumed, not measured. At 100-300 compares/day the start-to-start gap per category prefix is often over 5 min, so cache writes at 1.25x may exceed the reads saved. No digest measured inter-arrival times or cache_read_input_tokens.",
+  "Judge input size is unmeasured. A full_response plus product_data evidence bundle for 2 products after the +30% Haiku 5.5 tokenizer could be 2-3x the assumed 6K tokens, and adaptive thinking output is not budgeted in any per-compare cost figure.",
+  "Stream-path early disconnects. The ledger and judgement writes have to fire in the stream finally block. Without ENABLE_PREVERDICT_DISCONNECT_ABORT, the verdict tail is still paid for abandoned compares, and no recommendation says whether abandoned runs are judged (paid) or skipped."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A8, R7)",
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_fa7a7126-eef/journal.jsonl (R10, R12)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:35-40",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:753-798",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:60-145",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:82-133",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:4592-4606,10855-10870",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:528-556",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:383,444,530",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json:310,322",
+  "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md",
+  "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md:149-154",
+  "C:/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/prompt-caching.md:131-153"
+ ]
+}

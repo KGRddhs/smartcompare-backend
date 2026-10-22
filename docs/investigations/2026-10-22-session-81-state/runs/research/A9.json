@@ -1,0 +1,222 @@
+{
+ "topic": "A9: Backend compare latency: where the 20-30 s goes and what a knowledge-base-first serve could skip",
+ "summary": "Answer: a cold text compare takes 22-30 s for three reasons. Each product's legs run one after another inside _fetch_product_data. The price race is slow. And nothing is reused at the pair level. On the app's explicit-pair path the parse and category steps cost about 0 s. The time goes to the per-product chain.\n\nThe chain is: unified Serper search (12 s bound), then the specs/reviews/image races (8 / 10 / 5 s, and none of them starts until the search returns), then Phase 2 (rating 4 s + smart fallback 5 s), then Tier 2 (4 s), then Tier 3 (3 s), one after another. The price race (15 s) runs alongside it. Worst case for the chain is about 34 s, against a 30 s cap.\n\nMeasured in the S78 log window:\n- The price race missed 23 of 30; the image race hit its timeout 20 times; the unified search timed out 5 times.\n- Serper shopping took 3.1-13.1 s (median about 8.3 s, n=13).\n- Phase 1 ended with only 1.1-7.9 s left before the cap, so partials stop at stage=gather.\n- After the pair, the tail (verdict, then moderation) takes about 6.1 s.\n\nThe prior digest's \"Phase-1 worst case about 12+10 s\" is correct but understated: it leaves out the serial Phase-2 and Tier-2/3 tail. The rest still holds at 95cf6f86; line numbers have moved by about 24.\n\nKnown pairs are not faster today. A cache-warm second run took 22.7-30.8 s. The reasons:\n- There is no pair or verdict cache.\n- The image and the rating have no cache at all.\n- The gpt-4o verdict and moderation always run.\n- Partials and searches that timed out cache nothing.\n\nSSE: every data event (specs, prices, reviews, first_paint, scores) is yielded only after both products have finished the whole chain. Only status 10/20 arrive early. Build 3 does not use SSE at all: it makes one REST call with a 35 s timeout and shows a checklist timed on the client.\n\nA knowledge-base-first serve for a known pair could skip:\n- the unified search, and the specs and reviews LLM calls;\n- smart fallback and Tier 2/3;\n- the image, the rating and category resolution.\n\nSome things must still run live: price freshness (serve the stored price with its age, refresh it in a bounded or background call), the deterministic scoring with personalization (milliseconds), and the verdict when the preferences or data hash change. Moderation is needed only for new text.\n\nProposed budget:\n- Cold pair: about 16 s p50 (1 route + max(8 price, 6 search + 4 extract) + 5 verdict + 0.6).\n- Known pair: about 1.5 s with a cached base verdict, about 6.5 s with a personalized one, 10 s at most with a live price refresh.\n\nThe three changes that would move p50 most: (1) a dark pair-level KB-first serve; (2) moving the Phase-2 and Tier fills into background KB enrichment, with ENABLE_TIER_FILL_RESIDUAL_GUARD as the interim step; (3) taking price freshness off the critical path, plus reserving the verdict tail.",
+ "findings": [
+  {
+   "claim": "The REST compare is one asyncio.wait_for(STREAM_HARD_CAP_SECONDS) around _compare_from_text_impl; the code default is 25.0 and prod runs 30.0. The impl stamps self._compare_deadline (the deadline the Phase-2 and tier guards read) at entry.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1656 - STREAM_HARD_CAP_SECONDS default 25.0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4034-4050 - outer wait_for",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4156 - _compare_deadline = now + cap",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:337 - 30.0 in prod since 2026-06-09"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The route does serial work before the compare: the paid-route auth guard, then get_user_preferences, then consume_comparison_credit (Supabase/Redis on the loop while ENABLE_SYNC_DB_OFFLOAD is OFF). After the compare, persist, log_search and metering are fire_and_forget, so persistence is off the critical path unless ENABLE_COMPARISON_ID_ECHO is ON (it is dark).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:774,821,836,849 - guard, prefs, credit, compare",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:870-949 - fire_and_forget persists; 928 bounded await only under echo flag",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md - route pre-work about 1 s; Upstash p50 289 ms / p95 1,537 ms (prod_evidence.json)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "On the app's explicit-pair path, parse and category cost about 0 s. Parse is skipped (no LLM), and the category is deterministic. The bounded A2b LLM call (4 s) runs only when the names are blind AND no chip is set. The q-form parse LLM runs only for typed 'A vs B' queries, and ENABLE_PARSE_PRESPLIT is dark.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4252-4267 - explicit_pair skips parse",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4274 - _parse_with_budget (q-form)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:483-491 - A2b only when det=other and no chip"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Within each product, specs, reviews and image are not parallel with the search. They are created only AFTER the unified Serper search returns. That search is bounded at 12 s (ENABLE_UNIFIED_SEARCH_BOUND ON in prod), and it is skipped only when BOTH the specs and the reviews L1 entries hit. The specs path is therefore up to 12 + 8 s, reviews up to 12 + 10 s and image up to 12 + 5 s. The price task starts before the search and runs concurrently under a 15 s cap.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5769-5786 - per-race caps 8/15/10/5",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5799-5802 - price task started first",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5856-5887 - cache checks then bounded unified search",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5925,5959,5977,5993 - specs/reviews/image tasks then gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ledger.md:47 - UNIFIED_SEARCH_BOUND + PHASE2 guard ON on web"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "After the Phase-1 gather, each product runs a SERIAL tail: a Phase-2 gather (rating 4 s cap plus smart fallback 5 s), then Tier 2 (4 s), then Tier 3 (gpt-4o, 3 s), awaited one after another. The worst-case product chain is about 12+10+5+4+3 = 34 s, more than the 30 s cap. The prior digest's 'Phase-1 worst case about 12+10 s' is correct but omits this tail.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6180-6255 - Phase-2 guard and gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6299-6308 - Tier 2 awaited",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6330-6339 - Tier 3 awaited",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:613,836,1982 - 4.0 / 3.0 / 4.0 s constants"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Measured production leg times from the S78 07:00 window (30 products):\n- 23 price-race timeouts, 20 image-race timeouts, 6 reviews, 5 specs and 5 unified-search timeouts.\n- Phase 2 was skipped 20 times, with 1.1-7.9 s left. Phase 1 therefore consumed about 22-29 s of the 30 s cap.\n- Serper shopping took 3,145-13,143 ms (median about 8.3 s, n=13).\n- Tier 2 timed out 6 of 6.\n- The cap hit 8 times.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/captures/web_logs_0700.txt - grep counts of '[L2.6] Phase 1 race timeout for <key>', 'phase 2 skipped residual=', 'PRICE_SUBSTAGE stage=serper_shopping delta_ms'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md - root cause paragraph (price missed 23/30, tier2 6/6)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Once the pair returns, the tail is: fairness and guards (CPU), awaiting the profile task, deterministic scoring (ms), the gpt-4o verdict, self-critique (OFF), trust validation and response build (sub-second), then L3 moderation. The verdict-to-moderation tail measured 6.1 s; TAIL_RESERVE_SECONDS defaults to 6.5 s on that basis.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4391-4425 - fairness/guards",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4451,4473,4495 - scoring, verdict, critique",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4602-4644,4677 - build + stage_timings, moderate_output",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1829-1832 - 6.5 s = measured 6.1 s tail"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Stage classification:\n- Pure cache, DB or CPU: specs L1/L2, reviews L1/L2, price L1/L2/negcache, prefs/credit/profile, drug DB, rating Tier 1 from the in-request shopping cache, fairness, scoring and build.\n- Network, not LLM: the unified search, Serper shopping plus the Tier-1.5 fan-out, Serper Images, the US-shopping rating fallback, and the smart-fallback and Tier-2 searches.\n- LLM: q-form parse, A2b category, specs and reviews extraction, smart-fallback, Tier-2 mini per field, Tier-3 gpt-4o, price Tier 2/3 estimate, image Tier-3 GPT, the verdict, critique (OFF), and moderation.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6492-6506 - specs L1 then L2",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6756-6883 - price L1/L2/negcache",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py:663-709 - reviews L1/L2 then search_web + extract_reviews",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:247-280 - shopping cache then one Serper POST"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Repeat compares are not faster today. The warm-up script runs without nocache, and its cache-warm second run took 22.7-30.8 s against 27.7-32.5 s on the first. The reasons:\n- There is no pair-level result or verdict cache (text_routes reads no compare cache).\n- image_service has no cache.\n- The rating has no persistence.\n- The verdict and moderation always run.\n- Partials write no cache, and specs or reviews extracted after a unified-search timeout are never cached (FY19).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/warmup_2026-10-14.json - rows run1 vs run2 elapsed_s",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/review_warmup.py:4 - 'no nocache, so the answers are cached'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py - grep: no get_cached/set_cached",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6367,6569 - no cache when unified_search_timed_out"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "SSE order on /text/compare/stream:\n1. status 10 ('Parsing query').\n2. status 20.\n3. The Phase-1 gather of both products, bounded by a 30 s wait_for.\n4. specs, prices, status 50, reviews, first_paint, scores, status 80, verdict.\n5. settle_complete, then complete.\nEvery data event is emitted only after BOTH products finish the whole per-product chain, so specs, prices and reviews arrive together at about 22-29 s. The tail after the gather is unbounded unless ENABLE_FULL_STREAM_DEADLINE is set (dark).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4878,4970,4990-4995 - status events then capped gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5126,5182,5185,5189,5225,5257,5267,5398,5564-5565 - event yields",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5287,5322,5534 - tail wait_for only under the flag",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1202,1219 - is_disconnected check, 'event: <type>' framing"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Build 3 renders nothing progressive from the server. SSE is off (ENABLE_EXPO_FETCH_SSE_DEFAULT=false), so the text path is a single REST call with a 35 s timeout. The loader is a checklist timed on the client, landing stages at 1.2 / 4.2 / 12 / 19.5 / 26 s. The camera path has no stream route at all. Making it progressive needs a client OTA, which is blocked until after approval.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52 - SSE default false",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:48,744-750 - 35 s REST, no stream attempt",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx:128 - client-timed stage schedule",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json - no image stream route"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "A partial at stage=gather loses the image and the reviews. The early buffer stashes only specs and price through done-callbacks; the image and reviews tasks sit inside the same gather and are cancelled with it.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5812-5818,5929-5941 - price/specs stash callbacks only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5959-5989 - reviews/image bare wait_for in gather",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/COMPACT_R0.md:34 - R0-B7 early image stash ruling"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "For a known pair, a KB-first serve could skip every leg that depends only on product identity:\n- the unified search, and the specs and reviews LLM calls (about 12 + 10 s of chain);\n- smart fallback and Tier 2/3 (up to 12 s of serial tail);\n- the image (5 s);\n- the rating Serper call (4 s);\n- category resolution.\nAll of these carry identity-keyed TTLs of 7-30 days today, which supports storing them per product in the KB.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1643 - SPECS_CACHE_TTL 7 d",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py:42 - REVIEWS_CACHE_TTL 7 d",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:337 area (Cost budget + caching) - L2 specs 30 d, reviews 14 d"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Some steps must stay live on a known pair. Price freshness: L1 prices expire after 24 h, or 7 d for genuine BH prices; the L2 window is the same. Deterministic scoring with preferences, behaviour and cohort (ms, no LLM). The verdict when its inputs change: generate_comparison receives user_preferences, the scores summary, demographics, the comparison quality and output_lang, so a cached verdict is valid only for an identical input key. The usage gate and auth also stay live.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:134,148,195-211 - 24 h / 7 d price TTLs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4450-4454 - personalised compute_scores",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4473-4481 - verdict inputs incl. prefs/demographics/lang"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The two dark S78 levers address the serial tail but remain unflipped. ENABLE_TIER_FILL_RESIDUAL_GUARD (Tier 2/3 skip below 4/3 s plus a 6.5 s reserve) and ENABLE_SERPER_KEY_STATE_MEMO were merged in S79 as #355/#356, default OFF and unset in prod. PHASE2_MIN_RESIDUAL_SECONDS=12 is live. Plan fix #6 (reserve the verdict tail at the pair barrier) was never built.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md:24 - #355/#356 merged, flags unset",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md:37 - knob 12 kept",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md - fix #6 'Reserve the verdict tail'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Search and image latency is driven by Serper. Sampled Serper spans: ok p50 3.5 s / p95 12.4 s, failures p50 5.9 s / p95 16.9 s, about 45% failed. The Serper Images HTTP timeout (15 s, or 10 s + 8 s) is longer than the 5 s image cap, so a slow Tier 1 consumes the whole image budget and Tier 3 never runs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - span.domain serper.dev stats",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/COMPACT_R0.md:34 - Serper Images timeout > 5 s race cap"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The p50 figures differ by source:\n- Organic search_logs series: p50 22.0 s (CLAUDE.md W3-2 row and the full-review note).\n- Sampled backend text compares: 30.5-34.8 s.\n- Client text wall: median 32.7 s (n=7).\nThe 22 s p50 includes cache-warm and fast pairs, while the Sentry samples are cold pairs at the cap.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md - W3-2 row 'a compare whose p50 is 22 s'; review note 'organic series ... p50 22.0 s'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - text_compare_get 30.5-34.8 s; client median 32,719 ms"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic latency is not measured anywhere in the repo or the prior runs: Haiku 5.5 and Sonnet 5.5 time to first token and total time, and the round trips of the server-side web_search tool. Putting web_search on the critical path in place of the unified Serper search could add, rather than save, seconds. It should be measured off-clock first.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - exists; not read for latency in this pass",
+    "no web source read this pass"
+   ],
+   "confidence": "unverified"
+  }
+ ],
+ "recommendations": [
+  "Build a pair-level KB-first serve behind a new dark flag (for example ENABLE_KB_FIRST_SERVE; default OFF, read per call, byte-identical when OFF). Read both products' KB rows (specs, reviews, image_url, rating, category, price with fetched_at) in one round trip before _fetch_product_data, and return early from the per-product chain on a full hit. This is the only lever that turns today's 22.7-30.8 s warm runs into about 1.5-7 s.",
+  "Move smart fallback, Tier 2 and Tier 3 off the request path into a background KB-enrichment job that writes the KB and L1/L2. Until then, flip the merged ENABLE_TIER_FILL_RESIDUAL_GUARD after its canary. This removes up to 12 s of serial tail per product (scs:6247-6339), and Tier 2 was 6/6 timeouts anyway.",
+  "Take price freshness off the critical path: serve the KB price with its age, and refresh with stale-while-revalidate. A live refresh should be one bounded fetch per known merchant PDP URL from the merchant registry, about 4-5 s, observing robots fail-closed and stopping at Cloudflare. Serper shopping alone has a median of about 8.3 s and the 15 s race missed 23/30.",
+  "Cache the base (unpersonalized) verdict per (pair identity, data hash, lang, model, prompt version), with its moderation result. Regenerate it only when preferences, cohort or the data hash change; keep deterministic scoring live. This saves the 6.1 s verdict-plus-moderation tail on repeat views.",
+  "Build S78 fix #6 (reserve the verdict tail at the pair barrier) behind a dark flag, so a cold compare always reaches the verdict instead of a stage=gather partial without pros. The Phase-1 residual was 1.1-7.9 s in S78.",
+  "Start the image race before the unified search, or read the image from the KB. Add a done-callback early stash (R0-B7), so a gather partial keeps an image that had already resolved; the image race timed out 20 times in the S78 window.",
+  "Change the stream generator to emit specs and prices per product as each lands, not after both chains finish. This is backend-additive; build 3 ignores it because SSE is off, and the client half is an OTA after approval.",
+  "Do not raise STREAM_HARD_CAP_SECONDS: the app aborts at 35 s. Do not flip ENABLE_FULL_STREAM_DEADLINE together with ENABLE_HONEST_PARTIAL_SCORING. Keep both rulings from the S78 hold list.",
+  "Measure Haiku 5.5, Sonnet 5.5 and web_search latency off-clock, in the enrichment job, before any of them replaces Serper or gpt-4o on the request path. Budget each LLM leg at 4-5 s inside the existing per-race caps.",
+  "Before and after each change, read metadata.stage_timings_ms (DEBUG_STAGE_TIMINGS is ON in prod) and the B1 compare_ms buckets once ENABLE_RESULT_STATUS_METADATA flips. Note that partials carry no stage_timings_ms today, so the slowest compares are invisible to that field."
+ ],
+ "open_questions": [
+  "What is the share of compares whose two products are both already in the L1/L2 specs and reviews caches? This sizes the KB-first win. It needs owner-run read-only SQL over product_specs and product_reviews against search_logs; no agent DB access.",
+  "Are partial (stage=gather) responses counted in the 22.0 s organic p50, and what is the p50 split by cold versus warm?",
+  "What are the Anthropic Haiku 5.5 and Sonnet 5.5 time-to-first-token and total times for the verdict prompt size, and the web_search tool round-trip time? None is measured.",
+  "Is ENABLE_PARSE_PRESPLIT set on web? No ledger records it. It matters only for q-form queries.",
+  "Can the merchant registry hold enough fresh PDP URLs per fragrance product to replace Serper shopping discovery under the robots fail-closed ruling? Fragrancex already 403s Railway egress.",
+  "Which stage_timings keys does the partial builder omit? Adding timings to partials would make the cap-hitting compares measurable."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/COMPACT.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/openapi_pins_and_timings.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/prod_recheck.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/COMPACT_R0.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/ledger.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/COMPARE_QUALITY_PLAN_S78.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/captures/web_logs_0700.txt (grep counts)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/captures/capture_1..3.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/warmup_2026-10-14.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-14-session-78-state/runs/canary_p2knob_after.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-10-session-76-state/ledger.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-17-session-79-state/ledger.md (grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (flag rows STREAM_HARD_CAP_SECONDS, ENABLE_FULL_STREAM_DEADLINE, ENABLE_TIER_FILL_RESIDUAL_GUARD, FANOUT-STARVE flags, ENABLE_PRICE_PATH_REDIS_OFFLOOP, DEBUG_STAGE_TIMINGS)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py (430-494, 1643-1656, 1819-1832, 3985-4716, 4717-5565 yields, 5705-6582, 6723-6883, 8825-8846)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py (774-958, 1202, 1219)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py (42, 663-768)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py (67, 247-280)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py (134-211)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py (grep: no cache)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/review_warmup.py:4",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:48-52,744-892",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/LoadingScreenVariants.tsx:105-170"
+ ]
+}

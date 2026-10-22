@@ -1,0 +1,219 @@
+{
+ "topic": "A3 Scraping and discovery stack: live price path, Serper dependence, platform adapters, where a merchant registry plugs in, binding crawler rulings (code at 95cf6f86)",
+ "summary": "Delta first. Between 683f56c0 and 95cf6f86 the app/ diff touches only vision, result_gate, feedback and response code. price_service, source_router, the adapters and the render wrappers are byte-unchanged, so the scrapers_health digest still holds for the price path. Three corrections to it and to CLAUDE.md: #92 (Firecrawl rawHtml) is fixed and closed; #94 was fixed in the data (571bf910) but the GitHub issue is still OPEN, and CLAUDE.md:776-780 still calls those rows wrong; #93 (sephora.me re-test) is open.\n\nLive price path, in order: L1 Redis cache; L2 product_prices; a speculative prefetch of 4 Serper site: discovery queries; $0 direct adapters (Shopify, Algolia, bolo/boutiqaat sitemap, nasser, woo, salla, occ, magento, unbxd, rest_json, noon, gcc Shopify), where a genuine hit ends the search early; Tier 1 Serper Shopping (gl=us, parked as converted_usd); Tier 1.5 discovery plus a curl wave, then a render wave (Firecrawl/Scrape.do, render-only rows only), sharing a 12 s budget; Tier 2 GPT on organic results; a broader search; the parked converted price; Tier 3 GPT estimate. All of it sits under a 15 s outer race that is read at import.\n\nSerper feeds about 15 call sites: price discovery, shopping, ratings (via cached shopping items), the unified specs/reviews search, reviews, images and supplements. Cutting it leaves only the $0 adapters (76 of 275 live registry rows have a mechanism) plus cache. The other 199 blank-mechanism rows become unreachable.\n\nRegistry fit: host knowledge today is a frozen Source dataclass, assembled once at import from literal rows plus data/bh_gcc_sources.json. The catalog loader drops locale_paths, discovery templates and pdp_url_pattern. There is no persistent record of per-host success, failure, robots state or challenges seen: provider attempts are request-scoped only.\n\nRulings. Robots fail-closed is enforced only in the off-clock sitemap builder and the search-descriptor probe. It is not enforced in fetch_page_price, the adapters or URL mode, and every runtime fetcher impersonates Chrome. \"Challenge = stop\" conflicts with the shipped Scrape.do (\"anti-bot bypass\", super mode) and the Zyte sephora.me seed. A new discovery loop must not reuse either for walled hosts. The Fragrantica/Parfumo deny list lives only in search_descriptor_service. fragrantica.com is still a literal registry row and is included in the global site: discovery query (Serper credit spent, though its URLs are filtered out before any curl). URL mode has no deny list. FragranceX stays rejected (R-A11).",
+ "findings": [
+  {
+   "claim": "The price path is unchanged since the S80 digest. The 683f56c0..95cf6f86 app/ diff touches only vision/result_gate/feedback/response code; structured_comparison_service gains only 41 lines (vision identity fields). The scrapers_health digest stands for the price path.",
+   "evidence": [
+    "git diff --stat 683f56c0 95cf6f86 -- app/ : 12 files, no price_service/source_router/adapter files",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py - only _vision_identity_fields + product_categories added"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Live price tiers, in order: L1 cache (:6763) -> L2 DB (:6772-6778) -> speculative 4-query Serper discovery prefetch (:7039-7070) -> $0 adapter prefetch (:7092-7280) with genuine short-circuit (:7518) -> Tier 1 Serper Shopping (:7543-7580) -> Tier 1.5: Shopify discovery (:7735), Algolia (:7855), bolo/nasser (:7945), discovery gather (:7956-8070), harvest (:8077, :8121), curl then render wave (:8259-8300) -> Tier 2 GPT organic (:8374) -> broader search (:8671) -> parked converted_usd (:8696) -> Tier 3 GPT estimate (:8727).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:6723-8760 - _get_price"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Timeouts: the outer race is _PRICE_RACE_TIMEOUT = 15 s, read at import and applied as _PHASE1_TIMEOUTS['price']. The curl and render waves share FAN_OUT_BUDGET_SECONDS = 12 s (read live), clipped to the race deadline. Firecrawl (30 s) and Scrape.do (15 s) still exceed that budget.",
+   "evidence": [
+    "structured_comparison_service.py:1713, 1773, 5783, 5801, 8235-8256",
+    "firecrawl_service.py:19; scrapedo_service.py:22"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Cost and capture: curl and the platform adapters cost $0. Budgets: Firecrawl 450 lifetime, Scrape.do 900/month, Serper 2200 lifetime (accounting), Serper Images 500/day, Bright Data 4500/month. Measured capture: curl_cffi prices 84% of 94 Gulf fragrance sources; bake-off on 9 targets: curl 4, Scrape.do 4, Firecrawl 0 (before #92); UCP JSON gives the correct currency on 32/32; the 15 s race missed 23 of 30 in S78.",
+   "evidence": [
+    "app/services/api_budget_service.py:24, 39-61",
+    "CLAUDE.md:871, 758-761, 351",
+    "scrapers_health.json (S78 COMPARE_QUALITY_PLAN #9c)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The render wave fires only for registry rows marked is_render_only, capped at the first N domains. Every other walled host gets curl only. No live catalog row is render-only: the literals megamart.bh, alosra, noon.com and sephora.me (requires_super) are.",
+   "evidence": [
+    "structured_comparison_service.py:2414-2500",
+    "source_router.py:140, 163, 168, 202-209, 306, 1155-1177",
+    "data/bh_gcc_sources.json: 275 live rows, 0 with is_render_only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Serper call sites: unified search feeding specs, reviews and image Tier 1.5b (:5878/:5887); spec search (:6518); smart fallback (:8882); discovery (:7062-7070, :7999-8005); electronics backfill (:3162); shopping (:7566/:7579), whose cached items also feed ratings; organic (:8538); broader (:8680); supplements (:8444-8445); reviews (review_service.py:701, 828, 932); images (image_service.py:258); pharmacy (price_service.py:16761).",
+   "evidence": [
+    "grep of search_web/search_product_prices/search_images call sites in app/services",
+    "rating_service.py:271-276 uses the shopping query cleaner"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "When Serper is cut or the budget gate trips, search_web returns {'organic': [], 'error'} or falls back to Bright Data (dead on a 401 per the digest). Setting SERPER_LIFETIME_LIMIT darkens all six entry points. The likely effects: specs and reviews lose their grounding; images fall back to GPT Tier 3; discovery-only rows get no PDP URL; the converted_usd shopping park and shopping-based ratings disappear.",
+   "evidence": [
+    "serper_service.py:730-757 (key/budget/exception branches)",
+    "api_budget_service.py:123, 198-256",
+    "image_service.py:126-165 (per digest)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Live registry mix (ENABLE_BH_GCC_CATALOG_SOURCES ON): 368 rows, 275 live. Live mechanisms: blank 199, shopify 33, woo_store_json 30, salla_api 4, magento_graphql 3, algolia 3, occ_rest 2, rest_json 1, unbxd 0. 95 rows carry a search descriptor.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json (python count)",
+    "CLAUDE.md:341 catalog ON since 2026-06-26"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Adapters by platform, for a platform->adapter map. Shopify products.json: price_service.py:15147/15560 (+ gcc rows via source_router.py:884). UCP/PDP JSON: shopify_pdp_service.py:977/550 (flags :683/:146). WooCommerce Store API: woocommerce_service.py:302. Salla: salla_service.py:184, slug resolve :409 (flag :364). Magento/Adobe GraphQL: magento_graphql_service.py:981, url_key :1226 and jomashop :1411 (flag :213). Algolia: algolia_service.py:747. Hybris OCC: occ_service.py:257. Unbxd: unbxd_service.py:216. REST JSON: rest_json_service.py:501. noon: noon_service.py:474. nasser: price_service.py:16180. bolo: :15788. boutiqaat: :15902. Generic: fetch_page_price :14888.",
+   "evidence": [
+    "grep of entry-point defs in app/services/*_service.py and price_service.py",
+    "structured_comparison_service.py:7133-7152 (_new_adapter_specs dispatch)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Zid has no price adapter. platform_router detects zid and salla, but detect_platform has only two consumers: the og sale-price-first rule and the Salla slug check. The platform -> adapter mapping today is the registry's hand-set mechanism string, not detection.",
+   "evidence": [
+    "platform_router.py:145-160, 558",
+    "price_service.py:12166; salla_service.py:398",
+    "source_router.py:74 mechanism enum, :829-845 _direct_fetch_sources"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Host knowledge is a frozen Source dataclass in SOURCE_REGISTRY, built once at import. The catalog loader maps only domain, tier, categories, weight, the is_* flags, currency, mechanism, sample_url, status, priority_rank and search, so locale_paths, subdomain_patterns, discovery_query_templates and pdp_url_pattern exist only on literal rows. Longest-host match is a dark flag, and score_source/is_render_only_domain still use their own first-match scans.",
+   "evidence": [
+    "source_router.py:28-94, 425-471, 532, 545-597, 954-980, 1155-1177"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "There is no persistent per-host health memory. _record_provider_attempt appends status, outcome (cf_block, timeout, no_price), detected_cf and elapsed time to a request-scoped ContextVar only. Breakers are per provider, not per host. The sitemap index is a Redis cache with a 24 h TTL, built only for bolo.bh and boutiqaat behind ENABLE_SITEMAP_INDEX (OFF).",
+   "evidence": [
+    "structured_comparison_service.py:141-169, 2226, 2238",
+    "api_budget_service.py:275-277",
+    "scripts/cron_index_sitemaps.py:1-30; sitemap_discovery_service.py:915-921"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Each search descriptor record holds only kind, url_template, robots_allowed, discovered_via and resolved_at (no robots fetched_at/status, no last success, no challenge). At runtime it is used only to build a clickable retailer search link (build_retailer_url), never to fetch.",
+   "evidence": [
+    "search_descriptor_service.py:123-152",
+    "price_service.py:9551-9606"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Robots fail-closed is enforced only off-clock: in the sitemap builder (named QarenBot UA; unreadable means skip) and in probe_search_descriptor (RobotsUnreadableError). The live fetchers (fetch_page_price, every adapter, URL mode) read no robots.txt and all present as Chrome (impersonate='chrome' in 12 modules).",
+   "evidence": [
+    "sitemap_discovery_service.py:364-474; search_descriptor_service.py:436-490",
+    "price_service.py: 'robots' only in comments at 9557, 12972",
+    "grep impersonate=\"chrome\" across app/services",
+    "LEGAL_EXPOSURE_REVIEW_S77.md:31, 54"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Shipped tools conflict with the 'challenge = stop' ruling. Scrape.do describes itself as 'residential proxies and anti-bot bypass' and has a SCRAPEDO_SUPER mode. The Zyte seed exists to render the Akamai-walled sephora.me. Wall detection exists (cf_chl_opt / 'Just a moment' signatures), but nothing records a challenged host or stops later escalation.",
+   "evidence": [
+    "scrapedo_service.py:3, 39-60",
+    "structured_comparison_service.py:6907-6921; source_router.py:202-209",
+    "price_service.py:12726-12932"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Fragrantica/Parfumo ban is enforced only by search_descriptor_service DENY_HOSTS and two scripts. fragrantica.com is still a literal global registry row (usage 'price'), so the global 'authorized' site: discovery query includes it and spends Serper credit. Its URLs are not curled from that tier (weight 1.0 < 1.5 and not on the luxury whitelist). URL mode has no deny list.",
+   "evidence": [
+    "source_router.py:347, 1180-1199",
+    "structured_comparison_service.py:7054-7055, 2598-2616",
+    "search_descriptor_service.py:111, 401-405; no match in url_extraction_service.py/url_routes.py"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "FragranceX (R-A11): Option A, a catalog crawl, is rejected. robots.txt, the sitemap and a PDP all answered 403 cf-mitigated: challenge on 2026-10-19, and the fail-closed ruling skips the host. Option C (warm list + spec spine) is the D1 plan; Option B (CJ feed) is an owner/legal track.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md:32, 71",
+    "runs/research/fragrancex_ingest.json summary",
+    "docs/policies/2026-08-31-robots-unreadable-ruling.md:3-20"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Follow-ups at 95cf6f86: #92 is CLOSED 2026-09-02 and fixed in code (rawHtml, default ON). #94's data fix landed in 571bf910 (matalanme and xcite are now live with render-only False; bfab and letoile have new sample URLs), but the issue is still OPEN and CLAUDE.md:776-780 is stale. #93 (sephora.me curl re-test) is OPEN and would mean impersonated fetches against an Akamai-walled host.",
+   "evidence": [
+    "gh issue view 92/93/94 (read 2026-10-22)",
+    "firecrawl_service.py:25, 50",
+    "git show 571bf910; data/bh_gcc_sources.json rows matalanme.com/xcite.com/bfab.com/letoile.ae"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The L2 product store is not a durable knowledge base. product_prices rows expire after 1 day (converted) or 7 days (genuine), specs after 30 days, reviews after 14 days. save_* stamps source='gpt' (per fragrancex digest). The spec spine is a local JSON that ships empty behind ENABLE_SPEC_SPINE.",
+   "evidence": [
+    "product_data_service.py:3-4, 18-29, 119-145",
+    "spec_spine_service.py:59, 111, 119-130"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Build the merchant registry as a persistent per-host table (Supabase), seeded from data/bh_gcc_sources.json and read per call. Keep the literal rows and the frozen Source as the flag-OFF path, because SOURCE_REGISTRY is built at import (source_router.py:532). Fields: host, apex, tier, country, currency, platform (platform_router label), mechanism/adapter, sample_url, search_template (+ robots_allowed), sitemap_url, robots_status, robots_body_hash, robots_fetched_at, challenge_seen_at and type, last_success_at, last_failure_at and status, success/attempt counters, deny flag, and notes.",
+  "Feed host health from the existing request-scoped _record_provider_attempt data (structured_comparison_service.py:141-169) with a fire-and-forget writer behind a new dark flag. Today cf_block and timeout outcomes are discarded at the end of each request.",
+  "Classify the 199 blank-mechanism live rows off-clock by running detect_platform over cached sample HTML, then assign woo, salla or shopify adapters. Each promoted row moves from Serper site: discovery to a $0 direct adapter, which is the main lever for spending less on Serper.",
+  "Put one shared robots gate in front of every new fetch the discovery loop makes. Reuse sitemap_discovery_service._robots_policy semantics (404/410 = allow, any other non-2xx/timeout = skip), cache the result in the registry row, and re-read weekly with the named QarenBot UA, per the ruling's Option A + C rider.",
+  "Make 'challenge = stop' a host state. When classify_capture or a 403 cf-mitigated response sees a wall, set challenge_seen_at and keep that host out of the render wave, Scrape.do, Zyte and Firecrawl until a scheduled named-UA re-check passes. Ask the owner to retire SCRAPEDO_SUPER and the Zyte sephora.me seed for the new loop.",
+  "Move DENY_HOSTS (fragrantica.com, parfumo.com) into one shared module. Apply it in source_router (drop the fragrantica.com literal at source_router.py:347 or set it to usage 'none', which also stops the wasted Serper site: credit), in URL mode, and in any new discovery or KB ingest.",
+  "Have the KB store the resolved PDP URL per (host, product identity) with its last verified price, so a repeat compare can skip all four Serper discovery queries and curl the known PDP directly. That makes discovery a miss-only path.",
+  "Keep the URL path on plain httpx (no impersonation, per the ruling). Add a registry lookup so a pasted URL on a denied, challenged or robots-unreadable host returns a coded refusal instead of a fetch. The client already handles INSUFFICIENT_DATA and CONTENT_UNAVAILABLE.",
+  "Before cutting Serper spend, decide which legs get replaced by what: specs and reviews grounding (unified search), images (Tier 1/1.5b), shopping-based ratings, and discovery. Without Serper, the only price sources are the $0 adapters (76 live rows) and the cache.",
+  "Housekeeping: close GitHub #94 (fixed in 571bf910) and correct CLAUDE.md:776-780. Re-scope #93 to a single named-UA robots/PDP read, or close it as won't-do under 'challenge = stop', because sephora.me is Akamai-walled.",
+  "Record per-host search templates with robots_allowed AND robots_fetched_at in the registry. Today's descriptor has only resolved_at (search_descriptor_service.py:123-152), so its robots verdict cannot be aged out.",
+  "Carry the digest's breaker fixes into the registry design: per-host failure on 401/402, and recording on CancelledError (digest R7). The render timeouts (30 s / 15 s) still exceed the 12 s budget at 95cf6f86."
+ ],
+ "open_questions": [
+  "Production values of ENABLE_SITEMAP_INDEX, ENABLE_SEARCH_DESCRIPTOR, ENABLE_LONGEST_HOST_MATCH, ENABLE_UCP_JSON_PRICE, ENABLE_MAGENTO_GQL_ADAPTER and ENABLE_SALLA_SLUG_RESOLVE are inferred OFF from code defaults. They need a names-only owner check.",
+  "Does the owner accept extending 'challenge = stop' to retire the live Scrape.do render wave for render-only literal rows (megamart.bh, alosra, noon.com)? These are SPAs, not challenge walls, so the ruling may permit them.",
+  "May the new discovery loop's content fetches use the named QarenBot UA instead of Chrome impersonation? robots_eval.py:22-27 records that the named agent is more crawlable, but capture rates under a named UA are unmeasured.",
+  "Is the Anthropic web_search tool expected to replace Serper's site: discovery and Shopping legs? Its result shape (no structured shopping prices) and its per-search cost were not checked in this read-only pass.",
+  "Zid storefront API: is there a public products endpoint worth an adapter? Unverified; no Zid live rows were counted separately.",
+  "Is the price-warmer service running in production? CLAUDE.md:341 says ENABLE_PRICE_CACHE_WARMER is OFF but also says Bright Data is armed on the price-warmer service."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/scrapers_health.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/fragrancex_ingest.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/DEFECT_LEDGER.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 135-160, 341-351, 377, 755-781, 860-880)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/investigations/2026-10-11-session-77-state/LEGAL_EXPOSURE_REVIEW_S77.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/platform_router.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/serper_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/api_budget_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/firecrawl_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/scrapedo_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/brightdata_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/zyte_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/magento_graphql_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/spec_spine_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_index_sitemaps.py",
+  "GitHub KGRddhs/smartcompare-backend issues #92, #93, #94 via gh issue view (read 2026-10-22)"
+ ]
+}

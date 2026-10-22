@@ -1,0 +1,711 @@
+{
+ "angle": "speed-and-UX-first: fast compares, fast app, honest UI, share",
+ "thesis": "Optimises the shopper's clock. First unstall the event loop. Then serve known fragrance pairs from one owned KB card RPC with a Haiku verdict (whole response p95 under 10 s), keep cold compares under 25 s by moving every fill into an off-process worker, paint per-product cards over SSE, and cut client floors. The honest UI (remote-flagged three chips, no fake numbers, as-of prices, unknown never invented), per-channel share and a two-question card ship as OTAs after approval. Deferred: verdict cache, auth throttles, judge loop, live web_search, operator capture.",
+ "milestones": [
+  {
+   "id": "M0",
+   "title": "Inherited work and the speed baseline",
+   "goal": "Finish B4 under the harness and record the build-3 baseline that every later budget is judged against.",
+   "exit_metric": "B4 PR merged on green with flag-OFF identity. BASELINE_S81.json holds build-3 cold start p50 (n>=5), comparison_wall_time p50/p95, stage_timings_ms per stage, /health p95 and loop_lag_max_60s_ms over 48 h, each with n, window and source."
+  },
+  {
+   "id": "M1",
+   "title": "Unstalled platform",
+   "goal": "Remove the loop stalls that make every budget under 5 s unreachable (/health p95 8.37 s, usage_status p50 4.2 s).",
+   "exit_metric": "48 h canary: /health p95 < 1.0 s, loop_lag_max_60s_ms p95 < 1.0 s, usage_status p50 < 0.5 s. Partials carry stage_timings_ms."
+  },
+  {
+   "id": "M2",
+   "title": "Haiku brain ready (dark) and legal staged",
+   "goal": "A per-role Claude adapter with measured latency and quality, and the legal and consent v3 text ready for the flip window.",
+   "exit_metric": "Adapter merged with every role flag OFF and byte-identical. The spike records Haiku thinking-off TTFT and end-to-end p50/p95 at our prompt sizes. Haiku is at least at parity with gpt-4o on smoke20 plus the 60-case fragrance gold set. The 100-case moderation set shows parity. The owner approves the staged legal text."
+  },
+  {
+   "id": "M3",
+   "title": "KB-first serve",
+   "goal": "Known pairs come from the owned KB with no search or scrape on the request path, and cold fills move off-path.",
+   "exit_metric": "On canary: KB-hit whole-response p95 < 10 s and cold p95 < 25 s (stage_timings_ms); KB card read p95 < 400 ms. Daily single and pair hit rates and per-field completeness are reported. Zero Tier-3 or uncited values in kb_*."
+  },
+  {
+   "id": "M4",
+   "title": "Fair gate and honest surfaces",
+   "goal": "The 3/day device rule with a Riyadh reset, out-of-scope refusals near zero cost, the three-chip home, no fabricated numbers, and Q1 feedback.",
+   "exit_metric": "Device quota live with the reset time shown. A refusal costs at most one Haiku parse. A grep pin finds zero fabricated numbers in en/ar. Q1 answer rate measured for 7 days."
+  },
+  {
+   "id": "M5",
+   "title": "Progressive paint, share, 1.0.1",
+   "goal": "Real progressive results over SSE, per-channel share, and the native speed and share items in 1.0.1.",
+   "exit_metric": "On the phone, the first product card p50 is < 3 s on a KB hit and < 12 s cold. share_target_opened is recorded per channel. 1.0.1 is submitted with provider-neutral strings and Notes for Review."
+  }
+ ],
+ "units": [
+  {
+   "id": "B4",
+   "title": "B4 URL-MODE-V2 finish (fix round 3, adversaries, PR)",
+   "milestone": "M0",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_URL_MODE_V2",
+   "files": [
+    "app/services/url_extraction_service.py",
+    "app/api/url_routes.py",
+    "app/middleware/error_handler.py",
+    "tests/test_s80_url_mode_v2.py",
+    "tests/test_model_config_enforced.py",
+    "tests/test_retro_w2_1.py",
+    "tests/test_prompt_fence.py"
+   ],
+   "scope": "In worktree sc-s80-b4 (83daa8cb): write RULINGS_FIX3_B4, run fix round 3 and two adversaries (correctness, engineering), rebase onto origin/main 95cf6f86, run the post-rebase gates, open the PR via pr_rest.py, merge on green. The R-A7 contract is unchanged: pre-gate before reserve, typed codes with field/reason, 25 s deadline -> TIMEOUT, STORE_UNREADABLE, UNRESOLVED_PRODUCT, JSON-LD image normalisation, plain httpx with no impersonation. Also fixes link-mode images and product info.",
+   "tests": [
+    "Flag-OFF identity: the W4-13 ledger fixture and the test_retro_w2_1 400 pins are unchanged",
+    "One RED row per fix-3 finding, green after the fix",
+    "Post-rebase full re-run of tests/test_s80_url_mode_v2.py",
+    "Pins that redden after the rebase over #365: test_model_config_enforced count, test_prompt_fence digest, w4_11 prompt digest recorder (re-recorded deliberately)"
+   ],
+   "preconditions": [
+    "Owner decision 1"
+   ],
+   "risk": "The rebase over B3 (#365) collides on the model-config and prompt-digest pins, so the post-rebase gate re-records them and states each change."
+  },
+  {
+   "id": "MS1",
+   "title": "Speed baseline before any speed claim",
+   "milestone": "M0",
+   "lane": "ops",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "sc-docs-70/docs/investigations/2026-10-22-session-81-state/runs/baseline/BASELINE_S81.json"
+   ],
+   "scope": "No code. (a) The owner times TestFlight build 3: 5 cold starts (tap to usable Home) and 5 compares per input type (tap to result). (b) Sentry 14 d: comparison_wall_time, /health and usage_status p50/p95, loop_lag_max_60s_ms. (c) stage_timings_ms per stage over 20 organic rows. (d) Owner SQL: daily organic volume, share of products already in product_specs/product_reviews, pg_policies on the 012 tables. (e) Names of the prod flags that are set.",
+   "tests": [
+    "Every number carries n, window and source; the reviewer rejects bare figures",
+    "Byte sweep: no secret or personal value in the file",
+    "Flag states recorded as names only (present or absent)"
+   ],
+   "preconditions": [
+    "Owner action 2"
+   ],
+   "risk": "10% Sentry sampling leaves small n per route, so per-route p50s are marked low-confidence and re-read after ST1."
+  },
+  {
+   "id": "ST1",
+   "title": "LOOP-STALL fix on the usage and review paths",
+   "milestone": "M1",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_USAGE_PATH_OFFLOOP",
+   "files": [
+    "app/services/usage_service.py",
+    "app/api/usage_routes.py",
+    "app/services/review_service.py",
+    "app/utils/db_offload.py",
+    "app/main.py",
+    "app/services/structured_comparison_service.py",
+    "tests/test_s81_usage_path_offloop.py",
+    "tests/test_health_loop_lag.py"
+   ],
+   "scope": "Flag ON: get_usage_status and check_usage_allowed send their Supabase reads through run_db and their Upstash GETs (_get_redis_count) to the redis_offloop pool in one gather. review_service L1 get/set run off the loop. The loop-lag heartbeat logs in-flight route names (no ids) when lag > 1 s. Partials carry stage_timings_ms under DEBUG_STAGE_TIMINGS. Flag OFF: byte-identical. Ops: canary the existing ENABLE_SYNC_DB_OFFLOAD alone first, then this flag.",
+   "tests": [
+    "Flag-OFF identity: get_usage_status dict and call order equal to base across 6 tier/bonus/lifetime states",
+    "Flag ON: no Upstash or Supabase call runs on the loop thread (thread-id probe)",
+    "The lifetime-free display rule is kept under the gather",
+    "Partial stage_timings_ms appears only with both the flag and DEBUG_STAGE_TIMINGS",
+    "Pins that may redden: test_usage_service_internals mock call order, test_health_loop_lag heartbeat log shape"
+   ],
+   "preconditions": [
+    "MS1 recorded"
+   ],
+   "risk": "The redis_offloop pool (16 workers) is shared with the price path, so usage reads can queue behind catalog GETs; the canary watches pool wait time."
+  },
+  {
+   "id": "LG1",
+   "title": "Legal unit and consent v3 (staged, published at the flip)",
+   "milestone": "M2",
+   "lane": "docs-legal",
+   "kind": "docs-legal",
+   "flag": "none",
+   "files": [
+    "app/legal/privacy_policy.md",
+    "app/legal/privacy_policy_ar.md",
+    "app/legal/terms_of_service.md",
+    "app/legal/terms_of_service_ar.md",
+    "app/legal/processors.json",
+    "SmartCompareApp/src/services/aiConsent.ts",
+    "SmartCompareApp/src/components/AiConsentSheet.tsx",
+    "landing/privacy.html"
+   ],
+   "scope": "Every OpenAI mention in both policies and both Terms, EN and AR (privacy s2, 3.2, 3.3, 3.6, 4, 5, 7, 8; Terms licence, s4, s9), moves to Anthropic. Adds 30-day and 29-day Batch retention, the search subprocessor, the PDPL art 12-13 transfer basis, the minors policy, device-counter and auth TTLs, the 3/day device rule with Riyadh reset, referral text, the Sponsored label and preview caches. Consent v3 copy with the sha fence and device keying; landing mirrors. Staged until the flip.",
+   "tests": [
+    "aiConsentVersion.s69 bumps to 3 deliberately (pin reddens); the sha fence is re-recorded",
+    "Grep pin: zero 'OpenAI' in app/legal and the consent copy",
+    "EN/AR section-anchor parity for both policies and both Terms",
+    "processors.json schema test names Anthropic and the search subprocessor",
+    "nativeStrings.b3a stays unchanged (Info.plist strings wait for NT1)"
+   ],
+   "preconditions": [
+    "Owner decisions 9 and 10",
+    "Counsel review (owner action 6)"
+   ],
+   "risk": "Publishing before the Anthropic flip would misstate the live processor, so the text goes live in the same window as the first role flip."
+  },
+  {
+   "id": "AD1",
+   "title": "PROVIDER-ADAPTER per role, plus a request-context middleware",
+   "milestone": "M2",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_ANTHROPIC_ROLE_{PARSE,VISION,VERDICT,CRITIC,MODERATION}",
+   "files": [
+    "app/services/llm_router.py",
+    "app/services/api_budget_service.py",
+    "app/services/model_config.py",
+    "app/services/llm_pricing.py",
+    "app/middleware/request_context.py",
+    "requirements.in",
+    "tests/_env_safety.py",
+    "tests/test_s81_llm_router.py"
+   ],
+   "scope": "A wrapper above guarded_llm_create (flag OFF = exact pass-through) routes each role to claude-haiku-5-5. Settings: thinking disabled, no temperature, output_config.format for JSON, image blocks for vision. Text/JSON sites get an OpenAI-shaped result. SDK retries capped, 529 mapped, Anthropic error text kept away from the extraction_service.py:2665-2678 fallback, one breaker per provider. Routes only when consent >= 3, read from the request-context middleware. Covers the 16-site census.",
+   "tests": [
+    "Flag-OFF identity: with every role OFF, guarded_llm_create gets identical kwargs on a recorded corpus",
+    "Pins that redden: test_u3c_store_false_pin 01/01b/01c/02, test_model_config_enforced (>= 15), test_cost_meter_s74",
+    "Consent < 3 or absent keeps the OpenAI path with the flag ON",
+    "ANTHROPIC_API_KEY is in CREDENTIALS_UNSET and the netguard blocks api.anthropic.com; SR8 pins AnthropicIntegration(include_prompts=False)",
+    "Census pin: wrapper call sites == 16 chat + 1 moderation; error table 400/401/429/500/529/refusal -> typed codes"
+   ],
+   "preconditions": [
+    "B4 merged",
+    "ST1 merged (both touch app/main.py)",
+    "SDK release >= 14 days old via requirements.in, lock recompiled, pip-audit clean"
+   ],
+   "risk": "Sixteen call sites move in one PR; a missed site would quietly stay on OpenAI after the flip, so the census pin counts them."
+  },
+  {
+   "id": "KB1",
+   "title": "KB-SCHEMA: migrations 045/046, kb_product_card RPC, keys",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "none (inert until ENABLE_KB_INGEST / ENABLE_KB_FIRST_SERVE)",
+   "files": [
+    "migrations/045_kb_core.sql",
+    "migrations/046_revoke_012_anon_write.sql",
+    "migrations/rollback/045_kb_core_down.sql",
+    "app/services/kb_service.py",
+    "app/services/kb_keys.py",
+    "tests/test_s81_kb_schema.py",
+    "tests/test_s81_kb_keys.py"
+   ],
+   "scope": "045: kb_products (kb_product_id = spine_key brand axis + identity tokens minus padding, no ml), kb_variants (concentration + ml), kb_offers (price, observed_currency, evidence rung, fetched_at, canonical url), kb_images (url + provenance), kb_merchants (status, blocked_reason, robots_state, tos, deny, unused CTA fields), kb_reviews (aggregate only), service-role RLS, and a kb_product_card RPC that returns two ids in one call. 046: REVOKE 012 writes, with a postcheck.",
+   "tests": [
+    "RLS enabled with service-role-only policies (044 pattern static test)",
+    "Sized and sizeless queries map to one kb_product_id; ml moves to the variant",
+    "The 44 held fragrances key without collision; Maison Margiela Replica keys normally",
+    "The RPC returns both cards or nulls in one round trip (fake PostgREST)",
+    "The 046 postcheck fails while any 012 USING(true) policy remains; an AST pin allows kb_service imports only from flagged callers"
+   ],
+   "preconditions": [
+    "MS1 pg_policies result",
+    "Owner applies 045 then 046"
+   ],
+   "risk": "A wrong kb_product_id rule merges or splits juices and every later card inherits it, so the key is pinned on the held set before any write."
+  },
+  {
+   "id": "MS2",
+   "title": "Anthropic spike, flip gate and quality evals",
+   "milestone": "M2",
+   "lane": "ops",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "sc-docs-70/docs/investigations/2026-10-22-session-81-state/runs/anthropic_spike/SPIKE_S81.json",
+    "evals/fragrance_gold_60.json"
+   ],
+   "scope": "Owner-approved spend. Models API capabilities for claude-haiku-5-5. 20 calls per setting (Haiku thinking off; Sonnet between_tools; one web_search turn; web_search with output_config) at real prompt sizes, recording TTFT, end-to-end time and usage. count_tokens on 20 saved fragrance compares. Cache read share at real spacing. Haiku vs gpt-4o on smoke20 and the 60-case fragrance gold set (winner mismatch, refusals). 100-case moderation parity. A Haiku-then-Sonnet arm.",
+   "tests": [
+    "Every figure carries n, window and the model id",
+    "Timeouts (classify 4 s, VISION 20 s, TAIL_RESERVE 6.5 s) re-derived as p95 plus margin",
+    "Flip gate stated numerically (latency, WINNER_INDEX_MISMATCH rate, refusal rate)",
+    "Prompts carry only synthetic or held-corpus data (no user rows)"
+   ],
+   "preconditions": [
+    "AD1 merged",
+    "Owner action 3 (workspace and key)"
+   ],
+   "risk": "20 calls cannot show tail latency, so the flip timeouts stay provisional until the first canary's stage_timings."
+  },
+  {
+   "id": "RG1",
+   "title": "REGISTRY-STATE, live robots gate, DENY_HOSTS, blocked list",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_LIVE_ROBOTS_GATE + ENABLE_DENY_HOSTS",
+   "files": [
+    "scripts/cron_registry_robots.py",
+    "app/services/registry_state.py",
+    "app/services/source_router.py",
+    "app/services/rating_service.py",
+    "app/api/admin_routes.py",
+    "tests/test_s81_registry_robots.py",
+    "tests/test_s81_deny_hosts.py"
+   ],
+   "scope": "An off-clock cron seeds kb_merchants from bh_gcc_sources.json plus the literal rows (fragrantica and parfumo excluded), fetches robots as QarenBot, and persists robots_state, the platform probe and blocked_reason (challenge, unreadable, dead, denied). Flag ON: live fetchers read the persisted verdict (5-15 min memo, never an inline fetch); a missing or expired entry = skip + queue. One DENY_HOSTS constant feeds RATING_TIER_2, source_router and ingest. Admin view of blocked hosts.",
+   "tests": [
+    "Flag-OFF identity: SOURCE_REGISTRY and RATING_TIER_2 byte-identical",
+    "Unreadable, 5xx or timed-out robots = disallow (fail-closed)",
+    "Missing entry = skip + queue; the netguard proves no inline robots fetch",
+    "Pins that redden with ENABLE_DENY_HOSTS ON only: test_m6_c5_judgeme_html_reviews and the fragrantica tier pins",
+    "The admin view needs the admin key and lists host names only"
+   ],
+   "preconditions": [
+    "KB1 applied"
+   ],
+   "risk": "Live adapters impersonate Chrome while robots is judged as QarenBot, so the gate stays OFF until an off-clock capture under the named UA and an owner ruling."
+  },
+  {
+   "id": "KB2",
+   "title": "KB-INGEST at the moderated success exit",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_INGEST",
+   "files": [
+    "app/services/kb_ingest.py",
+    "app/services/structured_comparison_service.py",
+    "tests/test_s81_kb_ingest.py",
+    "tests/test_s81_kb_ingest_exits.py"
+   ],
+   "scope": "Flag ON (needs ENABLE_SYNC_DB_OFFLOAD): one kb upsert RPC per compare via to_thread at the success exit AFTER moderation (REST ~:4706, stream before the complete yield ~:5564). Writes only identity-confidence-high cards, canonical URLs on robots-allow registry hosts, cited retrieved values (no Tier-3, no uncited Tier-2) and stored price candidates. Never writes link-mode non-registry URLs or placeholders. Its own guard fixes the Replica/infused/lv false drops. Flag OFF: identical.",
+   "tests": [
+    "Flag-OFF identity: verify_flag_byte_identity.py base->head->base on the recorded corpus",
+    "Moderation-blocked and timeout-partial exits write nothing",
+    "Tier-3, uncited Tier-2 and placeholder values are rejected; robots-disallow hosts are never written",
+    "A write failure never changes the response; added latency < 5 ms",
+    "Pins that may redden: exit fire_and_forget counts in test_streaming and test_text_routes_sse_contract"
+   ],
+   "preconditions": [
+    "KB1 applied",
+    "RG1 robots state seeded",
+    "ENABLE_SYNC_DB_OFFLOAD ON after the ST1 canary",
+    "AD1 merged (same lane)"
+   ],
+   "risk": "A confidently wrong identity written once is served fast forever, so cards carry a version and B2's identity rules gate the serve."
+  },
+  {
+   "id": "KB3",
+   "title": "KB-FILL-WORKER: seed plus on-demand enrichment service",
+   "milestone": "M3",
+   "lane": "backend-B",
+   "kind": "data-offclock",
+   "flag": "ENABLE_KB_ENRICH_WORKER",
+   "files": [
+    "app/workers/kb_worker.py",
+    "app/services/kb_extract.py",
+    "app/services/kb_fetcher.py",
+    "scripts/cron_kb_seed.py",
+    "railway.kbworker.json",
+    "tests/test_s81_kb_worker.py",
+    "tests/test_s81_kb_seed.py"
+   ],
+   "scope": "A separate Railway worker (warmer pattern). Seed: Haiku via Batch (thinking off, output_config JSON) over the held corpora (a port of seed_spec_spine.py), then the 24 feed hosts, Bahrain first; key per juice, provenance per field; skips pages that link Fragrantica, Parfumo or Basenotes. On demand: a Redis single-flight queue of misses and stale prices, served by a QarenBot fetcher (4 s timeout, persisted robots, no fallback adapter). Image checks run off-clock. Daily USD cap.",
+   "tests": [
+    "Flag OFF: the worker exits without any network call",
+    "Robots-disallow or blocked hosts are never fetched; per-host spacing honours crawl-delay",
+    "The daily spend cap stops the run at the cap (fake ledger)",
+    "Single-flight: two enqueues of one key = one fetch",
+    "Values without a citation are dropped; the u3c AST rule keeps the Batch submitter under scripts/cron_*"
+   ],
+   "preconditions": [
+    "AD1 merged",
+    "KB1 applied",
+    "RG1 seeded",
+    "MS2 batch usage measured",
+    "Owner spend yes"
+   ],
+   "risk": "A malformed feed walk could hammer one merchant, so the fetcher enforces per-host spacing and stops on the first challenge."
+  },
+  {
+   "id": "CL1",
+   "title": "CLIENT-HEADERS, fingerprint v2 and as-of price render",
+   "milestone": "M4",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "none (first post-approval OTA)",
+   "files": [
+    "SmartCompareApp/src/services/api.ts",
+    "SmartCompareApp/src/services/deviceFingerprint.ts",
+    "SmartCompareApp/src/services/referralService.ts",
+    "SmartCompareApp/src/services/usageService.ts",
+    "SmartCompareApp/src/components/results/ResultsContent.tsx",
+    "SmartCompareApp/src/i18n/en.json",
+    "SmartCompareApp/src/i18n/ar.json",
+    "SmartCompareApp/__tests__/api.headers.s81.test.ts"
+   ],
+   "scope": "The axios interceptor, the camera raw fetch (both attempts), the SSE headers and /usage/status send four headers. X-Device-Fingerprint: Keychain UUID with IDFV fallback, no osBuildId; a dual-hash transition keeps users.device_fingerprint_hash and the referral SAME_DEVICE check working. Also X-AI-Consent-Version, X-Compare-Request-Id and X-Client-Capabilities: price_asof. Price rows show 'as of {date}' when price_checked_at is present; without it the UI is today's.",
+   "tests": [
+    "Every metered request carries the four headers (interceptor, camera both attempts, SSE, usage)",
+    "The old hash is still sent in the register and share bodies during the transition",
+    "Build-3 identity: absent price_checked_at renders today's tree",
+    "Pins that redden: api.streamComparison.expoFetch header asserts, ShareBottomSheet.deviceFingerprint.w3-3",
+    "No URL or id in any event payload; the full jest suite holds the base count"
+   ],
+   "preconditions": [
+    "App Review approval before the OTA",
+    "AD1 middleware deployed"
+   ],
+   "risk": "Closing the dual-hash window early would break referral SAME_DEVICE matching, so the old hash keeps flowing until the backend stops reading it."
+  },
+  {
+   "id": "KB4",
+   "title": "KB-FIRST-SERVE pair-level early return",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_KB_FIRST_SERVE",
+   "files": [
+    "app/services/structured_comparison_service.py",
+    "app/services/kb_serve.py",
+    "app/services/price_freshness.py",
+    "app/services/response_builder.py",
+    "tests/test_s81_kb_first_serve.py",
+    "tests/test_s81_price_freshness.py"
+   ],
+   "scope": "Flag ON (needs SYNC_DB_OFFLOAD): one kb_product_card RPC for both products before _fetch_product_data. A full hit skips unified search, the specs/reviews LLM, smart fallback, Tier 2/3, and the image and rating races. Stored candidates feed reconcile_pair_fairness. Price is served with its age (build 3: 24 h/7 d; up to 30 d only with price_asof); stale prices go to a worker refresh. Adds price_checked_at and store_count; logs the would-hit verdict key.",
+   "tests": [
+    "Flag-OFF identity via verify_flag_byte_identity.py",
+    "Full hit: zero Serper, scraper or spec-LLM calls (netguard counts)",
+    "Fairness re-selects from stored candidates, so no pending price",
+    "Build 3 never gets a past-TTL price without the capability header; prod cap stays 30 s",
+    "Pins that may redden: per-product race order in test_streaming and the CD-interactions fairness pins"
+   ],
+   "preconditions": [
+    "KB2 merged and populating",
+    "KB3 seeded",
+    "ST1 canary done",
+    "MS2 timeouts"
+   ],
+   "risk": "The early return skips the fact_check and confidence legs, so data_coverage and confidence must come from the card, not from defaults that read as low data."
+  },
+  {
+   "id": "QG1",
+   "title": "GATE-BEFORE-COMPARE: device quota, Riyadh reset, $0 scope refusal",
+   "milestone": "M4",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_DEVICE_QUOTA + ENABLE_FRAGRANCE_SCOPE_GATE",
+   "files": [
+    "app/services/usage_service.py",
+    "app/services/category_scope.py",
+    "app/api/text_routes.py",
+    "app/api/image_routes.py",
+    "app/middleware/error_handler.py",
+    "tests/test_s81_device_quota.py",
+    "tests/test_s81_scope_gate.py"
+   ],
+   "scope": "Quota: one Upstash Lua EVAL per consume (account-daily + device-daily, EXPIREAT Asia/Riyadh midnight from ONE date-key helper shared by consume, the refund fallback and status). Device INCR runs before the lifetime-free branch; device keys are HMAC(pepper); refunds know the device key; retry_after and resets_at are allow-listed. Scope: a $0 pre-consume refusal only on a positive non-fragrance word; a lexicon or KB match proceeds; refusal budget 10/day/device, then 429.",
+   "tests": [
+    "Flag-OFF identity: UTC keys, TTLs and responses byte-identical",
+    "Exactly one EVAL per consume; two accounts on one device share the 3",
+    "Refund decrements the device key; the demo account and the smoke harness are exempt",
+    "A brand-only query ('Lattafa Asad') is not refused before consume",
+    "Pins that redden with flags ON only: test_usage_tiers and test_usage_device_inheritance key formats"
+   ],
+   "preconditions": [
+    "ST1 merged",
+    "AD1 request context",
+    "LG1 Terms v3 live before the flip",
+    "Owner referral-reward ruling"
+   ],
+   "risk": "Upstash is a single point of failure and consume fails open, so the unit adds an outage metric and records the limit."
+  },
+  {
+   "id": "CL2",
+   "title": "CLIENT-SPEED levers (ship with the first KB-first canary)",
+   "milestone": "M3",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "none",
+   "files": [
+    "SmartCompareApp/src/screens/HomeScreen.tsx",
+    "SmartCompareApp/src/screens/ResultsScreen.tsx",
+    "SmartCompareApp/src/screens/HistoryScreen.tsx",
+    "SmartCompareApp/App.tsx",
+    "SmartCompareApp/metro.config.js",
+    "SmartCompareApp/__tests__/metro.cacheVersion.pb1.test.ts",
+    "SmartCompareApp/.gitignore"
+   ],
+   "scope": "Home floor (MIN_LOADING_MS 1200): skipped under 300 ms, else 400 ms. The 800 ms reveal is cut on a fast hit. Image.prefetch both image_urls at result arrival, bounded and never awaited. History SWR in memory per user (cleared on sign-out, busted on delete, focus refetch throttled to 30 s). No /health ping per focus. Boot reads via Promise.all. getSentryExpoConfig({includeWebReplay:false}) with the P-B1 fence amended (cacheVersion kept). Gitignore .expo/atlas.jsonl.",
+   "tests": [
+    "Floor and reveal pins updated deliberately (HomeScreen floor tests, ResultsScreen reveal)",
+    "History SWR is keyed per user and cleared on sign-out; the A12 filter-ref and deleted-ids pruning pins stay green",
+    "The P-B1 fence still pins cacheVersion after the metro change",
+    "Atlas .hbc byte diff recorded before and after (gate)",
+    "nativeBundle.w37 d5/k2/k4/k5 remain the only failures; no .snap in the diff"
+   ],
+   "preconditions": [
+    "KB4 on canary",
+    "App Review approval"
+   ],
+   "risk": "Cut floors on a slow response make the checklist flash, so the skip applies only to results that arrive in under 300 ms."
+  },
+  {
+   "id": "MS3",
+   "title": "KB canary, latency budgets and completeness",
+   "milestone": "M3",
+   "lane": "ops",
+   "kind": "measurement",
+   "flag": "none",
+   "files": [
+    "sc-docs-70/docs/investigations/2026-10-22-session-81-state/runs/kb_canary/KB_CANARY_S81.json"
+   ],
+   "scope": "Across the KB_INGEST then KB_FIRST_SERVE canaries (one window each): KB read hit/miss p50/p95; whole-response p50/p95 for KB-hit vs cold from stage_timings_ms; single and pair hit rates per day; the would-hit verdict key rate; per-field completeness per product and per pair (identity, image, price with freshness, size, concentration, specs, rating, reviews); gap-queue depth; worker spend. The results decide the verdict-cache and web_search deferrals.",
+   "tests": [
+    "Budgets judged against MS1 with n >= 50 compares per arm",
+    "Rollback rule: p95 regress > 10% or any Tier-3 value in kb_* = flag OFF",
+    "n, window and source on every figure"
+   ],
+   "preconditions": [
+    "KB2 and KB4 canaried after approval"
+   ],
+   "risk": "Low daily volume makes p95 noisy, so each canary window runs until it reaches n."
+  },
+  {
+   "id": "B2",
+   "title": "B2 RESULT-GATE re-specified on the KB brain",
+   "milestone": "M3",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_RESULT_GATE",
+   "files": [
+    "app/services/result_gate.py",
+    "app/services/structured_comparison_service.py",
+    "app/api/image_routes.py",
+    "app/services/response_builder.py",
+    "tests/test_s81_result_gate.py"
+   ],
+   "scope": "Re-spec of S80 B2, taking the reviewed spec, BL1/BL2, Q1-Q7 and Q-R1..R7 as inputs. Abstain when the KB card plus identity resolution cannot support a winner. Reasons: placeholder_identity, same_identity, category_conflict, out_of_scope_category, no_evidence. The out-of-scope refusal runs right after _resolve_pair_category, before _fetch_product_data, with a refund and the device refusal budget. Every exit follows R-A3; non-supported rows never seed the KB.",
+   "tests": [
+    "Flag-OFF identity on the recorded corpus",
+    "The out-of-scope refusal never reaches _fetch_product_data (spy), refunds, and counts toward the refusal budget",
+    "The camera pre-compare refusal uses the existing action:'error' body with the refund latch",
+    "The abstain rate is reported on the R0 offline tally",
+    "S80 B1 result_status pins and test_s80_b3 camera pins stay green"
+   ],
+   "preconditions": [
+    "ENABLE_RESULT_STATUS_METADATA flipped with the abstain rate measured",
+    "KB4 merged",
+    "QG1 merged (image_routes)"
+   ],
+   "risk": "Over-abstaining on thin cards would show 'no winner' often, so the flip waits for MS3's canary abstain rate."
+  },
+  {
+   "id": "SF1",
+   "title": "SURFACES-BE: feedback v2, events, fragrance feeds, remote chips",
+   "milestone": "M4",
+   "lane": "backend-B",
+   "kind": "backend-dark",
+   "flag": "ENABLE_FEEDBACK_V2 + ENABLE_FRAGRANCE_FEEDS + ENABLE_SURFACES_FIELD",
+   "files": [
+    "migrations/047_feedback_v2_share_targets.sql",
+    "app/api/feedback_routes.py",
+    "app/api/referral_routes.py",
+    "app/api/home_routes.py",
+    "app/api/version_routes.py",
+    "app/services/feedback_service.py",
+    "tests/test_s81_feedback_v2.py",
+    "tests/test_s81_surfaces.py"
+   ],
+   "scope": "047: comparison_feedback gains identity_correct, wrong_side, preference and price_correct, and useful becomes nullable (after a live schema check). compare_request_id goes on comparison_feedback, user_events and search_logs. The share_target CHECK and Literal widen (sms, email, instagram, tiktok). Events gain coming_soon_tap, share_target_opened and share_channel_selected, with per-type schemas and no URLs. Smart pick, trending and History filter to fragrances. /app/version adds surfaces.",
+   "tests": [
+    "Flag-OFF identity: /feedback, /events, /smart-pick, /trending and /app/version bodies unchanged",
+    "Pins that redden deliberately: test_events_allowlist_superset, test_feedback_allowlist_superset, test_version_routes (only with the flag ON)",
+    "The correction text is capped at 80 chars and never echoed",
+    "T23 OpenAPI fixture re-record stated",
+    "The 043 deletion cascade covers the new columns"
+   ],
+   "preconditions": [
+    "KB1 (migration order)",
+    "Owner applies 047"
+   ],
+   "risk": "Anonymous /feedback and /events can be forged, so their rows feed measurement only and never auto-apply to the KB."
+  },
+  {
+   "id": "CL3",
+   "title": "HONEST-UI: three-chip home, no fake numbers, two-question card",
+   "milestone": "M4",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "server ENABLE_SURFACES_FIELD (surfaces.coming_soon_chips)",
+   "files": [
+    "SmartCompareApp/src/components/CategorySelector.tsx",
+    "SmartCompareApp/src/components/HomeEditorialSections.tsx",
+    "SmartCompareApp/src/components/hero/LoadingRings.tsx",
+    "SmartCompareApp/src/components/results/ResultsContent.tsx",
+    "SmartCompareApp/src/screens/InviteeQuizScreen.tsx",
+    "SmartCompareApp/src/components/FeedbackCard.tsx",
+    "SmartCompareApp/src/i18n/en.json",
+    "SmartCompareApp/src/i18n/ar.json"
+   ],
+   "scope": "Chips read /app/version surfaces. Absent or false (any review window): one Fragrances chip and 'Fragrances only for now'. True: Fragrances plus Skincare and Makeup as enabled-but-inert coming-soon chips (toast + coming_soon_tap); the other six hidden. Removes CohortBadge (Results, ReferralLanding), LoadingRings 2074, InviteeQuiz 78, '30 seconds' and 'shopped smarter'. FeedbackCard Q1 'right products?' Yes/No/Not sure (+ side, 80-char fix); Q2 'Which would you buy?' behind a constant.",
+   "tests": [
+    "Build-3 identity: absent surfaces gives a single Fragrances chip",
+    "Pins that redden deliberately: CategorySelector.test 9 testIDs, HomeScreen.bundleE.s3.integration mock, honestCopy.b3a r32, ResultsContent.render.test:213,250, InviteeQuizScreen.matchScore.m18:165-167, FeedbackCard.designChips",
+    "Grep pin: no fabricated number literals (73%, {{count}}+, 2074, 78, 30 seconds) in en/ar",
+    "The LoadingRings snapshot changes only by ruling (no jest -u)",
+    "Coming-soon tap fires the event with no URL and no id"
+   ],
+   "preconditions": [
+    "SF1 deployed",
+    "App Review approval for the OTA",
+    "Notes for Review describe the narrowing for 1.0.1"
+   ],
+   "risk": "Under Apple 2.1(a), coming-soon chips during a review window read as placeholder content, so the server flag must be OFF before every submission."
+  },
+  {
+   "id": "SS1",
+   "title": "SSE per-product events (backend half of progressive paint)",
+   "milestone": "M5",
+   "lane": "backend-A",
+   "kind": "backend-dark",
+   "flag": "ENABLE_SSE_PRODUCT_EVENTS",
+   "files": [
+    "app/services/structured_comparison_service.py",
+    "app/api/text_routes.py",
+    "tests/test_text_routes_sse_contract.py",
+    "tests/test_streaming.py",
+    "tests/test_s81_sse_product_events.py"
+   ],
+   "scope": "Flag ON: the stream emits an additive product_card event per product (identity, core specs, image, kb_hit) as each one resolves; on a KB hit that is right after the card RPC. Prices, scores and first_paint stay at the pair barrier, after the fairness, prescoring and region guards. The verdict event carries only whole, moderated text. The flip is paired with canaried ENABLE_PREVERDICT_DISCONNECT_ABORT + ENABLE_FULL_STREAM_DEADLINE (never with HONEST_PARTIAL_SCORING) and the TG re-ruling.",
+   "tests": [
+    "Flag-OFF identity: the event sequence and bytes are unchanged in test_text_routes_sse_contract and test_streaming",
+    "product_card never carries a price and always precedes prices",
+    "With abort ON, a disconnect before the verdict pays no verdict call",
+    "Pins that may redden: the SSE event-type list, test_m13_35_sse_disconnect_finally, the CD-interactions-02 fairness pin"
+   ],
+   "preconditions": [
+    "KB4 merged",
+    "QG1 merged (text_routes)",
+    "Disconnect-abort and full-stream-deadline canaried",
+    "S78-TG re-ruling"
+   ],
+   "risk": "A client that mishandles the new event could double-render; build 3 never opens SSE, so only CL5 consumes it."
+  },
+  {
+   "id": "CL4",
+   "title": "SHARE-FLOW per channel plus landing OG",
+   "milestone": "M5",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "none",
+   "files": [
+    "SmartCompareApp/src/components/ShareBottomSheet.tsx",
+    "SmartCompareApp/src/screens/ResultsScreen.tsx",
+    "SmartCompareApp/src/services/shareMessage.ts",
+    "landing/open.html",
+    "landing/index.html",
+    "landing/ar/index.html",
+    "landing/Dockerfile",
+    "tests/test_landing_fallback_pages_s69.py"
+   ],
+   "scope": "The invite is created once, when the sheet opens. A per-channel builder (wa.me, t.me, X intent under 250 chars, sms:, mailto:, Copy via expo-clipboard + toast, More) uses Linking.openURL directly, with a Share.share fallback. EN/AR templates keep the link alone on the last line and include only fields the show_name/show_result/show_reasons toggles allow, on both paths. The text-only path links the landing; reward wording is removed. Landing: og:image, og:locale, open.html tags, Dockerfile COPY.",
+   "tests": [
+    "An openURL rejection falls back to Share.share",
+    "SMS, Email and More record share_target per SF1, else 'other'; share_target_opened fires per channel",
+    "Privacy toggles are honoured on the text-only path",
+    "Pins that redden deliberately: shareTruth.s74 CT1/CT2, ShareBottomSheet.redesign",
+    "test_landing_fallback_pages_s69 (/c/ try_files :45, APP_STORE_URL :102) stays green"
+   ],
+   "preconditions": [
+    "SF1 deployed",
+    "Owner referral-reward ruling",
+    "App Review approval",
+    "DNS getmyez.com pointing at landing"
+   ],
+   "risk": "Android always reports sharedAction, so share counts come from share_target_opened and redemptions, never from the sheet result."
+  },
+  {
+   "id": "CL5",
+   "title": "CLIENT-PROGRESSIVE: SSE flip and progressive cards",
+   "milestone": "M5",
+   "lane": "client",
+   "kind": "client-ota",
+   "flag": "ENABLE_EXPO_FETCH_SSE_DEFAULT (client constant)",
+   "files": [
+    "SmartCompareApp/src/config/features.ts",
+    "SmartCompareApp/src/services/api.ts",
+    "SmartCompareApp/src/screens/HomeScreen.tsx",
+    "SmartCompareApp/src/screens/LoadingScreenVariants.tsx",
+    "SmartCompareApp/src/components/results/ResultsContent.tsx",
+    "SmartCompareApp/__tests__/api.streamComparison.expoFetch.test.ts"
+   ],
+   "scope": "Once the #118 check proves that cert pinning rejects a mismatched cert under expo/fetch on both platforms: flip ENABLE_EXPO_FETCH_SSE_DEFAULT. Wire onProductCard, onPrices and onFirstPaint into a progressive loader: each product's name, image and core specs show on arrival, prices at the barrier. The crown is frozen per response and the checklist follows real events. One compare per tap (latch); an SSE 429 never triggers a second consume.",
+   "tests": [
+    "The SSE-OFF path is unchanged (identity)",
+    "Product cards render before prices; the crown never changes mid-screen",
+    "Latch: no second REST compare after a stream error that already consumed",
+    "Pins that redden: api.streamComparison.expoFetch and noBodyFallback, HomeScreen onSpecs/onPrices TTFB marks"
+   ],
+   "preconditions": [
+    "SS1 canaried",
+    "#118 device check (owner)",
+    "App Review approval"
+   ],
+   "risk": "expo/fetch may bypass the pinning hook; if the device check fails, the flip waits for 1.0.1 and the progressive UI stays behind the constant."
+  },
+  {
+   "id": "NT1",
+   "title": "NATIVE 1.0.1: neutral strings, image and font speed, share kits",
+   "milestone": "M5",
+   "lane": "client",
+   "kind": "native-1.0.1",
+   "flag": "none",
+   "files": [
+    "SmartCompareApp/app.json",
+    "SmartCompareApp/package.json",
+    "SmartCompareApp/src/components/primitives/ProductImage.tsx",
+    "SmartCompareApp/src/theme/fonts.ts",
+    "SmartCompareApp/src/components/ShareBottomSheet.tsx",
+    "SmartCompareApp/__tests__/b3a/nativeStrings.b3a.test.ts"
+   ],
+   "scope": "P0: provider-neutral photo and camera purpose strings (app.json:220,228, en/ar). Speed: expo-image in ProductImage (memory-disk cache, recyclingKey); Cairo 400/600/700 embedded via the expo-font plugin with the runtime font gate dropped; @sentry/react-native 8.10 with includeWebFeedback:false. Share: react-native-share with query schemes, Instagram Stories (FB App ID), a text-and-brand view-shot card, NSPhotoLibraryAddUsageDescription. Notes for Review and new screenshots.",
+   "tests": [
+    "nativeStrings.b3a updated deliberately: no 'OpenAI' in any purpose string",
+    "nativeBundle.w37 pins re-baselined on the new binary",
+    "Non-virtual jest mocks for expo-image and react-native-share",
+    "Arabic render with embedded Cairo checked on a device (owner)",
+    "Screenshots and copy show fragrances only"
+   ],
+   "preconditions": [
+    "Build 3 approved",
+    "LG1 live",
+    "Owner accepts the Meta Platform Terms"
+   ],
+   "risk": "Native bumps (Sentry 8.x, expo-image) can fail the EAS build or review; the kits sit behind JS checks so an OTA can remove them."
+  }
+ ],
+ "cut_or_deferred": [
+  "Verdict cache: the set_comparison_cache reuse was refuted, and with 3/day/device and personalised scores the hit rate is unmeasured and probably low. KB4 logs a would-hit key; MS3 decides.",
+  "Live web_search on a KB miss and nightly discovery: about $0.03 per compare and no published latency. The seed plus the feed walk reach about 2,000 fragrances without it (R15, inferred). Revisit after MS3.",
+  "Auth throttles (phases 1 and 2) and the secret-key GoTrue client: off the speed path; their disjoint files (auth_routes, auth_service, rate_limiter) suit the second orchestrator lane. The owner raises the Supabase dashboard limits now.",
+  "Learning loop (compare_runs, Haiku/Sonnet judge, nightly clustering, the Sonnet escalation flag): needs Q1 answers and compare_request_id joins first. MS2 measures the escalation arm offline.",
+  "Operator ingestion capture tool (bookmarklet plus the admin kb_ingest endpoint): RG1 ships the blocked list and admin view; capture follows per-host tos_reviewed_at.",
+  "Per-token /c/ OG preview route: copyright and crawler-cache risk against Privacy s6/s9. Static OG tags ship in CL4.",
+  "Camera identify-then-compare split, Snap Creative Kit and TikTok Share Kit: the split adds a round trip on an unmeasured vision leg; Snap needs its own SDK and review; TikTok gets copy-link only.",
+  "Reviews channel 1 (JSON-LD AggregateRating) and the compare_count honest number: data-quality items for after the KB; compare_count needs run aggregates. KB4 ships price_checked_at and store_count only."
+ ],
+ "owner_actions": [
+  "Approve this plan and the proposed spend caps: spike up to $5, Batch seed up to $10, a worker daily USD cap set from MS2.",
+  "Supply the MS1 inputs: build-3 device timings (5 cold starts, 5 compares per input type), the read-only SQL (organic volume, KB-hit proxy over product_specs/product_reviews, pg_policies on the 012 tables), and the names of the prod flags that are set.",
+  "Create the dedicated Anthropic Console workspace (web search restricted, limit at the $400 balance), add ANTHROPIC_API_KEY on Railway web by name, and say whether one already exists.",
+  "Canary ENABLE_SYNC_DB_OFFLOAD alone for 48 h, then ENABLE_USAGE_PATH_OFFLOOP. Both are result-neutral, so this can run before approval only on an explicit yes.",
+  "Apply migrations 045 and 046 (record the postcheck) after KB1 merges, and 047 after SF1 merges.",
+  "Have counsel review LG1 (PDPL transfer basis, minors, retention) and approve the staged text.",
+  "Give three rulings: referral rewards vs the single 3/day device rule; the live adapter UA after the QarenBot capture; image hotlinking with provenance vs re-hosting.",
+  "Run device checks on an EAS preview build: #118 cert pinning under expo/fetch on iOS and Android, WhatsApp canOpenURL, Arabic render with embedded Cairo.",
+  "After App Review approval, flip one canary at a time: legal publish + consent v3 and the CL1 OTA + Anthropic text roles -> KB_INGEST -> KB_FIRST_SERVE with the CL2 OTA -> device quota and scope gate (Terms v3 live) -> RESULT_GATE -> SSE events with CL5. Camera vision flips only on an explicit yes.",
+  "Before 1.0.1: accept the Meta Platform Terms (FB App ID), put the Play signing SHA-256 in assetlinks.json, set APP_STORE_URL, point DNS getmyez.com at landing, keep the review-window chip flag OFF, and write Notes for Review."
+ ]
+}

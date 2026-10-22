@@ -1,0 +1,231 @@
+{
+ "topic": "R3: Open-source patterns for an owned merchant registry and compliant product crawler",
+ "summary": "Answer: adopt patterns, not frameworks. The repo already has the parts that mature crawlers get wrong. robots_eval.py is RFC 9309-correct (groups merge, product-token matching) and fail-closed. sitemap_discovery_service skips any host whose robots is unreadable. The JSON-LD ladder walks @graph and ProductGroup.hasVariant. There are platform adapters for Shopify, Woo Store API, Salla, Magento GraphQL and OCC, and free curl_cffi prices 84% of Gulf sources.\n\nThe major frameworks are fail-OPEN on unreadable robots, which breaks the 2026-08-31 ruling:\n- Scrapy RobotsTxtMiddleware stores None on any fetch exception and then allows the request. It never checks the status code.\n- Crawlee-python maps 4xx (including WAF 403) and exceptions to allow-all. Only 5xx is deny.\nAdopting either means wrapping or overriding its robots layer. They also bring a second scheduler next to FastAPI. Firecrawl self-host is AGPL-3.0 and scored 0/9 in our own bake-off. crawl4ai was already rejected on measurement. ultimate-sitemap-parser is GPL-3.0. PriceBuddy's licence forbids commercial use. Discount-Bandit shows no licence at all.\n\nWorth adopting:\n1. Protego (BSD-3, maintained by Scrapy). Use it only as a cross-check oracle and for Crawl-delay/Request-rate parsing. robots_eval has no crawl-delay support, and Protego parses but never fetches, so our fail-closed fetch contract stays.\n2. extruct (BSD-3). Use as a microdata/RDFa/OG fallback after our own JSON-LD ladder.\n3. price-parser (BSD-3). Use as a cross-check for the structural last-separator plus ISO-4217 minor-unit rule. Never as the primary selector.\n4. Common Crawl CDX (index.commoncrawl.org, pywb API). Use for discovery only: url=*.host, matchType=domain, filter=status:200, filter=mime:text/html, output=json. One thread, sleep between calls, proper UA, back off on 503, and use the columnar index for bulk. It answers \"which PDP URLs exist on host X\" without touching X. The roster's earlier 1/12 rejection was about price, not discovery.\n\nRegistry delta: bh_gcc_sources.json rows (368) have no robots_state, crawl_delay, health, challenge or platform-confidence fields. Robots results are memoized per build, never persisted. Adding a per-host state record is the core of the owned registry.\n\nDiscovery stays compliant when it is search engine results + robots-declared sitemaps + CC CDX + brand store-locator/where-to-buy pages, and every new host goes through robots, then platform probe, then sample-PDP validation before it is marked live.\n\nScheduling: per-host concurrency 1. Delay = max(robots Crawl-delay, house floor of about 2 s). Exponential backoff on 429/503. Any Cloudflare/Akamai/WAF challenge sets challenge_flag and parks the host. Never retry with another identity.\n\nIdentity: robots is evaluated as QarenBot, but PDP fetches impersonate Chrome. The owned crawler should send an honest named UA with a contact URL, so the robots identity matches the fetch identity (klinq.com has a group that disallows the token Mozilla).",
+ "findings": [
+  {
+   "claim": "robots_eval.py is the repo's own RFC 9309 evaluator. It merges same-agent groups and matches by product token. Its two measured stdlib failures (scentsplit second * group, klinq User-agent: Mozilla) both fail open in urllib.robotparser. It has no Crawl-delay or Request-rate support.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:1-55 - docstring: merge rule, product token, caller contract",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:74 - NAMED_AGENT = \"QarenBot\"",
+    "grep -i crawl.delay over app/ returned no hits"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The fail-closed ruling is enforced in sitemap_discovery_service. The robots fetch is status-aware with the named UA, and any exception or non-2xx wall makes the whole build skip the host. The policy is memoized per build only, not persisted to the registry.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:364-456 - robots gate, _robots_policy memoized per build",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md:1-25 - 404/410 = allow-all; 403/5xx/timeout/wall = skip; scheduled re-read"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The current merchant registry row has 14 fields: domain, tier, weight, categories, mechanism, is_shopify, is_algolia, is_render_only, currency, country, genuine_method, sample_url, priority_rank, status. A search sub-record exists on 95 rows (kind, url_template, robots_allowed, discovered_via, resolved_at). No row has a robots fetch state, crawl delay, health counters, challenge flag or last-validated timestamp.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - 368 rows; key counter via python -I",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - mechanism '' on 247 rows; status live 275 / dead 61 / render-only 14 / provider-test-candidate 18"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Scrapy's RobotsTxtMiddleware is fail-OPEN. A robots fetch exception sets the parser to None, and the request then passes. Non-200 bodies (403, 5xx) go to the parser unchecked. It has no crawl-delay handling. Scrapy is BSD-3-Clause, about 65k stars, pushed 2026-10-22.",
+   "evidence": [
+    "https://raw.githubusercontent.com/scrapy/scrapy/master/scrapy/downloadermiddlewares/robotstxt.py - if rp is None: return (read 2026-10-22)",
+    "https://api.github.com/repos/scrapy/scrapy - BSD-3-Clause, 64948 stars (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Crawlee-python's RobotsTxtFile is fail-OPEN for our purposes. 4xx (including WAF 403) is allow-all, exceptions are allow-all, and only 5xx is deny-all. It uses Protego and exposes get_crawl_delay, truncated to int. Crawlee is Apache-2.0: Python about 9.6k stars, JS about 26k, both pushed in Oct 2026.",
+   "evidence": [
+    "https://raw.githubusercontent.com/apify/crawlee-python/master/src/crawlee/_utils/robots.py - 4xx Allow:/, 5xx Disallow:/, exception allow (read 2026-10-22)",
+    "https://api.github.com/repos/apify/crawlee-python - Apache-2.0, 9615 stars, pushed 2026-10-21",
+    "https://api.github.com/repos/apify/crawlee - Apache-2.0, 26220 stars, pushed 2026-10-22"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Protego is a parse-only RFC 9309 parser. It never fetches; fetch, status handling and caching are left to the caller. It supports crawl_delay, request_rate, visit_time, sitemaps and token-boundary agent matching. BSD-3-Clause, 94 stars, pushed 2026-10-20. reppy is MIT, last push 2024-01-12, so effectively unmaintained.",
+   "evidence": [
+    "https://raw.githubusercontent.com/scrapy/protego/master/README.rst - 'Fetching robots.txt is up to you' (read 2026-10-22)",
+    "https://api.github.com/repos/scrapy/protego - BSD-3-Clause, 94 stars",
+    "https://api.github.com/repos/seomoz/reppy - MIT, 196 stars, pushed 2024-01-12"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Firecrawl repo is AGPL-3.0. The self-hosted stack excludes Fire-engine, which carries the anti-bot, screenshot and action features. AGPL obligations apply if it is modified and offered over a network. The repo also measured Firecrawl at 0/9 because it requested cleaned html, and Firecrawl JSON/LLM mode fabricated data.",
+   "evidence": [
+    "https://api.github.com/repos/firecrawl/firecrawl - AGPL-3.0, pushed 2026-10-22 (read 2026-10-22)",
+    "https://docs.firecrawl.dev/contributing/self-host - Fire-engine not included (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:764-770 - 0/9, formats html drops ld+json",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:871-878 - json mode FABRICATES"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "crawl4ai (Apache-2.0, about 86k stars, active) stays rejected. On the 2026-08-25 measurement its patchright mode was byte-identical to default on 9/9, and it under-rendered one page into a confident-wrong 6.02 BHD.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:771-775 - rejected on measurement",
+    "https://api.github.com/repos/unclecode/crawl4ai - Apache-2.0, 86019 stars, pushed 2026-10-21 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The repo's JSON-LD ladder already handles @graph (including inside a top-level list) and ProductGroup.hasVariant, with brand inheritance from the group. CLAUDE.md global validation found 353/360 JSON-LD prices machine-normalised. It also found the first price-shaped token is right only 41% of the time and product:sale_price is Gulf-only (Salla/Zid).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:11003-11078 - ProductGroup/@graph ladder",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:839-856 - JSON-LD first, selection beats parsing, sale_price Gulf-only"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "extruct (BSD-3-Clause, 977 stars, pushed 2026-10-15) extracts JSON-LD, microdata, microformats, OpenGraph, Dublin Core and experimental RDFa, with an optional uniform=True output. It is a reasonable fallback layer after our own JSON-LD ladder, not a replacement for it, because the ladder carries the measured variant and @graph fixes.",
+   "evidence": [
+    "https://github.com/scrapinghub/extruct - syntaxes and uniform option (read 2026-10-22)",
+    "https://api.github.com/repos/scrapinghub/extruct - BSD-3-Clause, 977 stars"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "price-parser (BSD-3-Clause, 348 stars, pushed 2026-10-06) parses price strings. It does nothing about selection, which is the measured hard part, so it is useful only as a cross-check on the repo's last-separator plus ISO-4217 rule.",
+   "evidence": [
+    "https://api.github.com/repos/scrapinghub/price-parser - BSD-3-Clause, 348 stars (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:840-848 - structural rule 371/371; selection 41%"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Common Crawl CDX index (pywb API) can list a host's captured URLs without fetching the host: url=*.host or matchType=domain, filter=status:200, filter=~url:<pdp pattern>, output=json, plus page/showNumPages. CC asks clients to sleep between calls, use one thread per IP, no proxy networks and a proper UA; 503 means slow down, and a block lasts 24 h. Bulk work should use the columnar index. CC Terms (2024-03-07) neither grant nor forbid commercial use explicitly, recommend legal advice, and leave third-party site terms in force.",
+   "evidence": [
+    "https://pywb.readthedocs.io/en/latest/manual/cdxserver_api.html - params (read 2026-10-22)",
+    "https://commoncrawl.org/faq - 503 guidance (via search, read 2026-10-22)",
+    "https://commoncrawl.org/terms-of-use - updated 2024-03-07 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "CLAUDE.md rejects Common Crawl as a PRICE source (1/12). Using it as a URL-DISCOVERY source is a different use that was not measured. Its snapshots are stale for price but adequate for finding PDP URL patterns and slugs, which must then be validated live under robots.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:876-877 - Common Crawl (1/12) in the rejected list"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "ultimate-sitemap-parser is GPL-3.0 (257 stars, pushed 2026-06-16). It handles robots-declared sitemaps, indexes, news/image, text and RSS formats, and accepts a custom web client. The GPL licence, plus the repo's existing 1028-line sitemap service with fail-closed robots and PDP recognisers, makes it not worth adopting.",
+   "evidence": [
+    "https://api.github.com/repos/GateNLP/ultimate-sitemap-parser - GPL-3.0 (read 2026-10-22)",
+    "https://raw.githubusercontent.com/GateNLP/ultimate-sitemap-parser/develop/README.rst - features (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:103-300 - PDP markers v2"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "WooCommerce Store API (/wp-json/wc/store/v1/products) is officially unauthenticated, paginated with page and per_page (max 100), and returns X-WP-Total/X-WP-TotalPages headers. Shopify storefront /products.json has no official documentation; limit=250&page=N is community-observed only, and stores can disable it. The repo already has adapters for both, and Shopify ml variants were measured dead (0/999).",
+   "evidence": [
+    "https://developer.woocommerce.com/docs/apis/store-api/ - unauthenticated, per_page max 100 (read 2026-10-22)",
+    "https://dev.to/shan_yun_ab0c7ad30b46ad2d/shopifys-open-secret-every-store-exposes-productsjson-30ni - third-party, unofficial (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json - woo_store_json 37, shopify 35, salla_api 19, magento_graphql 8",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:878-880 - 0 of 999 two-ml variants"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "changedetection.io (Apache-2.0, about 35k stars, pushed 2026-10-19) has a restock/price processor that reads JSON-LD, microdata and OpenGraph Product/Offer data. Its useful pattern is per-watch check scheduling with change thresholds and history. It is a full web app, so it is a design reference only.",
+   "evidence": [
+    "https://api.github.com/repos/dgtlmoon/changedetection.io - Apache-2.0, 35202 stars (read 2026-10-22)",
+    "https://www.mintlify.com/dgtlmoon/changedetection.io/features/restock-price-monitoring - mirrored docs, secondary (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Open-source price trackers cannot be used as code. PriceBuddy (about 1.4k stars) ships 'GPL-3.0 WITH MODIFICATIONS', which forbids commercial and hosted use. Discount-Bandit (754 stars) declares no licence, so all rights are reserved. Both store per-product CSS/regex/JSONPath scrape rules plus price history, which is the brittle selector-per-site pattern our JSON-LD-first rule supersedes.",
+   "evidence": [
+    "https://raw.githubusercontent.com/jez500/pricebuddy/main/LICENSE.md - commercial use prohibited (read 2026-10-22)",
+    "https://api.github.com/repos/Cybrarist/Discount-Bandit - license null (read 2026-10-22)",
+    "https://www.alternativeto.net/software/pricebuddy/about/ - CSS selectors/regex/JSONPath (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Identity mismatch: robots is evaluated under the named token QarenBot, while the price fetch path uses curl_cffi impersonate=chrome. The repo measured that klinq.com disallows the token Mozilla, so a robots verdict computed for QarenBot does not cover a fetch that presents as a browser. The standing ruling bans Chrome impersonation on the URL path. An owned crawler should fetch with the same named UA it evaluates.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:19-27 - klinq Mozilla group",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:383-414 - robots read with named UA",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:871-872 - curl_cffi impersonate=chrome prices 84%"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Scrapy-playwright (BSD-3-Clause, about 1.5k stars, pushed 2026-10-19) adds headless rendering. The repo measured Playwright at 7/12 vs curl's 11/12, with its 403s self-inflicted by the HeadlessChrome UA, so a render tier adds little and stays a narrow per-host flag.",
+   "evidence": [
+    "https://api.github.com/repos/scrapy-plugins/scrapy-playwright - BSD-3-Clause, 1458 stars (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:872-874 - playwright 7/12, patchright identical"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Session-80 data_supply measured no owned catalog, no image storage, and the L2 product_specs/product_prices tables with fetched_at dropped. A sitemap indexer exists for Bahrain stores only. The merchant registry plus a product KB is greenfield on top of these tables, not a replacement for them.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json - summary, OWNER INGEST REQUEST section"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "(a) Registry record: extend each host row with platform plus platform_confidence (avoid 'nextjs'; detect_platform returns unknown on 43%); adapter (shopify_json, woo_store, salla_api, magento_graphql, occ_rest, jsonld_pdp); search_template; robots{state: readable/absent/unreadable, http_status, fetched_at, next_reread_at, body_sha, sitemaps[], crawl_delay}; politeness{min_delay_s, max_concurrency=1}; health{last_ok_at, consecutive_failures, priced_rate_30d, last_status}; challenge{vendor, first_seen, parked_until}; tos_reviewed_at; currency/country/tier. Reason: robots and health are recomputed today and never persisted, so unreachable hosts cannot self-heal.",
+  "(b) Discovery loop: for each requested product, (1) search-engine results already paid for (Serper/web_search), (2) robots-declared sitemaps via the existing fail-closed sitemap service, (3) Common Crawl CDX on known hosts (matchType=domain, filter=status:200, one thread, sleep, named UA), (4) brand where-to-buy/store-locator pages that robots allows. Each new host becomes a 'candidate' row that must pass robots read, platform probe and one validated sample PDP before 'live'. Never add Fragrantica or Parfumo. Reason: discovery without evasion, and CC lets us find PDP URLs without touching the host.",
+  "(c) PDP extraction order: platform API (Shopify/Woo/Salla/Magento) > repo JSON-LD ladder (@graph, ProductGroup.hasVariant) > product:sale_price only on Salla/Zid > extruct microdata/OG fallback flagged low-confidence > never an LLM-extracted price. Reason: measured 353/360 JSON-LD normalised; selection, not parsing, fails.",
+  "(d) Scheduling: a per-host token bucket with concurrency 1, delay = max(robots Crawl-delay, 2 s floor), exponential backoff with jitter on 429/503 that honours Retry-After, re-read robots on the ruling's schedule (Option A), and on any CF/Akamai/AWS-WAF challenge set challenge.parked_until and stop. Never rotate UA, IP or proxy. Reason: the ruling plus the no-evasion rule.",
+  "(e) Adopt Protego (BSD-3) only as a differential test oracle and for Crawl-delay/Request-rate parsing. Keep robots_eval as the decision maker and keep our own status-aware fetch. Reason: Protego is parse-only, so fail-closed stays ours, and robots_eval lacks crawl-delay.",
+  "(e) Adopt extruct (BSD-3) as the microdata/OG fallback behind a default-OFF flag, with flag-OFF byte-identity. Reason: it covers syntaxes our ladder does not, and it is permissive and maintained.",
+  "(e) Do NOT adopt Scrapy or Crawlee as the crawl engine. Both default to fail-open robots on 403 or exceptions, and both add a second runtime next to FastAPI/Railway. Borrow the patterns instead: request queue, per-domain autothrottle, sitemap request loader. Reason: ruling conflict plus operational weight.",
+  "(e) Do NOT adopt Firecrawl self-host (AGPL-3.0, 0/9 measured), crawl4ai (rejected on measurement), ultimate-sitemap-parser (GPL-3.0, duplicate of the existing service), PriceBuddy (licence bans commercial use) or Discount-Bandit (no licence). Reason: licence or measured failure.",
+  "Fix the identity mismatch before scaling crawling. The owned crawler fetches with a named UA (for example 'QarenBot/1.0 (+https://<site>/bot)') matching the robots token it evaluates, and drops impersonate=chrome on crawler paths. Reason: the standing no-impersonation rule, plus the klinq evidence that robots verdicts depend on the presented token.",
+  "Licence constraints for a commercial closed backend in a PUBLIC repo: BSD-3, MIT and Apache-2.0 are fine (keep notices; Apache needs a NOTICE file if one ships). GPL-3.0 is avoidable and unnecessary. AGPL-3.0 (Firecrawl) imposes source-offer duties on network use if modified. Custom no-commercial licences and unlicensed repos are unusable. Common Crawl data use is governed by CC Terms plus each site's own terms. Reason: commercial-app safety.",
+  "Persist the robots body hash and fetched_at per host, and expose a 'why skipped' reason (unreadable, disallowed, challenged, dead) in the admin view. Reason: the owner wants the registry to fix unreachable-site problems, which first requires seeing why each one is unreachable.",
+  "Ship all of this dark: an ENABLE_MERCHANT_REGISTRY_V2 flag read per call, default OFF, flag-OFF byte-identical. Seed the state off-clock from the existing 368 rows, and add the cleanup (#94 mis-flagged render-only rows) as the first seed pass. Reason: build 1.0.0 (3) is under review against the live backend."
+ ],
+ "open_questions": [
+  "Does the live PDP path also evaluate robots for the browser-shaped UA it presents, or only the QarenBot token? This was not traced end-to-end here.",
+  "Are Common Crawl CDX captures of Gulf fragrance hosts dense enough to discover PDPs? CC coverage of .bh/.ae/.sa stores was not measured.",
+  "Crawlee-JS robots behaviour on 4xx and exceptions was not read; only the Python source was. It is assumed to be similar.",
+  "Common Crawl Terms do not explicitly address commercial use of index metadata. Does the owner want legal review before relying on CDX at scale?",
+  "Should the named crawler UA include a public contact page? That needs a URL on the MYEZ site, and adding it is a website change."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 755-800, 835-900)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py (11003-11078)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/search_descriptors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "https://api.github.com/repos/apify/crawlee-python (read 2026-10-22)",
+  "https://api.github.com/repos/apify/crawlee (read 2026-10-22)",
+  "https://raw.githubusercontent.com/apify/crawlee-python/master/src/crawlee/_utils/robots.py (read 2026-10-22)",
+  "https://api.github.com/repos/scrapy/scrapy (read 2026-10-22)",
+  "https://raw.githubusercontent.com/scrapy/scrapy/master/scrapy/downloadermiddlewares/robotstxt.py (read 2026-10-22)",
+  "https://api.github.com/repos/scrapy-plugins/scrapy-playwright (read 2026-10-22)",
+  "https://api.github.com/repos/firecrawl/firecrawl (read 2026-10-22)",
+  "https://docs.firecrawl.dev/contributing/self-host (read 2026-10-22)",
+  "https://api.github.com/repos/unclecode/crawl4ai (read 2026-10-22)",
+  "https://api.github.com/repos/dgtlmoon/changedetection.io (read 2026-10-22)",
+  "https://www.mintlify.com/dgtlmoon/changedetection.io/features/restock-price-monitoring (read 2026-10-22)",
+  "https://api.github.com/repos/scrapinghub/extruct and https://github.com/scrapinghub/extruct (read 2026-10-22)",
+  "https://api.github.com/repos/scrapinghub/price-parser (read 2026-10-22)",
+  "https://api.github.com/repos/scrapy/protego and README.rst (read 2026-10-22)",
+  "https://api.github.com/repos/seomoz/reppy (read 2026-10-22)",
+  "https://api.github.com/repos/GateNLP/ultimate-sitemap-parser and README.rst (read 2026-10-22)",
+  "https://api.github.com/repos/jez500/pricebuddy and LICENSE.md (read 2026-10-22)",
+  "https://api.github.com/repos/Cybrarist/Discount-Bandit (read 2026-10-22)",
+  "https://index.commoncrawl.org/ (read 2026-10-22)",
+  "https://pywb.readthedocs.io/en/latest/manual/cdxserver_api.html (read 2026-10-22)",
+  "https://commoncrawl.org/faq (via search, read 2026-10-22)",
+  "https://commoncrawl.org/terms-of-use (read 2026-10-22)",
+  "https://developer.woocommerce.com/docs/apis/store-api/ (read 2026-10-22)",
+  "https://dev.to/shan_yun_ab0c7ad30b46ad2d/shopifys-open-secret-every-store-exposes-productsjson-30ni (third-party, read 2026-10-22)"
+ ]
+}

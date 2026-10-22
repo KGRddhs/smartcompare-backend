@@ -1,0 +1,209 @@
+{
+ "topic": "R1: Anthropic API pricing and cost model for MYEZ (Haiku 5.5, Sonnet 5.5, web_search, vision, caching, batch)",
+ "summary": "Answer: a Haiku-only pipeline costs about $0.003-0.004 per cold compare, which meets the $0.01 target. The server web_search tool is the cost driver: $10 per 1,000 searches is $0.03 for 3 searches, three times the whole target, and the result tokens are billed as input on top. Sonnet 5.5 roughly doubles to octuples the cost depending on how many roles use it.\n\nLive prices (platform.claude.com, read 2026-10-22), USD per million tokens:\n- Haiku 5.5, prompt up to 100K: $0.10 in, $0.50 out, $0.125 for a 5-minute cache write, $0.20 for a 1-hour write, $0.01 for a cache read.\n- Haiku 5.5, prompt over 100K: $0.50 in, $2.50 out.\n- Sonnet 5.5: $2 in, $10 out, $2.50 / $4 for cache writes, $0.10 for a cache read (0.05x).\n- Opus 5.5: $4 in, $20 out, $0.20 cache read.\n- The Batch API is 50% off and the discount stacks with caching. web_fetch costs tokens only.\n\nThe token model is inferred from code prompt sizes multiplied by 1.3 for the Claude tokenizer. Workers (parse, 2x specs, 2x price, 2x reviews, critic) use about 15,000 input and 2,400 output tokens. The verdict uses about 5,900 input and 900 output. Cacheable static prefixes are about 6,100 worker tokens and 2,900 verdict tokens. Three searches add about 25,000 input tokens.\n\nCost per compare at 100 compares/day:\n\n| Mix | Uncached | Cached | +3 searches |\n|---|---|---|---|\n| Haiku-only | $0.0037 | $0.0032 | $0.036 |\n| Haiku workers + Sonnet verdict | $0.0235 | $0.0204 | $0.053 |\n| Sonnet-only | $0.075 | $0.064 | $0.144 |\n\nMonthly cost and $400 runway, cached, at 100 / 300 / 1000 compares per day:\n\n| Mix | Monthly | Runway (months) |\n|---|---|---|\n| Haiku-only | $10 / $28 / $90 | 41 / 14.5 / 4.4 |\n| Haiku+Sonnet | $62 / $168 / $539 | 6.5 / 2.4 / 0.7 |\n| Sonnet-only | $194 / $545 / $1,773 | 2.1 / 0.7 / 0.2 |\n\nWith 3 searches every mix runs out in 3.7 months or less at 100/day.\n\nThe current OpenAI cost, at list price on the same token model, is about $0.021 per compare (gpt-4o verdict about $0.018) plus about $0.003 of Serper. No measured average is documented in the repo; the per-comparison ledger exists, but reading it requires production data, which was out of scope.\n\nVision is negligible: the client resizes to 1024 px wide, which is about 1,000-1,800 image tokens, or about $0.0002 per image on Haiku.\n\nThe Start tier has a $500/month spend cap, so Sonnet-only plus search at 100/day sits near the cap. Haiku 5.5 and Sonnet 5.5 are not 30-day-retention Covered Models; Batch requests are kept 29 days and are not ZDR-eligible.\n\nThe local skill file SKILL.md does not exist at the path given; I used shared/models.md instead. Its Sonnet 5.5 cache-read figure of $0.20 is wrong; the live price is $0.10.",
+ "findings": [
+  {
+   "claim": "Haiku 5.5 list price is $0.10 in / $0.50 out per MTok for prompts up to 100K tokens and $0.50 / $2.50 above 100K. Cache costs are $0.125 for a 5-minute write, $0.20 for a 1-hour write and $0.01 for a read (0.1x). The higher tier applies to the whole request, cache reads included.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - model table rows Haiku 5.5 and long-context section (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Sonnet 5.5 costs $2 in / $10 out, with cache writes at $2.50 (5 min) / $4 (1 h) and cache reads at $0.10 (0.05x). Opus 5.5 costs $4 / $20 with $0.20 reads. The bundled skill (shared/models.md:85) wrongly states $0.20 cache reads for Sonnet 5.5.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - rows Sonnet 5.5, Opus 5.5, footnote 2 (read 2026-10-22)",
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:85 - says cache reads $0.20"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Message Batches API is 50% off input and output: Haiku 5.5 $0.05 / $0.25, Sonnet 5.5 $1 / $5. The discount stacks with cache multipliers. Web search inside a batch is charged the same $10 per 1,000 searches and is throttled per organisation.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - Batch processing table and 'multipliers stack' (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - Batch requests section (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "web_search costs $10 per 1,000 searches ($0.01 each), plus the result content billed as input tokens on every later sampling iteration and turn. A search that errors is not billed. The docs' one-search example shows about 6,000 input tokens. Code execution used for dynamic filtering is free with web_search_20260209 or later.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - Web search tool / Code execution sections (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - Usage and pricing; example usage input_tokens 6039 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "web_fetch has no fee beyond tokens and accepts max_content_tokens as a cap. Using inference_geo 'us' adds a 1.1x multiplier; the default 'global' does not.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md - Web fetch tool; data residency lines 102/160 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "An image costs ceil(w/28) x ceil(h/28) visual tokens. Claude 4.7 and later models are high-resolution (2,576 px long edge, 4,784 tokens maximum). The app resizes camera images to 1024 px wide, so one image is about 1,036 tokens (landscape) to 1,813 tokens (portrait). On Haiku that is about $0.0001-0.0002 per image, and about $0.0004 per identify call including prompt and output.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/vision.md - Resolution and token cost table (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:269-272 - resize width 1024, JPEG 0.8"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The minimum cacheable prefix is 512 tokens on Haiku 5.5, Sonnet 5.5 and Opus 5.5. The TTL is 5 minutes by default or 1 hour optional. Caches are isolated per workspace. Cache reads do not count toward ITPM. Prompt caching is ZDR-eligible.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/api/rate-limits.md - Cache-aware ITPM (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention.md - feature table row Prompt caching (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Standard rate limits: the Start tier has 1,000 RPM, 2M ITPM and 400K OTPM each for Haiku 5.5 and Sonnet 5.5, and the Build tier 5,000 RPM, 5M ITPM and 1M OTPM. Monthly spend caps are Start $500, Build $1,000, Scale $200,000. New organisations may start in a lower Evaluation tier. At 1,000 compares a day (about 10 calls each) RPM is not the constraint; the spend cap is.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/api/rate-limits.md - Spend limits table and tier tabs (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Retention: conversation content is not retained by default except for Covered Models (Fable/Mythos 5.x), and Haiku 5.5 and Sonnet 5.5 are not Covered Models. Batch requests are kept 29 days and are not ZDR-eligible. Code execution, the Files API, and dynamic filtering for web_search and web_fetch are not ZDR-eligible. Basic web_search and web_fetch are.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention.md - lines on Covered Models, feature eligibility rows Batch/Code execution/Files/Web search/Web fetch (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The current OpenAI price table is gpt-4o $2.50 / $1.25 cached / $10 and gpt-4o-mini $0.15 / $0.075 / $0.60 (owner reading, 2026-10-08). The ledger records list price per call, but the repo documents no measured average per compare. CLAUDE.md says OpenAI applies a free daily allowance because organisation data sharing is ON, so the real OpenAI bill is below list. Switching to Anthropic gives that allowance up.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:32-44 - price table",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:556 - COST-METER note, free daily allowance, not a bill"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Per-role output caps in code: parse 500, specs 1000, price 300, price fallback 200, reviews 600, verdict 1000 (gpt-4o, both primary and fallback), vision v2 1000. Inputs are truncated to 3,000 search characters for specs, 2,000 for price and 2,500 for reviews.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1531,1578,1589,1740,1748,1797,1845,1853,2649,2694",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:124 - _VISION_V2_MAX_TOKENS = 1000"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Static prompt sizes from an AST count of literals: PRODUCT_PARSER_PROMPT 2,759 chars; EXTRACTION_PRINCIPLES 6,575 chars, which is interpolated into SPECS_SYSTEM_STATIC_PREFIX (1,579 literal chars); COMPARISON_SYSTEM 5,982; PRICE_FALLBACK_SYSTEM 1,041; critic system 1,160; fragrance exemplars about 785. A repo test requires the specs prefix to be at least 1,024 tiktoken tokens, so it clears Claude's 512-token minimum. The critic system is about 300 tokens, which is below 512, so it will not cache.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:102,426,643,951,1028",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:62",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_prompt_caching.py:16,28-36",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/verdict_exemplars.json - fragrances 785 chars"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Token model for a cold 2-product compare, in Claude tokens (tiktoken estimate x1.3 for the newer tokenizer). Workers (parse, 2x specs, 2x price, 2x reviews, critic) use about 15,000 input and 2,400 output tokens. The verdict uses about 5,900 input and 900 output. The cacheable static prefix is about 6,100 worker tokens (parse 900 + 2x specs 2,600) and 2,900 verdict tokens. Three server searches add about 25,000 input tokens, because the server loop re-reads earlier results.",
+   "evidence": [
+    "derived from the prompt sizes and caps above; tokenizer +30% per shared/models.md:87",
+    "search-token figure extrapolated from the docs example of 6,039 input tokens for 1 search"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Cost per compare at 100 compares/day:\n- Haiku-only: $0.0037 uncached, $0.0032 cached, $0.036 with 3 searches.\n- Haiku workers + Sonnet verdict: $0.0235 uncached, $0.0204 cached, $0.053 with search.\n- Sonnet-only: $0.075 uncached, $0.064 cached, $0.144 with search.\nThe cached figures include amortised 1-hour writes at 24 per day per prefix. At 1,000/day the cached figures fall to $0.0030, $0.0177 and $0.0583.",
+   "evidence": [
+    "computed with python -I from the live list prices and the token model above (2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Monthly cost (30.4 days) at 100 / 300 / 1000 compares a day, and the $400 runway:\n- Haiku-only, cached, no search: $10 / $28 / $90, runway 41 / 14.5 / 4.4 months.\n- Haiku-only with 3 searches: $109 / $324 / $1,078, runway 3.7 / 1.2 / 0.4 months.\n- Haiku+Sonnet, cached: $62 / $168 / $539, runway 6.5 / 2.4 / 0.7 months.\n- Haiku+Sonnet with search: $161 / $464 / $1,527, runway 2.5 / 0.9 / 0.3 months.\n- Sonnet-only, cached: $194 / $545 / $1,773, runway 2.1 / 0.7 / 0.2 months.\n- Sonnet-only with search: $437 / $1,275 / $4,205, runway 0.9 / 0.3 / 0.1 months.",
+   "evidence": [
+    "computed with python -I (2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "On the same token model, today's OpenAI list cost is about $0.021 per cold compare ($0.018 cached). The gpt-4o verdict alone is about $0.018. Serper legs add about $0.003 at the $0.001-per-call figure the code uses. Haiku-only is therefore about 6x cheaper than today; Haiku+Sonnet-verdict is about the same as today; Sonnet-only is about 3.5x more. web_search at $0.01 per query is 10x a Serper call.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:34-35",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:556 - total_cost uses Serper 0.001/call",
+    "computed with python -I (2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "When specs, prices and reviews are served from the owned knowledge base (only parse and verdict call the LLM), a compare costs about $0.0009 with a Haiku verdict or $0.015 with a Sonnet verdict. Once the knowledge base is warm, the verdict model choice dominates cost.",
+   "evidence": [
+    "computed with python -I (2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Thinking changes cost. Haiku 5.5 has adaptive thinking on by default; it can be disabled at effort high or below. Sonnet 5.5 returns a 400 for thinking type 'disabled' and needs 'between_tools' at effort high or below. Leaving thinking on adds about $0.0008 per compare on Haiku workers (+1,500 output tokens) and about $0.01 on a Sonnet verdict (+1,000 output tokens).",
+   "evidence": [
+    "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:85,87",
+    "computed with python -I"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The pinned-candidate SDK anthropic 1.11.0 does not list claude-haiku-5-5 in its Model literal; the type is unioned with str, so the call still works. Its usage object exposes cache_creation_input_tokens, cache_read_input_tokens and server_tool_use. The current ledger reads prompt_tokens and completion_tokens, so Anthropic calls would record as unpriced unless that is normalised.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json - answers (2) MODEL LITERAL / USAGE",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py:135-137"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "web_search supports max_uses, allowed_domains or blocked_domains (not both), and user_location by country. An organisation admin can disable it or restrict its domains in the Console. Citations must be shown to end users when outputs are displayed.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md - Tool definition, How to use, Citations note (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Launch with Haiku 5.5 for every role, verdict included, behind a dark ENABLE_ANTHROPIC_PROVIDER flag. At about $0.003 per compare cached it is the only mix that meets the $0.01 target and gives more than a year of runway at 300 compares a day.",
+  "Make a Sonnet 5.5 verdict a second flag, switched on only after an eval shows Haiku verdict quality is short. It roughly matches today's gpt-4o spend (about $0.02 per compare) and cuts runway to 2-6 months.",
+  "Do not run web_search on every compare. Use it only on a knowledge-base miss, with max_uses 1-2. Three searches alone cost $0.03, three times the target. Keep Serper ($0.001) for discovery and save web_search for missing data and unreachable sites.",
+  "Set blocked_domains on web_search and web_fetch to fragrantica.com and parfumo.com (plus any hosts that fail robots.txt in our registry), in line with the standing ruling. The domain lists are the only lever we have over which hosts the server tools touch.",
+  "Cache the static prefixes (parse, specs, per-category verdict) with an explicit cache_control at the end of the shared part. Use the 1-hour TTL below about 300 compares a day (gaps between compares exceed 5 minutes) and the 5-minute TTL at 1,000 a day or more. Assert cache_read_input_tokens > 0 in a test or monitor, as the skill advises.",
+  "Run knowledge-base enrichment, backfill and the critique/evaluation loop through the Batch API at 50% off. Note that Batch keeps data 29 days, is not ZDR-eligible, and does not discount the per-search fee; this belongs in the privacy-policy delta.",
+  "Turn thinking off explicitly: thinking disabled at effort low or medium on Haiku workers, and between_tools on a Sonnet verdict. Left on, it adds output tokens at the output price, up to about $0.01 per compare on Sonnet.",
+  "Extend the ledger into a provider-aware price table: exact-key rows for claude-haiku-5-5, claude-sonnet-5-5 and claude-opus-5-5, plus input, cache-write-5m, cache-write-1h, cache-read and output, the Haiku over-100K tier, and $0.01 per server_tool_use.web_search_requests. Unknown ids should stay priced as None, as today.",
+  "Keep every Haiku request under 100K prompt tokens, counting cached tokens. Above that the whole request costs 5x. Cap accumulated search results with max_uses, and with max_content_tokens on web_fetch.",
+  "In the Console, set an organisation or workspace spend limit at or below the $400 of credits and use a dedicated workspace (caches are per workspace). The Start tier caps spend at $500 a month, which Sonnet-only plus search reaches at about 100 compares a day.",
+  "Before committing to a mix, measure real token counts with the count_tokens endpoint on 20 saved fragrance compares. The 1.3x tokenizer factor and the 25K tokens for 3 searches are inferred.",
+  "Compare against OpenAI list price, not the bill. The ledger is list price, and the free daily allowance from data sharing ends with the switch, so the move to Anthropic will raise the real cash bill even where the list price falls."
+ ],
+ "open_questions": [
+  "What is the measured average metadata.openai.cost_usd per comparison in production? The ledger records it, but reading it needs the production DB or /admin/costs, which this task was not allowed to touch.",
+  "How many input tokens does a 3-search web_search turn actually bill on Haiku 5.5, with and without dynamic filtering (web_search_20260209+)? Is any of the server loop cached automatically?",
+  "Does Anthropic's web_fetch or web_search crawler honour robots.txt? Can it be made consistent with the fail-closed robots ruling, or must it be limited to allowed_domains drawn from our own robots-checked registry?",
+  "Will the new organisation start in the Evaluation tier, below the published Start limits, and what are its limits?",
+  "Is Haiku 5.5 verdict quality acceptable against the gpt-4o verdict on the existing eval set? That decides whether the Sonnet verdict mix (about 6x Haiku cost) is needed.",
+  "Does the user-facing text need cited web_search sources whenever search content feeds the comparison? This affects UI and legal text."
+ ],
+ "sources": [
+  "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/vision.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/api/rate-limits.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md (read 2026-10-22, first 100K chars)",
+  "https://platform.claude.com/docs/en/build-with-claude/zero-data-retention.md -> manage-claude/api-and-data-retention (read 2026-10-22)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/live-sources.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/prompt-caching.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/tool-use-concepts.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_pricing.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py (call-site grep)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/verdict_exemplars.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_prompt_caching.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 221-223, 556)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/openai_flows_provider.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/prod_recheck.json (grep only)"
+ ]
+}

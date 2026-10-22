@@ -1,0 +1,219 @@
+{
+ "topic": "A8 Feedback, critique and learning: what exists, where a critique-and-improve loop attaches (code at 95cf6f86)",
+ "summary": "Nothing in production learns from use today. Scaffolding for a learning loop exists but every piece is dark or broken.\n\n(a) Self-critique (verdict_critique_service.py) makes one gpt-4o-mini call (critic_model, max 150 output tokens, temperature 0, json_object). It scores the verdict prose on 5 axes from 0 to 10. Any axis below 7 regenerates the gpt-4o verdict once, with the low-axis reason appended to scores_summary. Critique plus regeneration are capped at 8 s, and the original verdict is served on any failure. It is behind ENABLE_SELF_CRITIQUE (default OFF, read per call). It writes a verdict_critiques row (migration 030) only for signed-in users whose comparison was saved. The critic never sees the evidence (specs, prices, sources), so it judges style, not truth. Cost is about $0.0002 per critique (inferred) plus a gpt-4o regeneration when it fires.\n\n(b) Read-back. comparisons.full_response is read only for History, share and Home. L2 product_* rows are a cache that later compares DO read; that is the seed of a knowledge base, but it is not curated. search_logs has no comparison_id and is read only by admin stats. Feedback and user_events are read back in two places:\n- behaviour profile: its user_events select asks for a column named \"metadata\", but the live column is event_data. The update probably fails on every compare (inferred), and tab_switch is never fired anyway.\n- scripts/cron_few_shot_rotation.py: mines feedback rows that are useful AND winner_correct='correct' into verdict_exemplars.json. It is behind ENABLE_FEWSHOT_ROTATION and not registered as a cron. No client sends winner_correct. It rewrites a container-local file, so its output never ships.\n\nverdict_exemplars.json holds 0 exemplars and 22 anti-patterns; those are injected into every verdict prompt. variant_hint_learned.json is written but has no reader. Fresh-compare feedback carries no comparison_id unless ENABLE_COMPARISON_ID_ECHO is ON, so feedback cannot be joined to the comparison it rates.\n\n(c) Eval harness:\n- 200 ratified gold records (4 axes: price, specs, winner, factual); smoke20 has 2 fragrance records.\n- Anchor run is 54b603e8 (winner axis 0.50); the regression gate allows a drop of 2 points per axis.\n- The harness is prod-HTTP only. scripts/shadow_experiments.py is an offline verdict A/B over inputs rebuilt from L2, but its arms are OpenAI only.\n- A provider switch therefore needs a Claude arm in shadow_experiments, then a staging smoke20 run. Fragrance-specific gold records are missing.\n\n(d) A per-compare critique record should store ids, enums, scores, the model and prompt sha only — no query text, user text or photos. Its natural attachment point is track_after_persist.\n\n(e) The client today sends only chips; the 027 correctness columns and the C6 chips already allow far more.",
+ "findings": [
+  {
+   "claim": "Self-critique: one critic_model() call (default gpt-4o-mini) at max 150 output tokens and temperature 0 with json_object. Its input is the verdict prose fields only (winner_index, declaration, reason, tradeoff, value_context, best_for, pros/cons) plus scores_summary as the pain-workflow context. It returns 5 axis scores; any axis <7 triggers ONE regeneration (hedging is exempt on weak/weird data); any failure serves the original verdict.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:45-55 axes + threshold 7",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:119-145 inputs = prose only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:174-184 call kwargs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:352-390 weak/weird hedging exemption, one regen",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:52-53 critic default gpt-4o-mini"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The critique is flag-gated by ENABLE_SELF_CRITIQUE (default OFF, read per call; CLAUDE.md records it OFF). It is wired into both the REST and stream orchestrators. The regeneration re-runs generate_comparison (the gpt-4o verdict model) with the critique reason appended to scores_summary. Critique plus regeneration are bounded by an 8 s wait_for; on timeout the original verdict is served.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:83-87 flag",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4491-4507 REST call site",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5436-5438 stream twin metadata",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:9515-9567 regen closure + 8 s bound"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The critic is blind to evidence. It never receives specs, prices, review counts or sources, so it cannot detect a wrong price, a wrong identity or an invented claim. It only grades style axes. The cost in the docstring is $0.0002-0.001 per verdict, and _track_gpt_cost meters it at mini rates.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:26 cost note",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:126-139 no product_data in message",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:9606-9610 mini-rate cost"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Critique persistence goes to verdict_critiques (030). The table holds 5 nullable 0..10 ints, regenerated, regen_reason (required when regenerated), critic_model and critic_tokens_used, with an FK to comparisons ON DELETE CASCADE. It is written only after a comparisons row exists, so anonymous or unsaved compares are never recorded. The internal metadata._verdict_critique key is stripped from the DB copy but still reaches the client body when the flag is ON.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql:40-75",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:257-279",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:27-52 strip copy; :37-39 body still carries it",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:95-119 gated on truthy comparison_id"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Persisted artefacts of one compare:\n- comparisons.full_response, via save_comparison and _validate_renderable.\n- one search_logs row: query, input_type, products_found, success, error_message, cost, duration_ms, user_id, plus is_synthetic once migration 042 and the marker flag are on. It has NO comparison_id, so it cannot be joined to the comparison.\n- a user_events 'comparison_completed' row.\n- L2 product_specs, product_prices and product_reviews rows.\n- comparison_feedback rows when the user taps.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/002_search_logs_and_products.sql:5-15",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py:753-799 log_search record",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql:132-133",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py:107-112 comparison_completed event",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:200-389 L2 get/save"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Read-back into future outputs:\n- L2 product_* rows ARE read by later compares, as a cache only; there is no correction or curation step.\n- comparisons.full_response is read only for display (History, share, Home smart-pick and savings) and by the dormant few-shot cron.\n- search_logs is read only by the admin stats endpoints.\n- verdict_critiques and eval_runs have NO runtime reader and no admin endpoint.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/analytics_service.py:24-177 search_logs readers",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py:68-1064 endpoint list (no critiques/feedback content view)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/history_routes.py:33-37 full_response read for display"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Behaviour-profile read-back is the only runtime loop that reads feedback (`useful` becomes winner_agreement) and user_events (tab_switch dwell becomes dimension_sensitivity, which scoring then uses). It selects user_events.'metadata', but the live column is event_data, so the update probably raises and is swallowed at WARNING on every signed-in compare. tab_switch has no client call site, and winner_agreement has no consumer.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5694-5703",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/plans/2026-06-08-B-phase1-db-schema-audit-preflight.md:105-115 live user_events columns (event_data)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/behavior_service.py:99-124",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/scoring_service.py:2914 sensitivity consumer"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "A feedback-to-exemplar curation loop already exists: scripts/cron_few_shot_rotation.py. It selects comparison_feedback rows where useful=true and winner_correct='correct', joined to comparisons(product_names, full_response). It read-merge-writes data/verdict_exemplars.json, keeps names and verdict text only (no identity fields), and is fail-closed behind ENABLE_FEWSHOT_ROTATION. It is not registered as a cron (only railway.json and railway.warmer.json exist). On Railway it would rewrite a container-local file that is never committed, so its output never ships.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_few_shot_rotation.py:1-50 design + privacy + flag",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_few_shot_rotation.py:111-124 query",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_few_shot_rotation.py:372-420 main"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No client sends winner_correct, price_correct or specs_correct. FeedbackCard sends {useful:true, comparison_id, mattered_most:[accurate|detailed|fast]}. On a fresh compare, comparison_id comes from result.comparison_id, which exists only with ENABLE_COMPARISON_ID_ECHO ON; that flag is a new name, inferred unset in prod. So fresh-compare feedback cannot be joined to its comparison, and the few-shot cron finds zero rows.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx:18-22, 52-56",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:436, 902",
+    "grep winner_correct over SmartCompareApp/src = 0 hits"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "data/verdict_exemplars.json has 0 exemplars in all 9 categories and 22 anti_patterns (electronics 4, makeup 3, fragrances 3, the others 2 each). build_exemplar_block is injected UNFLAGGED into every verdict system prompt after the personality, in the static per-category prefix, so the anti-patterns ship on every verdict today.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/verdict_exemplars.json (parsed: ex 0 / ap 22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:2170-2181",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py:42-56 lru_cache once per process"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "data/variant_hint_learned.json is written by _varhint_append_learned, but only under ENABLE_VARIANT_LLM_HINT (default OFF) on a HIGH-confidence gpt-4o-mini verdict. Nothing in app/ reads it (the reader loads variant_hint_reference.json). It holds only _metadata, so it is a write-only artefact.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:8990-9004 path + flag",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:9080-9097 writer",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:8778-8851 reader is the reference file"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The eval harness grades 4 axes: price (tolerance), specs (token match), winner (vacuously True when the expected index is None) and factual (case-insensitive forbidden_facts substrings). The gold set is 200 records, all with winner labels; 18 are fragrances. smoke20 contains 2 fragrance records. Gates: absolute 0.95, or regression with a drop of more than 0.02 per axis failing. The anchor is 54b603e8-4eab-41c9-a34d-a5e391446559 (winner 0.50). eval_runs (031) persists axis averages and failing_ids only, with no per-query outputs. The prior S80 digest stands unchanged: the eval is live prod-HTTP only, costs about 100 OpenAI calls plus 200-300 Serper credits per smoke20 run, and has no lang, camera, URL or abstain axis.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_runner.py:766-865 graders",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_gate.py:27-29, 61-79",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_persistence.py:60-83",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/eval_smoke_subset.json (20 ids; fragrances 2)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/eval_regression.json finding 'Eval harness'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "How a new provider would be evaluated. scripts/shadow_experiments.py is an offline verdict-only A/B: it rebuilds product_data from L2 rows ($0 Serper), runs real deterministic scoring, and grades winner and factual with eval_runner's graders. Every arm is OpenAI (gpt-4o, o3-mini, gpt-4o-mini through extraction_service.get_client), so a Claude arm must be added there. The full-pipeline effect (specs, price, identification, latency) still needs smoke20 against a deploy running the dark provider flag. cron_eval_nightly is fail-closed and unregistered.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/shadow_experiments.py:1-56",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/shadow_experiments.py:1336-1377 ARMS + get_client",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_eval_nightly.py:14-21, 54-70"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Allowlists available for genuine feedback today:\n- VALID_MATTERED_MOST includes wrong_product, missing_info, unclear_reasons, slow, wrong_winner and unsure (unflagged, from S80 C6).\n- FeedbackRequest accepts winner_correct, price_correct and specs_correct as Literal correct|wrong|unsure, matching the 027 DB CHECK.\n- change_suggestion takes free text up to 1000 characters.\n- VALID_EVENT_TYPES includes the scan_* events and image_load_failed.\nNo field exists for identity_correct, a corrected product name or a corrected price value; those would need new optional fields plus a migration.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py:44-50, 60-93, 102-127",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/027_comparison_feedback_correctness.sql:27-61",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/feedback_and_allowlists.json Q1"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Legal surface: the privacy policy and AI-consent copy name OpenAI as the only AI processor and disclose OpenAI's data-sharing training programme. The policy says feedback is kept until account deletion and deleted with the account, and it promises sale or licence of aggregated or anonymised statistics only. Sending comparison data to Anthropic for generation or judging means new processor text, a processors.json row and an AI_CONSENT_VERSION bump (a re-ask).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:15, 31, 38, 63-69, 103, 115",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json aiConsent.body (names OpenAI)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Anthropic facts for a judge (from the skill's model table, dated 2026-10-06, not re-fetched live):\n- claude-haiku-5-5 costs $0.10 / $0.50 per MTok; claude-sonnet-5-5 costs $2 / $10.\n- The minimum cacheable prefix is 512 tokens.\n- Cache writes cost 1.25x (5-minute TTL) or 2x (1-hour TTL); reads are about 0.1x.\n- At most 4 breakpoints per request; the Batches API is 50% off.\n- Structured outputs go through output_config.format.\n- Sonnet 5.5 rejects non-default temperature, while every current OpenAI call site sends temperature 0.",
+   "evidence": [
+    "claude-api skill SKILL.md Current Models table (cached 2026-10-06; read 2026-10-22)",
+    "claude-api skill shared/prompt-caching.md:123-144 (read 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  }
+ ],
+ "recommendations": [
+  "Per-compare critique record: a new table keyed on a server-minted compare_id (not comparisons.id), so anonymous and unsaved compares are covered too. Store category, input_type, a hash of the products (not names), result_status and identity_confidence from B1, data_coverage, per-axis judge scores and a reasons enum, judge model id, judge prompt sha256, verdict prompt sha256, provider and latency. Write it fire-and-forget in track_after_persist, or at the delivery exit for anonymous compares. The judge runs off the request path (Batches API at 50% off), never inline under the 30 s cap.",
+  "Give the judge the EVIDENCE as well as the prose: the product_data specs and prices with their source_method, review_count and rating_source, and dimension winners. Score truth axes (claim supported by data, price matches its source, identity coherent, no invented review attribution) alongside the existing style axes. Today's critic cannot catch the defects the owner cares about.",
+  "Never store: raw photos, the user's free text in the judge record, change_suggestion text sent to any model, user_id, email or device fingerprint in exemplar or knowledge-base rows, any Fragrantica/Parfumo-derived content, or provider API payloads containing headers or keys (the repo is public). Delete critique rows with the account: the FK ON DELETE CASCADE on comparisons covers this only if the row hangs off comparisons.",
+  "Fix the join before building the loop. Either flip ENABLE_COMPARISON_ID_ECHO (after ENABLE_SUPABASE_CLIENT_REUSE, per its precondition) or echo a server compare_id that the client sends back in FeedbackRequest. Without it, fresh-compare feedback cannot be joined to any comparison or critique.",
+  "Feedback questions via the C6 card (post-approval OTA), mapped to what already exists: 'Did we identify the right products?' maps to mattered_most wrong_product (add an optional identity_correct Literal plus a migration); 'Is this price right?' maps to price_correct; 'Are the specs right?' maps to specs_correct; 'Do you agree with the winner?' maps to winner_correct, plus a reason chip (wrong_winner, unclear_reasons, missing_info). An optional corrected value (a product name, a price with currency, a retailer URL) needs new fields, and it must feed a moderated correction queue, never the KB directly.",
+  "Curation: reuse cron_few_shot_rotation's design, but write mined exemplars and corrections to a DB table, not the container-local JSON. Require at least 2 agreeing signals (user correct plus judge truth score at least the threshold) and owner review before promotion. Version each exemplar set with a sha that is logged per verdict, so eval runs can attribute changes.",
+  "Prompt caching: keep exemplars and anti-patterns inside the static per-category system prefix, as today. Rotate them at most weekly, never per request. On Claude, put an explicit cache_control breakpoint at the end of that prefix; it clears the 512-token minimum (unverified figure). Per-user or cohort text goes after the breakpoint.",
+  "Fix behaviour profile's user_events select from 'metadata' to 'event_data', or remove the dead path, with a test against the live column name. Measure the live 'Failed to update behavior profile' WARNING rate first (owner-run log read).",
+  "Delete or wire variant_hint_learned.json. A writer with no reader, on an ephemeral container filesystem, is not learning.",
+  "Provider evaluation: add Haiku 5.5 and Sonnet 5.5 arms to shadow_experiments (offline, reconstructed L2 inputs, $0 Serper). Then run smoke20 against a dark-flag deploy, only with the owner's explicit yes after App Review. Add fragrance-specific gold records with forbidden_facts and an abstain outcome first: smoke20 holds only 2 fragrance records, so it cannot measure the one live category.",
+  "The legal step must precede any Anthropic call on user data, whether generation or judging: update the privacy policy section 4 processor text through the U8 machinery, add the processors.json row, bump AI_CONSENT_VERSION with the sha fence, and decide what happens to OpenAI data-sharing disclosure text."
+ ],
+ "open_questions": [
+  "Is the behaviour-profile update actually failing in production (42703 on user_events.metadata)? This needs an owner-run Railway log count of 'Failed to update behavior profile'.",
+  "Live row counts of comparison_feedback, verdict_critiques and eval_runs (Supabase read, owner-run). The 2026-06-08 inventory had comparison_feedback = 0.",
+  "Prod state of ENABLE_SELF_CRITIQUE, ENABLE_COMPARISON_ID_ECHO, ENABLE_FEWSHOT_ROTATION and ENABLE_VARIANT_LLM_HINT. Not read here; per CLAUDE.md all are believed unset.",
+  "Should a judge's output ever change a served verdict (inline regeneration), or only feed offline curation? Inline costs latency inside the 30 s cap and doubles verdict spend.",
+  "Does the owner want Anthropic to receive comparison data for judging under a retention or training posture different from OpenAI's data-sharing programme? This decides the consent and policy wording.",
+  "Anthropic Haiku 5.5 and Sonnet 5.5 prices and the 512-token cache minimum come from a 2026-10-06 skill cache. Verify against docs.anthropic.com pricing before budgeting the $400 credits."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py (4485-4600, 5436, 5676-5703, 9490-9610)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/feedback_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/feedback_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/behavior_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/analytics_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_exemplar_loader.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py (2163-2182)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py (8778-9130)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/database_service.py (740-800)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/scoring_service.py (2905-2925)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/admin_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_few_shot_rotation.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_runner.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_gate.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/eval_persistence.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_eval_nightly.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/shadow_experiments.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/runbooks/qaren-eval.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/runbooks/qaren-gold-set.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/validation_gold_truth.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/eval_smoke_subset.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/verdict_exemplars.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/variant_hint_learned.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/002_search_logs_and_products.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/013_demographics_cohort.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/027_comparison_feedback_correctness.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/030_verdict_critiques.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/031_eval_runs.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/042_search_logs_is_synthetic.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/plans/2026-06-08-B-phase1-db-schema-audit-preflight.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json (aiConsent.*)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/FeedbackCard.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/feedback_and_allowlists.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/eval_regression.json",
+  "claude-api skill SKILL.md + shared/prompt-caching.md (bundled, cached 2026-10-06; read 2026-10-22)"
+ ]
+}

@@ -1,0 +1,103 @@
+{
+ "cluster": "C4: Device quota, auth rate limits, zero-cost refusal (digests A7, R5)",
+ "lens": "legal, ToS, App Review and privacy",
+ "verdicts": [
+  {
+   "recommendation": "C4.1 Device daily quota (HMAC device key, cap 3, refunds, fallback chain)",
+   "verdict": "weakened",
+   "reason": "The published Terms say each account gets 3 a day and 10 a month, and a parity test pins that. The flag cannot flip before a v3 Terms change goes through U8. The deletion text promises that usage counters are keyed to the account number, but an HMAC device key outlives deletion and is not disclosed. Falling back to the stored registration-device hash meters a different phone against a shared device, so 'per device' would be false.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md:25",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:115",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/tests/test_legal_disclosure_s77.py:810-813"
+   ],
+   "fix": "Keep the flag OFF until the U8 v3 Terms (each device, monthly cap dropped) and privacy text (§8/§9 device counters, ~25 h TTL) are live; drop the users.device_fingerprint_hash step (header, else account-only plus a metric); keep the pepper in Railway env only; exempt the App Review demo account."
+  },
+  {
+   "recommendation": "C4.2 Client sends fingerprint on metered calls; new device ID in 1.0.1",
+   "verdict": "weakened",
+   "reason": "expo-application, expo-device and expo-secure-store are already in the binary. Dropping osBuildId and adding the IDFV fallback is therefore a JS-only change that can ship in the first post-approval OTA. Holding it for 1.0.1 means sending the osBuildId-derived ID, which sits close to Apple's fingerprinting line, on every compare. It also adds a second hash migration later that resets per-device invite and inheritance state.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json:27,33,41",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:27-31",
+    "https://developer.apple.com/app-store/user-privacy-and-data-use/ (read 2026-10-22) - may not derive device data to uniquely identify it"
+   ],
+   "fix": "In the same post-approval OTA that adds the header, switch to the Keychain UUID with an IDFV fallback and no osBuildId, map old hashes to new ones on the server once, and land the Terms/privacy wording ('each device', §3.4 device identifier) through U8 before the quota flag flips."
+  },
+  {
+   "recommendation": "C4.3 Riyadh-midnight reset with resets_at/retry_after/scope fields",
+   "verdict": "stands",
+   "reason": "The Terms say 'a day' without defining it, so moving the boundary to 00:00 Asia/Riyadh breaks no published promise. A server-side resets_at is more honest than 'resets daily'. scope=device discloses only what the policy already names (the device identifier is used against abuse of the free limits). No new data leaves the server. I could not break it. The U8 Terms edit should state the boundary in Bahrain/Riyadh time.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md:25",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:42"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C4.4 Upstash auth throttles V2 (login/register/social/refresh/reset limit table)",
+   "verdict": "weakened",
+   "reason": "The 30-day per-device registration counters and the per-IP/day counters break the published retention text ('short-lived security checks ... expire within 6 hours'). Raw IPs in Redis key names are personal data under the Bahrain PDPL. The per-IP rows bind nothing (rotating edge) until C4.6 lands. The per-device register caps (3/day, 10/30 days) can block an App Review tester who deletes an account and signs up again (5.1.1(v) testing).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:110",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:80",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:52-59"
+   ],
+   "fix": "Ship V2 with HMAC-hashed IP and device keys, put the per-IP rows behind the C4.6 anchor, update privacy §8 through U8 with each TTL (or cap all security keys at 6 h), and exempt the App Review demo account and device from the register/social device caps."
+  },
+  {
+   "recommendation": "C4.5 Supabase secret key + Sb-Forwarded-For; raise limits; custom SMTP",
+   "verdict": "weakened",
+   "reason": "Supabase documents no protection against a spoofed Sb-Forwarded-For value. Forwarding the current leftmost-XFF IP would let an attacker take a fresh Supabase bucket on every request, which is worse than today's shared bucket. The secret key bypasses RLS and must stay in Railway env (public repo). Custom SMTP adds a new recipient of email addresses that privacy §5 and processors.json do not list.",
+   "evidence": [
+    "https://supabase.com/docs/guides/auth/rate-limits (read 2026-10-22) - secret key required, must be enabled, no spoofing guidance",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:78",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:181"
+   ],
+   "fix": "Raise the dashboard limits now. Enable Sb-Forwarded-For only after C4.6 proves a trusted IP hop, through a dedicated auth-only secret-key client kept in env. Add the SMTP provider to privacy §5/processors.json through U8 before switching."
+  },
+  {
+   "recommendation": "C4.6 Live spoof probe, no leftmost XFF, rewrite helper, #299 dark",
+   "verdict": "stands",
+   "reason": "Probing your own Railway service with spoofed headers violates no third-party terms and does not touch Cloudflare or any challenge. Rejecting the leftmost XFF entry also stops forged IPs from reaching admin_audit_log, which the privacy policy describes as sign-in security records. A user-id limiter key adds no new personal data. I found no legal or App Review objection.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-49",
+    "https://docs.railway.com/networking/public-networking/specs-and-limits (read 2026-10-22, per R5) - only X-Real-IP documented",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:51"
+   ],
+   "fix": ""
+  },
+  {
+   "recommendation": "C4.7 Zero-cost non-fragrance refusal before consume; Haiku for residue",
+   "verdict": "weakened",
+   "reason": "Sending the ambiguous residue to Haiku shares user text with an AI provider that the consent sheet (v2) and privacy §4 do not name, a 5.1.2(i) breach until the post-approval provider switch and re-consent. Charging a daily credit after 10 refusals bills a non-delivery. That contradicts C4.1's refund-on-non-delivery rule and the Terms, which meter comparisons. 'Coming soon' chips risk a 2.1(a) placeholder-content rejection.",
+   "evidence": [
+    "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22) - 5.1.2(i) 'including with third-party AI ... obtain explicit permission'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:63-69",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46"
+   ],
+   "fix": "Ship the deterministic chip, category and lexicon refusal now. Add the Haiku residue only after privacy §4 names Anthropic and AI_CONSENT_VERSION goes to 3. Never turn an over-budget refusal into a spent credit; throttle it instead (a 429 with retry_after). Render non-live categories as non-tappable notices, not placeholder features."
+  }
+ ],
+ "new_risks": [
+  "App Review: no recommendation exempts the App Review demo account or the reviewer's device. In the 1.0.1 review, the device cap plus the per-device register caps can leave a reviewer who signs up again on the same device with 0 compares, a 2.1(a) 'not fully functional' rejection. Add a server-side reviewer allowlist and never flip quota flags while a build is in review.",
+  "The Terms already promise '3 successful invites per device for the lifetime of that device' (terms_of_service.md:59). The current hash changes with every OS update (osBuildId) and will change again at the device-ID migration, so the promise is false today. It needs U8 rewording or a server-side old-to-new hash mapping.",
+  "The privacy policy keeps failed-sign-in and lockout records with raw IP addresses for 'no fixed period' (privacy_policy.md:106). This conflicts with the Bahrain PDPL (Law 30/2018) storage-limitation duty and with the new throttle data. Set a fixed TTL and hash the IPs.",
+  "The Anthropic pivot as a whole: privacy §4 describes OpenAI's data-sharing programme and its 30-day abuse-monitoring limit (privacy_policy.md:69). Anthropic's retention, including Message Batches and flagged-content retention, differs and needs its own disclosure, a consent v3 and processors.json rows. Until then, any Haiku call in the quota or refusal path breaks the disclosed text.",
+  "Public repo: the HMAC pepper, the Supabase secret key and any SMTP credentials must live only in Railway env. Rotating the pepper silently resets every device counter and invite cap, so the pepper needs a documented rotation and dual-read plan.",
+  "Account deletion (5.1.1(v)): the Keychain UUID survives app and account deletion (privacy_policy.md:147). Any device-keyed counter longer than a day (the 30-day register cap) links a deleted account's device to the next account, a link the deletion text in §9 does not disclose."
+ ],
+ "sources": [
+  "J1 journal digests A7 and R5 (wf_61b37e95-99f/journal.jsonl)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md:25,36,59",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:42,51,63-69,78,80,104-110,115,147",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:1-36",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json:27,33,41",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:80-83",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/aiConsent.ts:46",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:17,199,454",
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22) - 2.1(a), 5.1.1(v), 5.1.2(i),(iii)",
+  "https://supabase.com/docs/guides/auth/rate-limits (read 2026-10-22) - Sb-Forwarded-For requires a secret key and explicit enablement; 30/5 min sign-up, 150/5 min token, 2 emails/hour",
+  "https://developer.apple.com/app-store/user-privacy-and-data-use/ (read 2026-10-22, via R5)"
+ ]
+}

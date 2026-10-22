@@ -1,0 +1,286 @@
+{
+ "topic": "Re-measure of Anthropic platform claims (Haiku 5.5 / Sonnet 5.5 pivot) against primary docs, checked 2026-10-22",
+ "facts": [
+  {
+   "claim": "(1) claude-haiku-5-5 accepts image (vision) input.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/models/haiku-5-5/overview (2026-10-22): Capabilities lists 'Input -> output: Text and images -> text'",
+    "https://platform.claude.com/docs/en/about-claude/models/overview (2026-10-22): 'All current models support text and image input ... vision'",
+    "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide (2026-10-22): Haiku 5.5 uses the high-resolution image tier"
+   ],
+   "correction": "For a live check, the Models API field capabilities.image_input.supported answers this (GET /v1/models/claude-haiku-5-5 is free)."
+  },
+  {
+   "claim": "(2) Web search and web fetch versions claude-haiku-5-5 accepts.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22): three versions: web_search_20250305 (basic), web_search_20260209 (dynamic filtering), web_search_20260318 (adds response_inclusion). Dynamic filtering is 'available with Claude 4.6 and later models'",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling (2026-10-22): supportedModels includes claude-haiku-5-5, so the default allowed_callers [code_execution_20260120] works on it",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool (2026-10-22): web_fetch_20250910 (basic), _20260209 (dynamic filtering), _20260309 (adds use_cache), _20260318 (adds response_inclusion). None needs a beta header"
+   ],
+   "correction": "Two things the claim leaves out. First, web_search_20260318 and web_fetch_20260309/_20260318 also exist. Second, no doc names Haiku 5.5 per tool version; the only rule given is 'Claude 4.6 and later'. The _20260209+ versions default to code-execution callers and are NOT ZDR-eligible unless allowed_callers:['direct'] is set (server-tools page). Web fetch does not render JavaScript. Live check: Models API capabilities.server_tools.web_search.supported (free); it does not cover web fetch."
+  },
+  {
+   "claim": "(3a) Structured outputs (output_config.format) cannot be combined with document citations.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/citations (2026-10-22): enabling citations on any user-provided document or search_result block together with output_config.format (or the deprecated output_format) returns a 400",
+    "https://platform.claude.com/docs/en/build-with-claude/structured-outputs (2026-10-22) Feature compatibility: 'Incompatible with: Citations ... The API returns a 400 error'; prefilling is also incompatible"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(3b) A request can combine the web_search tool with output_config.format, even though web-search citations are always on.",
+   "status": "unknown",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22): 'Citations are always enabled for web search'",
+    "https://platform.claude.com/docs/en/build-with-claude/citations (2026-10-22): the 400 rule is worded only for user-provided document and search_result blocks",
+    "https://platform.claude.com/docs/en/build-with-claude/structured-outputs (2026-10-22): grammars apply only to Claude's direct output, not to tool calls or results; the page never mentions server tools"
+   ],
+   "correction": "The docs neither allow nor forbid this. One real request would settle it: Haiku 5.5 with web_search_20250305 and max_uses 1 plus a tiny output_config.format schema. That is a paid call, so it was not made. A free alternative is to ask Anthropic support, or to try POST /v1/messages/count_tokens with the same body (free, but it may not run this check). Related doc warning (thinking page): on Haiku 5.5 with thinking disabled, 'the model can skip a tool call it needs when you also request JSON output.'"
+  },
+  {
+   "claim": "(4a) Changing output_config.format between requests invalidates the prompt cache.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/structured-outputs (2026-10-22): 'Changing the output_config.format parameter will invalidate any prompt cache for that conversation thread.'"
+   ],
+   "correction": "The prompt-caching page's invalidation table does not list output_config.format. It lists tools, tool_choice, images, thinking config, output_config.effort and speed. The structured-outputs page is the authority for this point. Compiled grammars are cached separately for 24 hours from last use."
+  },
+  {
+   "claim": "(4b) The minimum cacheable prefix is 512 tokens on Haiku 5.5 and Sonnet 5.5; cache_control placement rules.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching (2026-10-22): 512 tokens for Opus 5.5, Sonnet 5.5, Haiku 5.5 (and Fable/Mythos 5.x, Opus 5). Shorter prompts are processed uncached with no error",
+    "Same page: prefix order is tools, then system, then messages. Up to 4 breakpoints. A top-level cache_control enables automatic caching and uses 1 of the 4 slots. The lookback is at most 20 positions per breakpoint. TTL syntax is cache_control {type:'ephemeral', ttl:'1h'}, default 5 minutes",
+    "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5 (2026-10-22): minimum is 512, down from 4,096 on Haiku 4.5. Sonnet 5.5 migration guide: 512, down from 1,024 on Sonnet 5"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(4c) Cache pricing: Haiku 5.5 5m write $0.125, 1h write $0.20, read $0.01; Sonnet 5.5 cache read $0.10 (the skill table says $0.20).",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing (2026-10-22): Haiku 5.5 up to 100K: $0.10 in / $0.125 5m write / $0.20 1h write / $0.01 hit / $0.50 out. Over 100K: $0.50 / $0.625 / $1 / $0.05 / $2.50",
+    "Same page: Sonnet 5.5 $2 / $2.50 / $4 / $0.10 / $10. Footnote 2: 'Cache hits and refreshes on Claude Opus 5.5 and Claude Sonnet 5.5 are priced at 0.05x the base input price'",
+    "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide (2026-10-22): cache reads 'cost $0.10 USD per million tokens, half the Claude Sonnet 5 rate'"
+   ],
+   "correction": "$0.10 is correct. The bundled skill file C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:85 says Sonnet 5.5 'cache reads $0.20'; that is stale or wrong. The general multipliers are 5m write 1.25x and 1h write 2x. Reads are 0.1x, except 0.05x on Opus 5.5 and Sonnet 5.5 and 0.025x on Fable 5.1 and Mythos 5.1."
+  },
+  {
+   "claim": "(5) List prices: Haiku 5.5 $0.10/$0.50 up to 100K and $0.50/$2.50 above; Sonnet 5.5 $2/$10; Opus 5.5 $4/$20; Batch is 50% off and stacks with caching; web_search $10 per 1,000 searches plus result tokens billed as input; web_fetch is tokens only.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing (2026-10-22): model table and Batch table (Haiku 5.5 $0.05/$0.25 up to 100K and $0.25/$1.25 above; Sonnet 5.5 $1/$5; Opus 5.5 $2/$10). 'These multipliers stack with other pricing modifiers, including the Batch API discount'. FAQ: 'Batch API and prompt caching discounts can be combined'",
+    "Same page: web search '$10 USD per 1,000 searches, plus standard token costs ... results ... counted as input tokens'; failed searches are not billed. Web fetch has 'no additional charges beyond standard token costs'. Code execution is free when web_search_20260209+ or web_fetch_20260209+ is in the request",
+    "Same page, long context: the Haiku 5.5 threshold counts ALL input tokens, including cache reads and writes; a request over 100K pays the higher rates even on a partial cache hit"
+   ],
+   "correction": "Not in the claim: inference_geo 'us' adds a 1.1x multiplier, which also applies to Haiku's over-100K rates. Each web search tool definition adds a tool-use system-prompt overhead; for Haiku 5.5 it is 286 tokens (auto/none) or 406 tokens (any/tool)."
+  },
+  {
+   "claim": "(6) Usage object field names: input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, server_tool_use.web_search_requests.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22) Usage example has all five fields",
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching (2026-10-22): also cache_creation.ephemeral_5m_input_tokens and cache_creation.ephemeral_1h_input_tokens. total input = cache_read + cache_creation + input_tokens",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool (2026-10-22): server_tool_use.web_fetch_requests"
+   ],
+   "correction": "Also log server_tool_use.web_fetch_requests and the cache_creation.ephemeral_5m/1h split."
+  },
+  {
+   "claim": "(7a) Haiku 5.5: thinking is on by default at effort medium; {type:'disabled'} is accepted only at effort high or below.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/thinking (2026-10-22): Haiku 5.5 'accepts thinking: {type: \"disabled\"} at effort high or below. At xhigh or max effort, that combination returns a 400 error.' display defaults to 'omitted'",
+    "https://platform.claude.com/docs/en/about-claude/models/overview (2026-10-22): Haiku 5.5 default effort is medium"
+   ],
+   "correction": "With thinking disabled, a per-message output_config.effort that differs from the level in effect also returns a 400."
+  },
+  {
+   "claim": "(7b) Haiku 5.5 / Sonnet 5.5: a non-default temperature returns 400; assistant prefill is removed.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/thinking (2026-10-22): on these models 'non-default temperature, top_p, or top_k values return a 400 error on every request'. The top_p default is 0.99, so top_p=1 returns 400, and so does sending temperature and top_p together even at defaults",
+    "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide (2026-10-22): Haiku 5.5 rejects prefill with a 400 'even with thinking turned off'",
+    "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide (2026-10-22): error text 'This model does not support assistant message prefill.'"
+   ],
+   "correction": "The safe practice is to omit temperature, top_p and top_k entirely."
+  },
+  {
+   "claim": "(7c) Forced tool_choice (any/tool) returns 400.",
+   "status": "refuted",
+   "evidence": [
+    "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide (2026-10-22): 'Claude Haiku 5.5 accepts a forced tool_choice (any or a named tool), but the response starts with the tool call and has no thinking block.'",
+    "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide (2026-10-22): Sonnet 5.5 rejects both with a 400, including on count_tokens: 'tool_choice: type \"tool\" and \"any\" are not supported for this model.'",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking (2026-10-22): forced tool use is rejected only on Opus 5.5, Sonnet 5.5, Fable 5.1 and Mythos 5.1"
+   ],
+   "correction": "The claim is true for Sonnet 5.5 only; Haiku 5.5 accepts forced tool_choice. On Sonnet 5.5, use tool_choice auto with strict:true and say in the prompt when to call the tool."
+  },
+  {
+   "claim": "(7d) Sonnet 5.5: thinking cannot be disabled, and between_tools is allowed at effort high or below.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide (2026-10-22): {type:'disabled'} returns a 400 invalid_request_error. between_tools is 'accepted at low, medium, and high effort. At xhigh or max, it returns a 400'. Sending display, budget_tokens or block_binding with it returns a 400. With between_tools, effort cannot change mid-conversation",
+    "https://platform.claude.com/docs/en/about-claude/models/overview (2026-10-22): Sonnet 5.5 default effort is high; Models API reports thinking.types.disabled.supported=false and between_tools.supported=true"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(7e) Haiku 5.5 has no server-side fallback, and the fallbacks parameter is rejected.",
+   "status": "refuted",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback (2026-10-22): 'Claude Haiku 5.5 has no server-side fallback: with fallbacks: \"default\", a declined request stays declined, and a list of fallback models returns a 400 error.' A Haiku 5.5 refusal also carries no fallback credit",
+    "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5 (2026-10-22): 'Server-side fallback isn't available.'"
+   ],
+   "correction": "Correct: there is no server-side fallback. Wrong: the parameter is not always rejected. fallbacks:'default' is accepted and does nothing; only an explicit model list returns 400. Use client-side fallback through the SDK middleware or a manual retry. Server-side fallback is beta, Claude API only, and needs the server-side-fallback-2026-07-01 header."
+  },
+  {
+   "claim": "(8) The structured-outputs JSON-schema subset accepts anyOf with null and type arrays [string, null].",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/structured-outputs (2026-10-22) supported list: all basic types including null; anyOf and allOf (allOf with $ref not supported); enum (primitives and nulls only); const; $ref/$defs (internal only); additionalProperties must be false; required",
+    "Same page, complexity limits: 'Total parameters that use anyOf or type arrays (for example, \"type\": [\"string\", \"null\"]) across all strict schemas', limit 16 per request",
+    "Same page, not supported: recursive schemas, minimum/maximum/multipleOf, minLength/maxLength, array constraints beyond minItems 0/1, complex regex (backreferences, lookaround, \\b). An unsupported feature returns 400"
+   ],
+   "correction": "Both nullable forms are accepted. Each one counts toward the 16 union-typed parameters allowed across all strict schemas in a request. No doc example shows anyOf with {type:'null'} explicitly."
+  },
+  {
+   "claim": "(9a) Image tokens are about (width x height) / 750.",
+   "status": "refuted",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/vision (2026-10-22): 'An image, therefore, costs ceil(width / 28) x ceil(height / 28) visual tokens' (28x28-pixel patches)",
+    "Same page: the high-resolution tier (Claude 4.7 and later, which includes Haiku 5.5) has a max long edge of 2,576 px and max 4,784 visual tokens. The standard tier is 1,568 px / 1,568 tokens",
+    "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide (2026-10-22): a 2000x1500 image costs about 2.5x more on Haiku 5.5 than on Haiku 4.5"
+   ],
+   "correction": "Use ceil(w/28) x ceil(h/28), capped by downscaling to 2,576 px long edge or 4,784 tokens on Haiku 5.5. Examples: 1000x1000 = 1,296 tokens; 2000x1500 = 3,888 tokens."
+  },
+  {
+   "claim": "(9b) Image size and count limits, and the 200 px guidance.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/vision (2026-10-22): max 8000x8000 px per image. A request with more than 20 images applies a stricter limit (keep each side at or below 2000 px). Max 600 images per API request for non-200k-context models such as Haiku 5.5 (100 for 200k models). 10 MB base64 per image on the Claude API (5 MB on Bedrock/Google Cloud). 32 MB request limit. Formats: JPEG, PNG, GIF (first frame only), WebP",
+    "Same page, Limitations: 'Claude might hallucinate or make mistakes when interpreting low-quality, rotated, or very small images under 200 pixels.'"
+   ],
+   "correction": "The 200 px point is an accuracy warning, not a hard limit."
+  },
+  {
+   "claim": "(10a) Anthropic web_fetch honours robots.txt.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool (2026-10-22) error codes: 'url_not_allowed: URL blocked by domain filtering rules ... or by Anthropic-side restrictions, such as private addresses, robots.txt, and URLs that appear to contain a credential you did not provide'"
+   ],
+   "correction": "Fetch errors come back as an HTTP 200 response carrying a web_fetch_tool_result_error with an error_code. Code should check that error_code, not the HTTP status."
+  },
+  {
+   "claim": "(10b) Anthropic web_search honours robots.txt, and both tools have defined behaviour on a Cloudflare challenge.",
+   "status": "unknown",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22): no mention of robots.txt, crawling or bot challenges",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool (2026-10-22): the only related items are 'url_not_accessible: Failed to fetch content (HTTP error)' and that JavaScript-rendered sites are not supported. Cloudflare and challenge pages are not mentioned",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/server-tools (2026-10-22): silent on both points"
+   ],
+   "correction": "Anthropic would have to state its crawler policy for the search index and how web_fetch handles challenge pages (an error code, or challenge HTML returned as content). Ask Anthropic support or check its crawler documentation. To honour 'Cloudflare challenge = stop', treat url_not_accessible, and any fetched content that looks like a challenge page, as a stop on our side."
+  },
+  {
+   "claim": "(10c) The usage policy addresses storing search results and displaying citations.",
+   "status": "unknown",
+   "evidence": [
+    "https://www.anthropic.com/legal/aup (2026-10-22, page shows effective date November 12, 2026): no sentence on web search results, storing or caching them, citations, scraping or robots.txt. Nearest: do not 'circumvent the guardrails or terms of other platforms or services'",
+    "https://www.anthropic.com/legal/commercial-terms (effective Jun 17, 2025): silent on search results and citations. 'Anthropic may not train models on Customer Content from Services.'",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22) Note: 'When displaying API outputs directly to end users, citations must be included to the original source'; if outputs are reprocessed or combined, display citations per your legal team's advice"
+   ],
+   "correction": "The display-citations requirement comes from the web-search tool docs, not the AUP. No primary source addresses storing search results. Settling it needs Anthropic's legal or support answer, or a service-specific term."
+  },
+  {
+   "claim": "(10d) blocked_domains and allowed_domains cannot be combined.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22): 'Provide allowed_domains or blocked_domains, not both. If a request includes both, the API returns a 400 error.'",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/server-tools (2026-10-22): same rule for both tools. Request-level allowed_domains must be a subset of the org-level Console allow list. Web fetch matches on domain only (paths never match). No wildcards in the domain part. Use ASCII-only domains"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(10e) web_search user_location accepts country 'BH'.",
+   "status": "unknown",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (2026-10-22): country is 'The two-letter ISO 3166-1 alpha-2 country code (the API rejects an unsupported code with a 400 error)'. No list of supported codes is published"
+   ],
+   "correction": "BH is a valid ISO alpha-2 code, but Anthropic's supported subset is not published. The free way to check is POST /v1/messages/count_tokens with a web_search_20250305 tool carrying user_location {type:'approximate', country:'BH'} (it may or may not run this validation). Otherwise ask support. Do not make a billed Messages call."
+  },
+  {
+   "claim": "(11a) Standard API traffic retention and training terms.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (2026-10-22): 'Retained data is never used for model training without your express permission.' 'Conversation content (your prompts and Claude's outputs) is not retained by default; the exception is Covered Models, which require 30-day retention.' Flagged content: inputs and outputs may be kept up to 2 years",
+    "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data (2026-10-22): API inputs and outputs are deleted from back-end storage 'within 30 days of receipt or generation'; flagged content up to 2 years, trust and safety scores up to 7 years",
+    "https://www.anthropic.com/legal/commercial-terms (eff. Jun 17, 2025): 'Anthropic may not train models on Customer Content from Services.'"
+   ],
+   "correction": "The two primary pages differ in wording: the platform doc says not retained by default, while the privacy article says deleted within 30 days. For legal text, cite the stricter 'up to 30 days' figure, plus up to 2 years if flagged. Web search and web fetch (basic versions) are ZDR-eligible; their _20260209+ dynamic-filtering versions are not."
+  },
+  {
+   "claim": "(11b) Message Batches have 29-day retention and are not ZDR-eligible.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (2026-10-22) feature table: Batch processing ZDR No, HIPAA No, '29-day retention; async storage required'",
+    "https://platform.claude.com/docs/en/build-with-claude/batch-processing (2026-10-22): 'Batch results are available for 29 days after creation.'"
+   ],
+   "correction": ""
+  },
+  {
+   "claim": "(11c) Haiku 5.5 and Sonnet 5.5 are Covered Models with a 30-day retention requirement.",
+   "status": "refuted",
+   "evidence": [
+    "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (2026-10-22): 'Claude Fable 5.1, Claude Mythos 5.1, Claude Fable 5, and Claude Mythos 5 are designated Covered Models ... and require 30-day data retention'. Haiku 5.5 and Sonnet 5.5 are not listed"
+   ],
+   "correction": "Haiku 5.5 and Sonnet 5.5 are not Covered Models, so they have no model-specific 30-day requirement and can be used under ZDR for ZDR-eligible features."
+  },
+  {
+   "claim": "(12) Message Batches turnaround and result retention; fallbacks are rejected in batches.",
+   "status": "confirmed",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/batch-processing (2026-10-22): limit 100,000 requests or 256 MB. 'most batches completing within 1 hour'. Results are available when all requests finish or after 24 hours. Batches expire after 24 hours, and expired requests are not billed. Results are kept 29 days",
+    "Same page: 'fallbacks ... Server-side fallback doesn't apply to batches'. https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback (2026-10-22): 'a batch request that includes fallbacks produces a per-item errored result'. A batch refusal comes back as succeeded with stop_reason 'refusal' and mints no fallback credit",
+    "Batch page: max_tokens:0 (cache pre-warm) is not allowed. The 1-hour cache TTL is recommended for batches. Web search inside batches is throttled per org"
+   ],
+   "correction": "The rejection is per item: that item comes back as an errored result; the docs do not say the whole batch is refused with a 400."
+  },
+  {
+   "claim": "(13) The Sentry Python SDK auto-enables AnthropicIntegration when the anthropic package is installed, and captures prompts by default (include_prompts).",
+   "status": "refuted",
+   "evidence": [
+    "https://docs.sentry.io/platforms/python/integrations/anthropic/ (2026-10-22): 'If you have the anthropic package in your dependencies, the Anthropic integration will be enabled automatically' (Anthropic 0.16.0+, Python 3.8+). It instruments messages.create, sync and async",
+    "Same page, Behavior: Sentry treats LLM inputs and outputs as PII and 'doesn't include prompts, messages, or responses by default'. They are captured only with send_default_pii=True (being removed in SDK 3.0) or the data_collection gen_ai key. include_prompts defaults to True but only takes effect once PII capture is on. Tool definitions are attached by default"
+   ],
+   "correction": "Auto-enable: true. Prompts by default: false. Prompts are sent if send_default_pii=True or data_collection is enabled. To guarantee they never leave, pass AnthropicIntegration(include_prompts=False) explicitly; also note that tool definitions are sent by default."
+  }
+ ],
+ "sources": [
+  "https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/about-claude/models/overview (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/models/haiku-5-5/overview (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5 (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/thinking (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/server-tools (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-reference (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/structured-outputs (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/citations (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/prompt-caching (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/vision (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/batch-processing (fetched 2026-10-22)",
+  "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (fetched 2026-10-22)",
+  "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data (fetched 2026-10-22)",
+  "https://www.anthropic.com/legal/aup (fetched 2026-10-22; page effective date Nov 12, 2026)",
+  "https://www.anthropic.com/legal/commercial-terms (fetched 2026-10-22; effective Jun 17, 2025)",
+  "https://docs.sentry.io/platforms/python/integrations/anthropic/ (fetched 2026-10-22)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/models.md:85 (stale Sonnet 5.5 cache-read $0.20)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/live-sources.md"
+ ]
+}

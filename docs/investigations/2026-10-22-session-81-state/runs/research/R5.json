@@ -1,0 +1,224 @@
+{
+ "topic": "R5: Login/sign-up rate limiting and per-device daily quotas (best practice + what Supabase Auth already provides)",
+ "summary": "Answer: what protects auth today is the per-account lockout (5 failures in 15 min, Redis, keyed on an email hash) plus Supabase's own limits. The slowapi decorators on auth (register 3/min, login 5/min, refresh 10/min, social 10/min, reset 3/min) key on the TCP peer. On Railway that is a rotating edge address (322 anonymous calls from 155 addresses with no 429), so they barely bind. The ENABLE_PROXY_AWARE_RATELIMIT reader takes the leftmost X-Forwarded-For entry, which the client can spoof. Railway documents only X-Real-IP, and staff answers on XFF semantics contradict each other.\n\nThe biggest new risk: register_user, login_user and sign_in_with_social all call GoTrue from the backend with the anon key. Supabase limits per IP: sign-ups 30 per 5 min, /token 150 per 5 min. Every user therefore shares the Railway egress IP's bucket, and a busy launch can return 429 to all sign-ins and refreshes at once. The per-user fix is the Sb-Forwarded-For header. It only works with the new secret API key (legacy anon and service_role keys are not supported) and must be enabled in the dashboard. The other fix is raising the dashboard limits. Built-in email is also capped at 2 per hour per project unless custom SMTP is set.\n\nQuota: TIER_LIMITS free is already 3 a day / 10 a month, but the counter is per ACCOUNT, using UTC date keys (resets 03:00 Bahrain time). Compare requests never send X-Device-Fingerprint. The client sends it only on register, social login and share. Several accounts on one device each get 3 a day. The anon gate covers only /text/quick and /image/identify and is OFF.\n\nThe fingerprint hashes Device.osBuildId (kern.osversion), so it very likely changes on every OS update. Its random nonce sits in the Keychain, which on iOS survives a reinstall. Apple forbids deriving device data to uniquely identify a device. An app-generated random UUID, or the IDFV, is not fingerprinting.\n\nRecommended design:\n- Count both the account (user_id) and the device (an HMAC of an app-generated Keychain/SecureStore UUID). Allow a compare only if both are under 3 a day.\n- Atomic Upstash INCR, with EXPIREAT set to the next reset.\n- Reset at 00:00 Asia/Riyadh (UTC+3, no DST). The server returns resets_at and Retry-After.\n- Premium skips the device cap.\n- A missing or invalid header falls back to the account counter plus a metric while build 3 is in use, then is tightened after 1.0.1.\n\nAlready in place: the privacy label, the iOS manifest (DeviceID) and the policy disclose the device identifier for preventing abuse of the free limits. The Terms say \"each account\", so the device cap needs a Terms edit through the U8 machinery.",
+ "findings": [
+  {
+   "claim": "Every slowapi auth limit is keyed on get_remote_address (the TCP peer) while ENABLE_PROXY_AWARE_RATELIMIT is OFF. Limits: register 3/min, login 5/min, refresh 10/min, password reset 3/min, social 10/min, delete 1/min. Storage is in-process memory, so it resets on every deploy.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:583,687,751,1014,1159,1188 - limiter.limit decorators",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:52-59 - key_func falls back to get_remote_address",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:149-156 - memory:// storage"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "On Railway the TCP peer is a rotating edge address. Production served 322 anonymous compares from 155 addresses with no 429, so per-IP decorators do not bind per client. They are also not one shared bucket (the #299 correction).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:575-580 - session-71 finding and #299 note in the U13 row"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The proxy-aware key reads the LEFTMOST X-Forwarded-For entry, which the client controls. Flipping it as written would let an attacker forge limiter keys and audit IPs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py:33-49 - _leftmost_xff_ip"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Railway's docs name only X-Real-IP ('for identifying client's remote IP') and say nothing on XFF overwrite or append. Help Station staff answers contradict each other, and no proxy CIDR is documented. Trusting any header needs a live spoof probe first.",
+   "evidence": [
+    "https://docs.railway.com/networking/public-networking/specs-and-limits - X-Real-IP only (read 2026-10-22)",
+    "https://station.railway.com/questions/edge-proxy-x-forwarded-for-and-x-real-ip-c5a50049 - conflicting staff answers (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The pinned uvicorn 0.52.4 trusts proxy headers only from --forwarded-allow-ips (default 127.0.0.1/::1, env FORWARDED_ALLOW_IPS). The middleware walks XFF right to left and returns the first untrusted hop. The start command passes neither flag, so XFF is ignored for request.client today.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:192 - uvicorn==0.52.4",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.json:7 - startCommand has no proxy flags",
+    "https://uvicorn.dev/settings/ - forwarded-allow-ips default (read 2026-10-22)",
+    "local site-packages uvicorn/middleware/proxy_headers.py:36 - reversed(x_forwarded_for_hosts) (installed version may differ from pin)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Registration, password login and social login all call GoTrue from the backend with the ANON key client (sign_up, sign_in_with_password, sign_in_with_id_token). Supabase's per-IP buckets therefore count the Railway egress IP for every user.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:181 - create_client(SUPABASE_URL, SUPABASE_ANON_KEY)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:399-403,447-451,814-815 - sign_up / sign_in_with_password / sign_in_with_id_token"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Supabase Auth defaults: /signup, /recover, /resend, /otp, /user 30 per 5 min per IP; /token (password, refresh, ID token) 150 per 5 min per IP; /verify 30 per 5 min; signup confirmation and /recover 60 s per user; built-in email 2 per hour per project unless custom SMTP. To limit per end user, send Sb-Forwarded-For. That requires a secret API key; legacy anon and service_role keys are not supported, and the option must be enabled in the dashboard. No bypass for server-side callers is documented.",
+   "evidence": [
+    "https://supabase.com/docs/guides/auth/rate-limits - limits table and Sb-Forwarded-For notes (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "So at launch, more than 30 email sign-ups in 5 minutes, or more than 150 logins plus refreshes plus social sign-ins in 5 minutes, across ALL users, would get an upstream 429 for everyone. Whether the project uses custom SMTP or requires email confirmation was not verified.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:181,399,447,815",
+    "https://supabase.com/docs/guides/auth/rate-limits (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Account lockout: 5 failed logins within a 15-minute window locks the email (an SHA-256 prefix of the lower-cased email) for the rest of the window. It is armed atomically, fails open without Redis, and is applied on POST /login and PUT /auth/{email,password}. Social login has no per-account control.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py:47-48,1294-1371",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:694-712,1110-1143"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "OWASP: tie the failure counter to the account, not the IP; exponential backoff is an option; let a locked user still reset their password; give generic messages on login, registration and reset; CAPTCHA only as defence in depth. The credential-stuffing sheet adds: no single predictable IP threshold, use short and long windows, and treat client-supplied fingerprints as spoofable.",
+   "evidence": [
+    "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html (read 2026-10-22)",
+    "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Stuffing_Prevention_Cheat_Sheet.html (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The 429 contract exists. The envelope is {success:false, error, code, request_id}. slowapi 429s add a Retry-After header and retry_after_seconds (rounded up, capped at window+1). ACCOUNT_LOCKED carries retry_after. USAGE_LIMIT returns tier and remaining but no reset time.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/error_handler.py:165-228",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:708-713",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:619-627"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The free tier is already 3 a day / 10 a month (premium 10 a day / 70 a month), counted per USER_ID. Keys are UTC dates (usage:daily:{id}:{YYYY-MM-DD}), so the daily reset falls at 03:00 Bahrain/Riyadh and 04:00 UAE. The atomic INCRBY/rollback consume fails OPEN when Redis errors.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:138-159",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:235-278",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:617-628"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No per-device daily cap exists for signed-in users. The client sends X-Device-Fingerprint only from authService (register, social) and ShareBottomSheet, never on compares. At register, only the LIFETIME counter is inherited from other accounts on the device. One device with N accounts gets 3xN compares a day.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts:154,998,1160 - header only on auth calls",
+    "grep getDeviceFingerprint in SmartCompareApp/src -> authService.ts, ShareBottomSheet.tsx, deviceFingerprint.ts only",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py:515-537 - _inherit_device_counter copies lifetime_comparisons_used"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The anon device gate (ENABLE_ANON_USAGE_GATE, default OFF, anon:{fp} counters) is wired only on /text/quick and /image/identify. A missing or bad fingerprint skips the gate. With ENABLE_COMPARE_AUTH_REQUIRED ON in production, anonymous compares are refused with 401 anyway, so this gate is effectively dormant.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py:25-66",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1398-1416",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/image_routes.py:215-225"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The fingerprint is SHA-256 of applicationId|Device.osBuildId|a random nonce kept in SecureStore. On iOS, osBuildId is kern.osversion (e.g. 16F203), the OS build string, so the hash very likely changes with each OS update. The file comment says it 'resets on uninstall', but the repo's own privacy policy says Keychain items can remain after deletion.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts:1-36",
+    "https://docs.expo.dev/versions/latest/sdk/device/ - osBuildId = kern.osversion / Build.DISPLAY (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:147 - Keychain items can remain"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Apple: 'you may not derive data from a device for the purpose of uniquely identifying it' (fingerprinting, and ATT does not lift it). The IDFV may be used without ATT and must not be combined to track across other companies. Data used solely for fraud prevention is not tracking. Guideline 5.1.2(iii) bars surreptitious profile building. Mixing an OS build string into the ID sits close to the fingerprinting line; an app-generated random UUID or the IDFV does not.",
+   "evidence": [
+    "https://developer.apple.com/app-store/user-privacy-and-data-use/ - fingerprinting FAQ, IDFV, fraud exemption (read 2026-10-22)",
+    "https://developer.apple.com/app-store/review/guidelines/ - 5.1.2(i),(iii), 5.1.1(v) (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "expo-application: getIosIdForVendorAsync changes only when all of the vendor's apps are uninstalled. It can return null before first unlock after a reboot, so the call must be retried. getAndroidId is unique per signing key, user and device, and changes on factory reset or a signing-key change. Play allows persistent IDs for non-ad purposes with a privacy policy, but they must not be linked to the advertising ID.",
+   "evidence": [
+    "https://docs.expo.dev/versions/latest/sdk/application/ (read 2026-10-22)",
+    "https://support.google.com/googleplay/android-developer/answer/10144311 - persistent identifier rules (read 2026-10-22, via search summary)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Disclosure is largely in place. The privacy inventory and the iOS privacy manifest declare DeviceID (App Functionality / fraud prevention), and the policy says the device identifier is used 'to stop abuse of the free limits'. The Terms, however, say 'Each account can run ... up to 3 a day', so a per-device cap is a Terms change that must go through the U8 machinery and the twelve-anchor date bump.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/privacy-data-inventory.md:37,142",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/app.json:80",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:42",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md:25"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Delta vs the session-80 digest quota_profile_onboarding.json: that digest covered quota COPY (the lifetime pill, the debit-before-identify refund gap) and is still valid. It did not cover auth throttling, the Supabase shared-IP buckets, or device keying; those are new here. Its point that partial results keep the debit matters even more under a 3-a-day device cap.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/quota_profile_onboarding.json - summary (012/013)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "slowapi (MIT, about 2.1k stars) does not handle proxies. The client key comes entirely from key_func, so trusted-hop logic stays this repo's job. The limits library underneath is pinned at 5.8.0. The last commit date was not visible.",
+   "evidence": [
+    "https://github.com/laurentS/slowapi (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt:91,144"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "P0 before marketing traffic: move the backend's GoTrue calls to a Supabase SECRET API key, turn on Sb-Forwarded-For under Authentication > Rate Limits, and send the measured client IP in that header. Until then, raise the dashboard sign-up and /token limits well above expected aggregate traffic. Reason: today every user shares the Railway egress IP's 30-per-5-min sign-up and 150-per-5-min token buckets (supabase.com/docs/guides/auth/rate-limits; auth_service.py:181).",
+  "Client-IP key: before trusting any header, run one live probe that sends spoofed X-Real-IP and X-Forwarded-For through the Railway edge and logs what arrives. If X-Real-IP is overwritten, key on it. Otherwise use uvicorn --proxy-headers with a measured --forwarded-allow-ips (it takes the rightmost untrusted hop). Never use the leftmost XFF entry, so rewrite rate_limiter.py:33-49 before ENABLE_PROXY_AWARE_RATELIMIT flips.",
+  "Store auth throttles in Upstash as atomic INCR plus EXPIRE (the track_failed_login pattern), not in slowapi memory://, so they survive deploys. Ship them dark behind a new ENABLE_AUTH_THROTTLE_V2 flag that is read per call.",
+  "Limit table, LOGIN: per account, keep 5 failures per 15 min but switch to backoff (1, 2, 4, 8, cap 15 min) and never block password reset while locked (OWASP). Per IP: 10/min and 100 failures/hour. Per device: 20 attempts/hour. Keep one generic 401 message.",
+  "Limit table, REGISTER: per IP 5/hour and 20/day. Per device 3 new accounts/day and 10/30 days; past that, refuse new free accounts or give them zero free credit. Per email, Supabase's own 60 s confirmation window. Keep the response generic so it does not reveal existing accounts.",
+  "Limit table, SOCIAL LOGIN: per IP 10/min. Per device 10/hour and 3 new accounts/day (Apple's hide-my-email makes fresh identities cheap). No password lockout, since Apple or Google verifies the token. Apply the device inheritance (ENABLE_SOCIAL_DEVICE_FINGERPRINT) before the device cap.",
+  "Limit table, REFRESH and PASSWORD RESET: refresh per user 10/min and per IP 60/min, staying under the upstream /token budget. Password reset per email 1 per 60 s (Supabase) and 5/day, per IP 5/hour, always a 200 'if the address exists' reply. Custom SMTP is required, because the built-in email limit is 2/hour per project.",
+  "429 contract: keep the existing envelope with code RATE_LIMITED, ACCOUNT_LOCKED or USAGE_LIMIT plus a Retry-After header and retry_after_seconds. Extend USAGE_LIMIT with resets_at (ISO), retry_after_seconds and scope ('device' or 'account') so the client shows an exact reset time instead of guessing (error_handler.py:165-228; text_routes.py:619-627).",
+  "3 compares/day/device: on every paid compare route, consume BOTH usage:daily:{user_id}:{d} and usage:daily:dev:{HMAC(pepper, device_uuid)}:{d}, inside the same INCRBY/rollback (or one Lua script). Allow only if both stay at or under 3. Use EXPIREAT next reset + 1 h. Premium users skip the device key and keep 10/day per account. Refund both keys on non-delivery.",
+  "Reset time: compute the date key in Asia/Riyadh (UTC+3, no DST) so the reset lands at local midnight across most of the GCC (UAE/Oman 01:00). Keep it server-side, never from the client clock. Changing from UTC is an owner decision because it moves a published limit.",
+  "Missing or invalid fingerprint: treat garbage as missing, never as a new device. While build 1.0.0 (3) is live (it sends no header on compares), count the account only and emit a metric. After 1.0.1 reaches most traffic, a missing header allows 1/day per account. Never key on IP for this (GCC mobile carrier NAT).",
+  "Device ID (client, 1.0.1): drop Device.osBuildId (unstable, and close to Apple's fingerprinting ban). Use an app-generated random UUID in Keychain/SecureStore as the primary ID, falling back to getIosIdForVendorAsync with a retry on null, and getAndroidId on Android. Consider DeviceCheck's two bits (unverified) for a 'free quota used' flag that survives resets. The privacy label already covers this; edit the Terms 'each account' wording through U8."
+ ],
+ "open_questions": [
+  "Does the Railway edge overwrite or append a client-supplied X-Real-IP or X-Forwarded-For? This needs a live probe; docs and staff answers conflict.",
+  "Which Supabase key type does the project hold (legacy anon/service_role or the new publishable/secret keys), and what are the current dashboard Rate Limits values? Do not read production config; ask the owner.",
+  "Is custom SMTP configured and is email confirmation required? If not, the built-in 2 emails/hour cap blocks sign-up confirmation and password reset at launch.",
+  "How does _categorize_auth_error surface an upstream GoTrue 429: as a 429 RATE_LIMITED or as a 400/401 that the client shows as a wrong password?",
+  "Does a successful password recovery clear the failed_login counter? OWASP expects a locked user to recover by resetting.",
+  "Owner decision: daily reset at UTC midnight (today) or GCC local midnight; and whether a device cap applies to accounts that already exist on shared family devices.",
+  "DeviceCheck persistence and API details were not readable (the Apple docs page did not render); verify before relying on it."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/quota_profile_onboarding.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/rate_limiter.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/middleware/error_handler.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/auth_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/auth_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/usage_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/deviceFingerprint.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/authService.ts",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/requirements.txt",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/privacy-data-inventory.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/terms_of_service.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (U13 row, ENABLE_PROXY_AWARE_RATELIMIT / ENABLE_ANON_USAGE_GATE rows)",
+  "https://supabase.com/docs/guides/auth/rate-limits (read 2026-10-22)",
+  "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html (read 2026-10-22)",
+  "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Stuffing_Prevention_Cheat_Sheet.html (read 2026-10-22)",
+  "https://docs.railway.com/networking/public-networking/specs-and-limits (read 2026-10-22)",
+  "https://station.railway.com/questions/edge-proxy-x-forwarded-for-and-x-real-ip-c5a50049 (read 2026-10-22, search result)",
+  "https://uvicorn.dev/settings/ (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/application/ (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/device/ (read 2026-10-22)",
+  "https://developer.apple.com/app-store/user-privacy-and-data-use/ (read 2026-10-22)",
+  "https://developer.apple.com/app-store/review/guidelines/ (read 2026-10-22)",
+  "https://support.google.com/googleplay/android-developer/answer/10144311 (read 2026-10-22, via search summary)",
+  "https://github.com/laurentS/slowapi (read 2026-10-22)"
+ ]
+}

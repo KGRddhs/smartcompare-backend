@@ -1,0 +1,106 @@
+{
+ "cluster": "C3: Latency architecture and app speed (digests A9, R9, A6, R8)",
+ "lens": "cost and latency",
+ "verdicts": [
+  {
+   "recommendation": "C3.1 KB-first serve with one-round-trip read and KB-hit/cold budgets",
+   "verdict": "weakened",
+   "reason": "No single-round-trip read exists. Specs, reviews and prices are three separate PostgREST .single() reads. No image or rating table exists, so a new migration or RPC is needed. With ENABLE_SYNC_DB_OFFLOAD OFF in prod, run_db blocks the loop. The 381 ms p50 comes from about 3 sampled misses, not hits. Route pre-work already takes about 1 s (Upstash p95 1.5 s), so cards under 2 s at p95 are unproven. The cold sub-12/20 s budgets also assume unmeasured Haiku legs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:200-223,367-387 - one table per read, .single(), run_db",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:35-40 - inline blocking call when the flag is OFF",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - 'p50 381 ms' from about 3 sampled 4xx misses"
+   ],
+   "fix": "Ship the KB read as one Postgres RPC (or one denormalised kb_product_cards table queried with .in_ on both keys) behind ENABLE_SYNC_DB_OFFLOAD, measure its hit and miss p50/p95 on a canary, and state the budgets as p50 and p95 targets that are provisional until stage_timings_ms shows them."
+  },
+  {
+   "recommendation": "C3.2 Serve KB price with age; bounded merchant PDP refresh",
+   "verdict": "weakened",
+   "reason": "The direction is right: Serper shopping has a median of 8.3 s and the price race missed 23/30. But the 4-5 s is a budget, not a measurement. The existing PDP fetcher uses a 12 s HTTP timeout, 1 s same-domain spacing (bursts on a popular merchant queue up), a per-call robots fetch, and impersonate=chrome. At 100-300 compares a day most converted prices pass 24 h, so any inline refresh would break C3.1's 2 s cards.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:109-115 - HTTP_TIMEOUT 12, MIN_DOMAIN_INTERVAL_S 1.0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:272-273 - curl_cffi impersonate='chrome'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:604 - robots cache is a per-call dict"
+   ],
+   "fix": "Never refresh inline: always serve the KB price with its as-of date and push the refresh to the out-of-process worker, using a non-impersonating fetcher with a 4 s timeout and a persisted robots cache, and measure the per-merchant p95 before quoting 4-5 s."
+  },
+  {
+   "recommendation": "C3.3 Background KB enrichment; flip tier guard; build fix 6 dark",
+   "verdict": "weakened",
+   "reason": "The guard flip and dark fix 6 hold up: Tier 2 timed out 6/6, so skipping it saves spend and up to 7 s. But no queue exists. Web is one uvicorn process, so in-process fire_and_forget enrichment would share the event loop and worsen the 8.4 s /health stalls. Batch's 50% discount comes with a turnaround of up to 24 h, so the 'next request is warm' claim fails. The Sonnet and web_search spend per new product is unbudgeted.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/Procfile:1 - single uvicorn web process",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.warmer.json:10 - separate cron service precedent",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:466 - ENABLE_TIER_FILL_RESIDUAL_GUARD semantics"
+   ],
+   "fix": "Run enrichment as a separate Railway worker service (like the warmer), use the synchronous API for products requested today and Batch only for refreshes, and cap enrichment spend per day (for example a fixed share of the $400) before enabling it."
+  },
+  {
+   "recommendation": "C3.4 Cache base verdict plus moderation; freeze crown per response",
+   "verdict": "weakened",
+   "reason": "The existing set_comparison_cache key is only sorted names plus country, with no lang, model, prompt version or persona, and a 24 h TTL. Its Upstash calls are synchronous on the loop (p50 289 ms, p95 1.5 s). The verdict prompt takes the personalised scores_summary, so a base verdict can contradict a personalised crown. The quota is 3 per device per day and the key has 5+ dimensions, so the hit rate at 100-1,000 compares a day is unmeasured and likely low.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:722-725,769-778 - key = names+country, CACHE_DURATION 24 h",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4451-4481 - verdict receives personalised scores_summary, prefs, demographics",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - Upstash p50 289 / p95 1,537 ms"
+   ],
+   "fix": "Write a new key builder (card versions + price band + lang + model + prompt version + deterministic crown) instead of reusing set_comparison_cache, read it with the async path, include the crown in the key so the prose cannot disagree with it, and log the hit rate for a week before claiming the 6.1 s saving."
+  },
+  {
+   "recommendation": "C3.5 Haiku thinking-off live, Sonnet off path, spike, fix stalls",
+   "verdict": "weakened",
+   "reason": "Keeping Sonnet off the hot path, running the 20-call spike and fixing stalls first all hold. But the 11 s Sonnet and 7.8 s Haiku TTFTs are for thinking-on at 10k input, not our 2-5k thinking-off prompts. At 100 compares a day (one call about every 14 min) the 5-minute prompt cache mostly expires, so most calls pay the 1.25x cache write with no TTFT gain. Moderation is OpenAI omni-moderation, and its replacement is unbudgeted.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:47-53 - moderation = omni-moderation-latest (OpenAI, free)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4677 - moderate_output on every response tail",
+    "https://artificialanalysis.ai/models/claude-sonnet-5-5-high/providers (read 2026-10-22 per R9) - thinking-on, 10k-token workload"
+   ],
+   "fix": "Make the spike also record the cache hit rate at real call spacing and a Haiku-based moderation pass, and enable prompt caching only if the measured read share makes it cheaper than uncached input."
+  },
+  {
+   "recommendation": "C3.6 Per-product stream events; gated SSE flip; camera split",
+   "verdict": "weakened",
+   "reason": "Pinning-gated SSE and per-product events are sound and cost nothing until the OTA. But SSE drains the full verdict tail server-side when a client drops unless ENABLE_PREVERDICT_DISCONNECT_ABORT and ENABLE_FULL_STREAM_DEADLINE are on. Abandoned compares then still pay LLM tokens and hold the loop. The camera split adds a second HTTP round trip plus auth and quota (Upstash p95 1.5 s), and the vision leg on Anthropic is unmeasured (20 s timeout).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:394 - ENABLE_PREVERDICT_DISCONNECT_ABORT default OFF",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:402 - drain-not-abandon runs the full tail on disconnect",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52 - SSE default false"
+   ],
+   "fix": "Pair the SSE OTA with canaried ENABLE_PREVERDICT_DISCONNECT_ABORT plus ENABLE_FULL_STREAM_DEADLINE (not together with HONEST_PARTIAL_SCORING), and have the camera identify call skip the quota and pass a short-lived token to the compare, so auth and quota are paid once."
+  },
+  {
+   "recommendation": "C3.7 Client OTA speedups and native 1.0.1 items, Atlas measured",
+   "verdict": "weakened",
+   "reason": "These are low-risk, but the gains are mostly unmeasured or conditional. The 1.2 s floor and 800 ms reveal only cost time once the backend returns in under about 1.2 s, i.e. after C3.1 lands. The /health ping is already fire-and-forget. The 198,567 B is Sentry source bytes, not Hermes .hbc. The 382,744 B Geist cost is OTA asset bytes, not launch time. No cold-start baseline exists, so no ms target can be shown.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/HomeScreen.tsx:193,295 - MIN_LOADING_MS 1200; health check fire-and-forget",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:475 - 800 ms reveal",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js:2,7 - getDefaultConfig, no Sentry stub"
+   ],
+   "fix": "Record a build-3 cold-start and comparison_wall_time baseline first, ship the floor and reveal cuts in the same OTA as the first KB-first canary, and judge the Sentry and Geist items by Atlas .hbc and asset bytes, not by launch-time claims."
+  }
+ ],
+ "new_risks": [
+  "The provider switch removes free OpenAI omni-moderation (model_config.py:47-53). Replacing it with a Haiku call adds paid tokens and probably 1-2 s to every response tail. TAIL_RESERVE_SECONDS=6.5 was measured on gpt-4o and will need re-measuring.",
+  "At launch the KB hit rate is about zero (prod L2 product_specs/product_reviews reads fail with 4xx). Every cold compare then pays an extra blocking Supabase miss round trip before the Serper chain, which makes cold latency worse until the KB is seeded.",
+  "The $400 credit burn is unmodelled at 1,000 compares a day. Background enrichment with Sonnet and web_search (about $0.02-0.05 per new product) plus live Haiku could exhaust it in weeks. No per-day spend cap or kill switch is specified.",
+  "The single uvicorn process plus inline sync Supabase and Upstash (ENABLE_SYNC_DB_OFFLOAD and ENABLE_ASYNC_REDIS_OFFLOAD OFF) means more KB and cache round trips per compare. At 1,000 compares a day this can amplify the measured 2.6-8.4 s simple-route stalls rather than reduce latency.",
+  "Mapping a typed or vision name to a canonical product_key is itself unbudgeted on the KB-first path. A normalisation miss falls through to the full cold chain, and a wrong match serves a fast wrong card. No latency or accuracy target exists for this step.",
+  "The existing PDP price fetcher uses curl_cffi impersonate='chrome' (shopify_pdp_service.py:273). Reusing it for C3.2 refreshes would extend Chrome impersonation, against the standing ruling, unless a plain-UA fetcher is built."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/.claude/projects/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/subagents/workflows/wf_61b37e95-99f/journal.jsonl (A9, R9, A6, R8)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:1-60,196-223,365-390",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/utils/db_offload.py:1-40",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:639-778",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:1-80",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1713,4440-4500,4654-4690",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/shopify_pdp_service.py:100-115,262-280,620-640",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/sitemap_discovery_service.py:483-616",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/Procfile, railway.json, railway.warmer.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:337,382-402,466",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql (table list)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/metro.config.js, src/config/features.ts:45-56, src/screens/HomeScreen.tsx:193,295, src/screens/ResultsScreen.tsx:475, src/theme/fonts.ts, app.json:193-200",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json (Supabase 381 ms, Upstash 289/1,537 ms, /health p95 8,372 ms, V09 trace)"
+ ]
+}

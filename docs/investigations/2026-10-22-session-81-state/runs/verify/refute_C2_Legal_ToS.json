@@ -1,0 +1,116 @@
+{
+ "cluster": "C2: Knowledge base, merchant registry, crawler, data sources (A2, A3, R3, R4, R13, R15)",
+ "lens": "Legal, ToS, App Review and privacy",
+ "verdicts": [
+  {
+   "recommendation": "C2.1 Migration 045 kb_* tables, RLS service-role only, canonical id, harden 012",
+   "verdict": "weakened",
+   "reason": "The RLS pattern is sound: 044 REVOKEs from PUBLIC/anon/authenticated and 012 really is USING(true). The weak point is kb_reviews, which has no source allowlist. rating_service ranks fragrantica as a Tier-2 rating source. YouTube API data must be deleted or refreshed within 30 days and cannot be combined across content owners. Google snippets that come through Serper are not licensed for a permanent DB.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/044_apple_siwa_tokens.sql:42-44; migrations/012_product_data_tables.sql:19-21,41-42,58-60",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:37,46 (fragrantica in RATING_TIER_2 and LUXURY_FASHION_RETAILERS); app/services/review_service.py:37 (YouTube signal)",
+    "https://developers.google.com/youtube/terms/developer-policies III.E.4 (30-day delete/refresh), III.E.2 (no combining across owners), read 2026-10-22"
+   ],
+   "fix": "Ship 045 as proposed, but give kb_reviews a source enum that rejects DENY_HOSTS (and drop fragrantica from the rating tiers), store only the aggregate rating, count and source URL (no snippet text), and hard-delete YouTube-derived rows at 30 days."
+  },
+  {
+   "recommendation": "C2.2 kb_ingest after every compare, KB read before paid calls, freshness",
+   "verdict": "weakened",
+   "reason": "Ingesting every delivered compare would also persist user-pasted link-mode URLs, and query strings can carry tokens. Those URLs would end up in shared kb_offers, yet privacy_policy.md:115 promises that the links you shared are deleted on account deletion. _record_provider_attempt also carries the raw url. The fragrantica rating tier would also flow in. Ingesting anonymous product facts is fine, because unlinked searches are already disclosed.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:95,107,115",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:141-169 (url in each attempt record)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:37"
+   ],
+   "fix": "Ingest only canonicalised URLs (scheme+host+path, no query or fragment) on registry hosts whose robots verdict is readable-allow, never persist a link-mode URL from a non-registry host, and drop any row whose source domain is in DENY_HOSTS."
+  },
+  {
+   "recommendation": "C2.3 Persistent merchant registry table, per-call read, health, challenge, partner fields",
+   "verdict": "weakened",
+   "reason": "The field list drops R3's tos_reviewed_at and has no deny flag. Railway's fair-use policy bans bots or scrapers that violate applicable terms of service, and Apple 5.2.2 requires permission under the service's terms, so a host must not go live without a ToS review. The partner/CTA fields create paid placement in a comparison app, which needs a disclosed 'sponsored' label and must stay out of scoring and ranking.",
+   "evidence": [
+    "https://railway.com/legal/fair-use ('running bots or scrapers that violate applicable terms of service'), read 2026-10-22",
+    "https://developer.apple.com/app-store/review/guidelines/ 5.2.2, read 2026-10-22",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/data/bh_gcc_sources.json (no tos/terms field; 0 banned hosts)"
+   ],
+   "fix": "Add a tos block {reviewed_at, verdict, terms_url} and a deny flag (moving DENY_HOSTS in), allow candidate-to-live only when the ToS verdict is ok, and keep the partner/CTA fields out of scoring with an in-app Sponsored label."
+  },
+  {
+   "recommendation": "C2.4 Owned QarenBot crawler, robots fail-closed, politeness, discovery, licence picks",
+   "verdict": "weakened",
+   "reason": "The licences check out: Protego, price-parser and extruct are BSD-3, and ultimate-sitemap-parser is GPL-3.0 as claimed. But dropping impersonation only on crawler paths leaves about 25 live adapter fetches sending impersonate=chrome. Robots evaluated on the live path for the QarenBot token would then judge a UA we do not send; klinq disallows Mozilla. Common Crawl's terms advise counsel before commercial use.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:20-27; app/services/price_service.py:14767,15179,16433 (impersonate=chrome)",
+    "https://commoncrawl.org/terms-of-use s2-3 (third-party terms; legal counsel before commercial use), updated 2024-03-07, read 2026-10-22",
+    "https://github.com/GateNLP/ultimate-sitemap-parser (GPL-3.0), read 2026-10-22"
+   ],
+   "fix": "Evaluate robots for the UA actually sent, or move live adapters to the named QarenBot UA behind a flag; exempt user-pasted link-mode fetches only by an explicit owner ruling; get owner sign-off on the CC Terms before any CDX use."
+  },
+  {
+   "recommendation": "C2.5 Seed via Haiku over held corpora, persist identity, Wikidata, OBF separate",
+   "verdict": "weakened",
+   "reason": "Wikidata CC0, the separate ODbL table for OBF and the Fragella exclusion all hold. But the seeder globs both corpora with no DENY_HOSTS, robots or blocked filter. _proof/html holds a retailer PDP that embeds fragrantica.com/perfume links, so citation-or-omit could launder Fragrantica-copied notes. The global corpus has 65 blocked rows and only free-text robots notes, and it was captured with Chrome impersonation.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:80,270-275 (rglob *.html, no deny/robots filter)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html/d411c22b54f7a3753dd50068239ed6b183bc4018.html (links to fragrantica.com/perfume/...)",
+    "https://www.wikidata.org/wiki/Wikidata:Licensing (CC0 main namespaces), read 2026-10-22"
+   ],
+   "fix": "Seed only rows with a machine robots-allow verdict for QarenBot and blocked=false, skip any page whose notes snippet sits beside a Fragrantica/Parfumo/Basenotes link, and record the provenance host per field; on the live path, persist only after the registry robots verdict check."
+  },
+  {
+   "recommendation": "C2.6 Robotoff-style predictions/votes, RapidFuzz+Splink+Haiku merge, Shopify UCP, Open Prices fields",
+   "verdict": "weakened",
+   "reason": "Keying kb_vote by device_fingerprint repurposes the device id, which the privacy policy limits to stopping abuse of free limits and invites. It therefore needs new policy text and deletion coverage. Shopify UCP needs a public agent profile URL and dashboard registration, which is an owner acceptance of Shopify's terms, and some stores restrict access. Robotoff and Open Prices are AGPL, so take schema ideas only.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:42 (device id purpose), :115 (deletion scope)",
+    "https://shopify.dev/docs/agents/catalog/storefront-mcp (meta.ucp-agent.profile required), read 2026-10-22",
+    "https://shopify.dev/apps/build/storefront-mcp/servers/storefront ('some stores may restrict access'), read 2026-10-22"
+   ],
+   "fix": "Key votes to a purpose-scoped random id or the account, disclose it, cover it in the 043 deletion cascade, and park the UCP probe until the owner publishes an agent profile and accepts Shopify's developer terms."
+  },
+  {
+   "recommendation": "C2.7 Images URL-only, JSON-LD first, Serper fallbacks, Haiku URL check, pHash",
+   "verdict": "weakened",
+   "reason": "URL-only hotlinking matches privacy_policy.md:95 for retailer and brand images. But the Serper KG, organic and Images legs accept any http(s) host: Google thumbnails, fimgs.net (Fragrantica) and blogs, which are neither retailer nor brand. A 'public host' rule does not exclude them. The Haiku-by-URL check sends query data to Anthropic, which the consent text does not name. pHash requires downloading a copy.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:52-58,75-120 (any http(s) URL accepted from KG/organic/images)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:704 (consent names OpenAI only)",
+    "https://developer.apple.com/app-store/review/guidelines/ 5.1.2(i), 5.2.2, read 2026-10-22"
+   ],
+   "fix": "Allowlist image hosts to registry merchant and brand hosts and their CDNs, deny fimgs.net, fragrantica and parfumo, run the Haiku check only after the Anthropic consent re-ask, and compute pHash transiently without keeping bytes."
+  }
+ ],
+ "new_risks": [
+  "Provider switch: the AI-consent sheet, the privacy policy (sections 4-5) and app/legal/processors.json (pinned by tests/test_legal_docs_u8.py) name only OpenAI. Any KB step that sends user-derived queries to Anthropic (image check, live-miss judging) must wait for the post-approval consent re-ask and processor manifest update.",
+  "The Message Batches API is NOT ZDR-eligible and stores request and response data for up to 29 days (platform.claude.com batch-processing and api-and-data-retention, read 2026-10-22). Batch only public page content, never user queries or profile data, and delete batches after retrieval.",
+  "The ban is not enforced in one place: fragrantica.com is still a live Source at source_router.py:347, DENY_HOSTS exists only in search_descriptor_service.py:111, and rating_service.py:37,46 trusts fragrantica ratings. A registry or KB seeded from these modules would import banned provenance.",
+  "Account deletion (migration 043 cascade) does not yet cover the proposed kb_feedback and kb_vote rows, which are linked to users or devices. That would break the privacy_policy.md:115 promise of immediate, permanent deletion.",
+  "Retailer terms on database extraction: many GCC retailers' ToS bar automated collection or permanent storage of prices and images. Apple 5.2.2 and Railway's fair-use clause make a per-host ToS review a precondition, and nothing schedules it for the 275 live rows.",
+  "Store-paid CTA monetisation in a comparison app needs sponsored disclosure and ranking neutrality under consumer-protection rules (not sourced here; needs owner/counsel review). Partner contracts, affiliate IDs, the CJ feed and Shopify agent credentials must stay env-only, never in the public repo's registry seed JSON."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/docs/policies/2026-08-31-robots-unreadable-ruling.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:1-60",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:10964,13952-13961,14767,15179,16433",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/image_service.py:52-145",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:28-48",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py:18,37",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:141-169",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py:111; app/services/source_router.py:347",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql; migrations/044_apple_siwa_tokens.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/seed_spec_spine.py:14-24,80,270-275",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html/d411c22b54f7a3753dd50068239ed6b183bc4018.html; _proof/global/corpus.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/legal/privacy_policy.md:15-147; app/legal/processors.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/i18n/en.json:703-704",
+  "https://developer.apple.com/app-store/review/guidelines/ (5.1.2(i), 5.2.1, 5.2.2, 2.3.1(a), 2.5.19; read 2026-10-22)",
+  "https://commoncrawl.org/terms-of-use (updated 2024-03-07; read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/batch-processing (29-day retention; read 2026-10-22)",
+  "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention (Batches not ZDR; web_search/web_fetch ZDR-eligible; read 2026-10-22)",
+  "https://shopify.dev/docs/agents/catalog/storefront-mcp (agent profile required; read 2026-10-22)",
+  "https://shopify.dev/apps/build/storefront-mcp/servers/storefront (stores may restrict; read 2026-10-22)",
+  "https://developers.google.com/youtube/terms/developer-policies (III.E.2, III.E.4; read 2026-10-22)",
+  "https://railway.com/legal/fair-use (undated; read 2026-10-22)",
+  "https://www.wikidata.org/wiki/Wikidata:Licensing (CC0; read 2026-10-22)",
+  "https://github.com/GateNLP/ultimate-sitemap-parser (GPL-3.0; read 2026-10-22)"
+ ]
+}

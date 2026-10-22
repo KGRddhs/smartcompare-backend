@@ -1,0 +1,238 @@
+{
+ "topic": "R14: Anthropic surfaces per scenario (Messages API, tool use, Batches, Managed Agents, Agent SDK, Skills, memory) for MYEZ live compares, KB growth, critique loops and operator tooling",
+ "summary": "Answer to the owner: no, MYEZ does not need agents, sessions or Skills for any of its seven scenarios. Every row is either one model call or a pipeline our own code drives. Recommended default: (1) the live path (compare, coming-soon classifier, photo ID) uses the plain Messages API with structured outputs (output_config.format) and prompt caching on a frozen system prompt and tool list, streaming, with Haiku 5.5 as the worker and Sonnet 5.5 only for the verdict or a low-confidence photo. (2) Nightly jobs (critique re-grading, normalising enrichment and PDP refreshes) go through Message Batches: 50% off every token, cache reads included, results within 24 h. (3) Scheduling stays on our own Railway cron services, which the repo already uses (scripts/cron_*.py, railway.warmer.json). Managed Agents scheduled deployments would work mechanically: cron, up to 9 min of jitter, dollar budgets, run records. But they lose the batch discount, are beta, keep state on Anthropic's side, and run web_fetch and sandbox egress on Anthropic's infrastructure. That last point means our fail-closed robots.txt ruling and the Cloudflare stop rule could not be enforced by our own fetcher. (4) Operator tooling: Claude Code or the Agent SDK on the owner's machine, with narrow dedicated tools and writes gated behind approval. Agent Skills (they need the code-execution container; code execution is not ZDR-eligible) and the memory tool or memory stores have no role on the live path, and none elsewhere: the knowledge base must be our own queryable Postgres, not files hosted by Anthropic. Task budgets (minimum 20,000 tokens) suit only agent loops; we have none. Cost shape: web search at $10 per 1,000 searches outweighs Haiku 5.5 tokens ($0.10/$0.50 per MTok) about 10 to 1 on a typical compare (computed, not measured), so knowledge-base-first plus a max_uses cap is the main cost lever. Changes since session 80: there is still no Anthropic adapter or pin at 95cf6f86. The docs give the Sonnet 5.5 cache read as $0.10, not the skill's $0.20, and Files storage as 1 TB, not 100 GB. Haiku 5.5 thinks by default and has no server-side fallback. Haiku 5.5 and Sonnet 5.5 return 400 on any non-default temperature, which breaks the temperature=0 the verdict relies on for determinism (model_config.py:107-123).",
+ "findings": [
+  {
+   "claim": "Owner question answered: none of the seven scenarios meets the skill's agent criteria. Each is a single call or a pipeline our code orchestrates. 'Agents' in Managed Agents are versioned configs plus sessions, and nothing here needs Anthropic to run the loop or host a workspace. The live path is Messages API only. Nightly work is Batches plus our own cron. Operator work is local Claude Code or the Agent SDK.",
+   "evidence": [
+    "claude-api SKILL.md 'Which Surface Should I Use?' - 'Start simple ... only reach for agents when the task genuinely requires open-ended, model-driven exploration'",
+    "claude-api SKILL.md 'Should I Build an Agent?' - complexity/value/viability/cost-of-error; any 'no' -> simpler tier",
+    "shared/managed-agents-overview.md:5-9 - Agent (once) -> Session (every run); the value is versioning"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Row (a) live compare under the 30 s cap. Surface: Messages API, streaming, server-side web_search with max_uses 2-3, allowed_domains set to the merchant registry and user_location BH. Haiku 5.5 at effort low/medium does extraction and Sonnet 5.5 at effort medium does the verdict, both via output_config.format; no forced tool_choice. Caching: one breakpoint on the frozen system prompt and tools (512-token minimum), 5-minute TTL, or 1 h if traffic gaps run longer. Cost: about $0.0013 for 8K in / 1K out on Haiku, versus $0.01 per search; the Sonnet verdict is about $0.03 at 8K/1.5K. Latency: first-request schema compile (then a 24 h schema cache), the search pause, possible pause_turn. Credentials: ANTHROPIC_API_KEY env var on Railway (name only). Needs no hosted state.",
+   "evidence": [
+    "shared/tool-use-concepts.md:560-566 - schema compile on first request, 24-hour cache; refusal may not match schema",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22) - Haiku 5.5 $0.10/$0.50, Sonnet 5.5 $2/$10, web search $10 per 1,000",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1656 - STREAM_HARD_CAP_SECONDS default 25.0",
+    "shared/prompt-caching.md:135 - 512-token minimum on Haiku 5.5 / Sonnet 5.5"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Row (b) coming-soon refusal classifier. A deterministic category gate runs first at $0 and refuses any non-fragrance request with coming-soon copy. Only ambiguous text falls through to Haiku 5.5 at effort low: an enum structured output, max_tokens about 1024 (thinking counts toward it), cached system prompt, no tools. That costs about $0.0001-0.0002 per call (computed). A refusal stop_reason or an unknown result is treated as not-fragrance, so the request is refused at zero further cost. No hosted state.",
+   "evidence": [
+    "shared/model-migration.md:2231+ (Haiku 5.5) - 'Thinking counts toward max_tokens'; classification example max_tokens=1024, effort low",
+    "shared/model-migration.md Haiku 5.5 Breaking change 2 - temperature 0 returns 400; 'constrain the output with structured outputs or an enum-valued tool'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_type_router.py - an existing deterministic router module (file present; its routing logic not read)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Row (c) photo identification. Messages API vision with the image inline as base64 (not via the Files API: single use, workspace-scoped, not ZDR-eligible). Haiku 5.5 by default, escalating to Sonnet 5.5 only when confidence is low, with a structured output carrying identity, confidence and an abstain field. web_search is optional, to confirm the brand and line. Failure handling: refusal -> abstain; parse failure -> abstain, never 'Unknown Product'.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/files.md (read 2026-10-22) - zdr: not-eligible; files workspace-scoped; 'Never accept file_id values from end users'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/openai_flows_provider.json - vision confidence unused; a None/refusal reply crashes the camera route (MYEZ-001/002)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Row (d) knowledge-base enrichment right after a compare. Usually no extra model call: persist the structured output the compare already produced, with provenance, from a background task after the response is sent. Any heavier normalisation is queued for the nightly batch. Neither the memory tool (client-side files under /memories) nor Managed Agents memory stores (text files of at most 100 KB each, hosted by Anthropic) fit an owned, queryable product KB.",
+   "evidence": [
+    "shared/tool-use-concepts.md:460-475 - memory tool is client-side, /memories directory, you implement storage",
+    "shared/managed-agents-memory.md:5-17 - memory store = workspace-scoped small text docs, <=100KB each, mounted in the session container"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Row (e) scheduled merchant discovery and PDP refresh. Our own Railway cron plus our own fetcher handles robots fail-closed and the Cloudflare stop. The LLM step (page-to-product normalisation) is a Message Batch: 50% off, 1 h cache TTL, Haiku 5.5 batch at $0.05/$0.25. Discovery of new stores can be batched web_search with blocked_domains for Fragrantica and Parfumo; web search is allowed in batches but throttled. A Managed Agents scheduled deployment is possible but its web_fetch and egress run on Anthropic's servers, outside our politeness code.",
+   "evidence": [
+    "shared/managed-agents-tools.md:9 - 'web_search / web_fetch always run on Anthropic's servers, in both environment types'",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22) - 'You can include the web search tool in the Messages Batches API ... the Batches API throttles web search requests'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py:30-46 - RFC 9309 evaluator, the robots-unreadable ruling pinned",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_index_sitemaps.py:1-25 - off-clock cron pattern, ENABLE_SITEMAP_INDEX fail-closed"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Managed Agents scheduled deployments, measured from the skill. POSIX cron with an IANA timezone; execution jittered up to 15% of the interval (minimum 5 s, maximum 9 min); 1,000 deployments per org; a dollar budget is copied onto each fired session. A rate-limited firing is recorded with no retry, missed triggers are not backfilled, and archiving the agent archives the deployment. Pricing adds $0.08 per session-hour, and the Batch API discount does not apply to sessions.",
+   "evidence": [
+    "shared/managed-agents-scheduled-deployments.md:74, 84-92, 148-152",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22) - 'Session runtime | $0.08 USD per session-hour'; Batch discount 'Sessions are stateful and interactive. There is no batch mode.'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Row (f) nightly critique and eval re-grading. A Message Batch over the day's compares, with Sonnet 5.5 as judge at effort medium and a structured rubric output. Example: 500 compares at 6K in / 500 out costs about $4.25 on Sonnet batch or about $0.21 on Haiku batch (computed from list prices). Server-side fallbacks are rejected inside batches, so refusals are retried per custom_id. Managed Agents outcomes (a grader that iterates one deliverable) are unnecessary. The repo already has a nightly eval cron.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md (read 2026-10-22) - 100,000 requests or 256 MB per batch; 24 h expiry; results 29 days; 'fallbacks ... doesn't apply to batches'; 1-hour cache advice",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_eval_nightly.py:1-25 - ENABLE_EVAL_CRON fail-closed, Railway cron 0 2 * * *",
+    "shared/cost-optimization.md:149-155 - batch discount covers cache reads/writes; no mid-batch tool loop; not for Managed Agents"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The self-critique currently runs on the live request path behind ENABLE_SELF_CRITIQUE (read per call, default OFF). Moving the critique to the nightly batch removes a model call from the 25-30 s path and halves its cost. That serves both the faster-compares goal and the critique-loop goal.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py:83-87 - is_self_critique_enabled reads ENABLE_SELF_CRITIQUE",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:4495, 5304, 9485 - _apply_self_critique called inside the compare"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Row (g) operator tooling (ad-hoc data fixes). Claude Code or the Agent SDK on the owner's machine (harness only, self-hosted). Writes get dedicated tools with approval gates, and database credentials come from the local environment, never the repo. The Managed Agents alternative keeps the secret in an Anthropic vault: substituted at egress, never visible in the sandbox, with always_ask on write tools. That still means a Supabase service key stored by Anthropic, so the local option is preferred.",
+   "evidence": [
+    "claude-api SKILL.md 'Building an Agent: Four Approaches' - Agent SDK = Claude Code harness + built-in tools, you host",
+    "shared/agent-design.md:26-33 - promote hard-to-reverse actions to dedicated, gated tools",
+    "shared/managed-agents-tools.md:315-335 - vault environment_variable credentials substituted at egress, never enter the sandbox"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Agent Skills on the Messages API require the code-execution container (container.skills plus the code_execution tool), allow at most 20 per request and 30 MB per upload, and can return pause_turn. Code execution is not ZDR-eligible and is billed $0.05 per container-hour beyond 1,550 free hours, unless used with web_search_20260209 or later. No role on the live path, and none needed elsewhere.",
+   "evidence": [
+    "shared/tool-use-concepts.md:323-347 - Agent Skills via container + code execution",
+    "https://platform.claude.com/docs/en/build-with-claude/skills-guide.md (read 2026-10-22) - 'Skills require the code execution tool'; 'up to 20 Skills for each request'; 'under 30 MB'",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md (read 2026-10-22) - zdr: not-eligible",
+    "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22) - 1,550 free hours, $0.05/hour/container; free with web_search_20260209+"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Task budgets (beta task-budgets-2026-03-13) are supported on Haiku 5.5 and Sonnet 5.5 but need a total of at least 20,000 tokens and are advisory, meant for agent loops. They are irrelevant to single-shot live calls, where max_tokens and max_uses are the controls. Managed Agents session budgets are a different thing: hard, dollar-denominated caps.",
+   "evidence": [
+    "claude-api SKILL.md 'Task Budgets (Quick Reference)' - minimum total 20,000; distinct from max_tokens and from CMA session budgets",
+    "shared/managed-agents-core.md:189-217 - session budget pre-request gate, budget_reached pause"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Web search facts. Versions are 20250305, 20260209 (dynamic filtering) and 20260318 (response_inclusion). Errors come back as HTTP 200 with error_code values: too_many_requests, invalid_tool_input, max_uses_exceeded, query_too_long, request_too_large, unavailable. On an error, content is an object, not a list. Failed searches are not billed. encrypted_content must be passed back unchanged, and citations are always on.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22) - Errors section; 'If an error occurs during web search, the web search will not be billed'; 'Citations are always enabled'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Whether Haiku 5.5 supports web_search_20260209 and later is unverified. The skill lists the _20260209 variants only for Opus and Sonnet. The docs say dynamic filtering needs programmatic tool calling and that models without it must set allowed_callers ['direct']. Code-execution docs list Haiku 5.5 and say only Haiku 4.5 lacks programmatic tool calling, so Haiku 5.5 probably supports it.",
+   "evidence": [
+    "claude-api SKILL.md 'Server Tools' - _20260209 requires Opus 5.5/5/4.8/4.7/4.6, Sonnet 5.5, Sonnet 5, Sonnet 4.6",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22) - 'Models that don't support programmatic tool calling require [allowed_callers direct]'; check capabilities.server_tools.web_search via Models API",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md (read 2026-10-22) - supportedModels includes claude-haiku-5-5; only Haiku 4.5 lacks PTC"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Pricing changes against the cached skill: the docs give the Sonnet 5.5 cache read as $0.10/MTok (0.05x input), where the skill says $0.20. Haiku 5.5 cache read is $0.01, and the rate rises to $0.50/$2.50 above 100K prompt tokens. Batch prices are Sonnet 5.5 $1/$5 and Haiku 5.5 $0.05/$0.25. Web fetch has no extra charge. Files API storage is 1 TB per org (skill: 100 GB), 500 MB per file, about 500 requests per minute, all operations free.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22) - model, batch and cache tables; footnote 2",
+    "https://platform.claude.com/docs/en/build-with-claude/files.md (read 2026-10-22) - 'Total storage: 1 TB for each organization'; ~500 requests per minute",
+    "python/claude-api/files-api.md:9-15 - skill says 100 GB (stale)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Pitfalls from the skill. (1) Haiku 5.5 thinks by default; thinking disabled is allowed only at effort high or below; responses can start with thinking blocks, so read content by type; thinking text is omitted by default. (2) Sonnet 5.5 rejects thinking disabled with a 400 and uses between_tools instead (effort high or below, no other fields). (3) Forced tool_choice any/tool returns 400 on Sonnet 5.5, Batches included; Haiku 5.5 accepts it but then skips thinking. (4) Prefill returns 400 on both. (5) max_tokens defaults: about 16000 non-streaming, about 64000 streaming, about 256-1024 for classification. (6) Server-tool errors do not raise. (7) Fallbacks: Sonnet 5.5 accepts only fallbacks 'default' (beta server-side-fallback-2026-07-01, Claude API only); Haiku 5.5 has no server-side fallback (a list returns 400); fallbacks are rejected in Batches.",
+   "evidence": [
+    "claude-api SKILL.md 'Thinking & Effort' table and 'Common Pitfalls'",
+    "shared/tool-use-concepts.md:93-107 - forced tool use rejected incl. count_tokens and Batches",
+    "shared/model-migration.md Haiku 5.5 'Safeguards' - 'There is no server-side fallback for Claude Haiku 5.5'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Determinism risk: the verdict relies on temperature=0 for determinism; an earlier A/B traced all winner variance to it. Haiku 5.5 and Sonnet 5.5 return 400 on any non-default temperature, top_p or top_k. Switching the verdict to Anthropic therefore needs that A/B re-run, with structured outputs and the deterministic scorer carrying stability.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:107-123 - sampling_kwargs caveat: 'the verdict call relies on temperature=0 for determinism'",
+    "shared/model-migration.md Haiku 5.5 Breaking change 2 - temperature must be 1; any other value 400"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Change since session 80, repo side: at origin/main 95cf6f86 there is still no Anthropic adapter (no app/services/llm_adapter.py) and no anthropic pin in requirements. A grep for 'anthropic' across app/ hits only a comment at openai_service.py:72; llm_provider.py is the OpenAI base-URL seam. The PLAN R-A12 adapter and the R0 pin (anthropic==1.11.0, plus disabling Sentry's AnthropicIntegration in the same change) remain to do.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py:72 - only 'Anthropic' hit in app/",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/llm_provider.py:128-183 - provider_base_url / is_custom_provider (OpenAI base URL)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md:33 - R-A12 adapter design",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/ledger.md:16 - R0: anthropic==1.11.0; sentry-sdk auto-enables AnthropicIntegration with prompts"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The self-hosted scheduler already exists as Railway cron services: separate service configs, fail-closed ENABLE_* flags, and swallow-and-log failure handling. A new nightly batch submitter and harvester fits that pattern with no new infrastructure, which makes Managed Agents deployments redundant here.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.warmer.json:1-12 - startCommand python -m scripts.cron_warm_price_cache, restartPolicyType NEVER",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_eval_nightly.py:14-28 - fail-closed flag; 'a broken nightly must never crash-loop the cron worker'"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Credential security across the matrix. Rows (a) to (f) need only ANTHROPIC_API_KEY as a server-side environment variable; nothing is stored in an Anthropic vault and nothing reaches the client. Vaults matter only if Managed Agents is adopted. Memory stores must never hold credentials. API keys must never go in prompts, because they persist in session event history.",
+   "evidence": [
+    "shared/managed-agents-tools.md:315-345 - vault categories; 'Do not put API keys in the system prompt or user messages'",
+    "shared/managed-agents-memory.md:9 - 'Never store credentials, API keys, or tokens in memory stores'"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Use the plain Messages API with output_config.format and a cached frozen system+tools prefix for rows (a)-(c). Reason: single-shot calls with no hosted state, and the skill's 'start simple' rule.",
+  "Gate non-fragrance requests deterministically at $0 before any model call, and only send ambiguous text to Haiku 5.5 (effort low, enum output, max_tokens about 1024). Reason: meets the zero-cost refusal requirement, and thinking counts toward max_tokens.",
+  "Cap web_search with max_uses 2-3 and allowed_domains drawn from the merchant registry, and check the KB first. Reason: at $10 per 1,000 searches, search costs roughly 10x a Haiku compare's tokens.",
+  "Move ENABLE_SELF_CRITIQUE work off the live path into a nightly Message Batch on Sonnet 5.5. Reason: 50% cheaper and removes a model call from the 25 s stream cap.",
+  "Run PDP refreshes and enrichment normalisation as Batches submitted by a new Railway cron (pattern: scripts/cron_eval_nightly.py, railway.warmer.json), with a 1 h cache TTL. Reason: batch discount, plus our own fetcher keeps robots fail-closed and the Cloudflare stop.",
+  "Do not adopt Managed Agents deployments for (e)/(f) now. Reason: no batch discount, beta, Anthropic-hosted state, and web_fetch/egress on Anthropic's servers outside our politeness rules. Revisit only if a genuinely open-ended discovery agent is needed.",
+  "Set blocked_domains for Fragrantica and Parfumo on every web_search/web_fetch tool definition. Reason: the standing ban must also hold when search runs on Anthropic's servers.",
+  "Handle stop_reason refusal and max_tokens before parsing, branch on the web_search_tool_result content type (list vs error object), and abstain rather than fabricate. Reason: server-tool errors do not raise, Haiku 5.5 has no server-side fallback, and the no-fabricated-numbers rule applies.",
+  "Use fallbacks 'default' only on Sonnet 5.5 calls on the Claude API, never on Haiku 5.5 and never in Batches. Reason: a fallback list returns 400 on Haiku 5.5, and fallbacks are rejected in batches.",
+  "Re-run the verdict-determinism A/B before switching providers. Reason: temperature=0 (model_config.py:107-123) returns 400 on Haiku 5.5 and Sonnet 5.5.",
+  "Before writing the adapter spec, verify Haiku 5.5 web search support via Models API capabilities.server_tools.web_search. Reason: the skill and the docs disagree on which web_search versions Haiku 5.5 accepts.",
+  "Use Claude Code or the Agent SDK locally for operator data fixes, with gated write tools and local env credentials. Reason: no service-role key stored with Anthropic, and the repo is public."
+ ],
+ "open_questions": [
+  "Does Claude Haiku 5.5 accept web_search_20260209/20260318 (dynamic filtering), or only web_search_20250305 with allowed_callers ['direct']? Check with the Models API capabilities field.",
+  "Is output_config.format (structured outputs) compatible with web search's always-on citations in one request? The skill says structured outputs are incompatible with document citations; web-search citations were not confirmed either way.",
+  "Does Anthropic's web_fetch/web_search fetcher honour robots.txt in a way consistent with our fail-closed ruling, and what does it do when it meets a Cloudflare challenge? Not documented in the pages read.",
+  "What are the org's rate-limit tier and batch web-search throttle on a $400 credit balance? Both determine whether nightly batches finish well inside 24 h.",
+  "Is a measured image-token cost for typical Haiku 5.5 camera photos needed before setting max_tokens and cost alarms? The vision pricing page was not read this round.",
+  "Post-approval legal sequencing: the privacy policy, AI-consent v2 and processors.json must name Anthropic before ENABLE_ANTHROPIC_PROVIDER flips (PLAN_S80.md:23). Does adopting Batches (results held 29 days) change the retention wording?"
+ ],
+ "sources": [
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/SKILL.md (loaded via Skill tool; the file was not on disk at the given path)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-overview.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-core.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-tools.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-scheduled-deployments.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-multiagent.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/managed-agents-memory.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/agent-design.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/tool-use-concepts.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/model-migration.md (Haiku 5.5 section, fallbacks)",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/cost-optimization.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/shared/prompt-caching.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/python/claude-api/batches.md",
+  "C:/Users/SYNACK~1/AppData/Local/Temp/claude/bundled-skills/2.1.304/c905be0b346c08e93aa664a51b3a9428/claude-api/python/claude-api/files-api.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/r0/anthropic_prereqs.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/openai_flows_provider.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/ledger.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/verdict_critique_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/llm_provider.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/openai_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/robots_eval.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_eval_nightly.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/scripts/cron_index_sitemaps.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/railway.warmer.json",
+  "https://platform.claude.com/docs/en/about-claude/pricing.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/files.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-reference.md (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/skills-guide.md (read 2026-10-22, first 100K chars)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md (read 2026-10-22, front matter)",
+  "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md (read 2026-10-22)"
+ ]
+}

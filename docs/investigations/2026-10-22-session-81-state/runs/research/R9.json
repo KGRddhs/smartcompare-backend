@@ -1,0 +1,226 @@
+{
+ "topic": "R9: Sub-10-second product comparison with a knowledge base and an LLM (latency budget and architecture)",
+ "summary": "Answer. A known pair can be fast only if it is served from precomputed data, and the live path must not wait on any paid search or on Sonnet.\n\nTargets:\n(a) KB-hit pair: product cards from the KB in under 2 s server-side (under 3 s on the phone). A cached pair verdict in under 3 s, or a streamed verdict from Haiku 5.5 with thinking disabled in 4-7 s. Prices that are past their freshness window are shown with an \"as of\" date and refreshed in the background (stale-while-revalidate, RFC 5861), never inline.\n(b) Cold pair: the identified names in under 2 s, then per-product partial cards over SSE at 6-12 s, the verdict at 15-20 s, and a hard cap of 25 s. Only identity, one price (or an honest \"no price\"), the image and the core specs must be live. Reviews, pros/cons, extra merchants and spec fill go to a background enrichment job that writes to the KB, so the next request is warm.\n\nBaseline today (measured, session 80 digests): text p50 is about 31-33 s at the 30 s cap and camera about 40 s. Serper legs take 6-13 s (p95 16.9 s, about 45% failed). The price race is 15 s and the unified search 12 s.\n- On 95cf6f86 no full-pair cache is wired: set_comparison_cache exists but has no caller.\n- first_paint fires only after specs, prices and reviews have all landed.\n- The client never uses SSE (ENABLE_EXPO_FETCH_SSE_DEFAULT=false).\n- Simple routes stall for 2.6-8.4 s. Event-loop health is a precondition: no target under 5 s holds while /health p95 is 8.4 s.\n\nModel facts (official docs and Artificial Analysis, read 2026-10-22):\n- Haiku 5.5 has adaptive thinking ON by default (effort medium). It accepts thinking disabled at effort high or below.\n- Sonnet 5.5 cannot disable thinking; its lowest setting is between_tools.\n- Artificial Analysis, Anthropic only, 10k-token input: Haiku 5.5 low gives 7.8 s to the first answer token at 166 tok/s; Haiku medium 12.6 s; Sonnet 5.5 high 11.3 s and 16.4 s end to end for 500 tokens.\n- So a live two-stage Haiku-to-Sonnet pipeline adds more than 11 s. It cannot meet a verdict under 10 s. Keep Sonnet off the hot path (background gold verdicts, the critique loop, the Batch API at 50% off).\n- web_search costs $10 per 1,000 searches plus the result tokens. Anthropic publishes no per-search latency. Each search is a model turn and the stream pauses while it runs, so treat it as a background or cold-path tool with max_uses 1-2 per product.\n\nIndustry pattern: idealo and Google Shopping serve from merchant feeds, i.e. offer tables built ahead of time. Google says its landing-page auto-updates are no substitute for feeds and fail for prices that change more than once a day. No mature open-source LLM comparison app documents a latency design. anthropics/commerce-agents (Apache-2.0, about 3.3k stars, pushed 2026-10-19) grounds on its own catalog and streams typed events.\n\nRisks:\n- stale GCC prices (always show the as-of date);\n- the crown flipping when a late price lands (freeze the crown per response; re-verdict only on a material change);\n- KB poisoning by a wrong identity (gate writes on confidence; version the cards);\n- product_key normalisation misses;\n- the cost of web_search tokens;\n- citation display obligations;\n- the provider switch re-asking consent.",
+ "findings": [
+  {
+   "claim": "Baseline (still valid at 95cf6f86 per the code anchors): cold text compares end at the 30 s cap (server p50 about 31.4 s, client median 32.7 s) and camera at about 40 s. Serper spans p50 3.5 s ok / 5.9 s error, p95 up to 16.9 s, about 45% failed.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - findings 4 and 6 (Sentry traces and RN wall-time)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json - summary: canaries 30.2-30.8 s"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The stage bounds that set today's floor are still in place: the price race is 15 s, specs 8 s, reviews 10 s, image 5 s, the unified search 12 s and the fan-out 12 s. Phase 1 waits on the slowest of them.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1713 - _PRICE_RACE_TIMEOUT 15.0",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5770-5786 - per-race caps",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:1773,1821 - FAN_OUT 12.0, UNIFIED_SEARCH 12.0"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "STREAM_HARD_CAP_SECONDS=30 is the outermost wait_for on the non-streaming path. On the SSE path it wraps only Phase 1, and the verdict/critique/moderation tail runs unbounded unless ENABLE_FULL_STREAM_DEADLINE (default OFF) is on.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:337 - STREAM_HARD_CAP_SECONDS row",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:387 - ENABLE_FULL_STREAM_DEADLINE"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The SSE route already exists with a typed event contract: status, specs, prices, reviews, first_paint, scores, verdict, settle_update, confidence_upgrade, settle_complete, complete, error. first_paint fires only after specs, prices and reviews have ALL landed, so the first screen is gated by the slowest race.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:960 - text_compare_stream",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py:1035-1055 - event types",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:5222-5230 - first_paint after the gather"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The client never streams: ENABLE_EXPO_FETCH_SSE_DEFAULT=false sends one REST compare with a 35 s timeout. The flag-ON path already uses the expo/fetch ReadableStream on Expo SDK 54, so turning it on is a JS-only change (OTA after approval, no native build).",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts:52 - default false",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts:48,744-750,842 - timeout, REST branch, require('expo/fetch')",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json:25 - expo ~54.0.37",
+    "https://docs.expo.dev/versions/latest/sdk/expo/ - expo/fetch streaming body (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No full-pair result cache is wired. set_comparison_cache/get_comparison_cache are defined but nothing calls them. Only per-product L1/L2 caches exist: specs 30 days, reviews 14 days, prices 1 day (genuine 7 days), stored in product_specs, product_prices and product_reviews.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py:770-778 - defined; grep of app/ finds no caller",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:18-29 - DB TTLs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py:134-149 - price TTLs",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:4,23,44 - tables"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Platform stalls block any target under 5 s. /health p95 is 8.4 s and usage_status p50 4.2 s. Upstash p50 is 289 ms (p95 1.5 s) and Supabase product_specs p50 381 ms. A KB-served first screen can take about 1 s of I/O only once these stalls are gone.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - finding 8 and finding 9"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Haiku 5.5 (claude-haiku-5-5, released 2026-10-07) is the 'Fastest' model but has adaptive thinking ON by default at effort medium. It accepts thinking:{type:'disabled'} at effort high or below. With thinking off it may skip a needed tool call when JSON output is also requested.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/models/haiku-5-5/overview - default effort medium, adaptive (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking - per-model table and Haiku 5.5 note (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Sonnet 5.5 rejects thinking disabled. Its lowest setting is between_tools (up-front thinking off). Default effort is high, price $2/$10 per MTok.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/thinking - Sonnet 5.5 row (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/models/overview - pricing row (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Artificial Analysis (Anthropic only, 10k-token input workload, P50 over 72 h): Haiku 5.5 low gives 7.83 s to the first answer token at 166 tok/s and 10.8 s end to end for 500 tokens. Haiku medium about 12.6 s TTFT; Sonnet 5.5 high 11.3 s TTFT at about 98 tok/s and 16.4 s end to end. Our prompts are smaller and would run with thinking disabled, so real TTFT should be lower; nobody has measured it.",
+   "evidence": [
+    "https://artificialanalysis.ai/models/claude-haiku-5-5-low/providers (read 2026-10-22)",
+    "https://artificialanalysis.ai/models/claude-sonnet-5-5-high/providers (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Today's OpenAI calls are fast by comparison: in production trace V09, gpt-4o-mini took 1.4-1.9 s and the gpt-4o verdict 2.3 s. Haiku with thinking ON at default effort could be SLOWER than today, so the provider switch can regress latency unless thinking is disabled or effort is low.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json - trace 5915a2b6 spans",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py:47-53 - verdict gpt-4o, others gpt-4o-mini"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "A live two-stage pipeline (Haiku extraction, then Sonnet verdict) adds Sonnet's TTFT of about 11 s (AA, high effort) plus generation after Phase 1. Combined with even a KB-served Phase 1 it misses a verdict under 10 s. Sonnet belongs off the hot path.",
+   "evidence": [
+    "https://artificialanalysis.ai/models/claude-sonnet-5-5-high/providers - 11.34 s TTFT, 16.42 s E2E (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "The web_search server tool runs a server-side loop in which each search is a Claude turn. The stream pauses while a search runs. Results count as input tokens on later turns. max_uses caps searches; allowed_domains and user_location are supported. The price is $10 per 1,000 searches plus tokens. Anthropic publishes no per-search latency.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool - versions web_search_20250305/20260209/20260318, streaming pause, pricing (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Standalone search APIs measure p50 of about 0.2-1.0 s (Brave 430-669 ms, Exa 361 ms-1.2 s, SerpAPI about 1 s). These are vendor or third-party benchmarks. Claude's web_search adds model turns on top, so a realistic per-search cost is several seconds; this has not been measured.",
+   "evidence": [
+    "https://parallel.ai/articles/best-web-search-api-for-ai-applications - vendor-run, July 2026 (read 2026-10-22)",
+    "https://research.aimultiple.com/agentic-search - independent, May 2026 (read 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Price-comparison engines serve from offer tables built ahead of time from merchant feeds, not from live search at query time. idealo ingests merchant CSV/API feeds and runs AI+human matching (secondary source). Google says landing-page auto-updates are no replacement for feed updates and may fail for prices that change more than once a day.",
+   "evidence": [
+    "https://en.wikipedia.org/wiki/Idealo - feeds and matching (secondary, read 2026-10-22)",
+    "https://support.google.com/merchants/answer/12157888 - automations caveats (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Stale-while-revalidate (RFC 5861) allows serving a stale response while refreshing in the background, and stale-if-error allows serving stale on upstream 5xx. Commerce caveat: a stale price or availability must be labelled and re-validated at the point of action.",
+   "evidence": [
+    "https://www.rfc-editor.org/rfc/rfc5861 (read 2026-10-22)",
+    "https://amp.dev/documentation/examples/interactivity-dynamic-content/mixing_dynamic_and_cached_data/ (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Prompt caching for Haiku 5.5 and Sonnet 5.5 needs at least 512 tokens. Cache reads cost 10% of input on Haiku (5% on Sonnet). Anthropic documents a TTFT improvement only qualitatively, mainly for long prompts. Changing effort or thinking settings invalidates the cache prefix.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/build-with-claude/prompt-caching (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/build-with-claude/thinking - config changes invalidate caching (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "No mature open-source LLM product-comparison app documents a latency design. The nearest is anthropics/commerce-agents (Apache-2.0, about 3,302 stars, pushed 2026-10-19), which grounds on the merchant's OWN catalog backend (no web search), streams typed events (text_delta, tool_call, ui) and checks prompt caching, with no latency numbers. Shopify/claude-for-commerce-examples (Apache-2.0, 145 stars, 2026-10-11) builds on it. The comparison repos all have 0-1 stars.",
+   "evidence": [
+    "https://github.com/anthropics/commerce-agents (read 2026-10-22)",
+    "gh search repos 'product comparison llm' / 'shopping agent' (2026-10-22) - catalinagligor/product-comparison-LLM 0 stars; Gallind/Dealcast-realtime-scraper MIT 1 star (SSE SERP stream)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The camera path is one blocking request (vision, then the capped compare) with no stream route, so it cannot show 'identified' before the compare finishes. Splitting it into identify then a stream compare is the only way to get it under 10 s to a first screen.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json - MYEZ-015 summary",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:337 - VISION_TIMEOUT_SECONDS 20 under ENABLE_VISION_IDENTITY_V2"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Cost per compare at list prices (an estimate, not measured): a KB-hit compare with a Haiku verdict (about 4k tokens in, 400 out) costs about $0.0006; a Sonnet verdict about $0.012; a cold compare with 4 web searches about $0.04 in search fees plus result tokens, roughly $0.05-0.06 in total. $400 covers roughly 7k cold or more than 100k warm compares.",
+   "evidence": [
+    "https://platform.claude.com/docs/en/models/haiku-5-5/overview - $0.10/$0.50 per MTok under 100k (read 2026-10-22)",
+    "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool - $10 per 1k (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  }
+ ],
+ "recommendations": [
+  "Adopt two explicit budgets and check them with server stage timings, which already exist via DEBUG_STAGE_TIMINGS. (a) KB-hit: cards event under 2 s server-side, verdict under 3 s cached or under 7 s streamed, done under 10 s. (b) Cold: names under 2 s, first partial cards under 12 s, verdict under 20 s, hard cap 25 s. Without these numbers a gain cannot be shown.",
+  "Fix the platform stalls first (/health p95 8.4 s, usage_status p50 4.2 s; prod_evidence finding 8). Any target under 5 s is unreachable while simple routes stall.",
+  "Precomputed product cards: one KB row per canonical product_key (identity, image, core specs, review summary, offers[] with merchant, price, currency, fetched_at and source). Version every card and write a card only when identity confidence passes a gate. A wrong identity in the KB is then served fast forever.",
+  "Offer freshness policy as stale-while-revalidate: fresh under 24 h (converted) or 7 days (genuine-BH), mirroring price_service.py:134-149; stale up to 30 days is served with an 'as of' date and queues a refresh; older than that counts as no price. Serve stale on upstream error (stale-if-error) and never block the response on a refresh.",
+  "Background enrichment queue (a worker, not a request path) with a single-flight lock per product_key. It fills reviews, pros/cons, extra merchants and spec gaps, and does Sonnet or web_search work there. Prioritise products by request count and refresh popular products before they go stale.",
+  "Pair-level verdict cache keyed on (card versions + a price band per product + lang + persona bucket). Wire the existing unused set_comparison_cache (cache_service.py:770-778) or a KB table. Re-verdict only when an input version or a price band changes.",
+  "Freeze the crown per response. Compute it deterministically (scoring_service) at verdict time. If a background price refresh would flip it, show a 'price changed since' note and re-verdict on the next open, never mid-screen. This removes the inconsistent-crown risk.",
+  "Live-path LLM settings: claude-haiku-5-5 with thinking {type:'disabled'} (or effort low), a small max_tokens and a cached system prompt of at least 512 tokens, streamed. Keep Sonnet 5.5 for background gold verdicts, the critique loop and the Batch API (50% off), because its thinking cannot be disabled and AA shows an 11 s TTFT.",
+  "On the cold path, use web_search only with max_uses 1-2 per product, run in parallel per product, with allowed_domains drawn from the merchant registry (robots fail-closed still applies to our own fetchers). Prefer KB, then direct registry merchant APIs, then search. Display citations as the tool's terms require.",
+  "Streaming: emit per-product incremental events instead of the all-three-races first_paint (scs:5222-5230), and turn on ENABLE_FULL_STREAM_DEADLINE and the disconnect abort so the tail is bounded. Flip ENABLE_EXPO_FETCH_SSE_DEFAULT only after approval (JS-only, expo/fetch already bundled on SDK 54).",
+  "Camera: add an additive identify-only response that returns names fast, then reuse the stream compare. This gives a real identity_resolved moment and the same progress UI.",
+  "Before committing to the numbers, run a measurement spike (owner-run, test key only) of 20 calls each for Haiku 5.5 with thinking disabled, Haiku low, Sonnet between_tools, and one web_search turn, all at our real prompt sizes. Record TTFT and end-to-end time. Every Anthropic latency figure above is from a 10k-token benchmark, not from our workload."
+ ],
+ "open_questions": [
+  "What are the real TTFT and output speed of Haiku 5.5 with thinking disabled at our prompt sizes (2-5k tokens)? AA only publishes thinking-on variants at 10k input.",
+  "What is the real wall time of one Anthropic web_search iteration from Railway (EU/US region) to GCC merchants? No official or independent figure exists.",
+  "Does Haiku 5.5 with thinking disabled keep verdict quality comparable to today's gpt-4o verdict? This needs the eval set before Sonnet is moved off the live path.",
+  "What price staleness will the owner accept for display (24 h? 7 days?), and should GCC flash sales get a shorter window?",
+  "Should a crown change caused by a background price refresh notify users who already viewed the result (history and share pages)?",
+  "Does the KB live in Supabase (existing product_* tables from migration 012) or in a new schema? This decides the I/O cost on the hot path (Supabase p50 381 ms per read today)."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/ux_surfaces_latency.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/prod_evidence.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/openai_flows_provider.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/data_supply.json",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 239-241, 337, 382-394)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/api/text_routes.py (960-1060, 1180-1220)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py (1713, 1769-1821, 5200-5230, 5770-5800)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/cache_service.py (650-778)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/price_service.py (134-211)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py (18-29)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/model_config.py (45-53)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/services/api.ts (48, 640-760, 842)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/config/features.ts (52-119)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/package.json (25, 49)",
+  "https://platform.claude.com/docs/en/models/overview (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/models/haiku-5-5/overview (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/thinking (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-latency (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool (read 2026-10-22)",
+  "https://platform.claude.com/docs/en/build-with-claude/prompt-caching (read 2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-haiku-5-5/providers (read 2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-haiku-5-5-low/providers (read 2026-10-22)",
+  "https://artificialanalysis.ai/models/claude-sonnet-5-5-high/providers (read 2026-10-22)",
+  "https://www.rfc-editor.org/rfc/rfc5861 (read 2026-10-22)",
+  "https://support.google.com/merchants/answer/12157888 (read 2026-10-22)",
+  "https://en.wikipedia.org/wiki/Idealo (read 2026-10-22, secondary)",
+  "https://amp.dev/documentation/examples/interactivity-dynamic-content/mixing_dynamic_and_cached_data/ (read 2026-10-22)",
+  "https://parallel.ai/articles/best-web-search-api-for-ai-applications (read 2026-10-22, vendor-run)",
+  "https://research.aimultiple.com/agentic-search (read 2026-10-22)",
+  "https://docs.expo.dev/versions/latest/sdk/expo/ (read 2026-10-22)",
+  "https://github.com/anthropics/commerce-agents (read 2026-10-22; Apache-2.0, about 3,302 stars, pushed 2026-10-19)",
+  "https://github.com/Shopify/claude-for-commerce-examples (gh search 2026-10-22; Apache-2.0, 145 stars, updated 2026-10-11)"
+ ]
+}

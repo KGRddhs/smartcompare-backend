@@ -1,0 +1,238 @@
+{
+ "topic": "R10: Review data — APIs and legal channels for fragrance, skincare and makeup reviews, ratings, pros and cons (GCC)",
+ "summary": "Answer: no commercial review API gives an outside comparison app GCC beauty reviews it can store and redistribute without a contract. The cheapest legal source with the widest coverage is the retailer's own PDP structured data, which the price fetch already downloads. Measured today: Nice One serves JSON-LD AggregateRating (686) plus Arabic Review[] bodies. Golden Scent serves AggregateRating 4.9/1,738 with no review bodies. Ounass serves nothing. In the cached corpus, Faces runs Bazaarvoice; Sephora ME's robots.txt disallows bvrrp/bvstate parameters (so Bazaarvoice is likely) and its PDPs answer 403. Among the 92 Gulf PDPs: judge.me on 24 hosts, Okendo 6, Stamped 2, Bazaarvoice 2, Yotpo 1, PowerReviews 0, aggregateRating 16. So the scorecard's adapter order (Bazaarvoice, judge.me, Yotpo), counted over global pages, does not fit the GCC.\n\nPaid or contractual channels:\n- Bazaarvoice and PowerReviews: keys and syndication go to clients. Bazaarvoice has strict attribution rules. PowerReviews pricing is quote-only.\n- Trustpilot Data Solutions: covers all business units (store trust, not products). Caches must refresh every 24h, plus a Deletions API call every 28 days.\n- Google Places reviews: $25 per 1,000 calls. Only place_id may be cached; reviews need attribution.\n- DataForSEO Google Shopping reviews: $0.00075 per 10 reviews.\n- SerpApi: Legal Shield from $150/month.\n- Amazon PA-API 5: deprecated; the Creators API replaces it.\n- YouTube: 10,000 units/day pool, search.list costs 100 units, so about 49 cold compares/day. Data may be stored 30 days at most, and no derived metrics.\n- Reddit: commercial use needs an agreement.\n\nJudge.me stays forbidden. Its API is per-merchant (the docs log measured a 401; the token cannot be bought). A code review cites a licensing ruling that says it must not ship, but I could not find the ruling's own text.\n\nRepo delta: two adapters, yotpo_service and judgeme_service, have zero importers. Three repo issues:\n1. The reviews prompt asks the LLM for average_rating and an \"estimated\" total_reviews (extraction_service.py:982-983). That number becomes a rating labelled \"Aggregated from reviews\" (structured_comparison_service.py:528-556).\n2. The verdict prompt forces 4-6 pros and never-empty cons (:1065).\n3. rating_service puts fragrantica in rating Tier 2.\n\nRecommended KB order:\n1. First-party JSON-LD ratings and reviews piggybacked on the price fetch.\n2. Partner-store consented feeds (Yotpo, judge.me or Bazaarvoice keys granted through the CTA contract).\n3. Trustpilot Data Solutions for the store trust score.\n4. YouTube under its 30-day TTL.\n5. Bazaarvoice by contract only.\n\nStore each rating per source with provenance; never average across sources silently. The LLM may only cluster and cite stored excerpts. It may never write ratings, counts, quantifiers or quotes, and never fill pros/cons from training data.",
+ "findings": [
+  {
+   "claim": "Nice One PDPs carry first-party reviews server-side: JSON-LD AggregateRating (ratingValue 5, ratingCount 686) plus Review[] with Arabic reviewBody text and masked author names. No third-party widget markers were found, and robots.txt (User-agent *) allows PDP paths.",
+   "evidence": [
+    "https://niceonesa.com/en/lancome-idole-for-women-eau-de-parfum-n11190 - HTTP 200, aggregateRating x2, reviewBody x10, 0 bazaarvoice/yotpo/judge.me/okendo markers (read 2026-10-22)",
+    "https://niceonesa.com/robots.txt - '*' group disallows only cart/success/orders/tickets/search/filters (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Golden Scent serves a JSON-LD AggregateRating (4.9, reviewCount 1738) with zero Review nodes or reviewBody, and no third-party widget markers. Its robots.txt explicitly allows Claude-SearchBot and Claude-User on /p/.",
+   "evidence": [
+    "https://www.goldenscent.com/en/p/maybelline-lash-sensational-sky-high-mascara-black - 200, 1.9 MB, aggregateRating present, Review nodes 0 (read 2026-10-22)",
+    "https://www.goldenscent.com/robots.txt - Claude-SearchBot/Claude-User group: Allow / , /p/ (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "The Ounass PDP sampled has no rating, no review and no widget markers, so it offers no review channel.",
+   "evidence": [
+    "https://www.ounass.ae/shop-creed-iris-debonair-eau-de-parfum-100ml-for-unisex-220081701_242.html - 200, aggregateRating 0, reviewBody 0, all vendor markers 0 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Faces (Chalhoub) renders reviews through Bazaarvoice. Sephora ME very likely does too: its robots.txt disallows the Bazaarvoice parameters bvrrp= and bvstate=. Its cached PDPs returned 403 (blocked), so the widget could not be confirmed on the page.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/html - bazaarvoice markers on faces.ae and faces.sa (zero-network scan 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/global/corpus.json - sephora.me rows http_status 403, bytes ~620, blocked True",
+    "https://www.sephora.me/robots.txt - 'Disallow: /*bvrrp=' and '/*bvstate=' (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "In the 92-page Gulf fragrance corpus the widget mix is judge.me 24 hosts, Okendo 6, Stamped 2, Bazaarvoice 2 (Faces), Yotpo 1 (watsons.sa), Loox 1, Trustpilot 1, PowerReviews 0, with JSON-LD aggregateRating on 16 pages. Yotpo and PowerReviews are mainly global (Sephora US, Ulta), so the scorecard's Bazaarvoice/judge.me/Yotpo buy order does not reflect the GCC.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/sweep2_curl_cffi.jsonl + html/ - regex scan, sha1('curl_cffi|'+url) mapping (2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/global/corpus.json - ulta powerreviews, sephora.com bazaarvoice, amouage/hudabeauty okendo",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md:822 - scorecard buy order Bazaarvoice 48, judge.me 39, Yotpo 35"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Both review adapters are dark and have zero importers. yotpo_service reads the public widget CDN under a robots allowlist and argues that Yotpo's ToS binds only the merchant. judgeme_service reads merchant HTML only, because the judge.me API is 'contractually closed'.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/yotpo_service.py:1-14 - robots-allowed widget endpoint, ToS reasoning",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/judgeme_service.py:1-8 - 'judge.me's API is contractually closed (B6)'",
+    "grep 'import.*(judgeme|yotpo)_service' over app/ - no importers"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Judge.me is forbidden here for three reasons. Its API token is per merchant and cannot be bought (a 401 was measured). Its own docs scope the private token to the shop's server and the public token to the shop's widget. A code review records a licensing ruling that judgeme must never ship and should be deleted. The ruling's own text was not found in the repo or the docs.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/CONTEXT_SESSION_LOG.md:3407 - 'judge.me API 401 (the token is per-MERCHANT, unbuyable)'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-code-review.md:108 - 'licensing ruling says judge.me must not ship'",
+    "https://judge.me/help/en/articles/8409180-using-judge-me-api - private token server-side, public token for widget GETs (read 2026-10-22)"
+   ],
+   "confidence": "inferred"
+  },
+  {
+   "claim": "Bazaarvoice syndicated content needs syndication enabled plus a per-key setting granted on request. Displays must show the source name and logo and keep incentivized disclosures. Syndicated items may not carry feedback controls. Caching rules are not public.",
+   "evidence": [
+    "https://developers.bazaarvoice.com/v1.0-ConversationsAPI/docs/syndicated-content - 'You must display this if it is available' (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "PowerReviews publishes no API pricing (quote only) and no third-party data licence. It suits a merchant's own reviews, not an aggregator.",
+   "evidence": [
+    "https://us.fitgap.com/products/powerreviews - custom pricing (read 2026-10-22)",
+    "https://apis.io/providers/powerreviews/ - no published pricing (read 2026-10-22)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Trustpilot Data Solutions returns TrustScore, star rating, review counts and up to 5 latest reviews for any business unit. Service reviews need Insights access. Cached data must refresh every 24 hours, and stored reviews must mirror deletions through the Deletions API every 28 days. This fits a store trust score for the merchant registry, not product reviews. Price and eligibility are not public.",
+   "evidence": [
+    "https://developers.trustpilot.com/data-solutions-how-to - 'up to five', Deletions API every 28 days (read 2026-10-22)",
+    "https://developers.trustpilot.com/ds-caching-best-practices/ - 'must refresh your cache every 24 hours' (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Google store reviews via Places API (New) cost $25 per 1,000 calls (Place Details Enterprise + Atmosphere, 1,000 free per month). Only place_id may be cached indefinitely. Reviews need author attribution and the Google logo when shown without a map.",
+   "evidence": [
+    "https://developers.google.com/maps/billing-and-pricing/pricing - Enterprise+Atmosphere $25/1000 first tier (read 2026-10-22)",
+    "https://developers.google.com/maps/documentation/places/web-service/policies - place_id exempt from caching; review attribution (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Google Shopping reviews through intermediaries: DataForSEO charges $0.00075 per 10 reviews (standard queue). SerpApi's Immersive Product API returns reviews; plans run $25/1k to $150/15k searches, with the U.S. Legal Shield only from the $150 Production plan. Both scrape Google, which carries the same legal posture as today's Serper use.",
+   "evidence": [
+    "https://dataforseo.com/pricing/merchant/google-shopping-api - $0.00075 per 10 reviews (read 2026-10-22)",
+    "https://serpapi.com/pricing - Legal Shield from Production $150 (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Amazon PA-API 5 is deprecated (calls now return 403) and is replaced by the Creators API. The notice does not say whether the Creators API returns ratings or review text, or what eligibility it requires. Scraping Amazon is not an option.",
+   "evidence": [
+    "https://affiliate-program.amazon.com/creatorsapi/docs/en-us/paapiv5-deprecation - 'deprecated and is being replaced by the Creators API' (read 2026-10-22)"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "YouTube quota: a single pooled 10,000 units/day, with search.list at 100 units and videos.list at 1, so 101 units per cold product, about 99 products or about 49 cold compares per day. Policy caps storage at 30 days (the code caches 14 days) and forbids derived metrics (III.E.4.h).",
+   "evidence": [
+    "https://developers.google.com/youtube/v3/determine_quota_cost - search.list 100 (read 2026-10-22)",
+    "https://developers.google.com/youtube/terms/developer-policies - III.E.4.c 30 days, III.E.4.h no derived metrics (read 2026-10-22)",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/youtube_service.py:8-19 - two calls, cached 14d"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Reddit's Data API terms reportedly require a separate agreement for commercial use and bar ML or AI training on user content without the rightsholders' permission. The primary page could not be fetched.",
+   "evidence": [
+    "https://www.socialcrawl.dev/blog/reddit-data-api-2026 - commercial needs agreement (read 2026-10-22)",
+    "https://redditinc.com/policies/data-api-terms - fetch blocked (2026-10-22)"
+   ],
+   "confidence": "unverified"
+  },
+  {
+   "claim": "Ratings come from the LLM despite the 'never AI-generated' rule. The reviews prompt asks the LLM for average_rating and an estimated total_reviews. When no real rating exists, that average is promoted to product.rating labelled 'Aggregated from reviews' (rating_derived=True). Only source_ratings is structurally cleared.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:982-983 - average_rating, total_reviews estimated_count",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py:528-556 - _apply_gpt_review_aggregate_fallback",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1890-1898 - only source_ratings cleared"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Derived ratings are hidden on the overview and reviews projections, which the client reads first. But derive_rating_from_scores writes a synthetic 2.5-4.8 rating into product_data, and the legacy products alias still ships it.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py:466-469,1591-1597 - synthetic rating",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py:1931,2002 - null when rating_derived",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx:408-410 - overview.products first"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Pros and cons are not limited to cited text. The verdict prompt demands 4-6 pros and 2-4 cons and 'NEVER return empty pros[] or cons[]'. The dark TRUTH twin allows empty cons but still forbids empty pros. Review highlights must cite [snippet_N], but the consensus fallback is uncited. The B6 plan (praise_basis with at least 1 cited source) closes the praise half only.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:1065,1083-1089",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py:996-1003 - highlights must cite",
+    "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md:30,62 - R-A9 / B6 praise_basis"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "rating_service puts 'fragrantica' in RATING_TIER_2 and LUXURY_FASHION_RETAILERS, and source_router registers fragrantica.com as a fragrance source. That conflicts with the standing ban; only search_descriptor_service enforces a deny list.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py:33-47",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/source_router.py:347",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/search_descriptor_service.py:111 - DENY_HOSTS"
+   ],
+   "confidence": "measured"
+  },
+  {
+   "claim": "Reviews storage today is one JSONB blob per product_key with source defaulting to 'gpt', a 7-day L1 cache and a 14-day L2 cache. There are no per-source rows, no excerpt provenance and no deletion mirroring, so it cannot meet Trustpilot, YouTube or Bazaarvoice obligations as is.",
+   "evidence": [
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql:44-58",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/product_data_service.py:403 - source 'gpt'",
+    "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py:42 - 7d TTL"
+   ],
+   "confidence": "measured"
+  }
+ ],
+ "recommendations": [
+  "Channel 1 (build first, $0): parse JSON-LD AggregateRating and Review[] from the PDP HTML the price fetch already holds. This is measured on Nice One, Golden Scent, noon, bathandbodyworks.ae and hudabeauty. It is the merchant's own published structured data, already covered by the robots fail-closed ruling.",
+  "Channel 2: make review-data consent part of the store CTA contract. Partner stores grant their Yotpo app key, judge.me private token or Bazaarvoice key. This is the only clean licence for widget-only stores (judge.me on 24 Gulf hosts, Okendo on 6) and it removes the need for the judge.me ban workaround.",
+  "Delete judgeme_service.py, its test and its flag row, as the code review advised. Keep yotpo_service dark until the owner or a lawyer confirms the 'ToS binds only the merchant' reading, or a partner store consents.",
+  "Merchant registry trust score: use Trustpilot Data Solutions (TrustScore + count, 24h refresh, Deletions API every 28 days) after a price quote. Use Google Places only by storing place_id and fetching the rating at display time with attribution. Never cache Places rating or review text.",
+  "Add knowledge-base tables: review_sources (licence_basis, ttl, display_rules); product_ratings (one row per source and merchant, with value, scale, count, url, extract_method, captured_at, expires_at); review_excerpts (url, lang, verified flag, text only where the licence allows, hash otherwise, deleted_at); claims (pro|con|praise, lang, prompt_version, supporting_excerpt_ids with at least 1, at least 2 for praise, contradiction count).",
+  "Remove average_rating and total_reviews from REVIEWS_EXTRACTION_SYSTEM and delete _apply_gpt_review_aggregate_fallback and derive_rating_from_scores behind a dark flag. Ratings shown must come only from product_ratings rows (owner rule 5: no fabricated numbers).",
+  "Under the B6 flag, change the pros/cons contract: a pro or con must cite at least one stored excerpt id or a stored spec field. Empty is allowed. The 'NEVER return empty pros[]' line goes (extraction_service.py:1065).",
+  "LLM may: classify sentiment, cluster cited excerpts into themes, translate or summarise into Arabic, and pull longevity/projection mentions. Counts such as 'N of M reviews' are computed in code from stored rows. LLM may never: emit ratings, counts, percentages or 'most reviewers' quantifiers, quotes, reviewer names, store scores, or training-data opinions.",
+  "Remove 'fragrantica' from RATING_TIER_2 and LUXURY_FASHION_RETAILERS, and the source_router fragrantica row, or add it to a shared deny list, to enforce the ban in one place.",
+  "YouTube: keep it dark. If enabled, show only API-returned values (no derived counts per III.E.4.h), keep the cache at or under 30 days, and budget about 49 cold compares/day or request a quota extension.",
+  "Bazaarvoice (Faces, likely Sephora ME): contract only, with mandatory source name and logo display. Ask Bazaarvoice whether a non-client publisher licence exists before any engineering.",
+  "Do not add Amazon (PA-API is gone; the Creators API scope is unverified), Reddit (commercial agreement plus ML clause) or Google Shopping review scraping via SerpApi or DataForSEO unless the owner accepts that posture in writing."
+ ],
+ "open_questions": [
+  "Where is the primary text of the judge.me/Bazaarvoice licensing ruling? Only the code review cites it.",
+  "Does the owner accept yotpo_service's reading that Yotpo's ToS binds only the merchant for the robots-allowed api-cdn widget endpoints?",
+  "Will the store CTA contract include a clause granting review-data access (keys or tokens) to MYEZ?",
+  "What does Trustpilot Data Solutions cost, and will Trustpilot license a third-party comparison app?",
+  "Does the Amazon Creators API return CustomerReviews for amazon.ae and amazon.sa, and what is its eligibility?",
+  "Is storing Nice One review bodies covered by its terms of use? Robots allows the fetch, but storage and redistribution terms were not read.",
+  "Minimum distinct sources for a praise line (1 or 2), and may the UI show source names (D4 posture)?",
+  "Okendo's storefront API terms were not researched; it appears on 6 Gulf hosts."
+ ],
+ "sources": [
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/CLAUDE.md (lines 205-215, 377, 822)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/review_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/yotpo_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/judgeme_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/rating_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/extraction_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/structured_comparison_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/response_builder.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/app/services/youtube_service.py",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/migrations/012_product_data_tables.sql",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/screens/ResultsScreen.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-s80-b2/SmartCompareApp/src/components/results/ResultsAccordion.tsx",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/runs/research/COMPACT.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/CONTEXT_SESSION_LOG.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-09-06-full-review-state/report-m22-code-review.md",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/sweep2_curl_cffi.jsonl and html/ (zero-network)",
+  "C:/Users/SynAckITPC/Documents/AI/sc-scraper-proof/_proof/global/corpus.json and global/html/ (zero-network)",
+  "https://developers.bazaarvoice.com/v1.0-ConversationsAPI/docs/syndicated-content (read 2026-10-22)",
+  "https://developers.trustpilot.com/ds-caching-best-practices/ (read 2026-10-22)",
+  "https://developers.trustpilot.com/data-solutions-how-to (read 2026-10-22)",
+  "https://developers.trustpilot.com/business-units-api-overview/ (read 2026-10-22)",
+  "https://affiliate-program.amazon.com/creatorsapi/docs/en-us/paapiv5-deprecation (read 2026-10-22)",
+  "https://developers.google.com/youtube/v3/determine_quota_cost (read 2026-10-22)",
+  "https://developers.google.com/youtube/terms/developer-policies (read 2026-10-22)",
+  "https://developers.google.com/maps/billing-and-pricing/pricing (read 2026-10-22)",
+  "https://developers.google.com/maps/documentation/places/web-service/policies (read 2026-10-22)",
+  "https://dataforseo.com/pricing/merchant/google-shopping-api (read 2026-10-22)",
+  "https://serpapi.com/pricing (read 2026-10-22)",
+  "https://judge.me/help/en/articles/8409180-using-judge-me-api (read 2026-10-22)",
+  "https://business.feefo.com/press-releases/feefo-acquires-reevoo-to-meet-escalating-global-demand-for-data-driven-customer-insights (read 2026-10-22)",
+  "https://help.feefo.com/knowledge-base/syndication (read 2026-10-22)",
+  "https://apidocs.yotpo.com/docs (read 2026-10-22)",
+  "https://us.fitgap.com/products/powerreviews (read 2026-10-22)",
+  "https://www.socialcrawl.dev/blog/reddit-data-api-2026 (read 2026-10-22; redditinc.com fetch blocked)",
+  "https://niceonesa.com/robots.txt and /en/lancome-idole-for-women-eau-de-parfum-n11190 (read 2026-10-22)",
+  "https://www.goldenscent.com/robots.txt and /en/p/maybelline-lash-sensational-sky-high-mascara-black (read 2026-10-22)",
+  "https://www.ounass.ae/robots.txt and /shop-creed-iris-debonair-eau-de-parfum-100ml-for-unisex-220081701_242.html (read 2026-10-22)",
+  "https://www.sephora.me/robots.txt (read 2026-10-22)"
+ ]
+}
