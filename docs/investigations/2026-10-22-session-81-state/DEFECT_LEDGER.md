@@ -1,3 +1,11 @@
 # DEFECT_LEDGER (session 81)
 
 The session-80 defect ledger (../2026-10-19-session-80-state/DEFECT_LEDGER.md) stays the index for MYEZ-001..028 and the owner items; this file adds the pivot units as they land (unit -> flag -> RED nodes -> PR -> status), per PLAN_S81 section "Milestones and units".
+
+| Unit | Title | Flag | RED file | Branch / HEAD | Status |
+|---|---|---|---|---|---|
+| D03 | DENY-AND-GUARDS: per-call DENY_HOSTS (26 hosts + label rule), unbiased counterfeit/luxury guards, consumers source_router / rating / descriptor / image / review / scs chokepoint | ENABLE_DATA_GUARDS_V2 | tests/test_s81_d03_deny_and_guards.py (250 nodes: 143 RED / 107 PIN at base) | feature/s81-d03-deny-and-guards @ 5244f716 (GREEN) | FIX ROUND 1 (both adversaries NOT_READY on MAJ-1: the Serper-Shopping door; rulings specs/RULINGS_FIX1_D03.md) |
+| D03b | URL-mode deny (V2 pre-gate denied_source, hop deny, DENIED_SOURCE_MESSAGE + copy fence, normalize_image_url skip, V2-OFF base-path deny before fetch_page, P12/P13 real-call pins; amends the P14 scope fence) | ENABLE_DATA_GUARDS_V2 (+ ENABLE_URL_MODE_V2) | tbd | after B4 merges | PLANNED (ruling R-D03-1) |
+| D03c | Prompt-input deny: Serper organic results from denied hosts out of the specs / reviews / Tier-3 image prompts (moves the W4-11 digests) | ENABLE_DATA_GUARDS_V2 | tbd | lane A | PLANNED (ruling R-D03-2) |
+| D03d | Luxury false positives omega / tiffany (whole-token rule generalisation after a gold-set measurement) | ENABLE_DATA_GUARDS_V2 | tbd | lane B | PLANNED (ruling R-D03-3) |
+| S81-01 (B4) | URL-MODE-V2 (inherited): fix round 4 after the round-3 adversaries (engineering NOT_READY E1/E2) | ENABLE_URL_MODE_V2 | tests/test_s80_url_mode_v2.py (408 nodes at 0aac07f1) | feature/s80-b4-url-mode-v2 @ 0aac07f1 | FIX ROUND 4 (rulings S80 specs/RULINGS_FIX4_B4.md) |
