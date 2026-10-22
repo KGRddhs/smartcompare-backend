@@ -37,6 +37,7 @@ app/api/__init__.py
 app/core/__init__.py
 app/models/__init__.py
 app/services/__init__.py
+app/services/deny_hosts.py
 app/services/prompt_personalities.py
 app/utils/__init__.py
 scripts/__init__.py
@@ -53,3 +54,4 @@ tests/test_parallel_race_escalation.py
 tests/test_price_consolidation.py
 tests/test_registry_ounass_bh_l12.py
 tests/test_route_introspection.py
+tests/test_s81_d03_deny_and_guards.py

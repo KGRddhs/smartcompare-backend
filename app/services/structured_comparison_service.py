@@ -1410,6 +1410,7 @@ from app.services.price_service import (
     _shopping_price_residue,
     shopping_discovery_url_split_enabled,
     _shopping_split_discovery_url,
+    _drop_denied_shopping_rows,  # D03 F1-1 - the stash drops denied Shopping rows
     reconcile_pair_sizes,
     reconcile_pair_fairness,
     apply_region_currency_guard,
@@ -1542,8 +1543,10 @@ from app.services.response_builder import (
 )
 from app.services.image_service import get_product_image_url
 # D03 (ENABLE_DATA_GUARDS_V2): the Tier 1.5 piggyback below goes through the
-# image validator (which carries the banned-host deny) under the flag only.
-from app.services.image_service import _is_valid_image_url
+# image validator (which carries the banned-host deny) under the flag only,
+# reached through the module attribute so a patch of
+# image_service._is_valid_image_url takes effect here (fix-round ruling F1-6).
+from app.services import image_service
 from app.services.deny_hosts import data_guards_v2_enabled
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
 # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
@@ -6130,7 +6133,7 @@ class StructuredComparisonService:
             # host (fimgs.net) never replaces the cascade result. Flag OFF:
             # the base inline test below, unchanged.
             if data_guards_v2_enabled():
-                if _is_valid_image_url(page_img):
+                if image_service._is_valid_image_url(page_img):
                     result["image_url"] = page_img.strip()
             elif page_img and isinstance(page_img, str) and (
                 page_img.startswith("http://") or page_img.startswith("https://")
@@ -9274,6 +9277,12 @@ class StructuredComparisonService:
             observed: List[Dict[str, Any]] = []
             if kind == "tier1_shopping":
                 items = self._shopping_items_cache.get(full_name) or []
+                # D03 (ENABLE_DATA_GUARDS_V2, fix-round ruling F1-1): the stash
+                # drops a denied Shopping row before its currency, evidence and
+                # short-circuit logic, as the front door does (silent here: the
+                # front door logged the same pool). Flag read FIRST.
+                if data_guards_v2_enabled():
+                    items = _drop_denied_shopping_rows(items)
                 for item in items:
                     if not isinstance(item, dict):
                         continue

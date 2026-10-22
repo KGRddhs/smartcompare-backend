@@ -6,10 +6,12 @@ probed, and no licence covers their data. ``fimgs.net`` (the Fragrantica image
 CDN) is denied for images. robots stays fail-closed. A denied host is never
 fetched, scored, rated, quoted or shown by any path that consults this module.
 
-``DENY_HOSTS`` is the ONLY deny literal list in ``app/`` (pinned by the D03 RED
-file, row R1i). It holds bare registrable domains only (no scheme, no ``www.``,
-no port), so the T7b legal-manifest scan, which looks for scheme literals, sees
-nothing here. The 26 entries are the documented list: Fragrantica and the 20
+This module holds the two deny literal tuples, ``DENY_HOSTS`` and the
+re-exported ``LEGACY_DESCRIPTOR_DENY_HOSTS``; no other deny literal list exists
+in ``app/`` (pinned by the D03 RED file, row R1i, which scans every module but
+this one). ``DENY_HOSTS`` holds bare registrable domains only (no scheme, no
+``www.``, no port), so the T7b legal-manifest scan, which looks for scheme
+literals, sees nothing here. The 26 entries are the documented list: Fragrantica and the 20
 language editions measured in the held corpora, Parfumo .com / .de, Basenotes
 .com / .net and the Fragrantica image CDN.
 
@@ -30,8 +32,9 @@ MATCHING (ruling C10, gate rulings GC-1..GC-3). A host is denied when
 FLAG. The match functions are pure and flag-FREE. The flag is read PER CALL at
 each consumer site (``source_router``, ``rating_service``,
 ``search_descriptor_service``, ``image_service``, ``review_service``,
-``price_service``, ``structured_comparison_service``), always as the first
-statement of the new branch, so flag OFF reads no other state. The KB-writer
+``price_service``, ``structured_comparison_service``): the flag read precedes
+every behavioural branch (a pure base precondition, such as an empty-input
+check, may run first), so flag OFF reads no other state. The KB-writer
 guard (``kb_source_allowed`` / ``assert_kb_source_allowed``) is flag-free on
 purpose: the KB units call it unconditionally behind their own flags.
 
@@ -39,6 +42,7 @@ This module is a stdlib-only leaf (no ``app.*`` import), so every service can
 import it at module top without an import cycle. Every function here never
 raises on any input.
 """
+
 from __future__ import annotations
 
 import os
@@ -80,7 +84,9 @@ DENY_HOSTS: Tuple[str, ...] = (
 #: registrable label is one of these is denied with any public suffix, and a
 #: source NAME ("Fragrantica", "Parfumo.de") carrying one as a whole token is
 #: a denied source.
-DENY_LABELS: FrozenSet[str] = frozenset({"fragrantica", "parfumo", "basenotes", "fimgs"})
+DENY_LABELS: FrozenSet[str] = frozenset(
+    {"fragrantica", "parfumo", "basenotes", "fimgs"}
+)
 
 #: The search descriptor's base deny list, moved here verbatim (value and
 #: object identity) so ``search_descriptor_service.DENY_HOSTS`` is byte-identical
@@ -100,6 +106,9 @@ _LABEL_TOKEN_RE = re.compile(
 )
 
 _TRUTHY = ("true", "1", "yes", "on")
+
+# The backslash, spelled by its code point (fix-round ruling F1-4).
+_BACKSLASH = chr(92)
 
 
 def data_guards_v2_enabled() -> bool:
@@ -159,9 +168,15 @@ def is_denied_host(host: Any) -> bool:
 def is_denied_url(url: Any) -> bool:
     """True iff the host of ``url`` is a banned host.
 
-    A protocol-relative ``//host/x`` and a schemeless ``host/x`` are read as
-    ``//host/x``; userinfo is ignored. A non-str, an empty string or a value
-    ``urlsplit`` rejects is False. Flag-free, never raises.
+    The decision reads the parsed HOSTNAME (``urlsplit().hostname``:
+    lower-cased, userinfo and port removed), never the netloc. A
+    protocol-relative ``//host/x`` and a schemeless ``host/x`` are read as
+    ``//host/x``. An authority carrying a backslash is one a WHATWG parser
+    (a browser, an image loader) reads differently (the backslash ends the
+    authority there), so it is denied conservatively when a banned label
+    appears in that authority anywhere (fix-round ruling F1-4); a label in the
+    path, the query or the fragment is never a host. A non-str, an empty
+    string or a value ``urlsplit`` rejects is False. Flag-free, never raises.
     """
     if not isinstance(url, str):
         return False
@@ -171,9 +186,12 @@ def is_denied_url(url: Any) -> bool:
     if "://" not in s and not s.startswith("//"):
         s = "//" + s
     try:
-        host = urlsplit(s).hostname
+        parts = urlsplit(s)
+        host = parts.hostname
     except ValueError:
         return False
+    if _BACKSLASH in parts.netloc and _LABEL_TOKEN_RE.search(parts.netloc.casefold()):
+        return True
     return is_denied_host(host or "")
 
 

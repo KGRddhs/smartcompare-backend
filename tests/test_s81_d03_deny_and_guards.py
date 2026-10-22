@@ -25,6 +25,7 @@ Hermetic: no network (the conftest netguard is on), no Supabase / OpenAI /
 Serper (every seam is patched with a recorder), no .env, no credential. Host
 names are public site names or synthetic .test hosts. Pure ASCII.
 """
+
 from __future__ import annotations
 
 import ast
@@ -43,7 +44,9 @@ FLAG = "ENABLE_DATA_GUARDS_V2"
 ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = ROOT / "app"
 DENY_PATH = APP_DIR / "services" / "deny_hosts.py"
-OUDWOOD_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "serper_oudwood_organic.json"
+OUDWOOD_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "serper_oudwood_organic.json"
+)
 
 FALSY = ["", "false", "0", "off", "no", "garbage", "FALSE "]
 TRUTHY = ["TRUE", " on ", "1", "Yes"]
@@ -61,20 +64,42 @@ REAL_GLOBAL_QUERY_ON = (
     "Dior Sauvage site:amazon.com OR site:sephora.com OR site:walmart.com"
 )
 
-THE_26_HOSTS = sorted([
-    "fragrantica.com", "fragrantica.asia", "fragrantica.co.il", "fragrantica.com.br",
-    "fragrantica.cz", "fragrantica.de", "fragrantica.es", "fragrantica.fr",
-    "fragrantica.gr", "fragrantica.hu", "fragrantica.it", "fragrantica.jp",
-    "fragrantica.kr", "fragrantica.mn", "fragrantica.nl", "fragrantica.pl",
-    "fragrantica.ro", "fragrantica.ru", "fragrantica.se", "fragrantica.tr",
-    "fragrantica.ua", "parfumo.com", "parfumo.de", "basenotes.com", "basenotes.net",
-    "fimgs.net",
-])
+THE_26_HOSTS = sorted(
+    [
+        "fragrantica.com",
+        "fragrantica.asia",
+        "fragrantica.co.il",
+        "fragrantica.com.br",
+        "fragrantica.cz",
+        "fragrantica.de",
+        "fragrantica.es",
+        "fragrantica.fr",
+        "fragrantica.gr",
+        "fragrantica.hu",
+        "fragrantica.it",
+        "fragrantica.jp",
+        "fragrantica.kr",
+        "fragrantica.mn",
+        "fragrantica.nl",
+        "fragrantica.pl",
+        "fragrantica.ro",
+        "fragrantica.ru",
+        "fragrantica.se",
+        "fragrantica.tr",
+        "fragrantica.ua",
+        "parfumo.com",
+        "parfumo.de",
+        "basenotes.com",
+        "basenotes.net",
+        "fimgs.net",
+    ]
+)
 
 
 # ---------------------------------------------------------------------------
 # helpers: a missing symbol is an assertion, never an ImportError
 # ---------------------------------------------------------------------------
+
 
 def _mod(name):
     try:
@@ -178,17 +203,42 @@ def _reg():
     return [
         # denied rows (D1-D8): one per selector shape
         S("fragrantica.com", "global", ("fragrances",), 1.0),
-        S("www.parfumo.de", "gcc", ("fragrances",), 1.5, usage="both",
-          mechanism="woo_store_json", status="live", is_render_only=True),
-        S("media.parfumo.com", "bahrain", ("fragrances",), 3.0, is_shopify=True,
-          search_descriptor=_descriptor()),
+        S(
+            "www.parfumo.de",
+            "gcc",
+            ("fragrances",),
+            1.5,
+            usage="both",
+            mechanism="woo_store_json",
+            status="live",
+            is_render_only=True,
+        ),
+        S(
+            "media.parfumo.com",
+            "bahrain",
+            ("fragrances",),
+            3.0,
+            is_shopify=True,
+            search_descriptor=_descriptor(),
+        ),
         S("fimgs.net", "bahrain", ("fragrances",), 3.0, is_algolia=True),
         S("basenotes.com", "bahrain", ("fragrances",), 3.0, mechanism="json_api"),
-        S("forum.basenotes.net", "bahrain", ("fragrances",), 3.0, usage="review",
-          mechanism="sitemap"),
+        S(
+            "forum.basenotes.net",
+            "bahrain",
+            ("fragrances",),
+            3.0,
+            usage="review",
+            mechanism="sitemap",
+        ),
         S("fragrantica.ru", "bahrain", ("fragrances",), 3.0),
-        S("fragrantica.asia", "gcc", ("fragrances",), 1.5,
-          sample_url="https://fragrantica.asia/products.json"),
+        S(
+            "fragrantica.asia",
+            "gcc",
+            ("fragrances",),
+            1.5,
+            sample_url="https://fragrantica.asia/products.json",
+        ),
         # allowed rows (A1-A4)
         S("amazon.com", "global", (), 1.0),
         S("sephora.com", "global", ("fragrances",), 1.0, usage="both"),
@@ -207,26 +257,47 @@ def _row_dom(row):
 
 R3A_CASES = {
     "sources_all": lambda sr, sds: _doms(sr.get_sources_for_category("fragrances")),
-    "sources_price": lambda sr, sds: _doms(sr.get_sources_for_category("fragrances", usage="price")),
-    "sources_review": lambda sr, sds: _doms(sr.get_sources_for_category("fragrances", usage="review")),
-    "query_bahrain": lambda sr, sds: sr.build_site_discovery_query("Q", "fragrances", tier="bahrain", limit=8),
-    "query_gcc": lambda sr, sds: sr.build_site_discovery_query("Q", "fragrances", tier="gcc", limit=8),
-    "query_global": lambda sr, sds: sr.build_site_discovery_query("Q", "fragrances", tier="global", limit=8),
+    "sources_price": lambda sr, sds: _doms(
+        sr.get_sources_for_category("fragrances", usage="price")
+    ),
+    "sources_review": lambda sr, sds: _doms(
+        sr.get_sources_for_category("fragrances", usage="review")
+    ),
+    "query_bahrain": lambda sr, sds: sr.build_site_discovery_query(
+        "Q", "fragrances", tier="bahrain", limit=8
+    ),
+    "query_gcc": lambda sr, sds: sr.build_site_discovery_query(
+        "Q", "fragrances", tier="gcc", limit=8
+    ),
+    "query_global": lambda sr, sds: sr.build_site_discovery_query(
+        "Q", "fragrances", tier="global", limit=8
+    ),
     "shopify": lambda sr, sds: _doms(sr.get_shopify_sources_for_category("fragrances")),
     "algolia": lambda sr, sds: _doms(sr.get_algolia_sources_for_category("fragrances")),
     "jsonapi": lambda sr, sds: _doms(sr.get_jsonapi_sources_for_category("fragrances")),
-    "curl_pagescrape": lambda sr, sds: _doms(sr.get_curl_pagescrape_sources_for_category("fragrances")),
+    "curl_pagescrape": lambda sr, sds: _doms(
+        sr.get_curl_pagescrape_sources_for_category("fragrances")
+    ),
     "sitemap": lambda sr, sds: _doms(sr.get_sitemap_sources_for_category("fragrances")),
     "woo": lambda sr, sds: _doms(sr.get_woo_sources_for_category("fragrances")),
-    "gcc_shopify_pagescrape": lambda sr, sds: _doms(sr.get_gcc_shopify_pagescrape_sources_for_category("fragrances")),
-    "score_source": lambda sr, sds: sr.score_source("https://www.fragrantica.com/perfume/x-1.html", "fragrances"),
-    "source_usage": lambda sr, sds: sr.source_usage("https://forum.basenotes.net/t/x-1", "fragrances"),
+    "gcc_shopify_pagescrape": lambda sr, sds: _doms(
+        sr.get_gcc_shopify_pagescrape_sources_for_category("fragrances")
+    ),
+    "score_source": lambda sr, sds: sr.score_source(
+        "https://www.fragrantica.com/perfume/x-1.html", "fragrances"
+    ),
+    "source_usage": lambda sr, sds: sr.source_usage(
+        "https://forum.basenotes.net/t/x-1", "fragrances"
+    ),
     "registry_tier": lambda sr, sds: sr.registry_tier("www.fragrantica.com"),
     "match_registry_apex": lambda sr, sds: sr.match_registry_apex("fr.fragrantica.com"),
     "is_render_only_domain": lambda sr, sds: sr.is_render_only_domain("www.parfumo.de"),
-    "registry_row_for_host": lambda sr, sds: _row_dom(sr._registry_row_for_host("media.parfumo.com")),
+    "registry_row_for_host": lambda sr, sds: _row_dom(
+        sr._registry_row_for_host("media.parfumo.com")
+    ),
     "descriptor_for_host": lambda sr, sds: (
-        None if sds.descriptor_for_host("media.parfumo.com") is None
+        None
+        if sds.descriptor_for_host("media.parfumo.com") is None
         else sds.descriptor_for_host("media.parfumo.com").url_template
     ),
 }
@@ -234,26 +305,51 @@ R3A_CASES = {
 # Flag-OFF base values over the synthetic registry (measured at 95cf6f86 by
 # the RED author's probe; identical with ENABLE_LONGEST_HOST_MATCH OFF and ON).
 P1_BASE = {
-    'algolia': ['fimgs.net'],
-    'curl_pagescrape': ['fragrantica.ru'],
-    'descriptor_for_host': 'https://media.parfumo.com/search?q={q}',
-    'gcc_shopify_pagescrape': ['fragrantica.asia'],
-    'is_render_only_domain': True,
-    'jsonapi': ['basenotes.com'],
-    'match_registry_apex': 'fragrantica.com',
-    'query_bahrain': 'Q site:media.parfumo.com OR site:fimgs.net OR site:basenotes.com OR site:fragrantica.ru OR site:bh.perfume-shop.test',
-    'query_gcc': 'Q site:www.parfumo.de OR site:fragrantica.asia OR site:notfragrantica.com',
-    'query_global': 'Q site:fragrantica.com OR site:amazon.com OR site:sephora.com',
-    'registry_row_for_host': 'media.parfumo.com',
-    'registry_tier': 'global',
-    'score_source': 1.0,
-    'shopify': ['media.parfumo.com', 'bh.perfume-shop.test'],
-    'sitemap': ['forum.basenotes.net'],
-    'source_usage': 'review',
-    'sources_all': ['media.parfumo.com', 'fimgs.net', 'basenotes.com', 'forum.basenotes.net', 'fragrantica.ru', 'bh.perfume-shop.test', 'www.parfumo.de', 'fragrantica.asia', 'notfragrantica.com', 'fragrantica.com', 'amazon.com', 'sephora.com'],
-    'sources_price': ['media.parfumo.com', 'fimgs.net', 'basenotes.com', 'fragrantica.ru', 'bh.perfume-shop.test', 'www.parfumo.de', 'fragrantica.asia', 'notfragrantica.com', 'fragrantica.com', 'amazon.com', 'sephora.com'],
-    'sources_review': ['forum.basenotes.net', 'www.parfumo.de', 'sephora.com'],
-    'woo': ['www.parfumo.de'],
+    "algolia": ["fimgs.net"],
+    "curl_pagescrape": ["fragrantica.ru"],
+    "descriptor_for_host": "https://media.parfumo.com/search?q={q}",
+    "gcc_shopify_pagescrape": ["fragrantica.asia"],
+    "is_render_only_domain": True,
+    "jsonapi": ["basenotes.com"],
+    "match_registry_apex": "fragrantica.com",
+    "query_bahrain": "Q site:media.parfumo.com OR site:fimgs.net OR site:basenotes.com OR site:fragrantica.ru OR site:bh.perfume-shop.test",
+    "query_gcc": "Q site:www.parfumo.de OR site:fragrantica.asia OR site:notfragrantica.com",
+    "query_global": "Q site:fragrantica.com OR site:amazon.com OR site:sephora.com",
+    "registry_row_for_host": "media.parfumo.com",
+    "registry_tier": "global",
+    "score_source": 1.0,
+    "shopify": ["media.parfumo.com", "bh.perfume-shop.test"],
+    "sitemap": ["forum.basenotes.net"],
+    "source_usage": "review",
+    "sources_all": [
+        "media.parfumo.com",
+        "fimgs.net",
+        "basenotes.com",
+        "forum.basenotes.net",
+        "fragrantica.ru",
+        "bh.perfume-shop.test",
+        "www.parfumo.de",
+        "fragrantica.asia",
+        "notfragrantica.com",
+        "fragrantica.com",
+        "amazon.com",
+        "sephora.com",
+    ],
+    "sources_price": [
+        "media.parfumo.com",
+        "fimgs.net",
+        "basenotes.com",
+        "fragrantica.ru",
+        "bh.perfume-shop.test",
+        "www.parfumo.de",
+        "fragrantica.asia",
+        "notfragrantica.com",
+        "fragrantica.com",
+        "amazon.com",
+        "sephora.com",
+    ],
+    "sources_review": ["forum.basenotes.net", "www.parfumo.de", "sephora.com"],
+    "woo": ["www.parfumo.de"],
 }
 
 
@@ -261,14 +357,22 @@ P1_BASE = {
 # R1 - the deny_hosts leaf
 # ---------------------------------------------------------------------------
 
+
 def test_r1a_module_exists():
     m = _mod("app.services.deny_hosts")
     assert m is not None, "app.services.deny_hosts is missing"
     for name in (
-        "DENY_HOSTS", "DENY_LABELS", "LEGACY_DESCRIPTOR_DENY_HOSTS",
-        "data_guards_v2_enabled", "normalize_host", "is_denied_host",
-        "is_denied_url", "is_denied_source", "DeniedSourceError",
-        "kb_source_allowed", "assert_kb_source_allowed",
+        "DENY_HOSTS",
+        "DENY_LABELS",
+        "LEGACY_DESCRIPTOR_DENY_HOSTS",
+        "data_guards_v2_enabled",
+        "normalize_host",
+        "is_denied_host",
+        "is_denied_url",
+        "is_denied_source",
+        "DeniedSourceError",
+        "kb_source_allowed",
+        "assert_kb_source_allowed",
     ):
         assert _attr(m, name) is not None, "deny_hosts.%s missing" % name
 
@@ -297,11 +401,16 @@ def test_r1b_module_is_stdlib_only():
 def _docstring_nodes(tree):
     ids = set()
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
             body = getattr(node, "body", [])
-            if body and isinstance(body[0], ast.Expr) and isinstance(
-                getattr(body[0], "value", None), ast.Constant
-            ) and isinstance(body[0].value.value, str):
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(getattr(body[0], "value", None), ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
                 ids.add(id(body[0].value))
     return ids
 
@@ -311,9 +420,12 @@ def test_r1c_no_http_literal_t7b_safe():
     tree = ast.parse(DENY_PATH.read_text(encoding="utf-8"))
     docs = _docstring_nodes(tree)
     bad = [
-        n.value for n in ast.walk(tree)
-        if isinstance(n, ast.Constant) and isinstance(n.value, str)
-        and id(n) not in docs and ("http://" in n.value or "https://" in n.value)
+        n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant)
+        and isinstance(n.value, str)
+        and id(n) not in docs
+        and ("http://" in n.value or "https://" in n.value)
     ]
     assert bad == [], "scheme literal in deny_hosts.py (T7b): %r" % bad
 
@@ -324,24 +436,52 @@ def test_r1d_deny_hosts_content():
     assert isinstance(hosts, tuple), "DENY_HOSTS must be a tuple"
     assert sorted(hosts) == THE_26_HOSTS
     for h in hosts:
-        assert h == h.lower() and "://" not in h and not h.startswith("www.") and ":" not in h
-    assert _attr(m, "LEGACY_DESCRIPTOR_DENY_HOSTS") == ("fragrantica.com", "parfumo.com")
-    assert set(_attr(m, "DENY_LABELS") or ()) == {"fragrantica", "parfumo", "basenotes", "fimgs"}
+        assert (
+            h == h.lower()
+            and "://" not in h
+            and not h.startswith("www.")
+            and ":" not in h
+        )
+    assert _attr(m, "LEGACY_DESCRIPTOR_DENY_HOSTS") == (
+        "fragrantica.com",
+        "parfumo.com",
+    )
+    assert set(_attr(m, "DENY_LABELS") or ()) == {
+        "fragrantica",
+        "parfumo",
+        "basenotes",
+        "fimgs",
+    }
 
 
 R1E_TRUE = [
-    "fragrantica.com", "www.fragrantica.com", "FRAGRANTICA.COM.", " fr.fragrantica.com ",
-    "fragrantica.com:443", "fragrantica.ru", "www.fragrantica.com.br", "www.parfumo.de",
-    "media.parfumo.com", "basenotes.com", "basenotes.net", "fimgs.net",
+    "fragrantica.com",
+    "www.fragrantica.com",
+    "FRAGRANTICA.COM.",
+    " fr.fragrantica.com ",
+    "fragrantica.com:443",
+    "fragrantica.ru",
+    "www.fragrantica.com.br",
+    "www.parfumo.de",
+    "media.parfumo.com",
+    "basenotes.com",
+    "basenotes.net",
+    "fimgs.net",
     "rwebsocket.fimgs.net",
     # ruling C10: deny by registrable LABEL with any public suffix
-    "fragrantica.cn", "www.parfumo.it",
+    "fragrantica.cn",
+    "www.parfumo.it",
     # a port on a two-level public suffix (the port is dropped before matching)
     "fragrantica.com.br:8443",
 ]
 R1E_FALSE = [
-    "notfragrantica.com", "fragrantica.com.evil.test", "fragranticacom.net",
-    "parfumoshop.com", "myfimgs.net", "bahrain.ounass.com", "",
+    "notfragrantica.com",
+    "fragrantica.com.evil.test",
+    "fragranticacom.net",
+    "parfumoshop.com",
+    "myfimgs.net",
+    "bahrain.ounass.com",
+    "",
     # ruling C10
     "notfragrantica.cn",
 ]
@@ -381,16 +521,26 @@ def test_r1f_is_denied_url():
     ):
         assert fn(url) is True, url
     for url in (
-        "https://bahrain.ounass.com/x", "https://notfragrantica.com/x",
-        "http://[bad", None, 7, "",
+        "https://bahrain.ounass.com/x",
+        "https://notfragrantica.com/x",
+        "http://[bad",
+        None,
+        7,
+        "",
     ):
         assert fn(url) is False, url
 
 
 def test_r1g_is_denied_source():
     fn = _dh_fn("is_denied_source")
-    for value in ("Fragrantica", "fragrantica.ru", "Parfumo", "Basenotes",
-                  "https://fimgs.net/a.jpg", "Parfumo.de"):
+    for value in (
+        "Fragrantica",
+        "fragrantica.ru",
+        "Parfumo",
+        "Basenotes",
+        "https://fimgs.net/a.jpg",
+        "Parfumo.de",
+    ):
         assert fn(value) is True, value
     for value in ("Notfragrantica", "Boots", "Sally Beauty", "", None, 5):
         assert fn(value) is False, value
@@ -424,8 +574,10 @@ def _container_strs(node):
                 out.append(e.value)
             else:
                 out.extend(_container_strs(e))
-    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in (
-        "set", "frozenset", "tuple", "list"
+    elif (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("set", "frozenset", "tuple", "list")
     ):
         for a in node.args:
             out.extend(_container_strs(a))
@@ -449,9 +601,13 @@ def test_r1i_single_deny_literal_list():
                 value = node.value
             if value is None:
                 continue
-            hits = [s for s in _container_strs(value) if s.lower() in _BANNED_LITERAL_HOSTS]
+            hits = [
+                s for s in _container_strs(value) if s.lower() in _BANNED_LITERAL_HOSTS
+            ]
             if hits:
-                offenders.append("%s:%d %r" % (path.relative_to(ROOT).as_posix(), node.lineno, hits))
+                offenders.append(
+                    "%s:%d %r" % (path.relative_to(ROOT).as_posix(), node.lineno, hits)
+                )
     assert offenders == [], "a second banned-host literal list: %s" % offenders
     m = _dh()
     assert _sds().DENY_HOSTS is _attr(m, "LEGACY_DESCRIPTOR_DENY_HOSTS")
@@ -461,10 +617,17 @@ def test_r1i_single_deny_literal_list():
 # R2 / P4 - the search descriptor
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("host", [
-    "basenotes.com", "www.parfumo.de", "fimgs.net", "fragrantica.ru",
-    "www.fragrantica.com.br",
-])
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "basenotes.com",
+        "www.parfumo.de",
+        "fimgs.net",
+        "fragrantica.ru",
+        "www.fragrantica.com.br",
+    ],
+)
 def test_r2a_descriptor_deny_on(host, monkeypatch):
     _on(monkeypatch)
     assert _sds()._deny(host) is True
@@ -528,6 +691,7 @@ def test_p4b_descriptor_tuple_on_unchanged(monkeypatch):
 # R3 / P1 / P2 - source_router consumers ("as if absent", flag read per call)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("longest", ["false", "true"])
 @pytest.mark.parametrize("case", sorted(R3A_CASES))
 def test_r3a_as_if_absent(case, longest, monkeypatch):
@@ -548,14 +712,24 @@ def test_r3a_as_if_absent(case, longest, monkeypatch):
 def test_r3b_real_registry_global_query(monkeypatch):
     sr = _sr()
     _on(monkeypatch)
-    assert sr.build_site_discovery_query("Dior Sauvage", "fragrances", tier="global", limit=8) == REAL_GLOBAL_QUERY_ON
-    assert sr.score_source("https://www.fragrantica.com/perfume/x-1.html", "fragrances") == 0.5
+    assert (
+        sr.build_site_discovery_query(
+            "Dior Sauvage", "fragrances", tier="global", limit=8
+        )
+        == REAL_GLOBAL_QUERY_ON
+    )
+    assert (
+        sr.score_source("https://www.fragrantica.com/perfume/x-1.html", "fragrances")
+        == 0.5
+    )
     assert sr.registry_tier("www.fragrantica.com") is None
 
 
 def test_r3c_per_call_flip(monkeypatch):
     sr = _sr()
-    q = lambda: sr.build_site_discovery_query("Dior Sauvage", "fragrances", tier="global", limit=8)  # noqa: E731
+    q = lambda: sr.build_site_discovery_query(
+        "Dior Sauvage", "fragrances", tier="global", limit=8
+    )  # noqa: E731
     _on(monkeypatch)
     assert "site:fragrantica.com" not in q()
     _off(monkeypatch)
@@ -606,8 +780,18 @@ def test_r3e_memo_never_serves_a_replaced_registry(monkeypatch):
     rows_a = tuple(_reg())
     rows_b = tuple(_alt_rows())
     assert len(rows_a) == len(rows_b)
-    expect_a = ["bh.perfume-shop.test", "notfragrantica.com", "amazon.com", "sephora.com"]
-    expect_b = ["alt-a.perfume-b.test", "alt-b.perfume-b.test", "alt-c.perfume-b.test", "alt-d.perfume-b.test"]
+    expect_a = [
+        "bh.perfume-shop.test",
+        "notfragrantica.com",
+        "amazon.com",
+        "sephora.com",
+    ]
+    expect_b = [
+        "alt-a.perfume-b.test",
+        "alt-b.perfume-b.test",
+        "alt-c.perfume-b.test",
+        "alt-d.perfume-b.test",
+    ]
     monkeypatch.setattr(sr, "SOURCE_REGISTRY", sr.SOURCE_REGISTRY)  # restore point
     _on(monkeypatch)
     for _ in range(25):
@@ -657,7 +841,9 @@ def test_p2_registry_never_mutated(monkeypatch):
             _off(monkeypatch, state)
         else:
             monkeypatch.setenv(FLAG, state)
-        sr.build_site_discovery_query("Dior Sauvage", "fragrances", tier="global", limit=8)
+        sr.build_site_discovery_query(
+            "Dior Sauvage", "fragrances", tier="global", limit=8
+        )
         sr.score_source(FRAG_PDP, "fragrances")
         sr.registry_tier("www.fragrantica.com")
         sr.get_sources_for_category("fragrances")
@@ -666,7 +852,12 @@ def test_p2_registry_never_mutated(monkeypatch):
     assert all(a is b for a, b in zip(sr.SOURCE_REGISTRY, before_rows))
     assert all(a is b for a, b in zip(sr._LITERAL_ROWS, literal_before))
     _off(monkeypatch)
-    assert sr.build_site_discovery_query("Dior Sauvage", "fragrances", tier="global", limit=8) == REAL_GLOBAL_QUERY_OFF
+    assert (
+        sr.build_site_discovery_query(
+            "Dior Sauvage", "fragrances", tier="global", limit=8
+        )
+        == REAL_GLOBAL_QUERY_OFF
+    )
     assert sr.score_source(FRAG_PDP, "fragrances") == 1.0
     assert sr.registry_tier("www.fragrantica.com") == "global"
     assert sr.match_registry_apex("fr.fragrantica.com") == "fragrantica.com"
@@ -680,26 +871,49 @@ NAME = "Tom Ford Oud Wood"
 
 
 def _frag_item():
-    return {"title": NAME, "source": "Fragrantica", "rating": 4.3, "ratingCount": 17104,
-            "link": FRAG_PDP}
+    return {
+        "title": NAME,
+        "source": "Fragrantica",
+        "rating": 4.3,
+        "ratingCount": 17104,
+        "link": FRAG_PDP,
+    }
 
 
 def _boots_item():
-    return {"title": NAME, "source": "Boots", "rating": 4.6, "ratingCount": 20,
-            "link": "https://bn.boots.com/tom-ford-oud-wood-1001"}
+    return {
+        "title": NAME,
+        "source": "Boots",
+        "rating": 4.6,
+        "ratingCount": 20,
+        "link": "https://bn.boots.com/tom-ford-oud-wood-1001",
+    }
 
 
 def _neutral_denied_link_item():
-    return {"title": NAME, "source": "somestore.com", "rating": 4.1, "ratingCount": 900,
-            "link": FIMGS_IMG}
+    return {
+        "title": NAME,
+        "source": "somestore.com",
+        "rating": 4.1,
+        "ratingCount": 900,
+        "link": FIMGS_IMG,
+    }
 
 
 def _consensus_items():
     return [
-        {"title": NAME, "source": src, "rating": 4.0, "ratingCount": 5000,
-         "link": "https://www.%s/perfume/x-1.html" % host}
-        for src, host in (("Parfumo", "parfumo.com"), ("Basenotes", "basenotes.com"),
-                          ("Parfumo.de", "parfumo.de"))
+        {
+            "title": NAME,
+            "source": src,
+            "rating": 4.0,
+            "ratingCount": 5000,
+            "link": "https://www.%s/perfume/x-1.html" % host,
+        }
+        for src, host in (
+            ("Parfumo", "parfumo.com"),
+            ("Basenotes", "basenotes.com"),
+            ("Parfumo.de", "parfumo.de"),
+        )
     ]
 
 
@@ -714,10 +928,27 @@ def _src_url(out):
 def test_r4a_rating_tier_denied_on(monkeypatch):
     _on(monkeypatch)
     t = _rs().get_rating_tier
-    got = {s: t(s) for s in ("Fragrantica", "fragrantica.com", "Fragrantica.ru", "Parfumo",
-                             "Sally Beauty", "boots", "Sephora")}
-    assert got == {"Fragrantica": 3, "fragrantica.com": 3, "Fragrantica.ru": 3, "Parfumo": 3,
-                   "Sally Beauty": 2, "boots": 2, "Sephora": 1}
+    got = {
+        s: t(s)
+        for s in (
+            "Fragrantica",
+            "fragrantica.com",
+            "Fragrantica.ru",
+            "Parfumo",
+            "Sally Beauty",
+            "boots",
+            "Sephora",
+        )
+    }
+    assert got == {
+        "Fragrantica": 3,
+        "fragrantica.com": 3,
+        "Fragrantica.ru": 3,
+        "Parfumo": 3,
+        "Sally Beauty": 2,
+        "boots": 2,
+        "Sephora": 1,
+    }
 
 
 def test_r4b_only_denied_candidate_no_rating(monkeypatch):
@@ -736,8 +967,13 @@ def test_r4c_denied_loses_to_allowed(monkeypatch):
 def test_r4d_denied_link_with_neutral_source(monkeypatch):
     _on(monkeypatch)
     rs = _rs()
-    assert rs.extract_rating_from_shopping(NAME, [_neutral_denied_link_item()])["rating"] is None
-    out = rs.extract_rating_from_shopping(NAME, [_neutral_denied_link_item(), _boots_item()])
+    assert (
+        rs.extract_rating_from_shopping(NAME, [_neutral_denied_link_item()])["rating"]
+        is None
+    )
+    out = rs.extract_rating_from_shopping(
+        NAME, [_neutral_denied_link_item(), _boots_item()]
+    )
     assert _src_name(out).startswith("Boots")
     frag_link = dict(_neutral_denied_link_item(), link=FRAG_PDP)
     assert rs.extract_rating_from_shopping(NAME, [frag_link])["rating"] is None
@@ -757,15 +993,36 @@ def test_r4f_collect_retailer_ratings_drops_denied(monkeypatch):
 
 
 RATING_TIER_2_LITERAL = {
-    "costco", "carrefour", "sharaf dg", "virgin megastore", "currys",
-    "john lewis", "adorama", "micro center", "google store", "microsoft",
-    "dell", "hp store", "lenovo", "fnac",
-    "fragrantica", "sally beauty", "lookfantastic", "beautybay", "nykaa",
-    "bath & body", "boots",
+    "costco",
+    "carrefour",
+    "sharaf dg",
+    "virgin megastore",
+    "currys",
+    "john lewis",
+    "adorama",
+    "micro center",
+    "google store",
+    "microsoft",
+    "dell",
+    "hp store",
+    "lenovo",
+    "fnac",
+    "fragrantica",
+    "sally beauty",
+    "lookfantastic",
+    "beautybay",
+    "nykaa",
+    "bath & body",
+    "boots",
 }
 LUXURY_FASHION_RETAILERS_LITERAL = {
-    "fragrantica", "sally beauty", "lookfantastic", "beautybay", "nykaa",
-    "bath & body", "boots",
+    "fragrantica",
+    "sally beauty",
+    "lookfantastic",
+    "beautybay",
+    "nykaa",
+    "bath & body",
+    "boots",
 }
 
 
@@ -779,16 +1036,26 @@ def test_p3_rating_off_equals_base(flag, monkeypatch):
     assert rs.get_rating_tier("Parfumo") == 3
     out = rs.extract_rating_from_shopping(NAME, [_frag_item()])
     assert (out["rating"], out["review_count"], _src_name(out)) == (
-        4.3, 17104, "Fragrantica via Google Shopping")
+        4.3,
+        17104,
+        "Fragrantica via Google Shopping",
+    )
     out = rs.extract_rating_from_shopping(NAME, [_frag_item(), _boots_item()])
     assert _src_name(out) == "Fragrantica via Google Shopping"
-    out = rs.extract_rating_from_shopping(NAME, [_neutral_denied_link_item(), _boots_item()])
+    out = rs.extract_rating_from_shopping(
+        NAME, [_neutral_denied_link_item(), _boots_item()]
+    )
     assert _src_name(out) == "somestore.com via Google Shopping"
     assert _src_url(out) == FIMGS_IMG
     out = rs.extract_rating_from_shopping(NAME, _consensus_items())
     assert (out["rating"], out["review_count"], _src_name(out)) == (
-        4.0, 5000, "Google Shopping (product aggregate)")
-    listed = rs.collect_retailer_ratings(NAME, {NAME: [_frag_item(), _boots_item(), _neutral_denied_link_item()]})
+        4.0,
+        5000,
+        "Google Shopping (product aggregate)",
+    )
+    listed = rs.collect_retailer_ratings(
+        NAME, {NAME: [_frag_item(), _boots_item(), _neutral_denied_link_item()]}
+    )
     assert [r["source"] for r in listed] == ["Fragrantica", "Boots", "somestore.com"]
 
 
@@ -813,29 +1080,46 @@ MARGIELA_TITLES = [
     "MAISON MARGIELA 'REPLICA' By the Fireplace EDT 100 ml",
 ]
 SUBSTRING_FALSE_POSITIVES = [
-    "Lattafa Oud Infused Eau de Parfum 100ml", "Rose Infused Body Oil",
-    "Focused Serum 30ml", "Unused tester 100ml", "Copyright free",
+    "Lattafa Oud Infused Eau de Parfum 100ml",
+    "Rose Infused Body Oil",
+    "Focused Serum 30ml",
+    "Unused tester 100ml",
+    "Copyright free",
 ]
 LV_FALSE_POSITIVES = [
-    "Centrum Silver", "Calvin Klein boxer briefs", "L'Oreal Elvive shampoo",
-    "Creed Silver Mountain Water 100ml", "Velvet Matte Lipstick",
-    "Salvatore Ferragamo Uomo", "Volvo key fob", "LVMH annual report",
+    "Centrum Silver",
+    "Calvin Klein boxer briefs",
+    "L'Oreal Elvive shampoo",
+    "Creed Silver Mountain Water 100ml",
+    "Velvet Matte Lipstick",
+    "Salvatore Ferragamo Uomo",
+    "Volvo key fob",
+    "LVMH annual report",
 ]
 LV_ALIASES = ["L.V. Neverfull", "l.v monogram"]
 CK_NAME = "Calvin Klein Eternity Eau de Parfum 100ml"
 
 COUNTERFEIT_KEPT_ON = [
-    "Used tester 100ml", "Creed Aventus replicas set", "Aventus dupes 3 pack",
+    "Used tester 100ml",
+    "Creed Aventus replicas set",
+    "Aventus dupes 3 pack",
     "Replica of Maison Margiela Jazz Club dupe",
-    "Inspired by Maison Margiela Replica Jazz Club", "REPLICA Jazz Club EDT 100ml",
-    "Pre-owned bag", "Second hand watch",
+    "Inspired by Maison Margiela Replica Jazz Club",
+    "REPLICA Jazz Club EDT 100ml",
+    "Pre-owned bag",
+    "Second hand watch",
     # ruling C2: copycat stays counterfeit ON (_CF_V2_EXTRA_TOKENS)
     "Copycat scent",
     # ruling C1: letters-only lookarounds keep the digit-glued cases
-    "1:1replica Creed Aventus 100ml", "Creed Aventus Replica1",
+    "1:1replica Creed Aventus 100ml",
+    "Creed Aventus Replica1",
 ]
-LUXURY_KEPT_ON = ["LV Neverfull MM", "LV-Monogram scarf", "Louis Vuitton Ombre Nomade",
-                  "Tom Ford Velvet Orchid"]
+LUXURY_KEPT_ON = [
+    "LV Neverfull MM",
+    "LV-Monogram scarf",
+    "Louis Vuitton Ombre Nomade",
+    "Tom Ford Velvet Orchid",
+]
 
 
 @pytest.mark.parametrize("title", MARGIELA_TITLES)
@@ -851,16 +1135,24 @@ def test_r5b_substring_false_positives_gone_on(title, monkeypatch):
 
 
 def _frag018_items():
-    return [{
-        "title": "Maison Margiela Replica Jazz Club Eau de Toilette 100ml",
-        "price": "BHD 45.000", "source": "Ounass", "link": OUNASS_PDP,
-    }]
+    return [
+        {
+            "title": "Maison Margiela Replica Jazz Club Eau de Toilette 100ml",
+            "price": "BHD 45.000",
+            "source": "Ounass",
+            "link": OUNASS_PDP,
+        }
+    ]
 
 
 def test_r5c_frag018_shopping_price_on(monkeypatch):
     _on(monkeypatch)
     out = _ps().extract_price_from_shopping(
-        "Maison Margiela Replica Jazz Club", _frag018_items(), "BHD", category="fragrances")
+        "Maison Margiela Replica Jazz Club",
+        _frag018_items(),
+        "BHD",
+        category="fragrances",
+    )
     assert out is not None and out.get("amount") == 45.0
 
 
@@ -894,22 +1186,34 @@ def test_r6c_calvin_klein_floor_on(monkeypatch):
     assert ps._is_designer_fragrance_name(CK_NAME) is False
 
 
-P5_COUNTERFEIT_BASE = {t: True for t in (
-    MARGIELA_TITLES + SUBSTRING_FALSE_POSITIVES + COUNTERFEIT_KEPT_ON)}
-P5_LUXURY_BASE = dict({n: True for n in LV_FALSE_POSITIVES + LUXURY_KEPT_ON},
-                      **{n: False for n in LV_ALIASES})
+P5_COUNTERFEIT_BASE = {
+    t: True for t in (MARGIELA_TITLES + SUBSTRING_FALSE_POSITIVES + COUNTERFEIT_KEPT_ON)
+}
+P5_LUXURY_BASE = dict(
+    {n: True for n in LV_FALSE_POSITIVES + LUXURY_KEPT_ON},
+    **{n: False for n in LV_ALIASES},
+)
 
 
 @pytest.mark.parametrize("flag", FALSY + [None])
 def test_p5_guards_off_equal_base(flag, monkeypatch):
     _off(monkeypatch, flag)
     ps = _ps()
-    assert {t: ps.is_counterfeit_listing(t) for t in P5_COUNTERFEIT_BASE} == P5_COUNTERFEIT_BASE
+    assert {
+        t: ps.is_counterfeit_listing(t) for t in P5_COUNTERFEIT_BASE
+    } == P5_COUNTERFEIT_BASE
     assert {n: ps.is_luxury_brand(n) for n in P5_LUXURY_BASE} == P5_LUXURY_BASE
     assert ps.is_implausible_low_fragrance_price(CK_NAME, 18.0) is True
     assert ps._is_designer_fragrance_name(CK_NAME) is True
-    assert ps.extract_price_from_shopping(
-        "Maison Margiela Replica Jazz Club", _frag018_items(), "BHD", category="fragrances") is None
+    assert (
+        ps.extract_price_from_shopping(
+            "Maison Margiela Replica Jazz Club",
+            _frag018_items(),
+            "BHD",
+            category="fragrances",
+        )
+        is None
+    )
     # BLOCKER 5 shapes: a non-str title never raises
     for bad in (None, 7, True, ["replica"], {"a": 1}):
         assert isinstance(ps.is_counterfeit_listing(bad), bool)
@@ -941,30 +1245,52 @@ def _hermes_accent():
 # Copied literal rows of tests/test_counterfeit_filter.py and
 # tests/test_luxury_brands.py (the existing pin corpus, unedited).
 P7_COUNTERFEIT_ROWS = [
-    ("Replica Hermes Birkin Bag", True), ("Fake Louis Vuitton Wallet", True),
-    ("Designer Inspired Handbag", True), ("Pre-Owned Chanel Classic Flap", True),
-    ("Used Rolex Submariner Date", True), ("Vintage Gucci Belt", True),
-    ("Dupe Charlotte Tilbury Lipstick", True), ("Knockoff Ray-Ban Sunglasses", True),
-    ("Generic Vitamin D3 5000IU", True), ("Unbranded Wireless Earbuds", True),
-    ("Secondhand Prada Bag", True), ("Hermes Nevada H'Cheval Cap", False),
-    ("Louis Vuitton Neverfull MM", False), ("Samsung Galaxy S24 Ultra 256GB", False),
-    ("Apple iPhone 16 Pro Max", False), ("Nike Air Max 90", False),
+    ("Replica Hermes Birkin Bag", True),
+    ("Fake Louis Vuitton Wallet", True),
+    ("Designer Inspired Handbag", True),
+    ("Pre-Owned Chanel Classic Flap", True),
+    ("Used Rolex Submariner Date", True),
+    ("Vintage Gucci Belt", True),
+    ("Dupe Charlotte Tilbury Lipstick", True),
+    ("Knockoff Ray-Ban Sunglasses", True),
+    ("Generic Vitamin D3 5000IU", True),
+    ("Unbranded Wireless Earbuds", True),
+    ("Secondhand Prada Bag", True),
+    ("Hermes Nevada H'Cheval Cap", False),
+    ("Louis Vuitton Neverfull MM", False),
+    ("Samsung Galaxy S24 Ultra 256GB", False),
+    ("Apple iPhone 16 Pro Max", False),
+    ("Nike Air Max 90", False),
     ("NOW Foods Vitamin D3 5000IU 360 Softgels", False),
-    ("REPLICA Watch", True), ("replica watch", True), ("Replica Watch", True),
-    ("Hermes Birkin Replica Bag", True), ("Fake Gucci Belt Buckle", True),
+    ("REPLICA Watch", True),
+    ("replica watch", True),
+    ("Replica Watch", True),
+    ("Hermes Birkin Replica Bag", True),
+    ("Fake Gucci Belt Buckle", True),
     ("Vintage Louis Vuitton Speedy 30", True),
-    ("Replica Hermes Cap", True), ("Fake Designer Watch Replica", True),
-    ("Knockoff Luxury Watch Dupe", True), ("Pre-Owned Nike Air Jordan 1 Used", True),
+    ("Replica Hermes Cap", True),
+    ("Fake Designer Watch Replica", True),
+    ("Knockoff Luxury Watch Dupe", True),
+    ("Pre-Owned Nike Air Jordan 1 Used", True),
     ("Nike Air Jordan 1 Retro High", False),
 ]
 P7_LUXURY_ROWS = [
-    ("Louis Vuitton LV Vers Mesh Cap", True), ("Hermes Nevada H'Cheval cap", True),
-    ("Hermes Birkin Bag", True), ("Chanel No. 5 Eau de Parfum", True),
-    ("Gucci Ace Sneakers", True), ("Rolex Submariner", True),
-    ("Prada Re-Nylon Backpack", True), ("Nike Air Max 90", False),
-    ("Samsung Galaxy S24", False), ("NOW Vitamin D3", False), ("Adidas Ultraboost", False),
-    ("Generic Cotton Hat", False), ("LOUIS VUITTON cap", True), ("hermes scarf", True),
-    ("Louis Vuitton Vers Mesh Cap", True), ("Hermes Nevada Cap", True),
+    ("Louis Vuitton LV Vers Mesh Cap", True),
+    ("Hermes Nevada H'Cheval cap", True),
+    ("Hermes Birkin Bag", True),
+    ("Chanel No. 5 Eau de Parfum", True),
+    ("Gucci Ace Sneakers", True),
+    ("Rolex Submariner", True),
+    ("Prada Re-Nylon Backpack", True),
+    ("Nike Air Max 90", False),
+    ("Samsung Galaxy S24", False),
+    ("NOW Vitamin D3", False),
+    ("Adidas Ultraboost", False),
+    ("Generic Cotton Hat", False),
+    ("LOUIS VUITTON cap", True),
+    ("hermes scarf", True),
+    ("Louis Vuitton Vers Mesh Cap", True),
+    ("Hermes Nevada Cap", True),
     ("Nike Air Max", False),
 ]
 
@@ -976,15 +1302,25 @@ def test_p7_guards_parity_existing_pin_corpus(flag, monkeypatch):
     else:
         _off(monkeypatch)
     ps = _ps()
-    assert [(t, ps.is_counterfeit_listing(t)) for t, _ in P7_COUNTERFEIT_ROWS] == P7_COUNTERFEIT_ROWS
+    assert [
+        (t, ps.is_counterfeit_listing(t)) for t, _ in P7_COUNTERFEIT_ROWS
+    ] == P7_COUNTERFEIT_ROWS
     rows = P7_LUXURY_ROWS + [(_hermes_accent(), True)]
     assert [(n, ps.is_luxury_brand(n)) for n, _ in rows] == rows
 
 
 def test_p8_importers_bind_the_same_function(monkeypatch):
     ps = _ps()
-    for name in ("algolia_service", "woocommerce_service", "salla_service", "occ_service",
-                 "unbxd_service", "noon_service", "magento_graphql_service", "zyte_service"):
+    for name in (
+        "algolia_service",
+        "woocommerce_service",
+        "salla_service",
+        "occ_service",
+        "unbxd_service",
+        "noon_service",
+        "magento_graphql_service",
+        "zyte_service",
+    ):
         mod = importlib.import_module("app.services." + name)
         assert mod.is_counterfeit_listing is ps.is_counterfeit_listing, name
     scs = importlib.import_module("app.services.structured_comparison_service")
@@ -994,14 +1330,18 @@ def test_p8_importers_bind_the_same_function(monkeypatch):
     _on(monkeypatch)
     ps.is_counterfeit_listing("Copycat scent")
     ps.is_luxury_brand("Centrum Silver")
-    assert set(ps.COUNTERFEIT_KEYWORDS) == kw_c and set(ps.LUXURY_BRAND_KEYWORDS) == kw_l
+    assert (
+        set(ps.COUNTERFEIT_KEYWORDS) == kw_c and set(ps.LUXURY_BRAND_KEYWORDS) == kw_l
+    )
 
 
 def test_r5e_scs_static_wrappers_inherit_on(monkeypatch):
     """The scs class wrappers (_is_counterfeit_listing / _is_luxury_brand, the
     pin files' entry points) delegate to the edited bodies."""
     _on(monkeypatch)
-    svc = importlib.import_module("app.services.structured_comparison_service").StructuredComparisonService
+    svc = importlib.import_module(
+        "app.services.structured_comparison_service"
+    ).StructuredComparisonService
     assert svc._is_counterfeit_listing("Rose Infused Body Oil") is False
     assert svc._is_luxury_brand("Centrum Silver") is False
 
@@ -1010,8 +1350,12 @@ def test_r5e_scs_static_wrappers_inherit_on(monkeypatch):
 # R7 / P9 - images (every tier; the scs piggyback runs for real)
 # ---------------------------------------------------------------------------
 
-R7A_DENIED = [FIMGS_IMG, "https://rwebsocket.fimgs.net/a.png",
-              "https://www.fragrantica.com/x.jpg", "http://media.parfumo.com/x.jpg"]
+R7A_DENIED = [
+    FIMGS_IMG,
+    "https://rwebsocket.fimgs.net/a.png",
+    "https://www.fragrantica.com/x.jpg",
+    "http://media.parfumo.com/x.jpg",
+]
 
 
 @pytest.mark.parametrize("url", R7A_DENIED)
@@ -1028,8 +1372,10 @@ def test_g7a_image_validator_on_keeps_allowed(monkeypatch):
 
 
 def _search_payload():
-    return {"knowledgeGraph": {"imageUrl": FIMGS_IMG},
-            "organic": [{"imageUrl": CDN_IMG}]}
+    return {
+        "knowledgeGraph": {"imageUrl": FIMGS_IMG},
+        "organic": [{"imageUrl": CDN_IMG}],
+    }
 
 
 def test_r7b_search_payload_skips_denied_on(monkeypatch):
@@ -1055,15 +1401,23 @@ def test_r7c_cascade_never_returns_denied_on(monkeypatch):
     calls = _patch_image_paid_tiers(monkeypatch, img)
     out = asyncio.run(img.get_product_image_url(NAME, page_scrape_image=FIMGS_IMG))
     assert out is None and calls["search_images"] == 0
-    out = asyncio.run(img.get_product_image_url(NAME, page_scrape_image=FIMGS_IMG,
-                                                search_payload=_search_payload()))
+    out = asyncio.run(
+        img.get_product_image_url(
+            NAME, page_scrape_image=FIMGS_IMG, search_payload=_search_payload()
+        )
+    )
     assert out == CDN_IMG
 
 
 def _patch_tier3(monkeypatch, img, picked):
     rec = {"n": 0}
-    completion = SimpleNamespace(choices=[SimpleNamespace(
-        message=SimpleNamespace(content=json.dumps({"image_url": picked})))])
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=json.dumps({"image_url": picked}))
+            )
+        ]
+    )
 
     async def fake_create(client, **kwargs):
         rec["n"] += 1
@@ -1078,38 +1432,79 @@ def test_r7d_tier3_denied_pick_refused_on(monkeypatch):
     _on(monkeypatch)
     img = _img()
     rec = _patch_tier3(monkeypatch, img, FIMGS_IMG)
-    out = asyncio.run(img.extract_image_via_gpt(NAME, [{"link": FRAG_PDP, "snippet": "Oud Wood"}]))
+    out = asyncio.run(
+        img.extract_image_via_gpt(NAME, [{"link": FRAG_PDP, "snippet": "Oud Wood"}])
+    )
     assert out is None and rec["n"] == 1
 
 
 def _scs_product_info():
-    return {"brand": "Apple", "name": "iPhone 15", "variant": None,
-            "category": "electronics", "search_query": "Apple iPhone 15"}
+    return {
+        "brand": "Apple",
+        "name": "iPhone 15",
+        "variant": None,
+        "category": "electronics",
+        "search_query": "Apple iPhone 15",
+    }
 
 
 async def _scs_fetch(page_img, cascade_img):
     from app.services.structured_comparison_service import get_comparison_service
 
     service = get_comparison_service()
-    with patch.object(service, "_get_specs", AsyncMock(return_value={"display": "6.1"})), \
-            patch.object(service, "_get_price", AsyncMock(return_value={
-                "amount": 350, "currency": "BHD", "retailer": "Apple Store",
-                "image_url": page_img})), \
-            patch.object(service, "_get_reviews", AsyncMock(return_value={"review_summary": {}})), \
-            patch.object(service, "_get_verified_rating", AsyncMock(return_value={
-                "rating": 4.6, "review_count": 100, "rating_verified": True,
-                "rating_source": {"name": "test", "url": None}})), \
-            patch("app.services.structured_comparison_service.search_web",
-                  AsyncMock(return_value={"organic": []})), \
-            patch("app.services.structured_comparison_service.get_product_image_url",
-                  AsyncMock(return_value=cascade_img)), \
-            patch("app.services.structured_comparison_service.tier2_fill_non_negotiables",
-                  AsyncMock(return_value={})), \
-            patch("app.services.structured_comparison_service.tier3_synthesize_non_negotiables",
-                  AsyncMock(return_value={})):
+    with (
+        patch.object(service, "_get_specs", AsyncMock(return_value={"display": "6.1"})),
+        patch.object(
+            service,
+            "_get_price",
+            AsyncMock(
+                return_value={
+                    "amount": 350,
+                    "currency": "BHD",
+                    "retailer": "Apple Store",
+                    "image_url": page_img,
+                }
+            ),
+        ),
+        patch.object(
+            service, "_get_reviews", AsyncMock(return_value={"review_summary": {}})
+        ),
+        patch.object(
+            service,
+            "_get_verified_rating",
+            AsyncMock(
+                return_value={
+                    "rating": 4.6,
+                    "review_count": 100,
+                    "rating_verified": True,
+                    "rating_source": {"name": "test", "url": None},
+                }
+            ),
+        ),
+        patch(
+            "app.services.structured_comparison_service.search_web",
+            AsyncMock(return_value={"organic": []}),
+        ),
+        patch(
+            "app.services.structured_comparison_service.get_product_image_url",
+            AsyncMock(return_value=cascade_img),
+        ),
+        patch(
+            "app.services.structured_comparison_service.tier2_fill_non_negotiables",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.structured_comparison_service.tier3_synthesize_non_negotiables",
+            AsyncMock(return_value={}),
+        ),
+    ):
         return await service._fetch_product_data(
-            _scs_product_info(), region="bahrain",
-            include_specs=True, include_reviews=True, nocache=True)
+            _scs_product_info(),
+            region="bahrain",
+            include_specs=True,
+            include_reviews=True,
+            nocache=True,
+        )
 
 
 @pytest.mark.asyncio
@@ -1155,10 +1550,15 @@ def test_p9_image_off_equals_base(flag, monkeypatch):
         assert img._is_valid_image_url(url) is True
     assert img.extract_image_from_search(_search_payload()) == FIMGS_IMG
     calls = _patch_image_paid_tiers(monkeypatch, img)
-    assert asyncio.run(img.get_product_image_url(NAME, page_scrape_image=FIMGS_IMG)) == FIMGS_IMG
+    assert (
+        asyncio.run(img.get_product_image_url(NAME, page_scrape_image=FIMGS_IMG))
+        == FIMGS_IMG
+    )
     assert calls["search_images"] == 0
     rec = _patch_tier3(monkeypatch, img, FIMGS_IMG)
-    out = asyncio.run(img.extract_image_via_gpt(NAME, [{"link": FRAG_PDP, "snippet": "Oud Wood"}]))
+    out = asyncio.run(
+        img.extract_image_via_gpt(NAME, [{"link": FRAG_PDP, "snippet": "Oud Wood"}])
+    )
     assert out == FIMGS_IMG and rec["n"] == 1
 
 
@@ -1166,25 +1566,35 @@ def test_p9_image_off_equals_base(flag, monkeypatch):
 # R10 / P12 - review display surfaces (ruling B1; post-LLM, no digest moves)
 # ---------------------------------------------------------------------------
 
+
 def _oudwood_organic():
     data = json.loads(OUDWOOD_FIXTURE.read_text(encoding="utf-8"))
     return data["organic"]
 
 
 def _quote_reviews():
-    return {"review_summary": {"highlights": [
-        {"point": "[snippet_4] Smoky oud and sandalwood with a soft dry down."},
-        {"point": "[snippet_7] A composition of exotic smoky woods that lasts."},
-    ]}}
+    return {
+        "review_summary": {
+            "highlights": [
+                {"point": "[snippet_4] Smoky oud and sandalwood with a soft dry down."},
+                {
+                    "point": "[snippet_7] A composition of exotic smoky woods that lasts."
+                },
+            ]
+        }
+    }
 
 
 def _citation_reviews():
-    return {"review_summary": {
-        "consensus": "[snippet_4] Rich smoky oud that projects well for hours.",
-        "highlights": [
-            {"point": "[snippet_4] Long lasting smooth oud sillage."},
-            {"point": "[snippet_7] Creamy woods with a warm finish."},
-        ]}}
+    return {
+        "review_summary": {
+            "consensus": "[snippet_4] Rich smoky oud that projects well for hours.",
+            "highlights": [
+                {"point": "[snippet_4] Long lasting smooth oud sillage."},
+                {"point": "[snippet_7] Creamy woods with a warm finish."},
+            ],
+        }
+    }
 
 
 def test_r10a_retailer_quotes_skip_denied_on(monkeypatch):
@@ -1213,11 +1623,16 @@ def test_p12_review_display_off_equals_base(flag, monkeypatch):
     organic = _oudwood_organic()
     quotes = _rv().build_retailer_quotes_from_reviews(_quote_reviews(), organic)
     assert [(q["retailer"], q.get("rating")) for q in quotes] == [
-        ("fragrantica.com", 4.3), ("sephora.com", 4.5)]
+        ("fragrantica.com", 4.3),
+        ("sephora.com", 4.5),
+    ]
     assert quotes[0]["text"] == organic[3]["snippet"].strip()
     out = _rv().clean_review_citations(_citation_reviews(), organic)
     rs_ = out["review_summary"]
-    assert rs_["consensus"] == "Per fragrantica.com: Rich smoky oud that projects well for hours."
+    assert (
+        rs_["consensus"]
+        == "Per fragrantica.com: Rich smoky oud that projects well for hours."
+    )
     assert [h["point"] for h in rs_["highlights"]] == [
         "Per fragrantica.com: Long lasting smooth oud sillage.",
         "Per sephora.com: Creamy woods with a warm finish.",
@@ -1227,6 +1642,7 @@ def test_p12_review_display_off_equals_base(flag, monkeypatch):
 # ---------------------------------------------------------------------------
 # R11 / P13 / G11 - the never-fetched chokepoint (ruling B2)
 # ---------------------------------------------------------------------------
+
 
 def test_r11a_validate_scrape_url_denies_on(monkeypatch):
     _on(monkeypatch)
@@ -1247,8 +1663,9 @@ def test_p13_validate_scrape_url_off_equals_base(flag, monkeypatch):
 
 def _harvest(results_by_tier):
     scs = importlib.import_module("app.services.structured_comparison_service")
-    return scs._harvest_organic_pdp_candidates(results_by_tier, "fragrances",
-                                                query_name="Tom Ford Oud Wood")
+    return scs._harvest_organic_pdp_candidates(
+        results_by_tier, "fragrances", query_name="Tom Ford Oud Wood"
+    )
 
 
 @pytest.mark.parametrize("flag", ["true", None])
@@ -1261,14 +1678,24 @@ def test_g11b_denied_bh_locale_link_never_harvested(flag, monkeypatch):
         _on(monkeypatch)
     else:
         _off(monkeypatch)
-    results = {"global": {"organic": [
-        {"link": FRAG_BH_PDP, "title": "Tom Ford Oud Wood", "snippet": "Oud Wood"}]}}
+    results = {
+        "global": {
+            "organic": [
+                {
+                    "link": FRAG_BH_PDP,
+                    "title": "Tom Ford Oud Wood",
+                    "snippet": "Oud Wood",
+                }
+            ]
+        }
+    }
     assert _harvest(results) == []
 
 
 # ---------------------------------------------------------------------------
 # R9 - the flag-free KB-writer guard
 # ---------------------------------------------------------------------------
+
 
 def test_r9a_kb_guard(monkeypatch):
     _on(monkeypatch)
@@ -1296,13 +1723,19 @@ def test_r9b_kb_guard_is_flag_free(flag, monkeypatch):
 # P11 / P14 - falsy flag spellings; the D03b scope fence
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("flag", FALSY + [None])
 def test_p11_reader_falsy_consumers_as_base(flag, monkeypatch):
     _off(monkeypatch, flag)
     sr, ps, img, rs = _sr(), _ps(), _img(), _rs()
     assert ps.is_counterfeit_listing(SUBSTRING_FALSE_POSITIVES[0]) is True
     assert ps.is_luxury_brand("Centrum Silver") is True
-    assert sr.build_site_discovery_query("Dior Sauvage", "fragrances", tier="global", limit=8) == REAL_GLOBAL_QUERY_OFF
+    assert (
+        sr.build_site_discovery_query(
+            "Dior Sauvage", "fragrances", tier="global", limit=8
+        )
+        == REAL_GLOBAL_QUERY_OFF
+    )
     assert img._is_valid_image_url(FIMGS_IMG) is True
     assert ps.validate_scrape_url(FRAG_PDP) is True
     assert rs.get_rating_tier("Fragrantica") == 2
@@ -1314,3 +1747,397 @@ def test_p14_url_files_untouched_scope_fence():
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert "deny_hosts" not in text and "denied_source" not in text, rel
         assert "ENABLE_DATA_GUARDS_V2" not in text, rel
+
+
+# ---------------------------------------------------------------------------
+# F1 - fix round 1 (specs/RULINGS_FIX1_D03.md, after the two NOT_READY
+# adversaries on 5244f716). APPENDED rows only; every row above is unchanged.
+#   * F1-1 (MAJ-1 = MAJ-E1, the Serper-Shopping door) and F1-4 (userinfo and
+#     the backslash authority) R rows fail at 5244f716 on an AssertionError.
+#   * F1-2 (two-level suffix), F1-3 (deny before dedup), F1-5 (piggyback
+#     strip) are PIN rows green at 5244f716, each proven by its mutant (A9, D6,
+#     G3). F1-6 (the patchable validator) fails at 5244f716 by construction
+#     (the by-name import is the defect it pins).
+# ---------------------------------------------------------------------------
+import logging  # noqa: E402 - the fix-round rows read the price_service canary lines
+
+W41 = "ENABLE_SHOPPING_CURRENCY_TRUTH"
+SHOP_NAME = "Tom Ford Oud Wood Eau de Parfum 100ml"
+ALLOWED_SHOP_LINK = "https://bh.perfume-shop.test/products/tom-ford-oud-wood-100ml"
+NEUTRAL_SHOP_LINK = "https://store.perfume-shop.test/products/tom-ford-oud-wood-100ml"
+# (denied by link, denied by source name, allowed): both denied rows are
+# CHEAPER than the allowed one, so at 5244f716 a denied row wins the sort;
+# every amount clears the premium 50 BHD / 100 ml floor, so the stash's
+# is_price_showable gate admits all three.
+SHOP_PRICES = {
+    "BHD": ("BHD 55.000", "BHD 56.000", "BHD 60.000"),
+    "AED": ("AED 550.00", "AED 560.00", "AED 600.00"),
+}
+SHOP_ALLOWED_AMOUNT = {"BHD": 60.0, "AED": 600.0}
+BACKSLASH = chr(92)
+
+
+def _w41(mp, state):
+    if state == "on":
+        mp.setenv(W41, "true")
+    else:
+        mp.delenv(W41, raising=False)
+
+
+def _shop_row(price, source, link):
+    return {"title": SHOP_NAME, "price": price, "source": source, "link": link}
+
+
+def _shop_pool(ask):
+    p_link, p_src, p_ok = SHOP_PRICES[ask]
+    return [
+        _shop_row(p_link, "Perfume Outlet", FRAG_BH_PDP),
+        _shop_row(p_src, "Fragrantica", NEUTRAL_SHOP_LINK),
+        _shop_row(p_ok, "Perfume Shop BH", ALLOWED_SHOP_LINK),
+    ]
+
+
+def _stash_seed(full_name, pool, ask):
+    from app.services.structured_comparison_service import get_comparison_service
+
+    service = get_comparison_service()
+    service._shopping_items_cache[full_name] = pool
+    service._seed_shortcircuit_candidates(
+        full_name, kind="tier1_shopping", currency=ask
+    )
+    return [
+        (c.get("retailer"), (c.get("raw_data") or {}).get("url"))
+        for c in service._price_candidates.get(full_name, [])
+    ]
+
+
+def _evidence_recorder(monkeypatch, module):
+    seen = []
+    real = module._shopping_bh_host_evidence
+
+    def recorder(link, **kwargs):
+        seen.append(link)
+        return real(link, **kwargs)
+
+    monkeypatch.setattr(module, "_shopping_bh_host_evidence", recorder)
+    return seen
+
+
+@pytest.mark.parametrize("ask", ["BHD", "AED"])
+@pytest.mark.parametrize("w41", ["off", "on"])
+def test_f1_1a_shopping_door_drops_denied_rows_on(w41, ask, monkeypatch):
+    """F1-1: ON, a Shopping row whose link host OR source name is banned is
+    never priced: the next allowed row wins, a pool of only denied rows yields
+    None (both W4-1 states, a BHD and an AED ask; the real function)."""
+    _on(monkeypatch)
+    _w41(monkeypatch, w41)
+    ps = _ps()
+    pool = _shop_pool(ask)
+    out = ps.extract_price_from_shopping(SHOP_NAME, pool, ask, category="fragrances")
+    assert out is not None
+    assert (out.get("retailer"), out.get("url")) == (
+        "Perfume Shop BH",
+        ALLOWED_SHOP_LINK,
+    )
+    assert out.get("amount") == SHOP_ALLOWED_AMOUNT[ask]
+    assert (
+        ps.extract_price_from_shopping(SHOP_NAME, pool[:2], ask, category="fragrances")
+        is None
+    )
+
+
+@pytest.mark.parametrize("ask", ["BHD", "AED"])
+@pytest.mark.parametrize("link", [FRAG_BH_PDP, FRAG_PDP])
+def test_f1_1b_evidence_helper_denies_on(link, ask, monkeypatch):
+    """F1-1: the W4-1 host-evidence helper itself never reads a banned link as
+    evidence (before every rung: the /bh-en/ shape is no BH marker)."""
+    _on(monkeypatch)
+    _w41(monkeypatch, "on")
+    reasons = []
+    assert (
+        _ps()._shopping_bh_host_evidence(link, ask_currency=ask, reason_out=reasons)
+        is False
+    )
+    assert reasons == ["denied_host"]
+
+
+def test_f1_1c_denied_rows_reach_no_currency_or_evidence_logic_on(monkeypatch, caplog):
+    """F1-1: a denied row is dropped BEFORE the currency and evidence logic of
+    the front door: the evidence helper never sees its link and no W4-1 canary
+    line (pend or relabel) is written for it (kills the check-after-evidence
+    mutant)."""
+    _on(monkeypatch)
+    _w41(monkeypatch, "on")
+    ps = _ps()
+    seen = _evidence_recorder(monkeypatch, ps)
+    pool = [_shop_row("TRY 1.299,00", "Perfume Outlet", FRAG_PDP)] + _shop_pool("BHD")
+    with caplog.at_level(logging.INFO, logger="app.services.price_service"):
+        out = ps.extract_price_from_shopping(
+            SHOP_NAME, pool, "BHD", category="fragrances"
+        )
+    assert out is not None and out.get("url") == ALLOWED_SHOP_LINK
+    assert seen == [ALLOWED_SHOP_LINK]
+    truth = [
+        r.getMessage()
+        for r in caplog.records
+        if "[SHOPPING_CURRENCY_TRUTH]" in r.getMessage()
+    ]
+    assert not any("pend unconvertible" in m for m in truth), truth
+    assert not any(
+        "fragrantica" in m or "store.perfume-shop.test" in m for m in truth
+    ), truth
+    # ONE D03 line per call, host only (never a title, a price or a URL path).
+    d03 = [
+        r.getMessage() for r in caplog.records if "[DATA_GUARDS_V2]" in r.getMessage()
+    ]
+    assert len(d03) == 1, d03
+    assert (
+        "count=3" in d03[0]
+        and "by=link" in d03[0]
+        and "host=www.fragrantica.com" in d03[0]
+    ), d03
+    assert SHOP_NAME not in d03[0] and "1826" not in d03[0] and "BHD" not in d03[0], d03
+
+
+@pytest.mark.parametrize("ask", ["BHD", "AED"])
+@pytest.mark.parametrize("w41", ["off", "on"])
+def test_f1_1d_stash_never_seeds_denied_rows_on(w41, ask, monkeypatch):
+    """F1-1: the scs re-selection stash (the M13-10 back door) seeds no denied
+    Shopping row (both W4-1 states, both asks)."""
+    _on(monkeypatch)
+    _w41(monkeypatch, w41)
+    assert _stash_seed(SHOP_NAME, _shop_pool(ask), ask) == [
+        ("Perfume Shop BH", ALLOWED_SHOP_LINK)
+    ]
+
+
+def test_f1_1e_stash_denied_rows_reach_no_evidence_on(monkeypatch):
+    """F1-1: the stash drops a denied row before its W4-1 evidence call."""
+    _on(monkeypatch)
+    _w41(monkeypatch, "on")
+    scs = importlib.import_module("app.services.structured_comparison_service")
+    seen = _evidence_recorder(monkeypatch, scs)
+    _stash_seed(SHOP_NAME, _shop_pool("BHD"), "BHD")
+    assert seen == [ALLOWED_SHOP_LINK]
+
+
+@pytest.mark.parametrize("flag", FALSY + [None])
+def test_f1_1p_shopping_door_off_equals_base(flag, monkeypatch, caplog):
+    """F1-1 flag OFF = the 5244f716 door (the adversary probe3 shape pinned):
+    W4-1 ON, BHD ask, a Fragrantica /bh-en/ row is priced converted_usd with
+    the base reason global_tier (W4-1 OFF: local_bhd); in the mixed pool the
+    cheapest denied row wins, the stash seeds every row, no D03 line."""
+    _off(monkeypatch, flag)
+    ps = _ps()
+    probe = [_shop_row("BHD 45.000", "Fragrantica", FRAG_BH_PDP)]
+    _w41(monkeypatch, "on")
+    reasons = []
+    assert (
+        ps._shopping_bh_host_evidence(
+            FRAG_BH_PDP, ask_currency="BHD", reason_out=reasons
+        )
+        is False
+    )
+    assert reasons == ["global_tier"]
+    with caplog.at_level(logging.INFO, logger="app.services.price_service"):
+        out = ps.extract_price_from_shopping(
+            SHOP_NAME, probe, "BHD", category="fragrances"
+        )
+    assert (
+        out is not None
+    ), "flag OFF the denied Shopping row is priced exactly as at 5244f716"
+    assert (out["retailer"], out["url"], out["amount"], out["source_method"]) == (
+        "Fragrantica",
+        FRAG_BH_PDP,
+        45.0,
+        "converted_usd",
+    )
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("reason=global_tier" in m for m in msgs), msgs
+    assert not any("[DATA_GUARDS_V2]" in m for m in msgs), msgs
+    for w41 in ("off", "on"):
+        _w41(monkeypatch, w41)
+        for ask in ("BHD", "AED"):
+            out = ps.extract_price_from_shopping(
+                SHOP_NAME, _shop_pool(ask), ask, category="fragrances"
+            )
+            assert out is not None, (w41, ask)
+            assert (out["retailer"], out["url"]) == ("Perfume Outlet", FRAG_BH_PDP), (
+                w41,
+                ask,
+            )
+            assert len(_stash_seed(SHOP_NAME, _shop_pool(ask), ask)) == 3, (w41, ask)
+    _w41(monkeypatch, "off")
+    out = ps.extract_price_from_shopping(SHOP_NAME, probe, "BHD", category="fragrances")
+    assert out is not None and out["source_method"] == "local_bhd"
+
+
+F1_2_TWO_LEVEL_TRUE = [
+    "fragrantica.co.uk",
+    "www.parfumo.com.au",
+    "basenotes.co.nz",
+    "fimgs.net:8443",
+]
+F1_2_TWO_LEVEL_FALSE = ["fragrantica.co.uk.evil.test", "co.uk", "notfragrantica.co.uk"]
+
+
+def test_f1_2_two_level_public_suffix_labels():
+    """F1-2 (MIN-1, mutant A9): an UNLISTED edition under a two-level public
+    suffix is denied by the registrable label (labels[-3])."""
+    host, url = _dh_fn("is_denied_host"), _dh_fn("is_denied_url")
+    for h in F1_2_TWO_LEVEL_TRUE:
+        assert host(h) is True, h
+        assert url("https://" + h + "/x") is True, h
+    for h in F1_2_TWO_LEVEL_FALSE:
+        assert host(h) is False, h
+        assert url("https://" + h + "/x") is False, h
+
+
+def test_f1_3_collect_ratings_deny_skip_precedes_dedup(monkeypatch):
+    """F1-3 (MIN-2, block-move D6): a link-denied item with a neutral source
+    name does not consume the dedup key; the next allowed item with the same
+    source name is listed."""
+    _on(monkeypatch)
+    same_source_allowed = dict(
+        _neutral_denied_link_item(), rating=4.4, link="https://somestore.test/oud-wood"
+    )
+    out = _rs().collect_retailer_ratings(
+        NAME, {NAME: [_neutral_denied_link_item(), same_source_allowed]}
+    )
+    assert [(r["source"], r["rating"]) for r in out] == [("somestore.com", 4.4)]
+
+
+def _frag_userinfo_url():
+    # built at run time: no userinfo-shaped literal in the file
+    return "https://" + "u" + "@" + "www.fragrantica.com/perfume/x-1.html"
+
+
+def _dotted_userinfo_url():
+    return "https://" + "a.b" + "@" + "fragrantica.com/perfume/x-1.html"
+
+
+def _backslash_url():
+    # https://fragrantica.com<backslash>@evil.test/... : a WHATWG parser reads
+    # the host fragrantica.com (the backslash ends the authority), urlsplit
+    # reads evil.test.
+    return "https://fragrantica.com" + BACKSLASH + "@evil.test/perfume/x-1.html"
+
+
+def _f1_4_organic(link):
+    return [
+        {
+            "link": link,
+            "title": "Oud Wood",
+            "snippet": "Smoky oud and sandalwood with a soft dry down that lasts.",
+        },
+        {
+            "link": "https://www.sephora.com/product/oud-wood",
+            "title": "Oud Wood",
+            "snippet": "A composition of exotic smoky woods that lasts for hours.",
+        },
+    ]
+
+
+def _f1_4_reviews():
+    return {
+        "review_summary": {
+            "consensus": "[snippet_1] Rich smoky oud that projects well.",
+            "highlights": [
+                {"point": "[snippet_1] Long lasting smooth oud sillage."},
+                {"point": "[snippet_2] Creamy woods with a warm finish."},
+            ],
+        }
+    }
+
+
+@pytest.mark.parametrize("kind", ["userinfo", "backslash"])
+def test_f1_4a_review_display_reads_the_hostname_on(kind, monkeypatch):
+    """F1-4 (MIN-3 + MIN-E7): the review display deny reads the parsed
+    hostname (userinfo removed) and the conservative backslash rule, never
+    the netloc: neither a quote nor a 'Per <domain>:' attribution."""
+    _on(monkeypatch)
+    link = _frag_userinfo_url() if kind == "userinfo" else _backslash_url()
+    rv = _rv()
+    quotes = rv.build_retailer_quotes_from_reviews(_f1_4_reviews(), _f1_4_organic(link))
+    assert [q["retailer"] for q in quotes] == ["sephora.com"]
+    rs_ = rv.clean_review_citations(_f1_4_reviews(), _f1_4_organic(link))[
+        "review_summary"
+    ]
+    assert rs_["consensus"] == "Rich smoky oud that projects well."
+    assert [h["point"] for h in rs_["highlights"]] == [
+        "Long lasting smooth oud sillage.",
+        "Per sephora.com: Creamy woods with a warm finish.",
+    ]
+
+
+def test_f1_4b_backslash_authority_denied_conservatively(monkeypatch):
+    """F1-4 (MIN-E7): an authority carrying a backslash is denied when a banned
+    label appears in it anywhere (is_denied_url, so every consumer)."""
+    fn = _dh_fn("is_denied_url")
+    assert fn(_backslash_url()) is True
+    assert fn("https://www.parfumo.de" + BACKSLASH + "@evil.test/x") is True
+    assert fn("fimgs.net" + BACKSLASH + "@cdn.evil.test/a.jpg") is True
+    _on(monkeypatch)
+    img = "https://fimgs.net" + BACKSLASH + "@cdn.evil.test/a.jpg"
+    assert _img()._is_valid_image_url(img) is False
+
+
+def test_f1_4p_hostname_rules_pinned():
+    """F1-4 PIN: the hostname (never the netloc) decides; the conservative rule
+    reads the AUTHORITY only (a label in the query or the path is not a host)."""
+    fn = _dh_fn("is_denied_url")
+    assert fn(_frag_userinfo_url()) is True
+    assert fn(_dotted_userinfo_url()) is True
+    assert fn("https://evil.test/?u=fragrantica.com") is False
+    assert fn("https://evil.test/" + BACKSLASH + "fragrantica.com") is False
+    assert fn("https://evil.test" + BACKSLASH + "?u=fragrantica.com") is False
+    assert fn("https://" + "fragrantica.com" + "@" + "evil.test/x") is False
+    assert fn("https://evil.test" + BACKSLASH + "@notfragrantica.com/x") is False
+
+
+@pytest.mark.parametrize("flag", FALSY + [None])
+def test_f1_4q_review_userinfo_off_equals_base(flag, monkeypatch):
+    """F1-4 flag OFF: the userinfo link is quoted and attributed exactly as at
+    5244f716 (the netloc-derived domain)."""
+    _off(monkeypatch, flag)
+    shown = "u" + "@" + "fragrantica.com"
+    rv = _rv()
+    quotes = rv.build_retailer_quotes_from_reviews(
+        _f1_4_reviews(), _f1_4_organic(_frag_userinfo_url())
+    )
+    assert [q["retailer"] for q in quotes] == [shown, "sephora.com"]
+    rs_ = rv.clean_review_citations(
+        _f1_4_reviews(), _f1_4_organic(_frag_userinfo_url())
+    )["review_summary"]
+    assert rs_["consensus"] == "Per %s: Rich smoky oud that projects well." % shown
+
+
+@pytest.mark.asyncio
+async def test_f1_5_piggyback_on_stores_the_stripped_url(monkeypatch):
+    """F1-5 (MIN-5, mutant G3): ON a padded JSON-LD page image is stored
+    STRIPPED; a padded image on a banned host is still refused."""
+    _on(monkeypatch)
+    page = "https://cdn.store.test/x.jpg"
+    result = await _scs_fetch("  " + page + " ", CDN_IMG)
+    assert result["image_url"] == page
+    result = await _scs_fetch("  " + FIMGS_IMG + " ", CDN_IMG)
+    assert result["image_url"] == CDN_IMG
+
+
+@pytest.mark.asyncio
+async def test_f1_6_piggyback_validator_is_patchable_on(monkeypatch):
+    """F1-6 (MIN-E9): scs reaches image_service._is_valid_image_url through the
+    module attribute, so patching the attribute changes the piggyback verdict."""
+    _on(monkeypatch)
+    img = _img()
+    seen = []
+
+    def refuse(value):
+        seen.append(value)
+        return False
+
+    monkeypatch.setattr(img, "_is_valid_image_url", refuse)
+    page = "https://store.perfume-shop.test/hero.jpg"
+    result = await _scs_fetch(page, CDN_IMG)
+    assert result["image_url"] == CDN_IMG
+    assert page in seen

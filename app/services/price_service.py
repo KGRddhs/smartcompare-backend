@@ -39,7 +39,7 @@ from app.services.api_budget_service import (
 from app.services import firecrawl_service, scrapedo_service
 from app.services.platform_router import detect_platform
 # D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
-from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
+from app.services.deny_hosts import data_guards_v2_enabled, is_denied_source, is_denied_url
 
 ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
@@ -10124,7 +10124,9 @@ def _shopping_bh_host_evidence(
     ``outcome_out``-style list) receives the reason for the canary log line;
     the advertised ``reason=`` vocabulary is exactly the ``_no(...)`` strings
     below: ``no_link``, ``listing_url``, ``no_host``, ``global_tier``,
-    ``other_country``, ``no_bh_evidence``, ``host_classifier_error``.
+    ``other_country``, ``no_bh_evidence``, ``host_classifier_error``, and
+    ``denied_host`` (D03, only with ``ENABLE_DATA_GUARDS_V2`` ON: a link on a
+    banned host, decided before every other rung, on every ask).
 
     TWO SCOPES (FABLE REWORK RULING R1, 2026-09-11 — step 3 is a BAHRAIN-shelf
     rule; the spec never addressed non-BHD asks, and applying the vocabulary to
@@ -10197,6 +10199,12 @@ def _shopping_bh_host_evidence(
             reason_out.append(reason)
         return False
 
+    # D03 (ENABLE_DATA_GUARDS_V2, fix-round ruling F1-1): a link on a banned
+    # host is never evidence, before every rung below (both callers drop such
+    # a row first; this keeps the helper fail-closed on its own). Flag read
+    # FIRST; OFF nothing else is read here.
+    if data_guards_v2_enabled() and is_denied_url(link):
+        return _no("denied_host")
     # Region-agnostic pair: a missing link or a listing URL is a shelf nowhere.
     if not link:
         return _no("no_link")
@@ -10308,6 +10316,57 @@ def _shopping_split_discovery_url(
     return (None, build_retailer_url(retailer, product_name))
 
 
+def _shopping_row_denied(item: Any) -> Optional[str]:
+    """D03 (ENABLE_DATA_GUARDS_V2, fix-round ruling F1-1): ``"link"`` when a
+    Serper Shopping row's ``link`` host is a banned site, ``"source"`` when its
+    ``source`` name is, else None. Pure and flag-free (every caller reads the
+    flag FIRST); never raises."""
+    if not isinstance(item, dict):
+        return None
+    if is_denied_url(item.get("link")):
+        return "link"
+    if is_denied_source(item.get("source")):
+        return "source"
+    return None
+
+
+def _drop_denied_shopping_rows(shopping_items: List[Any], *, log: bool = False) -> List[Any]:
+    """D03 (ENABLE_DATA_GUARDS_V2, fix-round ruling F1-1): ``shopping_items``
+    without the rows whose link host or source name is banned, as a NEW list
+    (the shared ``_shopping_items_cache`` list is never mutated). Serper
+    Shopping rows are priced from the payload and never fetched, so the
+    ``validate_scrape_url`` chokepoint does not cover them: both shopping doors
+    (``extract_price_from_shopping`` and the scs ``_seed_shortcircuit_candidates``
+    stash) drop them here, BEFORE any currency, evidence or short-circuit
+    logic. With ``log`` set, ONE INFO line per call when a row was dropped: the
+    count, the first dropped row's reason (``link`` / ``source``) and the
+    hostname of its link (never a title, a price or a URL). Called only with
+    ``data_guards_v2_enabled()`` True."""
+    kept: List[Any] = []
+    dropped = 0
+    first_by = ""
+    first_host = ""
+    for item in shopping_items:
+        by = _shopping_row_denied(item)
+        if by is None:
+            kept.append(item)
+            continue
+        dropped += 1
+        if dropped == 1:
+            first_by = by
+            link = item.get("link")
+            try:
+                first_host = (urlparse(link).hostname or "") if isinstance(link, str) else ""
+            except ValueError:
+                first_host = ""
+    if log and dropped:
+        logger.info(
+            "[DATA_GUARDS_V2] shopping rows dropped (denied host) count=%d by=%s host=%s",
+            dropped, first_by, first_host,
+        )
+    return kept
+
+
 def extract_price_from_shopping(
     product_name: str,
     shopping_items: List[Dict],
@@ -10332,6 +10391,14 @@ def extract_price_from_shopping(
     """
     if not shopping_items:
         return None
+    # D03 (ENABLE_DATA_GUARDS_V2, fix-round ruling F1-1): a row whose link host
+    # or source name is banned is DROPPED here, before any currency, evidence
+    # or short-circuit logic (never a candidate, never a label). Flag read
+    # FIRST; OFF this block reads nothing else.
+    if data_guards_v2_enabled():
+        shopping_items = _drop_denied_shopping_rows(shopping_items, log=True)
+        if not shopping_items:
+            return None
 
     region_is_us_fallback = str(shopping_region or "").lower() in (
         "us_fallback", "us",
