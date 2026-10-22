@@ -2414,3 +2414,365 @@ def test_non_2xx_401_is_the_4xx_class(monkeypatch):
     assert result == {"success": False, "code": "STORE_UNREADABLE", "reason": "http_4xx",
                       "url": FX_PDP2, "error": SU_MSG}, result
     assert h.llm_calls == []
+
+
+# ===========================================================================
+# Fix round 4 (RULINGS_FIX4_B4): F4-1 the bounded pre-gate (a link over 2,048
+# characters is refused url_too_long BEFORE any parse; each link's query is
+# parsed ONCE per request), F4-3 products_id joins the homepage-class
+# allow-list (osCommerce / Zen Cart), F4-4 the meta title is the first USABLE
+# of og:title and the <title> tag, F4-5 the extract_with_ai ERROR line carries
+# the exception TYPE only. RED rows fail at 0aac07f1 on an AssertionError only;
+# PIN rows are green there and are proven by the mutant named in their
+# docstring. No assertion message ever carries a multi-megabyte link.
+# ===========================================================================
+_F4_HOST = "https://www.b4long4.example.test"
+
+
+def _f4_link(n, prefix="/products/b4-long-"):
+    """A path-routed product link of exactly n characters (url-safe characters
+    only, so the transport sees it byte for byte)."""
+    head = _F4_HOST + prefix
+    assert n > len(head) + 1, n
+    return head + "a" * (n - len(head))
+
+
+def _f4_big_query_link(product_id, size=5 * 1024 * 1024):
+    """A ~5 MB /index.php link: a product-route marker, then ~1.3 M query pairs
+    (the engineering adversary's MAJOR-E2 probe shape)."""
+    head = _F4_HOST + "/index.php?product_id=" + str(product_id) + "&"
+    return head + "a=b&" * ((size - len(head)) // 4)
+
+
+def _record_parse(monkeypatch):
+    """Records the query string of every parse_qs call the service makes (the
+    one query parse of the pre-gate helpers)."""
+    calls = []
+    real = ues.parse_qs
+
+    def rec(query, *a, **kw):
+        calls.append(query)
+        return real(query, *a, **kw)
+    monkeypatch.setattr(ues, "parse_qs", rec)
+    return calls
+
+
+F4_1_LONG_CASES = {
+    "url1": ((2049, "/products/b4-one-"), None, "url1"),
+    "url2": (None, (2049, "/products/b4-two-"), "url2"),
+    "both": ((2049, "/products/b4-one-"), (2050, "/products/b4-two-"), "both"),
+    "homepage-and-long": ("home", (2049, "/products/b4-two-"), "url2"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(F4_1_LONG_CASES))
+@pytest.mark.parametrize("verb", VERBS)
+def test_link_over_2048_chars_refused_before_any_parse(monkeypatch, client, verb, case):
+    """RED (F4-1, engineering MAJOR-E2): a pasted link longer than 2,048
+    characters (the client's validateUrl bound) is refused for $0 as
+    NOT_PRODUCT_PAGE <field> / url_too_long BEFORE any query parse (it wins over
+    the other link's homepage class): nothing reserved, nothing fetched, no
+    parse_qs call, no row. At 0aac07f1 there was no bound: the long links were
+    parsed, fetched and delivered (and the homepage case refused url1)."""
+    spec1, spec2, field = F4_1_LONG_CASES[case]
+    url1 = FX_HOME if spec1 == "home" else (_f4_link(*spec1) if spec1 else FX_PDP)
+    url2 = _f4_link(*spec2) if spec2 else FX_PDP2
+    pages = {FX_PDP: ok(PDP), FX_PDP2: ok(PDP2), FX_HOME: ok(STOREFRONT)}
+    for i, u in enumerate((url1, url2)):
+        if len(u) > 2048:
+            pages[u] = ok(_page("B4 Long Oud - Store", [_product("B4 Long Oud " + str(i), price="9.5")]))
+    h = _full(monkeypatch, H(), pages=pages)
+    parses = _record_parse(monkeypatch)
+    r = _call(client, verb, url1, url2)
+    assert r.status_code == 400, (r.status_code, r.json())
+    assert _strip_rid(r.json()) == _refusal("NOT_PRODUCT_PAGE", NPP_MSG, field, "url_too_long")
+    assert h.events == ["ssrf", "ssrf", "pregate"], h.events
+    assert h.ledger.consumes == [] and h.pages.fetched == [], (h.ledger.consumes, len(h.pages.fetched))
+    n_parses = len(parses)
+    assert n_parses == 0, n_parses
+    assert h.ledger.rows == [] and h.ledger.labels == [], (h.ledger.rows, h.ledger.labels)
+
+
+@pytest.mark.parametrize("side", ["url1", "url2", "both"])
+@pytest.mark.parametrize("verb", VERBS)
+def test_link_of_exactly_2048_chars_proceeds(monkeypatch, client, verb, side):
+    """PIN (F4-1 boundary; kills a bound at 2,047 or a '>=' comparison): a
+    link of exactly 2,048 characters (the client's own maximum) passes the
+    pre-gate, is fetched and the pair delivers (flag ON, full config)."""
+    one, two = _f4_link(2048, "/products/b4-one-"), _f4_link(2048, "/products/b4-two-")
+    assert len(one) == len(two) == 2048
+    url1 = one if side in ("url1", "both") else FX_PDP
+    url2 = two if side in ("url2", "both") else FX_PDP2
+    names = {one: "B4 Boundary Oud One", two: "B4 Boundary Oud Two",
+             FX_PDP: None, FX_PDP2: "Obsession Perfume"}
+    pages = {FX_PDP: ok(PDP), FX_PDP2: ok(PDP2)}
+    for u in (one, two):
+        pages[u] = ok(_page(names[u] + " - Store", [_product(names[u], price="9.5")]))
+    h = _full(monkeypatch, H(), pages=pages)
+    r = _call(client, verb, url1, url2)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    for i, u in enumerate((url1, url2)):
+        if names[u] is not None:
+            assert body["products"][i]["name"] == names[u], body["products"][i].get("name")
+    assert sorted(h.pages.fetched) == sorted([url1, url2]), [len(u) for u in h.pages.fetched]
+    assert h.ledger.consumes == [h.user["id"]] and h.ledger.refunds == []
+
+
+def test_two_5mb_links_refused_fast_with_no_parse(monkeypatch, client):
+    """RED (F4-1, engineering MAJOR-E2: 3.55 s on the event loop at 0aac07f1):
+    two ~5 MB /index.php links, each with a product-route marker and ~1.3 M
+    query pairs, are refused for $0 as NOT_PRODUCT_PAGE both / url_too_long; the
+    pre-gate decides in under 50 ms of wall time with NO parse_qs call; nothing
+    reserved or fetched; the whole request stays under a lenient 1 s (POST only:
+    a GET cannot carry 5 MB). At 0aac07f1 each query was parsed twice, then
+    the links reached the fetch (400 STORE_UNREADABLE after ~3.5 s)."""
+    url1, url2 = _f4_big_query_link(1), _f4_big_query_link(2)
+    h = _full(monkeypatch, H(), default=ok(PDP), spy=False)
+    timings = []
+    real_gate = url_routes._url_pre_gate
+
+    def timed(*a, **kw):
+        h.events.append("pregate")
+        t0 = time.perf_counter()
+        try:
+            return real_gate(*a, **kw)
+        finally:
+            timings.append(time.perf_counter() - t0)
+    monkeypatch.setattr(url_routes, "_url_pre_gate", timed)
+    parses = _record_parse(monkeypatch)
+    t0 = time.perf_counter()
+    r = _call(client, "POST", url1, url2)
+    wall = time.perf_counter() - t0
+    body = _strip_rid(r.json())
+    assert (r.status_code, body) == (400, _refusal("NOT_PRODUCT_PAGE", NPP_MSG, "both",
+                                                     "url_too_long")), (r.status_code, body)
+    n_parses, n_fetched = len(parses), len(h.pages.fetched)
+    assert n_parses == 0, n_parses
+    assert len(timings) == 1 and timings[0] < 0.05, timings
+    assert h.ledger.consumes == [] and n_fetched == 0, (h.ledger.consumes, n_fetched)
+    assert wall < 1.0, wall
+
+
+F4_1_SAME_ID_TRACKING = ("https://www.b4parse4.example.test/index.php?product_id=7&gclid=b4",
+                         "https://www.b4parse4.example.test/index.php?product_id=7&utm_source=b4")
+
+
+@pytest.mark.parametrize("verb", VERBS)
+def test_pregate_parses_each_query_once_per_request(monkeypatch, client, verb):
+    """RED (F4-1): the pre-gate parses each link's query ONCE per request and
+    reuses the parsed pairs for the homepage class and the same-url key: a
+    same-store /index.php pair with one product_id and different tracking keys
+    (refused same_url at $0) costs exactly two parse_qs calls, one per link.
+    At 0aac07f1 each query was parsed twice (classify_url_path, then the
+    same-url key): four calls."""
+    h = _full(monkeypatch, H(), default=ok(PDP))
+    parses = _record_parse(monkeypatch)
+    r = _call(client, verb, *F4_1_SAME_ID_TRACKING)
+    assert r.status_code == 400, (r.status_code, r.json())
+    assert _strip_rid(r.json()) == _refusal("NOT_PRODUCT_PAGE", NPP_MSG, "both", "same_url")
+    assert sorted(parses) == ["product_id=7&gclid=b4", "product_id=7&utm_source=b4"], parses
+    assert h.ledger.consumes == [] and h.pages.fetched == []
+
+
+def test_pregate_pass_path_parses_each_query_once(monkeypatch):
+    """RED (F4-1, the pass path): for a same-store OpenCart pair the pre-gate
+    lets through (product_id 1262 vs 1263 on /index.php), _url_pre_gate makes
+    exactly one parse_qs call per link. At 0aac07f1: two per link."""
+    pre_gate = _fn(url_routes, "_url_pre_gate")
+    parses = _record_parse(monkeypatch)
+    assert pre_gate(_F3_OC + "1262", _F3_OC + "1263") is None
+    assert sorted(parses) == ["route=product/product&product_id=1262",
+                              "route=product/product&product_id=1263"], parses
+
+
+@pytest.mark.parametrize("value", [None, "false"], ids=["unset", "false"])
+def test_flag_off_5mb_links_are_base_behaviour(monkeypatch, client, value):
+    """PIN (F4-1 flag-OFF identity, full configuration, a RAISING pre-gate
+    stand-in; kills a length bound or a parse outside the flag): two ~5 MB
+    links with the flag OFF take the base path exactly as at 0aac07f1: no
+    pre-gate, no parse_qs call, the credit reserved then refunded once, nothing
+    fetched (httpx refuses a url over 65,536 characters), the base codeless 400
+    'Could not extract both products' and its one failure row."""
+    url1, url2 = _f4_big_query_link(1), _f4_big_query_link(2)
+    h = _full(monkeypatch, H(), flag=value, default=ok(PDP), spy=False)
+    _raising_pregate(monkeypatch, h)
+    parses = _record_parse(monkeypatch)
+    r = _call(client, "POST", url1, url2)
+    body = _strip_rid(r.json())
+    assert (r.status_code, body) == (400, BASE_FEW), (r.status_code, body)
+    n_parses, n_fetched = len(parses), len(h.pages.fetched)
+    assert n_parses == 0 and n_fetched == 0, (n_parses, n_fetched)
+    assert h.pregate_raised == []
+    _assert_non_delivery(h)
+    _failure_row(h, "Could not extract both products")
+
+
+_F4_OSC_ROOT = "https://www.b4osc4.example.test/?products_id="
+_F4_OSC_INDEX = "https://www.b4osc4.example.test/index.php?products_id="
+_F4_ZEN = "https://www.b4zen4.example.test/index.php?main_page=product_info&products_id="
+
+F4_3_PRODUCTS_ID_ROWS = ["/?products_id=12", "/index.php?products_id=12",
+                         "/index.php?main_page=product_info&products_id=12",
+                         "/index.php?PRODUCTS_ID=12"]
+
+
+@pytest.mark.parametrize("path", F4_3_PRODUCTS_ID_ROWS)
+def test_classify_url_path_products_id_is_a_product_route(path):
+    """RED (F4-3, engineering e-m5 / addendum A3-1): a non-empty products_id
+    (osCommerce, and Zen Cart's default main_page=product_info&products_id=N
+    PDP url; key case-insensitive) on a root or /index.* path is a product-route
+    marker, so the link is not the homepage. At 0aac07f1 products_id sat in the
+    same-url key only: 'homepage'."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) is None, path
+
+
+@pytest.mark.parametrize("path", ["/?products_id=", "/index.php?products_id=%20",
+                                  "/index.php?main_page=product_info&products_id="])
+def test_classify_url_path_empty_products_id_is_homepage(path):
+    """PIN (F4-3 with F3-4; kills an empty products_id counted as a marker): an
+    EMPTY (or whitespace-only) products_id is not a product route, so the link
+    stays a homepage (as at 0aac07f1)."""
+    classify = _fn(ues, "classify_url_path")
+    assert classify("https://shop.example.test" + path) == "homepage", path
+
+
+F4_3_PAIRS = {
+    "oscommerce-root": (_F4_OSC_ROOT + "12", _F4_OSC_ROOT + "13"),
+    "oscommerce-index": (_F4_OSC_INDEX + "12", _F4_OSC_INDEX + "13"),
+    "zencart": (_F4_ZEN + "12", _F4_ZEN + "13"),
+}
+
+
+@pytest.mark.parametrize("pair_id", sorted(F4_3_PAIRS))
+@pytest.mark.parametrize("verb", VERBS)
+def test_products_id_pair_delivers_flag_on(monkeypatch, client, verb, pair_id):
+    """RED (F4-3, the pre-gate site; the correctness adversary's Zen Cart
+    extension): two products of one osCommerce (root or /index.php) or Zen Cart
+    store addressed by products_id pass the pre-gate, are fetched and DELIVER
+    (flag ON, full config, POST and GET). At 0aac07f1: 400 NOT_PRODUCT_PAGE
+    both / homepage with 0 fetches."""
+    url1, url2 = F4_3_PAIRS[pair_id]
+    names, pages = _f3_pages(pair_id, url1, url2)
+    h = _full(monkeypatch, H(), pages=pages)
+    r = _call(client, verb, url1, url2)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert [p["name"] for p in body["products"]] == [names[url1], names[url2]], body
+    assert sorted(h.pages.fetched) == sorted([url1, url2]), h.pages.fetched
+    uid = h.user["id"]
+    assert h.ledger.consumes == [uid] and h.ledger.refunds == [], (h.ledger.consumes, h.ledger.refunds)
+
+
+@pytest.mark.parametrize("verb", VERBS)
+def test_redirect_to_zen_cart_pdp_is_not_refused_post_fetch(monkeypatch, client, verb):
+    """RED (F4-3, the post-fetch site): a link redirecting to a Zen Cart PDP
+    (/index.php?main_page=product_info&products_id=12) is not refused on its
+    FINAL url; the pair delivers. At 0aac07f1: 400 NOT_PRODUCT_PAGE url1 /
+    homepage after the fetch."""
+    start = "https://www.b4zen4.example.test/b4-zen-oud-100ml"
+    target = _F4_ZEN + "12"
+    name = "B4 Zen Oud 100ml"
+    pages = {start: redirect(target, 301), target: ok(_page(name + " - Store", [_product(name, price="12.5")])),
+             FX_PDP: ok(PDP)}
+    h = _full(monkeypatch, H(), pages=pages)
+    r = _call(client, verb, start, FX_PDP)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert body["products"][0]["name"] == name, body
+    assert sorted(h.pages.fetched) == sorted([start, target, FX_PDP]), h.pages.fetched
+
+
+_F4_TITLE = "Rasasi Hawas Ice 100ml | Rasasi Store"
+_F4_SITE = "Rasasi Store"
+_F4_NODELESS = "https://store.b4rasasi4.example.test/en/hawas-ice-100ml"
+_F4_NODE = "https://store.b4rasasi4.example.test/en/hawas-ice-100ml-node"
+
+
+@pytest.mark.parametrize("og_title", [_F4_SITE, "Product"],
+                         ids=["og-title-is-site-name", "og-title-placeholder"])
+@pytest.mark.parametrize("verb", VERBS)
+def test_nodeless_page_takes_a_usable_title_tag_over_an_unusable_og_title(monkeypatch, client,
+                                                                          verb, og_title):
+    """RED (F4-4, correctness c-m1): a node-less page whose og:title is
+    unusable (equal to og:site_name, or a placeholder) and whose <title> tag is
+    usable: the meta title is the first USABLE of og:title, <title>, so the page
+    is not refused no_product_node; the price comes from the paid LLM rung (one
+    call) and the pair DELIVERS with that <title> as the product name (real
+    route, flag ON, full config). At 0aac07f1: 400 UNRESOLVED_PRODUCT url1 /
+    no_product_node with 0 LLM calls."""
+    page = _page(_F4_TITLE, og={"title": og_title, "site_name": _F4_SITE})
+    h = _full(monkeypatch, H(), pages={_F4_NODELESS: ok(page), FX_PDP2: ok(PDP2)},
+              llm_content=json.dumps({"is_product_page": True, "price": 10.5}))
+    r = _call(client, verb, _F4_NODELESS, FX_PDP2)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert (body["products"][0]["name"], body["products"][0]["full_name"]) == (_F4_TITLE,
+                                                                               _F4_TITLE), body
+    assert len(h.llm_calls) == 1, h.llm_calls
+
+
+@pytest.mark.parametrize("verb", VERBS)
+def test_site_named_priced_node_takes_the_usable_title_tag(monkeypatch, client, verb):
+    """RED (F4-4, correctness c-m1 case 3): a PRICED Product node named like the
+    site, og:title equal to og:site_name and a usable <title> tag: the F2-5
+    fallback reads the first USABLE meta title (the <title>), so the product is
+    delivered under that name with no LLM call (real route, flag ON, full
+    config). At 0aac07f1 the unusable og:title shadowed it: 400
+    UNRESOLVED_PRODUCT url1 / null_name."""
+    page = _page(_F4_TITLE, [_product(name=_F4_SITE, price="10.5")],
+                 og={"title": _F4_SITE, "site_name": _F4_SITE})
+    h = _full(monkeypatch, H(), pages={_F4_NODE: ok(page), FX_PDP2: ok(PDP2)}, llm_boom=True)
+    r = _call(client, verb, _F4_NODE, FX_PDP2)
+    assert r.status_code == 200, (r.status_code, r.json())
+    body = r.json()
+    assert body.get("success") is True, body
+    assert (body["products"][0]["name"], body["products"][0]["full_name"]) == (_F4_TITLE,
+                                                                               _F4_TITLE), body
+    assert h.llm_calls == [], h.llm_calls
+
+
+def test_usable_og_title_keeps_precedence_over_the_title_tag(monkeypatch):
+    """PIN (F4-4 guard; kills the <title> tag read BEFORE og:title): when both
+    are usable, og:title stays the meta title (first in order, as at 0aac07f1),
+    so a node-less page is delivered under its og:title."""
+    _assert_kwarg(ues.extract_from_url, "url_mode_v2")
+    og_name = "B4 OG Oud 50ml"
+    h = H()
+    page = _page("B4 Title Tag Oud 50ml - Store", og={"title": og_name, "site_name": _F4_SITE})
+    _serve(monkeypatch, h, {_F4_NODELESS: ok(page)})
+    _ssrf(monkeypatch, h)
+    _llm(monkeypatch, h, content=json.dumps({"is_product_page": True, "price": 10.5}))
+    result = _run(ues.extract_from_url(_F4_NODELESS, url_mode_v2=True))
+    assert result.get("success") is True, result
+    assert (result["product"]["name"], result["product"]["full_name"]) == (og_name, og_name), result
+
+
+@pytest.mark.parametrize("v2", [False, True], ids=["base", "v2"])
+def test_extract_with_ai_error_line_carries_the_type_only(monkeypatch, caplog, v2):
+    """RED (F4-5, engineering e-m6; unflagged, log-only, R-A1 b; the ruling
+    calls it a pin, but at 0aac07f1 the f-string logged the exception text, so
+    it fails there): when the extraction LLM call raises, the ONE 'AI extraction
+    error' ERROR record carries the exception TYPE only, never its text (a
+    run-time sentinel in the raised message reaches no record), on the base and
+    the v2 path; the return value is unchanged ({"error": str(e)})."""
+    sentinel = "b4sent" + uuid.uuid4().hex[:8]
+
+    def boom(*_a, **_k):
+        raise ValueError("upstream said " + sentinel)
+    monkeypatch.setattr(ues, "get_client", boom)
+    caplog.set_level(logging.DEBUG)
+    result = _run(ues.extract_with_ai(FX_PDP, PDP2, {"key": "generic", "name": "Example"},
+                                      url_mode_v2=v2))
+    assert result == {"error": "upstream said " + sentinel}, result
+    errors = [rec for rec in caplog.records
+              if rec.name == "app.services.url_extraction_service" and rec.levelno == logging.ERROR]
+    assert [rec.getMessage() for rec in errors] == ["AI extraction error: ValueError"], [
+        rec.getMessage() for rec in errors]
+    assert errors[0].exc_info is None, errors[0].exc_info
+    assert [rec.name for rec in caplog.records if sentinel in rec.getMessage()] == []

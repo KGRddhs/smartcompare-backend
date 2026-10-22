@@ -30,9 +30,8 @@ from app.services.url_extraction_service import (
 from app.services.url_extraction_service import (
     NOT_PRODUCT_PAGE_MESSAGE,
     _host_only,
-    classify_url_path,
-    normalize_url_for_same_check,
     url_mode_v2_enabled,
+    url_pre_gate_view,
 )
 from app.api.auth_routes import get_optional_user
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit (telemetry
@@ -103,24 +102,33 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
 _URL_COMPARE_DEADLINE_SECONDS = 25.0
 # The coded per-url failures that ship as 400 + additive field / reason.
 _URL_V2_REFUSAL_CODES = ("NOT_PRODUCT_PAGE", "STORE_UNREADABLE", "UNRESOLVED_PRODUCT")
+# RULINGS_FIX4_B4 F4-1: the client's validateUrl bound (TwoInputShell.tsx URL_MAX);
+# the pre-gate refuses a longer pasted link before any parse (reason url_too_long).
+_URL_V2_MAX_LINK_CHARS = 2048
 
 
 def _url_pre_gate(url1: str, url2: str) -> Optional[Dict[str, str]]:
     """The $0 pre-gate, FLAG-FREE (called only when the route read the flag ON):
-    a link whose PATH is a storefront root / search / cart / checkout / account /
-    category page, or a pair equal after normalisation. Returns
-    {"field": "url1"|"url2"|"both", "reason": <class>|"same_url"} (url1's class
-    wins when both links are refused), else None."""
-    r1 = classify_url_path(url1)
-    r2 = classify_url_path(url2)
+    a link longer than _URL_V2_MAX_LINK_CHARS (checked FIRST, before any parse;
+    F4-1), a link whose PATH is a storefront root / search / cart / checkout /
+    account / category page, or a pair equal after normalisation (each link's
+    query parsed ONCE for both, url_pre_gate_view). Returns
+    {"field": "url1"|"url2"|"both", "reason": "url_too_long"|<class>|"same_url"}
+    (url1's class wins when both links are refused), else None."""
+    long1, long2 = (isinstance(u, str) and len(u) > _URL_V2_MAX_LINK_CHARS
+                    for u in (url1, url2))
+    if long1 or long2:
+        field = "both" if long1 and long2 else ("url1" if long1 else "url2")
+        return {"field": field, "reason": "url_too_long"}
+    r1, key1 = url_pre_gate_view(url1)
+    r2, key2 = url_pre_gate_view(url2)
     if r1 is not None or r2 is not None:
         if r1 is not None and r2 is not None:
             field = "both"
         else:
             field = "url1" if r1 is not None else "url2"
         return {"field": field, "reason": r1 or r2}
-    key1 = normalize_url_for_same_check(url1)
-    if key1 and key1 == normalize_url_for_same_check(url2):
+    if key1 and key1 == key2:
         return {"field": "both", "reason": "same_url"}
     return None
 

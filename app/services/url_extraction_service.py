@@ -134,7 +134,7 @@ def _retailer_log_name(retailer: Any) -> str:
     return "unknown"
 
 
-def normalize_url_for_same_check(u: Any) -> str:
+def normalize_url_for_same_check(u: Any, *, pairs: Optional[List[Tuple[str, str]]] = None) -> str:
     """The url1 == url2 key of the pre-gate: scheme and host casefolded, ONE
     leading 'www.' dropped, an explicit port kept, ONE trailing '/' dropped (the
     root becomes ''), path case and percent-encoding kept, the fragment and every
@@ -142,7 +142,9 @@ def normalize_url_for_same_check(u: Any) -> str:
     F3-1: route=product/product, product_id, id_product, product, products_id; keys
     case-insensitive, values percent-decoded and stripped, sorted), so two products
     of one query-routed store are not the same url. '' for a non-str or malformed
-    link (never raises); the caller never treats two '' as the same url."""
+    link (never raises); the caller never treats two '' as the same url.
+    ``pairs`` (RULINGS_FIX4_B4 F4-1): the link's already parsed product-route pairs
+    (url_pre_gate_view), so the query is not parsed a second time."""
     try:
         parts = urlsplit(u if isinstance(u, str) else "")
         port = parts.port  # ValueError on a malformed port
@@ -156,7 +158,8 @@ def normalize_url_for_same_check(u: Any) -> str:
     netloc = host if port is None else f"{host}:{port}"
     path = parts.path[:-1] if parts.path.endswith("/") else parts.path
     key = f"{parts.scheme.casefold()}://{netloc}{path}"
-    pairs = _product_route_pairs(parts.query, _SAME_URL_PRODUCT_QUERY_KEYS)
+    if pairs is None:
+        pairs = _product_route_pairs(parts.query, _SAME_URL_PRODUCT_QUERY_KEYS)
     return key + "?" + urlencode(pairs) if pairs else key
 
 
@@ -184,9 +187,12 @@ _URL_PRODUCT_SEGMENT_RE = re.compile(r"/(?:products?|p|dp|item)/|/-/p", re.I)
 # /?product=<slug>). Keys compared case-insensitively; an explicit allow-list, never
 # "any non-empty query" (tracking-only queries stay homepage). A bare `p` (a
 # WordPress post id) is deliberately absent.
-_PRODUCT_ROUTE_QUERY_KEYS = frozenset({"product_id", "id_product", "product"})
+# RULINGS_FIX4_B4 F4-3: the osCommerce / Zen Cart products_id is a product-route
+# marker too (Zen Cart's default PDP is index.php?main_page=product_info&products_id=N).
+_PRODUCT_ROUTE_QUERY_KEYS = frozenset({"product_id", "id_product", "product", "products_id"})
 # RULINGS_FIX3_B4 F3-1: the same-url key keeps these keys plus osCommerce
-# products_id; an ASP.NET `pid` is generic (a WordPress post or page id) and stays out.
+# products_id (since F4-3 the two sets are equal); an ASP.NET `pid` is generic (a
+# WordPress post or page id) and stays out.
 _SAME_URL_PRODUCT_QUERY_KEYS = _PRODUCT_ROUTE_QUERY_KEYS | {"products_id"}
 # F3-2: OpenCart's one product-page route; listing routes (product/category,
 # product/search, product/compare, ...) are not product routes.
@@ -218,12 +224,14 @@ def _query_names_a_product_route(query: str) -> bool:
     return bool(_product_route_pairs(query, _PRODUCT_ROUTE_QUERY_KEYS))
 
 
-def classify_url_path(u: Any) -> Optional[str]:
+def classify_url_path(u: Any, *, pairs: Optional[List[Tuple[str, str]]] = None) -> Optional[str]:
     """'homepage' | 'search' | 'cart' | 'account' | 'category' for a link whose
     PATH is a storefront page, else None (the query is ignored, except that a root
     or /index.* path whose query names a product route is not the homepage, F2-1).
     Checkout routes are the 'cart' class. A falsy, non-str or malformed link is
-    None (GC-4: the route only ever passes the pydantic str fields)."""
+    None (GC-4: the route only ever passes the pydantic str fields). ``pairs``
+    (RULINGS_FIX4_B4 F4-1): the link's already parsed product-route pairs
+    (url_pre_gate_view), so the query is not parsed a second time."""
     if not isinstance(u, str) or not u:
         return None
     try:
@@ -235,7 +243,8 @@ def classify_url_path(u: Any) -> Optional[str]:
         _NOT_A_PDP_HOME_PATH_RE,
         _NOT_A_PDP_SEARCH_PATH_RE,
     )
-    if _NOT_A_PDP_HOME_PATH_RE.match(path) and not _query_names_a_product_route(parts.query):
+    if _NOT_A_PDP_HOME_PATH_RE.match(path) and not (
+            _query_names_a_product_route(parts.query) if pairs is None else pairs):
         return "homepage"
     if _NOT_A_PDP_SEARCH_PATH_RE.match(path):
         return "search"
@@ -246,6 +255,22 @@ def classify_url_path(u: Any) -> Optional[str]:
     if _URL_CATEGORY_PATH_RE.match(path) and not _URL_PRODUCT_SEGMENT_RE.search(path):
         return "category"
     return None
+
+
+def url_pre_gate_view(u: Any) -> Tuple[Optional[str], str]:
+    """RULINGS_FIX4_B4 F4-1: (classify_url_path(u), normalize_url_for_same_check(u))
+    with the link's query parsed ONCE: one _product_route_pairs call feeds both the
+    homepage exemption and the same-url key. The flagged pre-gate
+    (url_routes._url_pre_gate) calls it only on a link it has already bounded to
+    the client's 2,048 characters. Never raises (a malformed link has no query)."""
+    try:
+        query = urlsplit(u).query if isinstance(u, str) else ""
+    except ValueError:
+        query = ""
+    pairs = _product_route_pairs(query, _SAME_URL_PRODUCT_QUERY_KEYS)
+    route_pairs = [p for p in pairs if p[0] == "route" or p[0] in _PRODUCT_ROUTE_QUERY_KEYS]
+    return (classify_url_path(u, pairs=route_pairs),
+            normalize_url_for_same_check(u, pairs=pairs))
 
 
 # The first <title> of a page, read with str.find only (no soup: the v2 fetch
@@ -772,7 +797,11 @@ def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None
 
     meta = extract_meta_tags(html)
     site_names = _v2_site_names(json_ld, meta)
-    meta_title = meta.get("og_title") or meta.get("page_title")
+    # RULINGS_FIX4_B4 F4-4: the first USABLE of og:title, the <title> tag (not the
+    # first truthy), so an og:title equal to the site name or a placeholder no
+    # longer shadows a usable <title>.
+    meta_title = next((t for t in (meta.get("og_title"), meta.get("page_title"))
+                       if is_usable_title(t, site_names)), None)
     # F2-5 (RULINGS_FIX2_B4): a Product node whose name is missing or unusable takes
     # a usable meta title (decided on the value, not on key presence).
     if "title" not in data or (not is_usable_title(data.get("title"), site_names)
@@ -937,7 +966,9 @@ async def extract_with_ai(url: str, html: str, retailer: Dict,
         return json.loads(result)
     
     except Exception as e:
-        logger.error(f"AI extraction error: {e}")
+        # RULINGS_FIX4_B4 F4-5 (unflagged, log-only, R-A1 b): the exception TYPE
+        # only, never its text (the U8d class); the return value is unchanged.
+        logger.error("AI extraction error: %s", type(e).__name__)
         return {"error": str(e)}
 
 
