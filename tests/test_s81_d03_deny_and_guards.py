@@ -2141,3 +2141,66 @@ async def test_f1_6_piggyback_validator_is_patchable_on(monkeypatch):
     result = await _scs_fetch(page, CDN_IMG)
     assert result["image_url"] == CDN_IMG
     assert page in seen
+
+
+# ---------------------------------------------------------------------------
+# Rebase round (2026-10-23; the fix-round-1 re-verifier's MIN-RV-3 on
+# 53bf18a7): mutant V13 (the scs stash ALSO writing the front door's
+# '[DATA_GUARDS_V2] shopping rows dropped' line) survived every row above.
+# APPENDED PIN row, green at HEAD, killing V13: the stash drop is silent and
+# the front door's ONE line appears only when extract_price_from_shopping runs.
+# ---------------------------------------------------------------------------
+_RV3_LOGGERS = (
+    "app.services.price_service",
+    "app.services.structured_comparison_service",
+)
+
+
+def _rv3_d03_lines(records):
+    return [r.getMessage() for r in records if "[DATA_GUARDS_V2]" in r.getMessage()]
+
+
+@pytest.mark.parametrize("ask", ["BHD", "AED"])
+@pytest.mark.parametrize("w41", ["off", "on"])
+def test_f1_rv3_stash_drop_is_silent_front_door_logs_once_on(
+    w41, ask, monkeypatch, caplog
+):
+    """MIN-RV-3 (kills V13): ON, the REAL scs _seed_shortcircuit_candidates over
+    a populated stash pool holding denied Shopping rows (and no front-door call)
+    drops them and emits ZERO '[DATA_GUARDS_V2]' records at INFO; the single
+    front-door line appears only when extract_price_from_shopping runs on the
+    same pool (the positive control: the capture is not vacuous)."""
+    _on(monkeypatch)
+    _w41(monkeypatch, w41)
+    ps = _ps()
+    scs = importlib.import_module("app.services.structured_comparison_service")
+    real_door = ps.extract_price_from_shopping
+    door_calls = []
+
+    def door_recorder(*args, **kwargs):
+        door_calls.append(len(args))
+        return real_door(*args, **kwargs)
+
+    monkeypatch.setattr(ps, "extract_price_from_shopping", door_recorder)
+    monkeypatch.setattr(scs, "extract_price_from_shopping", door_recorder)
+    caplog.set_level(logging.INFO)
+    for name in _RV3_LOGGERS:
+        caplog.set_level(logging.INFO, logger=name)
+    pool = _shop_pool(ask)
+    seeded = _stash_seed(SHOP_NAME, pool, ask)
+    stash_lines = _rv3_d03_lines(caplog.records)
+    stash_door_calls = list(door_calls)
+    caplog.clear()
+    out = real_door(SHOP_NAME, pool, ask, category="fragrances")
+    door_lines = _rv3_d03_lines(caplog.records)
+    # the stash really dropped the two denied rows (so a logging drop would log)
+    assert seeded == [("Perfume Shop BH", ALLOWED_SHOP_LINK)]
+    assert stash_door_calls == [], "the stash path must not call the front door"
+    assert stash_lines == [], stash_lines
+    assert out is not None and out.get("url") == ALLOWED_SHOP_LINK
+    assert len(door_lines) == 1, door_lines
+    assert (
+        "count=2" in door_lines[0]
+        and "by=link" in door_lines[0]
+        and "host=www.fragrantica.com" in door_lines[0]
+    ), door_lines
