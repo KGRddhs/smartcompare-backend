@@ -111,11 +111,15 @@ def _get_allowed_origins() -> list:
     return _DEFAULT_ORIGINS
 
 ALLOWED_ORIGINS = _get_allowed_origins()
-# S81-05 (ENABLE_REQUEST_CONTEXT_HEADERS, read per request inside the class):
-# registered FIRST so it is the innermost user middleware; RequestID has set
-# request.state.request_id, and SlowAPI / ErrorHandler / SecurityHeaders / CORS
-# run outside the ContextVar scope and cannot depend on it. Registration is
-# unconditional; flag OFF = one os.getenv per request.
+# S81-05 (ENABLE_REQUEST_CONTEXT_HEADERS, read once per ASGI call of any scope
+# type inside the class, as its first statement): registered FIRST so it is the
+# innermost user middleware; RequestID has set request.state.request_id, and
+# SlowAPIASGI (when enabled) / ErrorHandler / SecurityHeaders / CORS run outside
+# the ContextVar scope and cannot depend on it. A device-keyed limiter reads
+# these values never through the default-limit (SlowAPIASGIMiddleware) key_func,
+# which runs outside the ContextVar scope; a per-route @limiter.limit key_func
+# runs inside it and may read these values (measured). Registration is
+# unconditional; flag OFF = one os.getenv per ASGI call.
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,

@@ -1,8 +1,9 @@
 """S81-05 REQUEST-CONTEXT: three request headers into ContextVars (stdlib leaf).
 
 Stdlib only, no app imports: this is a LEAF, imported by the pure-ASGI
-middleware ``app/middleware/request_context.py`` (which binds the values once
-per HTTP request) and by ``app/api/auth_routes.py`` (which re-imports the one
+middleware ``app/middleware/request_context.py`` (which reads the flag once per
+ASGI call of any scope type, as its first statement, and binds the values for
+HTTP requests only) and by ``app/api/auth_routes.py`` (which re-imports the one
 compiled fingerprint pattern). Nothing else reads these accessors yet: the
 consumers (S81-06 consent routing, S81-09 device quota, S81-22 compare runs)
 come in later units.
@@ -28,16 +29,19 @@ The None rule: a missing, empty, malformed or non-ASCII first occurrence reads
 ``None``. It is never a 400, never logged, never a changed response byte.
 ``header_state(name)`` reports the constant ``"absent"`` (not sent), the
 constant ``"malformed"`` (sent, but empty or invalid) or the constant ``"ok"``
-per header, never a value; it accepts the bytes constants below or the header
-name as a str, case-insensitively. The values and the states are bound in ONE
+per header, never a value; it accepts the bytes constants below (exact bytes:
+ASGI servers deliver lower-case header names) or the header name as a str
+(case-insensitive). The values and the states are bound in ONE
 atomic step: every header is parsed into locals first and the ContextVars are
 set only after every parse finished; if anything raises, every value is None and
 every state "malformed".
 
 Device key: ``device_key(fp)`` = HMAC-SHA256(``DEVICE_KEY_PEPPER``, fp) as 64
 lower-case hex, the pepper read per call (stripped). Fail closed: an invalid
-fingerprint returns None without reading the pepper; an unset or blank pepper
-returns None and logs ONE constant WARNING per process. Never a fallback key,
+fingerprint returns None without reading the pepper; an unset or blank pepper,
+or one that cannot be UTF-8 encoded, returns None and logs ONE constant WARNING
+per process naming ``DEVICE_KEY_PEPPER`` (the same line for both; never the
+value, never the exception text). Never a fallback key,
 never the fingerprint itself. The server stores the client's fingerprint value
 verbatim today (``auth_routes`` register / social sign-in); this unit changes
 no stored value.
@@ -174,7 +178,7 @@ def _header_index(name: object) -> Optional[int]:
         except UnicodeEncodeError:
             return None
     elif isinstance(name, (bytes, bytearray)):
-        key = bytes(name).lower()
+        key = bytes(name)
     else:
         return None
     try:
@@ -186,8 +190,9 @@ def _header_index(name: object) -> Optional[int]:
 def header_state(name: object) -> str:
     """Return "absent" | "malformed" | "ok" for one header (never a value).
 
-    ``name`` is one of the HEADER_* bytes constants or the header name as a
-    str, case-insensitively; an unknown name, and every name outside a bound
+    ``name`` is one of the HEADER_* bytes constants (compared as exact bytes:
+    ASGI servers deliver lower-case header names) or the header name as a str
+    (case-insensitive); an unknown name, and every name outside a bound
     request, reads "absent". Never raises.
     """
     try:
@@ -200,9 +205,7 @@ def header_state(name: object) -> str:
         state = states[idx]
     except Exception:  # noqa: BLE001 - a state read is total
         return STATE_ABSENT
-    if state in (STATE_ABSENT, STATE_MALFORMED, STATE_OK):
-        return state
-    return STATE_ABSENT
+    return state
 
 
 def _parse_one(raw_values: dict, name: bytes, parser) -> Tuple[object, str]:
@@ -301,6 +304,9 @@ def device_key(fp: object) -> Optional[str]:
     if pepper is None or not pepper.strip():
         _warn_pepper_once()
         return None
-    return hmac.new(
-        pepper.strip().encode("utf-8"), parsed.encode("ascii"), hashlib.sha256
-    ).hexdigest()
+    try:
+        key = pepper.strip().encode("utf-8")
+    except UnicodeError:  # F1-1: a pepper UTF-8 cannot encode fails closed
+        _warn_pepper_once()
+        return None
+    return hmac.new(key, parsed.encode("ascii"), hashlib.sha256).hexdigest()

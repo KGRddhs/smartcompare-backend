@@ -1656,3 +1656,65 @@ def test_s05_p20_empty_header_is_malformed(monkeypatch, which, index):
     assert len(rec.calls) == 1
     assert rec.calls[0]["values"] == NONE3
     assert rec.calls[0]["states"] == tuple(expected)
+
+
+# ===========================================================================
+# Fix round 1 rows (RULINGS_FIX1_S81_05 F1-1); every row above is unchanged.
+# ===========================================================================
+
+# A pepper str that cannot be UTF-8 encoded: the POSIX surrogateescape form of
+# a non-UTF-8 env byte (0xff), and a padded lone high surrogate. Built at run
+# time so the file stays pure ASCII.
+_FX1_UNENCODABLE = (
+    pytest.param("s05" + chr(0xDCFF) + "pepper", id="surrogateescape"),
+    pytest.param("  " + chr(0xD800) + "s05\t", id="lone-high"),
+)
+_FX1_NEVER_LOGGED = ("surrogate", "codec", "UnicodeEncodeError", "UnicodeError")
+
+
+@pytest.mark.parametrize("pepper_value", _FX1_UNENCODABLE)
+def test_s05_fx1_device_key_fails_closed_on_unencodable_pepper(
+    monkeypatch, caplog, pepper_value
+):
+    """F1-1: a pepper that cannot be UTF-8 encoded fails CLOSED: device_key
+    returns None (it never raises) and logs the SAME once-per-process WARNING
+    naming DEVICE_KEY_PEPPER, never the value, never the exception text.
+    os.getenv is patched for the pepper name only (the r11 pattern): it is what
+    os.environ hands back for a non-UTF-8 env byte on POSIX."""
+    leaf = _leaf()
+    dk = _fn(leaf, "device_key")
+    reset = _fn(leaf, "_reset_pepper_warning")
+    reset()
+    real_getenv = os.getenv
+
+    def _getenv(key, default=None):
+        if key == PEPPER_ENV:
+            return pepper_value
+        return real_getenv(key, default)
+
+    monkeypatch.setattr(os, "getenv", _getenv)
+    caplog.set_level(logging.DEBUG, logger=LEAF_LOGGER)
+    outs, raised = [], []
+    for _ in range(3):
+        try:
+            outs.append(dk(FP_A))
+        except Exception as exc:  # noqa: BLE001 - a raise is the defect
+            raised.append(type(exc).__name__)
+    assert raised == [], raised
+    assert outs == [None] * 3
+    recs = [r for r in caplog.records if r.name == LEAF_LOGGER]
+    assert len(recs) == 1, [r.getMessage() for r in recs]
+    assert recs[0].levelno == logging.WARNING
+    assert recs[0].getMessage() == WARN_TEXT
+    assert PEPPER_ENV in recs[0].getMessage()
+    assert recs[0].exc_info is None
+    assert pepper_value.strip() not in caplog.text
+    for needle in _FX1_NEVER_LOGGED + (FP_A,):
+        assert needle not in caplog.text
+    # an invalid fingerprint still reads None
+    assert dk("zz") is None
+    # the latch is per process: after the seam resets it, one more WARNING
+    reset()
+    assert dk(FP_A) is None
+    recs = [r for r in caplog.records if r.name == LEAF_LOGGER]
+    assert len(recs) == 2
