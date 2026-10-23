@@ -36,9 +36,15 @@ Nothing below blocks the dark units now in flight (B4, D03, S81-03, ST1). FLIP-G
 21. 1.0.1 native build after approval: provider-neutral camera/photo strings, react-native-share, expo-image, Cairo embedded, Sentry 8.x; Notes for Review (category narrowing, share targets, chips); replace the electronics screenshots.
 
 ## G. Landing, domain, partners
-22. getmyez.com DNS to the landing service; a public QarenBot crawler contact page on getmyez.com (before the S81-15 robots cron runs as QarenBot).
+22. getmyez.com DNS to the landing service. (The public crawler page already exists: landing/bot/index.html, EN + AR, pinned by the S77 D9 test; the S81-15 cron needs the Railway cron service of item 25, not a new page.)
 23. Play app-signing SHA-256 into assetlinks.json; APP_STORE_URL after approval.
 24. Meta app id (Instagram Stories) and Snap Kit app + review for 1.0.1; the store-CTA contract template with the review-data clause; Trustpilot Data Solutions quote.
 
 ## H. After approval: the flip order (one canary window each, your explicit yes, fresh never-compared pairs in the ledger first)
 LEGAL-V3 merged + backend + landing deployed -> first OTA (S81-08 headers + S81-11 honest UI + consent v3 copy) -> ledger, breaker, request context ON -> ENABLE_SYNC_DB_OFFLOAD + ST1 -> B1 result-status telemetry -> device quota + Riyadh reset + fragrance gate (after the v3 Terms are live and the header has propagated) -> text roles on Claude -> moderation on Claude after parity -> KB ingest -> KB-first serve -> live robots -> result gate -> compare-runs + judge -> camera on Claude -> OpenAI keys retired from web. Rollback for every flag = unset the variable.
+
+## I. Added 2026-10-23 from the S81-15 and S81-12 rulings
+25. Create a NEW Railway cron service for the robots registry cron (never web, never price-warmer): start command `python -m scripts.cron_robots_registry`, restart policy NEVER, the config file `railway.robots.json` the unit adds, variables by NAME only (SUPABASE_URL, SUPABASE_SERVICE_KEY, ENABLE_ROBOTS_REGISTRY_CRON, ROBOTS_CRON_MAX_HOSTS); schedule it daily only after migration 045 is applied and the seed's counts are in the ledger (R-S15-14).
+26. On the LEGAL-V3 merge date (the first text-role flip window): turn OpenAI organisation data sharing OFF in the OpenAI console. It is a MERGE PRECONDITION for S81-12 and it ends the free-token allowance (remaining OpenAI traffic bills at list price) (R-S12-1).
+27. Before the LEGAL-V3 window: confirm Anthropic's current commercial terms for API data retention (the 30-day default; any zero-data-retention option), training on API inputs (none by default), the usage-policy exception and the minors policy, or grant an agent a documentation read; the window commit records them with 'up to' periods (R-S12-13).
+28. Your explicit yes for the S81-12 merge window itself: the held PR merges in the same window as the first ENABLE_ANTHROPIC_TEXT flip, with the landing redeployed and the backend deployed BEFORE the OTA; the counsel answers (item 17) are re-filled in that commit if they arrive before it (R-S12-15).
