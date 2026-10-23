@@ -39,6 +39,7 @@ app/middleware/request_context.py
 app/models/__init__.py
 app/services/__init__.py
 app/services/deny_hosts.py
+app/services/llm_spend_breaker.py
 app/services/prompt_personalities.py
 app/utils/__init__.py
 app/utils/request_context.py
