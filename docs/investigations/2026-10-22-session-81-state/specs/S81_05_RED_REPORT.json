@@ -1,0 +1,518 @@
+{
+ "unit": "S81-05 REQUEST-CONTEXT (ENABLE_REQUEST_CONTEXT_HEADERS, lane B) - RED",
+ "test_files": [
+  {
+   "path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s05/tests/test_s81_s05_request_context.py",
+   "sha256": "ecdb579286f0cc1f19798b0349e5b001e982a8bff325282d5769584d4fb3a26d",
+   "bytes": 52230
+  }
+ ],
+ "base_run": {
+  "failed": 149,
+  "passed": 18,
+  "every_failure_is_assertion_error": true,
+  "pyt_line": "[pyt] tag=s05-red-base2 start=2026-10-23 08:48:48 end=2026-10-23 08:49:25 elapsed=38s bound=600s status=FAIL rc=1 (149 failed, 18 passed; [hermeticity] sentinel checked 167 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); 149 'E AssertionError' lines, 0 other exception lines; all 149 are test_s05_r*, all 18 passes are test_s05_p*)",
+  "failed_node_ids": [
+   "test_s05_r01_flag_reader_per_call[unset]",
+   "test_s05_r01_flag_reader_per_call[empty]",
+   "test_s05_r01_flag_reader_per_call[false]",
+   "test_s05_r01_flag_reader_per_call[zero]",
+   "test_s05_r01_flag_reader_per_call[no]",
+   "test_s05_r01_flag_reader_per_call[off]",
+   "test_s05_r01_flag_reader_per_call[garbage]",
+   "test_s05_r01_flag_reader_per_call[true]",
+   "test_s05_r01_flag_reader_per_call[one]",
+   "test_s05_r01_flag_reader_per_call[yes]",
+   "test_s05_r01_flag_reader_per_call[on]",
+   "test_s05_r01_flag_reader_per_call[padded-TRUE]",
+   "test_s05_r01_flag_reader_per_call[On]",
+   "test_s05_r02_consent_valid[0]",
+   "test_s05_r02_consent_valid[3]",
+   "test_s05_r02_consent_valid[03]",
+   "test_s05_r02_consent_valid[007]",
+   "test_s05_r02_consent_valid[999]",
+   "test_s05_r03_consent_invalid[none]",
+   "test_s05_r03_consent_invalid[empty]",
+   "test_s05_r03_consent_invalid[1000]",
+   "test_s05_r03_consent_invalid[12345]",
+   "test_s05_r03_consent_invalid[minus]",
+   "test_s05_r03_consent_invalid[plus]",
+   "test_s05_r03_consent_invalid[lead-space]",
+   "test_s05_r03_consent_invalid[trail-space]",
+   "test_s05_r03_consent_invalid[decimal]",
+   "test_s05_r03_consent_invalid[exp]",
+   "test_s05_r03_consent_invalid[hex]",
+   "test_s05_r03_consent_invalid[arabic-indic]",
+   "test_s05_r03_consent_invalid[fullwidth]",
+   "test_s05_r03_consent_invalid[trail-lf]",
+   "test_s05_r03_consent_invalid[abc]",
+   "test_s05_r03_consent_invalid[bytes]",
+   "test_s05_r03_consent_invalid[int]",
+   "test_s05_r03_consent_invalid[float]",
+   "test_s05_r03_consent_invalid[bool]",
+   "test_s05_r04_fp_valid[ab]",
+   "test_s05_r04_fp_valid[0f]",
+   "test_s05_r04_fp_valid[e]",
+   "test_s05_r05_fp_invalid[none]",
+   "test_s05_r05_fp_invalid[empty]",
+   "test_s05_r05_fp_invalid[upper]",
+   "test_s05_r05_fp_invalid[63]",
+   "test_s05_r05_fp_invalid[65]",
+   "test_s05_r05_fp_invalid[trail-lf]",
+   "test_s05_r05_fp_invalid[lead-space]",
+   "test_s05_r05_fp_invalid[non-hex]",
+   "test_s05_r05_fp_invalid[dash]",
+   "test_s05_r05_fp_invalid[int]",
+   "test_s05_r05_fp_invalid[bytes]",
+   "test_s05_r06_request_id_valid[lower]",
+   "test_s05_r06_request_id_valid[upper]",
+   "test_s05_r06_request_id_valid[mixed]",
+   "test_s05_r07_request_id_invalid[none]",
+   "test_s05_r07_request_id_invalid[empty]",
+   "test_s05_r07_request_id_invalid[braces]",
+   "test_s05_r07_request_id_invalid[hex32]",
+   "test_s05_r07_request_id_invalid[urn]",
+   "test_s05_r07_request_id_invalid[v1]",
+   "test_s05_r07_request_id_invalid[v1-upper]",
+   "test_s05_r07_request_id_invalid[variant-c]",
+   "test_s05_r07_request_id_invalid[nil]",
+   "test_s05_r07_request_id_invalid[trail-space]",
+   "test_s05_r07_request_id_invalid[lead-space]",
+   "test_s05_r07_request_id_invalid[non-hex]",
+   "test_s05_r07_request_id_invalid[uuid-object]",
+   "test_s05_r07_request_id_invalid[bytes]",
+   "test_s05_r07_request_id_invalid[trail-lf]",
+   "test_s05_r08_one_regex_object",
+   "test_s05_r09_device_key_hmac[plain]",
+   "test_s05_r09_device_key_hmac[padded]",
+   "test_s05_r10_device_key_fail_closed[unset]",
+   "test_s05_r10_device_key_fail_closed[empty]",
+   "test_s05_r10_device_key_fail_closed[spaces]",
+   "test_s05_r10_device_key_fail_closed[tab]",
+   "test_s05_r11_device_key_invalid_fp[none]",
+   "test_s05_r11_device_key_invalid_fp[empty]",
+   "test_s05_r11_device_key_invalid_fp[upper]",
+   "test_s05_r11_device_key_invalid_fp[63]",
+   "test_s05_r11_device_key_invalid_fp[65]",
+   "test_s05_r11_device_key_invalid_fp[trail-lf]",
+   "test_s05_r11_device_key_invalid_fp[lead-space]",
+   "test_s05_r11_device_key_invalid_fp[non-hex]",
+   "test_s05_r11_device_key_invalid_fp[dash]",
+   "test_s05_r11_device_key_invalid_fp[int]",
+   "test_s05_r11_device_key_invalid_fp[bytes]",
+   "test_s05_r12_pepper_never_leaks",
+   "test_s05_r13_header_state[none]",
+   "test_s05_r13_header_state[all-ok]",
+   "test_s05_r13_header_state[mixed]",
+   "test_s05_r13_header_state[upper-id]",
+   "test_s05_r13_header_state[dup-first-bad]",
+   "test_s05_r13_header_state[high-bytes]",
+   "test_s05_r13_header_state[braced-id]",
+   "test_s05_r14_accessors_default_none",
+   "test_s05_r15_flag_on_binds_inside[consent]",
+   "test_s05_r15_flag_on_binds_inside[fp]",
+   "test_s05_r15_flag_on_binds_inside[request-id]",
+   "test_s05_r15_flag_on_binds_inside[all]",
+   "test_s05_r16_flag_on_malformed_is_none[consent-0]",
+   "test_s05_r16_flag_on_malformed_is_none[consent-1]",
+   "test_s05_r16_flag_on_malformed_is_none[consent-2]",
+   "test_s05_r16_flag_on_malformed_is_none[fp-0]",
+   "test_s05_r16_flag_on_malformed_is_none[fp-1]",
+   "test_s05_r16_flag_on_malformed_is_none[fp-2]",
+   "test_s05_r16_flag_on_malformed_is_none[request-id-0]",
+   "test_s05_r16_flag_on_malformed_is_none[request-id-1]",
+   "test_s05_r16_flag_on_malformed_is_none[request-id-2]",
+   "test_s05_r17_reset_on_return_and_raise[returns]",
+   "test_s05_r17_reset_on_return_and_raise[raises]",
+   "test_s05_r17_nested_restores_outer",
+   "test_s05_r18_first_occurrence_wins[fp-first-valid]",
+   "test_s05_r18_first_occurrence_wins[fp-first-bad]",
+   "test_s05_r18_first_occurrence_wins[consent-first-valid]",
+   "test_s05_r18_first_occurrence_wins[consent-first-bad]",
+   "test_s05_r18_first_occurrence_wins[id-first-valid]",
+   "test_s05_r18_first_occurrence_wins[id-first-bad]",
+   "test_s05_r19_non_http_scopes_pass_through[lifespan]",
+   "test_s05_r19_non_http_scopes_pass_through[websocket]",
+   "test_s05_r20_bind_is_total[missing]",
+   "test_s05_r20_bind_is_total[none]",
+   "test_s05_r20_bind_is_total[str]",
+   "test_s05_r20_bind_is_total[int]",
+   "test_s05_r20_bind_is_total[bare-bytes-item]",
+   "test_s05_r20_bind_is_total[one-tuple]",
+   "test_s05_r20_bind_is_total[int-value]",
+   "test_s05_r20_bind_is_total[int-name]",
+   "test_s05_r20_atomic_bind_when_a_parser_raises[parse_consent_version]",
+   "test_s05_r20_atomic_bind_when_a_parser_raises[parse_device_fingerprint]",
+   "test_s05_r20_atomic_bind_when_a_parser_raises[parse_compare_request_id]",
+   "test_s05_r21_concurrent_isolation",
+   "test_s05_r22_flag_off_reads_nothing[unset]",
+   "test_s05_r22_flag_off_reads_nothing[empty]",
+   "test_s05_r22_flag_off_reads_nothing[false]",
+   "test_s05_r22_flag_off_reads_nothing[zero]",
+   "test_s05_r22_flag_off_reads_nothing[no]",
+   "test_s05_r22_flag_off_reads_nothing[off]",
+   "test_s05_r22_flag_off_reads_nothing[padded-FALSE]",
+   "test_s05_r23_flag_on_reads_flag_once",
+   "test_s05_r24_sources_never_log",
+   "test_s05_r25_stack_registration[imported]",
+   "test_s05_r25_stack_registration[fresh-unset]",
+   "test_s05_r25_stack_registration[fresh-true]",
+   "test_s05_r25_stack_registration[fresh-default-limits]",
+   "test_s05_r26_end_to_end_through_main[true]",
+   "test_s05_r26_end_to_end_through_main[unset]",
+   "test_s05_r27_pepper_is_a_sanitized_credential",
+   "test_s05_r28_new_files_join_the_black_ratchet"
+  ]
+ },
+ "prototype": {
+  "on_passed": 167,
+  "on_failed": 0,
+  "off_passed": 167,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=s05-proto-final-on start=2026-10-23 08:50:02 end=2026-10-23 08:50:32 elapsed=30s bound=600s status=OK rc=0 (ENABLE_REQUEST_CONTEXT_HEADERS=true exported; 167 passed; [hermeticity] 167; [netguard] 0)",
+   "[pyt] tag=s05-proto-final-off start=2026-10-23 08:50:35 end=2026-10-23 08:50:58 elapsed=23s bound=600s status=OK rc=0 (flag unset; 167 passed; [hermeticity] 167; [netguard] 0)",
+   "[pyt] tag=s05-proto-pins start=2026-10-23 08:31:14 end=2026-10-23 08:31:19 elapsed=5s bound=600s status=OK rc=0 (18 PIN nodes passed)",
+   "[pyt] tag=s05-proto-e1 start=2026-10-23 08:31:34 end=2026-10-23 08:31:59 elapsed=25s bound=600s status=FAIL rc=1 (test_retro_w1_9 + env_safety + social/invite fingerprint pins: 7 failed = exactly the 7 E1 EXPECTED_STACK nodes, 91 passed, 1 skipped)"
+  ],
+  "notes": "Prototype in a detached scratch worktree at 84c861f6: stdlib leaf app/utils/request_context.py (flag reader, 3 parsers, 3 ContextVars + a states ContextVar, header_state keyed by the bytes header constants, atomic bind_from_headers with a total except arm, per-token total reset, HMAC device_key fail-closed with a once-per-process WARNING latch), pure-ASGI app/middleware/request_context.py (spec 2.3 shape), auth_routes re-import of DEVICE_FINGERPRINT_RE, main.py import + registration just before the CORS add, DEVICE_KEY_PEPPER in CREDENTIALS_UNSET, 3 black-clean-paths entries. Every RED row green on the first run; flag-OFF byte identity proven by p04 (401 + 404 in states unset / false+full config / true+valid / true+malformed all equal the base literals). Spec findings: (1) re.compile caches identical patterns, so the R8 identity check alone cannot kill X33 (AST pin added); (2) the spec R21 single-event design does not detect module globals (X19 survived it; two barriers added); (3) the unknown-route 404 body at base is FastAPI's default {\"detail\":\"Not Found\"}, not the unified envelope; (4) E1 confirmed as exactly the 7 test_retro_w1_9 nodes; (5) R24's 'no other logging.* call' would forbid logging.getLogger. Prototype shas: leaf 275b6213..., middleware 9b386b34..., main.py 5c9bbb88..., auth_routes 0ee900c9..., _env_safety cba3121f..., black-clean-paths 0e1e7a26... (copies in <scratchpad>/S05_red/proto_final/)."
+ },
+ "mutants": [
+  {
+   "id": "X1",
+   "description": "flag reader without .strip()",
+   "survived": false,
+   "killed_by": "r01[padded-TRUE]"
+  },
+  {
+   "id": "X2",
+   "description": "flag default 'true'",
+   "survived": false,
+   "killed_by": "r01, r22, r26"
+  },
+  {
+   "id": "X3",
+   "description": "scope type read before the flag",
+   "survived": false,
+   "killed_by": "r22"
+  },
+  {
+   "id": "X4",
+   "description": "flag check removed (always bind)",
+   "survived": false,
+   "killed_by": "r22, r23, r26"
+  },
+  {
+   "id": "X5",
+   "description": "reset removed from finally",
+   "survived": false,
+   "killed_by": "r13, r17, r20 atomic, r23"
+  },
+  {
+   "id": "X6",
+   "description": "reset after the call, not in finally",
+   "survived": false,
+   "killed_by": "r17[raises]"
+  },
+  {
+   "id": "X7",
+   "description": "http-only scope check removed",
+   "survived": false,
+   "killed_by": "r19"
+  },
+  {
+   "id": "X8",
+   "description": "downstream given a wrapped send",
+   "survived": false,
+   "killed_by": "r15"
+  },
+  {
+   "id": "X9",
+   "description": "consent regex \\d instead of [0-9]",
+   "survived": false,
+   "killed_by": "r03[arabic-indic, fullwidth]"
+  },
+  {
+   "id": "X10",
+   "description": "consent {1,4} digits",
+   "survived": false,
+   "killed_by": "r03[1000], r16"
+  },
+  {
+   "id": "X11",
+   "description": "consent via int() not regex",
+   "survived": false,
+   "killed_by": "r03"
+  },
+  {
+   "id": "X12",
+   "description": "fingerprint fullmatch -> match",
+   "survived": false,
+   "killed_by": "r05[trail-lf], r11"
+  },
+  {
+   "id": "X13",
+   "description": "fingerprint regex compiled re.I",
+   "survived": false,
+   "killed_by": "r05, r08, r11, r16, p06"
+  },
+  {
+   "id": "X14",
+   "description": "uuid.UUID without version=4",
+   "survived": false,
+   "killed_by": "r07"
+  },
+  {
+   "id": "X15",
+   "description": "request id not lower-cased (R-S05-2 flip)",
+   "survived": false,
+   "killed_by": "r06[upper, mixed], r13[upper-id]"
+  },
+  {
+   "id": "X16",
+   "description": "len == 36 pre-check removed",
+   "survived": true,
+   "equivalent_by_ruling": true,
+   "killed_by": "none (R-S05-11 equivalent)"
+  },
+  {
+   "id": "X17",
+   "description": "last header occurrence wins",
+   "survived": false,
+   "killed_by": "r13[dup-first-bad], r18"
+  },
+  {
+   "id": "X18",
+   "description": "bind try/except removed",
+   "survived": false,
+   "killed_by": "r20 total, r20 atomic"
+  },
+  {
+   "id": "X19",
+   "description": "module globals instead of ContextVars",
+   "survived": false,
+   "killed_by": "r21, r22, r26 (re-measured on the final bytes)"
+  },
+  {
+   "id": "X20",
+   "description": "pepper unset -> sha256 fallback (fail open)",
+   "survived": false,
+   "killed_by": "r10, r12"
+  },
+  {
+   "id": "X21",
+   "description": "device_key skips the fingerprint parse",
+   "survived": false,
+   "killed_by": "r11"
+  },
+  {
+   "id": "X22",
+   "description": "blank pepper not stripped",
+   "survived": false,
+   "killed_by": "r10[spaces, tab]"
+  },
+  {
+   "id": "X23",
+   "description": "warning latch removed",
+   "survived": false,
+   "killed_by": "r10"
+  },
+  {
+   "id": "X24",
+   "description": "warning carries the fingerprint",
+   "survived": false,
+   "killed_by": "r10, r24"
+  },
+  {
+   "id": "X25",
+   "description": "sha1 instead of sha256",
+   "survived": false,
+   "killed_by": "r09, r26"
+  },
+  {
+   "id": "X25b",
+   "description": "HMAC key and message swapped",
+   "survived": false,
+   "killed_by": "r09, r26"
+  },
+  {
+   "id": "X26s",
+   "description": "header states not reset after the request (replaces dropped X26)",
+   "survived": false,
+   "killed_by": "r13, r17, r20 atomic"
+  },
+  {
+   "id": "X27s",
+   "description": "except arm states 'absent' not 'malformed' (replaces dropped X27)",
+   "survived": false,
+   "killed_by": "r20 atomic"
+  },
+  {
+   "id": "X28",
+   "description": "registration wrapped in the flag",
+   "survived": false,
+   "killed_by": "r25, r26"
+  },
+  {
+   "id": "X29",
+   "description": "registered outermost (after RequestID)",
+   "survived": false,
+   "killed_by": "r25"
+  },
+  {
+   "id": "XNI",
+   "description": "NOT-INNERMOST: registered after the CORS add",
+   "survived": false,
+   "killed_by": "r25"
+  },
+  {
+   "id": "X30",
+   "description": "middleware logs the headers",
+   "survived": false,
+   "killed_by": "p05[true], r16, r24"
+  },
+  {
+   "id": "X31",
+   "description": "planted consumer import in usage_service",
+   "survived": false,
+   "killed_by": "p01"
+  },
+  {
+   "id": "X32",
+   "description": "DEVICE_KEY_PEPPER dropped from CREDENTIALS_UNSET",
+   "survived": false,
+   "killed_by": "r27"
+  },
+  {
+   "id": "X33",
+   "description": "auth_routes compiles its own regex again",
+   "survived": false,
+   "killed_by": "r08 (AST half)"
+  },
+  {
+   "id": "X34",
+   "description": "scope copied (dict(scope)) before downstream",
+   "survived": false,
+   "killed_by": "r15, r23"
+  },
+  {
+   "id": "X35",
+   "description": "CORS allow_headers gains X-Device-Fingerprint",
+   "survived": false,
+   "killed_by": "p03"
+  },
+  {
+   "id": "X36",
+   "description": "flag read once at import",
+   "survived": false,
+   "killed_by": "r01 (+42 nodes)"
+  },
+  {
+   "id": "X37",
+   "description": "middleware computes a device key per request (reads the pepper)",
+   "survived": false,
+   "killed_by": "r23, r24, p01, r20 atomic"
+  },
+  {
+   "id": "X38",
+   "description": "set each ContextVar as its header parses (C2 partial-bind leak)",
+   "survived": false,
+   "killed_by": "r20 atomic[parse_device_fingerprint, parse_compare_request_id]"
+  },
+  {
+   "id": "XHL",
+   "description": "HEADER-LOGGED: leaf logs each header value",
+   "survived": false,
+   "killed_by": "p05, r16, r24"
+  },
+  {
+   "id": "XSLV",
+   "description": "STATE-LEAKS-VALUE: header_state returns the raw value",
+   "survived": false,
+   "killed_by": "r13"
+  },
+  {
+   "id": "X40",
+   "description": "header_state default None, not 'absent'",
+   "survived": false,
+   "killed_by": "r13, r14, r17, r20, r22, r26"
+  },
+  {
+   "id": "X43",
+   "description": "device_fingerprint() reads the request-id ContextVar",
+   "survived": false,
+   "killed_by": "r15, r13, r17, r18, r21, r23, r26"
+  },
+  {
+   "id": "X44",
+   "description": "a new file missing from .github/black-clean-paths.txt",
+   "survived": false,
+   "killed_by": "r28"
+  },
+  {
+   "id": "X45",
+   "description": "consent value stripped before the match",
+   "survived": false,
+   "killed_by": "r03[lead-space, trail-space, trail-lf]"
+  },
+  {
+   "id": "X46",
+   "description": "request id accepts non-str via str()",
+   "survived": false,
+   "killed_by": "r07[uuid-object]"
+  }
+ ],
+ "comm_set": {
+  "files": 187,
+  "chunks": 8,
+  "base_failures": [
+   "tests/test_auth_interceptor.py::test_sign_in_with_social_exception",
+   "tests/test_auth_interceptor.py::test_social_login_user_insert_fails_gracefully"
+  ],
+  "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S05_red/comm_files.txt (reasons: comm_files.tsv; chunks: S05_red/comm/chunk_00..07)",
+  "pyt_lines": [
+   "[pyt] tag=s05-redcomm-base-c00 start=2026-10-23 08:54:26 end=2026-10-23 08:56:22 elapsed=116s bound=1200s status=FAIL rc=1 (2 failed, 986 passed; [hermeticity] 988; [netguard] blocked 19 from 8 nodes; the 2 failures = tests/.pre_impl_failures.txt:88-89)",
+   "[pyt] tag=s05-redcomm-base-c01 start=2026-10-23 08:56:36 end=2026-10-23 08:57:36 elapsed=60s bound=1200s status=OK rc=0 (968 passed, 1 skipped, 47 deselected; [hermeticity] 969; [netguard] blocked 11 from 7 nodes)",
+   "[pyt] tag=s05-redcomm-base-c02 start=2026-10-23 08:57:51 end=2026-10-23 09:09:25 elapsed=693s bound=1200s status=OK rc=0 (1641 passed, 9 deselected; [hermeticity] 1641; [netguard] blocked 57 from 38 nodes)",
+   "[pyt] tag=s05-redcomm-base-c03 start=2026-10-23 09:09:50 end=2026-10-23 09:11:24 elapsed=93s bound=1200s status=OK rc=0 (442 passed, 10 deselected; [hermeticity] 442; [netguard] blocked 3 from 3 nodes)",
+   "[pyt] tag=s05-redcomm-base-c04 start=2026-10-23 09:12:20 end=2026-10-23 09:17:00 elapsed=280s bound=1200s status=OK rc=0 (796 passed, 1 skipped, 1 deselected; [hermeticity] 796; [netguard] blocked 115 from 20 nodes)",
+   "[pyt] tag=s05-redcomm-base-c05 start=2026-10-23 09:17:32 end=2026-10-23 09:23:50 elapsed=378s bound=1200s status=OK rc=0 (2249 passed; [hermeticity] 2249; [netguard] blocked 4 from 2 nodes)",
+   "[pyt] tag=s05-redcomm-base-c06 start=2026-10-23 09:24:32 end=2026-10-23 09:28:17 elapsed=225s bound=1200s status=OK rc=0 (988 passed, 10 deselected; [hermeticity] 988; [netguard] blocked 144 from 66 nodes)",
+   "[pyt] tag=s05-redcomm-base-c07 start=2026-10-23 09:28:57 end=2026-10-23 09:29:45 elapsed=47s bound=1200s status=OK rc=0 (592 passed, 9 skipped, 35 xfailed; [hermeticity] 636; [netguard] blocked 8 from 8 nodes)"
+  ]
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "restore_check.py: 3413/3413 tracked files of the real worktree sha256-equal to a pristine base checkout (scratch worktree, prototype-edited files compared to their pre-prototype byte copies), run before and after the comm set; HEAD 84c861f68ba3b23606c69ce2d1f78597e2f3037b; git status --short = '?? tests/test_s81_s05_request_context.py' only. Scratch worktree removed with git worktree remove --force (no node_modules), absent from git worktree list, directory gone; .qa-mutation.lock removed; no orphan pytest with my tags/cwd; no .env in the notes folder. Two early comm calls were rc=4 usage errors (CR in chunk files), re-run cleanly."
+ },
+ "deviations_from_spec": [
+  "R-S05-1: spec R13 / X26 / X27 dropped; R13 is the header_state row; new PIN p08 pins that legacy_hash / device_lookup_keys exist nowhere (leaf, app/, scripts/); new mutants X26s / X27s.",
+  "R8: the spec's identity check `auth_routes._DEVICE_FINGERPRINT_RE is leaf.DEVICE_FINGERPRINT_RE` cannot kill X33 because re.compile caches identical (pattern, flags) objects; R8 adds an AST pin (exact ImportFrom alias, no local assignment).",
+  "R-S05-2: R6 accepts upper / mixed case and returns the lower-case canonical form; R7 drops the upper row and adds v1-upper, lead-space, bytes, trail-LF; the spec's X15 is flipped (mutant = remove .lower()).",
+  "R-S05-4 / C2: R20 has three atomic variants (each parser raising through the leaf namespace in turn, since parse order is GREEN's choice), asserting None x3 + 'malformed' x3 inside and None x3 + 'absent' x3 after; an exception escaping the middleware is converted into an AssertionError so a non-total bind is killed by an assertion; junk-header variants accept 'absent' or 'malformed' per header.",
+  "R21: the spec's single-event design does not detect module globals (measured: X19 survived it); R21 uses two barriers (both bound, then both read, then both exit).",
+  "R24: allows logging.getLogger in the leaf (the spec text 'no other logging.* call' would forbid it); still exactly one logger.warning(<one str constant>), no keywords.",
+  "C3: R26 drives a fresh exec of app/main.py through httpx.ASGITransport in ONE asyncio.run (no lifespan / startup hooks) with a 0.15 s sleep before reading the spawned task; run_in_executor pinned None (stated limit).",
+  "R-S05-9: P4 = 401 (/api/v1/usage/status) + 404 (/api/v1/s05-no-such-route) x 4 states = 8 nodes, literals recorded twice at base byte-identical; MEASURED the 404 body is FastAPI's default {\"detail\":\"Not Found\"}, not the unified envelope; P5 uses the same two routes instead of /app/version.",
+  "R-S05-8: new RED row r28 (three new files listed in .github/black-clean-paths.txt); the RED file is black 26.5.1 clean now.",
+  "The RED file is LF (task rule) while spec 1.9 asked CRLF for new files; black-clean either way, index LF under autocrlf.",
+  "header_state is called with the leaf's bytes constants HEADER_CONSENT_VERSION / HEADER_DEVICE_FINGERPRINT / HEADER_COMPARE_REQUEST_ID; the unbound (and flag-OFF) default is pinned as 'absent' (assumption: the ruling names only the three constants as return values).",
+  "Comm set = 187 files in 8 chunks (spec's 150 + the reviewer's 37 extras); NETWORK_FLAKY_EXCLUDE node test_rate_limiting_complete::TestRateLimitCoverage::test_prices_endpoint_rate_limited deselected; SmartCompareApp-scanning tests not added (no client-visible change).",
+  "Mutation runs executed the whole unit file per mutant (not -k), so killing sets are complete; 46 of 47 mutants were measured on the RED bytes before the R21 strengthening (the only byte difference is the R21 body); X19 re-measured on the final bytes."
+ ],
+ "open_questions": [
+  "Q1 header_state name spelling: RED calls it with the leaf's bytes constants; should str header names also be in the contract for S81-09 (the prototype accepts both)? Not pinned.",
+  "Q2 a present but EMPTY header value: 'malformed' or 'absent'? Not pinned; S81-09's forged-header metric depends on it.",
+  "Q3 the unknown-route 404 at base is FastAPI's default {\"detail\":\"Not Found\"} (no success/code/request_id); P4 pins the measured body. Confirm that is wanted (pre-existing, outside this unit).",
+  "Q4 r26 pins loop.run_in_executor -> None (stated limit 5 / K4); a later unit that installs a context-copying default executor flips that node deliberately.",
+  "Q5 X16 survived as predicted; equivalent by ruling R-S05-11 (no row).",
+  "NOT MEASURED: the mutation table on the final RED bytes for 46 of 47 mutants (box load: node -e 0 = 5.6 s at 09:08; budget); head comm run, G6 flag-ON identity, the precommit-hook black nodes and test_ci_gates black-allowlist node with the new entries are GREEN's gates. Step (2) list of review-not-measured files was empty in the task text."
+ ],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S81-05_RED_REPORT.md",
+ "not_measured_alone": [
+  "Mutation table on the final RED bytes for 46 of 47 mutants (measured on the prior byte version differing only in the R21 body)",
+  "Head comm run and G6 flag-ON identity (GREEN's gates)",
+  "tests/test_precommit_hook.py -k black and tests/test_ci_gates.py::test_black_allowlist_entries_are_actually_clean with the three new ratchet entries (GREEN's G4)"
+ ]
+}
