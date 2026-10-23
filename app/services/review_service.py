@@ -19,6 +19,8 @@ from app.services.serper_service import search_web
 from app.services.cache_service import get_cached, set_cached, _redis_offload_enabled
 from app.utils.redis_offloop import run_redis_offloop
 from app.services.api_budget_service import has_budget, record_usage
+# D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
+from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
 
 
 async def _has_budget_async(provider: str) -> bool:
@@ -162,13 +164,21 @@ def clean_review_citations(reviews: dict, search_results: list) -> dict:
     FIX M6: Removed dead code for detailed_praises/detailed_complaints (never populated).
     """
     snippet_source_map = {}
+    # D03 (fix-round ruling F1-4): the raw link per marker, read only under the
+    # flag, so the deny decides on the parsed HOSTNAME, never the netloc.
+    snippet_link_map = {}
     for i, result in enumerate(search_results or []):
         link = result.get("link", "")
         if link:
             snippet_source_map[str(i + 1)] = _extract_domain(link)
+            snippet_link_map[str(i + 1)] = link
 
     def _attribute(num: str) -> str:
         domain = snippet_source_map.get(num, "")
+        # D03 (ruling B1): a banned source is never shown as an attribution;
+        # the marker is still stripped. Flag read FIRST.
+        if data_guards_v2_enabled() and is_denied_url(snippet_link_map.get(num)):
+            return ""
         return f"Per {domain}: " if domain else ""
 
     def replace_citation(text: str) -> str:
@@ -317,6 +327,11 @@ def build_retailer_quotes_from_reviews(
         if not isinstance(result, dict):
             continue
         domain = _extract_domain(result.get("link", ""))
+        # D03 (ruling B1): a cited result on a banned host is never quoted;
+        # the deny reads the link's parsed HOSTNAME, never the netloc
+        # (fix-round ruling F1-4). Flag read FIRST.
+        if data_guards_v2_enabled() and is_denied_url(result.get("link")):
+            continue
         if not domain or domain in seen_domains:
             continue  # dedupe by source domain
         text = (result.get("snippet") or "").strip()

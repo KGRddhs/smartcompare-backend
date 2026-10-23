@@ -19,6 +19,12 @@ from app.services.price_service import (
     build_retailer_url,
     RETAILER_SEARCH_URLS,
 )
+# D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
+from app.services.deny_hosts import (
+    data_guards_v2_enabled,
+    is_denied_source,
+    is_denied_url,
+)
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 
@@ -48,9 +54,22 @@ LUXURY_FASHION_RETAILERS = {
 }
 
 
+def _rating_source_denied(source: Any, link: Any = None) -> bool:
+    """D03: True iff the flag is ON and the rating's source name or its link
+    names a banned site (deny_hosts). The flag is read FIRST, so with it OFF
+    nothing else is evaluated. The rating sets above are never mutated."""
+    if not data_guards_v2_enabled():
+        return False
+    return is_denied_source(source) or is_denied_url(link)
+
+
 def get_rating_tier(source: str) -> int:
     """Classify a retailer into rating trust tiers. Returns 1, 2, or 3."""
     if not source:
+        return 3
+    # D03: a banned source is tier 3 under the flag, before the RATING_TIER_2
+    # substring and the ".com" / ".ae" rule can lift it.
+    if data_guards_v2_enabled() and is_denied_source(source):
         return 3
     source_lower = source.lower()
     for r in RATING_TIER_1:
@@ -74,6 +93,9 @@ def collect_retailer_ratings(full_name: str, shopping_items_cache: Dict) -> List
         rating = item.get("rating")
         source = item.get("source", "")
         if not rating or not source:
+            continue
+        # D03: a banned source (by name or link) is never listed (flag ON only).
+        if _rating_source_denied(source, item.get("link")):
             continue
         source_key = source.lower().strip()
         if source_key in seen:
@@ -129,6 +151,10 @@ def extract_rating_from_shopping(
         except (ValueError, TypeError):
             continue
         if not (0 < rating_val <= 5):
+            continue
+        # D03: a banned source (by name or link) reaches no tier bucket and not
+        # the Google consensus rule (flag ON only).
+        if _rating_source_denied(item.get("source", ""), item.get("link")):
             continue
 
         title = item.get("title", "")

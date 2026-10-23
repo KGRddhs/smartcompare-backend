@@ -23,6 +23,8 @@ from app.services.search_descriptor_service import (
     SearchDescriptor,
     parse_search_descriptor,
 )
+# D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
+from app.services.deny_hosts import data_guards_v2_enabled, is_denied_host
 
 
 @dataclass(frozen=True)
@@ -531,6 +533,30 @@ def _load_catalog_rows() -> List[Source]:
 # equals _LITERAL_ROWS exactly — a prod no-op.)
 SOURCE_REGISTRY: List[Source] = _LITERAL_ROWS + _load_catalog_rows()
 
+# D03 (ENABLE_DATA_GUARDS_V2): the registry every consumer below iterates.
+# Flag OFF it IS SOURCE_REGISTRY (the same object; nothing else is read). Flag
+# ON it is a NEW list of the same row objects minus the rows on a banned host
+# (deny_hosts), so every consumer answers exactly as if a denied row were absent
+# while SOURCE_REGISTRY and _LITERAL_ROWS stay byte-identical (the fragrantica
+# literal row is never deleted here; that is the later R-A1 PR). The memo holds
+# a STRONG reference to the registry object it filtered (ruling B4): a hit needs
+# ``memo[0] is SOURCE_REGISTRY``, so a replaced registry (a recycled id
+# included) is always re-filtered. Test seam: ``_ROUTABLE_MEMO`` (None at import).
+_ROUTABLE_MEMO: Optional[Tuple[List[Source], List[Source]]] = None
+
+
+def _routable_registry() -> List[Source]:
+    global _ROUTABLE_MEMO
+    if not data_guards_v2_enabled():
+        return SOURCE_REGISTRY
+    reg = SOURCE_REGISTRY
+    memo = _ROUTABLE_MEMO
+    if memo is not None and memo[0] is reg:
+        return memo[1]
+    filtered = [s for s in reg if not is_denied_host(getattr(s, "domain", ""))]
+    _ROUTABLE_MEMO = (reg, filtered)
+    return filtered
+
 
 _TIER_ORDER = ("bahrain", "gcc", "global")
 
@@ -575,7 +601,7 @@ def _registry_row_for_host(
     caller keeps its own "first match WITH the field" semantic on both paths.
     ``registry`` overrides SOURCE_REGISTRY for unit tests.
     """
-    reg = SOURCE_REGISTRY if registry is None else registry
+    reg = _routable_registry() if registry is None else registry
     domain = _normalize_domain(str(host or ""))
     if not domain:
         return None
@@ -694,8 +720,9 @@ def get_sources_for_category(
     """
     super_enabled = _super_routing_enabled()
     result: List[Source] = []
+    reg = _routable_registry()
     for tier in _TIER_ORDER:
-        for s in SOURCE_REGISTRY:
+        for s in reg:
             if s.tier != tier:
                 continue
             if getattr(s, "requires_super", False) and not super_enabled:
@@ -719,7 +746,7 @@ def get_shopify_sources_for_category(category: str) -> List[Source]:
     """
     return [
         s
-        for s in SOURCE_REGISTRY
+        for s in _routable_registry()
         if s.is_shopify
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
@@ -737,7 +764,7 @@ def get_algolia_sources_for_category(category: str) -> List[Source]:
     """
     return [
         s
-        for s in SOURCE_REGISTRY
+        for s in _routable_registry()
         if s.is_algolia
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
@@ -752,7 +779,7 @@ def get_jsonapi_sources_for_category(category: str) -> List[Source]:
     """
     return [
         s
-        for s in SOURCE_REGISTRY
+        for s in _routable_registry()
         if s.mechanism == "json_api"
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
@@ -780,7 +807,7 @@ def get_curl_pagescrape_sources_for_category(category: str) -> List[Source]:
     """
     return [
         s
-        for s in SOURCE_REGISTRY
+        for s in _routable_registry()
         if (s.mechanism or "") in ("", "curl")
         and s.tier == "bahrain"
         and not s.is_shopify
@@ -797,7 +824,7 @@ def get_sitemap_sources_for_category(category: str) -> List[Source]:
     """
     return [
         s
-        for s in SOURCE_REGISTRY
+        for s in _routable_registry()
         if s.mechanism in ("sitemap", "curl")
         and s.tier == "bahrain"
         and (not s.categories or category in s.categories)
@@ -833,7 +860,7 @@ def _direct_fetch_sources(category: str, mechanism: str) -> List[Source]:
     fan-out; the adapter still stamps genuine-vs-converted by actual currency."""
     matched = [
         (idx, s)
-        for idx, s in enumerate(SOURCE_REGISTRY)
+        for idx, s in enumerate(_routable_registry())
         if s.mechanism == mechanism
         and s.tier in ("bahrain", "gcc")
         and (not s.categories or category in s.categories)
@@ -914,7 +941,7 @@ def get_gcc_shopify_pagescrape_sources_for_category(category: str) -> List[Sourc
     """
     matched = [
         (idx, s)
-        for idx, s in enumerate(SOURCE_REGISTRY)
+        for idx, s in enumerate(_routable_registry())
         if (s.mechanism or "") == ""
         and not s.is_shopify
         and not s.is_algolia
@@ -943,7 +970,7 @@ def source_usage(url: str, category: str) -> str:
         return "price"
 
     domain = _normalize_domain(parsed.netloc)
-    for s in SOURCE_REGISTRY:
+    for s in _routable_registry():
         registry_domain = s.domain.lower()
         if domain == registry_domain or domain.endswith("." + registry_domain):
             if not s.categories or category in s.categories:
@@ -966,7 +993,7 @@ def score_source(url: str, category: str) -> float:
         return 0.5
 
     domain = _normalize_domain(parsed.netloc)
-    for s in SOURCE_REGISTRY:
+    for s in _routable_registry():
         registry_domain = s.domain.lower()
         if domain == registry_domain or domain.endswith("." + registry_domain):
             if not s.categories or category in s.categories:
@@ -1168,7 +1195,7 @@ def is_render_only_domain(domain_or_url: str) -> bool:
         except (ValueError, TypeError):
             host = domain_or_url
     host = host.replace("www.", "").lower()
-    for s in SOURCE_REGISTRY:
+    for s in _routable_registry():
         if not getattr(s, "is_render_only", False):
             continue
         d = s.domain.replace("www.", "").lower()
