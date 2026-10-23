@@ -48,6 +48,7 @@ import inspect
 import json
 import logging
 import math
+import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -147,8 +148,11 @@ SPEND_COLUMNS = (
     "price_table_as_of", "period_start", "period_end",
 )
 
-# Recorded at base 95cf6f86 by the RED agent (distinct-usage client, explicit pair,
-# flag unset): identical on the REST full path and the stream complete payload.
+# The RED gate's measured fixture: recorded at base 95cf6f86 by the RED agent
+# with the CALL-INDEX distinct-usage client (explicit pair, flag unset). Historical
+# since fix round 2 (its per-model sums followed the dispatch order of the
+# compare's concurrent legs, RULINGS_FIX2_S81_03); A17 still maps it as a static
+# summary.
 B5_OPENAI = {
     "basis": "list_price",
     "by_model": {
@@ -164,6 +168,23 @@ B5_OPENAI = {
 B5_TOTAL_COST = 0.016634
 B5_SERPER_CALLS = 8
 B5_GPT_CALLS = 9
+# F2-1: recorded at base 84c861f6 (the PR's base) with the content-keyed fake
+# (_fake_usage_tokens), flag unset: identical on the REST full path and the
+# stream complete payload, under every _perturbed pattern, and equal to HEAD
+# with the flag OFF (fix round 2).
+B5_BASE_OPENAI = {
+    "basis": "list_price",
+    "by_model": {
+        "gpt-4o": {"cached_tokens": 0, "calls": 3, "completion_tokens": 699, "cost_usd": 0.016745,
+                   "prompt_tokens": 3902},
+        "gpt-4o-mini": {"cached_tokens": 0, "calls": 8, "completion_tokens": 1688, "cost_usd": 0.002819,
+                        "prompt_tokens": 12043},
+    },
+    "cached_tokens": 0, "calls": 11, "completion_tokens": 2387, "cost_complete": True,
+    "cost_usd": 0.019564, "price_table_as_of": "2026-10-08", "priced_calls": 11,
+    "prompt_tokens": 15945, "unpriced_calls": 0,
+}
+B5_BASE_TOTAL_COST = 0.017175
 
 # K1 / K2 (spec 1.8): split so the added-line sweep's 8-digit rule cannot misfire.
 K1_GUARDED_AST_SHA = "8fa87b616" + "45971d65a41d38cf70938f38d441d0b0a0d91a055b16d74b1b3a63d"
@@ -326,17 +347,56 @@ def _prime_leaf_state(monkeypatch, final_flag):
     _set_flag(monkeypatch, final_flag)
 
 
+# F2-1 (RULINGS_FIX2_S81_03): the distinct-usage fake keys every usage by the
+# requested MODEL and a CONTENT signature of the request, never by call index.
+# Until fix round 2 it answered call n with prompt 1000 + 17n / completion
+# 200 + 3n, so the per-model sums B5 / I6 pinned followed the asyncio dispatch
+# order of the compare's concurrent legs (PR #369 went red on the GitHub
+# runner at 21b37039: gpt-4o completion 684 instead of 690).
+FAKE_COMPLETION_TOKENS = {"gpt-4o-mini": 211, "gpt-4o": 233}
+FAKE_COMPLETION_TOKENS_OTHER = 197
+FAKE_PRODUCT_MARKERS = ("Acme", "Globex")
+# Test-only knob (never set in CI): a _perturbed pattern ("skew_a", "skew_b",
+# "hash<seed>") that holds every dispatch of every distinct-usage client, so a
+# whole-file run proves the rows order-independent (F2-2).
+FAKE_PERTURB_ENV = "S03_FAKE_DISPATCH_PERTURB"
+
+
+def _fake_usage_signature(model, messages):
+    """The content one usage is keyed on: the requested model, the first
+    sentence of the system message and which compare products the request
+    names. The whole message text is not order-stable: the verdict prompt
+    serialises each product dict's keys in the order that product's races
+    finished (measured under a perturbed dispatch order in fix round 2)."""
+    msgs = [m for m in (messages or []) if isinstance(m, dict)]
+    system = next((m.get("content") for m in msgs
+                   if m.get("role") == "system" and isinstance(m.get("content"), str)), "")
+    first_sentence = re.split(r"[.\n]", system, maxsplit=1)[0]
+    blob = "\n".join(str(m.get("content")) for m in msgs)
+    named = ",".join(marker for marker in FAKE_PRODUCT_MARKERS if marker in blob)
+    return f"{model}|{first_sentence}|{named}"
+
+
+def _fake_usage_tokens(model, messages):
+    """(prompt, completion) of one request: prompt = 1000 + a sha256 of the
+    signature mod 997 (11 distinct values over the 11 calls of a compare,
+    measured), completion = a per-model constant; no call index, no clock."""
+    digest = hashlib.sha256(_fake_usage_signature(model, messages).encode("utf-8")).hexdigest()
+    prompt = 1000 + int(digest[:12], 16) % 997
+    return prompt, FAKE_COMPLETION_TOKENS.get(model, FAKE_COMPLETION_TOKENS_OTHER)
+
+
 def _distinct_client():
-    """Every chat completion carries a DISTINCT usage (prompt 1000 + 17n,
-    completion 200 + 3n) and echoes the requested model (the spec probe)."""
-    state = {"n": 0}
+    """Every chat completion carries a usage keyed by the requested model and
+    the request's content (_fake_usage_tokens; the same request always gets the
+    same counts, distinct requests get distinct counts) and echoes the requested
+    model. FAKE_PERTURB_ENV, when set, holds every dispatch (_perturbed)."""
     client = MagicMock()
 
     async def _create(**kwargs):
-        state["n"] += 1
-        n = state["n"]
-        usage = SimpleNamespace(prompt_tokens=1000 + 17 * n, completion_tokens=200 + 3 * n,
-                                total_tokens=1200 + 20 * n,
+        prompt, completion = _fake_usage_tokens(kwargs.get("model"), kwargs.get("messages"))
+        usage = SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion,
+                                total_tokens=prompt + completion,
                                 prompt_tokens_details=SimpleNamespace(cached_tokens=0))
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=_LLM_JSON), finish_reason="stop")],
@@ -348,7 +408,7 @@ def _distinct_client():
     moderation = MagicMock()
     moderation.results = [flagged]
     client.moderations.create = AsyncMock(return_value=moderation)
-    return client
+    return _perturbed(client, os.environ.get(FAKE_PERTURB_ENV, "").strip())
 
 
 def _e2e_spies(monkeypatch, sink):
@@ -1001,7 +1061,10 @@ async def test_b4s_flag_off_no_metadata_llm_full_config_stream(monkeypatch, flag
 async def test_b5_flag_off_metadata_openai_and_total_cost_equal_base_recording(monkeypatch, path):
     """PIN (B5, the OFF literal R-S03-2 names): flag "false", the distinct client:
     metadata.openai, metadata.total_cost (the base mini estimate), serper_calls
-    and gpt_calls equal the literals recorded at base 95cf6f86."""
+    and gpt_calls equal the literals recorded at base with the same
+    content-keyed fake (F2-1: B5_BASE_*, recorded at 84c861f6; the RED gate's
+    call-index fixture 0.016634 / 0.017992 at 95cf6f86 is the historical
+    figure)."""
     _prime_leaf_state(monkeypatch, "false")
     calls = _leaf_recorders(monkeypatch)
     if path == "rest":
@@ -1010,8 +1073,8 @@ async def test_b5_flag_off_metadata_openai_and_total_cost_equal_base_recording(m
     else:
         complete, _ = await _stream(monkeypatch)
         meta = complete["metadata"]
-    assert meta["openai"] == B5_OPENAI
-    assert meta["total_cost"] == B5_TOTAL_COST, meta["total_cost"]
+    assert meta["openai"] == B5_BASE_OPENAI
+    assert meta["total_cost"] == B5_BASE_TOTAL_COST, meta["total_cost"]
     assert meta["serper_calls"] == B5_SERPER_CALLS and meta["gpt_calls"] == B5_GPT_CALLS
     assert "llm" not in meta
     assert not _called(calls), _called(calls)
@@ -2637,9 +2700,11 @@ def test_i6_camera_real_compare_total_cost_and_llm_mirror_openai(monkeypatch):
     """PIN (I6, F1-3; coverage, correctness MIN-9): ON, the camera route with a
     REAL compare: metadata.total_cost = every compare-ledger entry at list
     price + 8 x 0.001 Serper + 0.006 Tier 1.5 + the 0.000135 vision call =
-    0.032127 (no double count of the vision call, no unclaimed add from the
-    vision ledger); metadata.llm mirrors metadata.openai (12 calls / 0.018127)
-    in the G-4 key set."""
+    0.033699 with the content-keyed fake (F2-1, recorded at HEAD in fix round
+    2; the call-index fake's 0.032127 is the historical figure) (no double
+    count of the vision call, no unclaimed add from the vision ledger);
+    metadata.llm mirrors metadata.openai (12 calls / 0.019699; historical
+    0.018127) in the G-4 key set."""
     _need_leaf()
     meta, sink = _camera_real_compare(monkeypatch, "true")
     ledger = sink["ledgers"][-1]
@@ -2649,25 +2714,165 @@ def test_i6_camera_real_compare_total_cost_and_llm_mirror_openai(monkeypatch):
     assert meta["vision_cost"] == pytest.approx(0.000135, abs=1e-12)
     expected = compare_list + 0.001 * sink["serper"] + sum(sink["amounts"]) + meta["vision_cost"]
     assert meta["total_cost"] == pytest.approx(expected, abs=1.5e-6), (meta["total_cost"], expected)
-    assert meta["total_cost"] == 0.032127, meta["total_cost"]
+    assert meta["total_cost"] == 0.033699, meta["total_cost"]
     _assert_llm_mirrors_openai(meta["llm"], meta["openai"], "camera real compare")
     assert meta["llm"]["calls"] == meta["openai"]["calls"] == 12
-    assert meta["openai"]["cost_usd"] == pytest.approx(0.018127, abs=1e-6)
+    assert meta["openai"]["cost_usd"] == pytest.approx(0.019699, abs=1e-6)
 
 
 @pytest.mark.parametrize("flag", [None, "false"])
 def test_i6_off_camera_real_compare_total_cost_is_base(monkeypatch, flag):
     """PIN (I6 OFF half, B1 rule: the unit state primed, recorders on every
     leaf function): OFF, the same camera route with a REAL compare ships the
-    base total 0.016769 (the B5 REST base 0.016634 + the 0.000135 vision call),
-    no metadata.llm, metadata.openai 12 calls, zero leaf calls."""
+    base total 0.01731 (the B5 REST base 0.017175 + the 0.000135 vision call;
+    F2-1: recorded at base 84c861f6 with the same content-keyed fake and equal
+    at HEAD; the call-index fake's 0.016769 is the historical figure), no
+    metadata.llm, metadata.openai 12 calls, zero leaf calls."""
     def body():
         _prime_leaf_state(monkeypatch, flag)
         calls = _leaf_recorders(monkeypatch)
         meta, _sink = _camera_real_compare(monkeypatch, flag)
         assert "llm" not in meta, f"flag {flag!r}: metadata.llm leaked OFF"
-        assert meta["total_cost"] == 0.016769, meta["total_cost"]
+        assert meta["total_cost"] == 0.01731, meta["total_cost"]
         assert meta["openai"]["calls"] == 12
         assert not _called(calls), _called(calls)
 
     _isolated(body)
+
+
+# ===========================================================================
+# O -- order independence of the distinct-usage fake (fix round 2,
+# RULINGS_FIX2_S81_03 F2-1 / F2-2; CI red on PR #369 at 21b37039: the fake
+# assigned usage by CALL INDEX, so the per-model sums B5 / I6 pinned followed
+# the asyncio dispatch order of the compare's concurrent legs). Appended after
+# the F1 rows; every row above stays byte-identical except the F2-1 hygiene
+# (the fake and the literals it records).
+# ===========================================================================
+_THIS_MODULE = sys.modules[__name__]
+PERTURB_PATTERNS = ("skew_a", "skew_b")
+
+
+def _perturb_delay(pattern, key):
+    """Seconds one dispatch is held before it reaches the fake: "skew_a" /
+    "skew_b" hold every call that names the first / second compare product
+    80 ms (the other product's whole leg runs first), "hash<seed>" holds each
+    call 0-60 ms by a seeded hash of its request (a shuffle of the legs)."""
+    if pattern == "skew_a":
+        return 0.08 if "Acme" in key else 0.0
+    if pattern == "skew_b":
+        return 0.08 if "Globex" in key else 0.0
+    if pattern.startswith("hash"):
+        digest = hashlib.sha256((pattern + "|" + key).encode("utf-8")).hexdigest()
+        return (int(digest[:8], 16) % 61) / 1000.0
+    raise AssertionError(f"unknown dispatch perturbation {pattern!r}")
+
+
+def _perturbed(client, pattern):
+    """Wrap a fake client so every chat completion is held for the pattern's
+    delay BEFORE it reaches the fake: the order in which the compare's
+    concurrent calls arrive at the fake moves; an empty pattern is a no-op."""
+    if not pattern:
+        return client
+    inner = client.chat.completions.create.side_effect
+
+    async def _held(**kwargs):
+        key = "\n".join(str(m.get("content")) for m in (kwargs.get("messages") or []) if isinstance(m, dict))
+        await asyncio.sleep(_perturb_delay(pattern, key))
+        return await inner(**kwargs)
+
+    client.chat.completions.create = AsyncMock(side_effect=_held)
+    return client
+
+
+_O1_SYSTEM = "You are a probe expert. Every later sentence is ignored by the fake."
+_O1_REQUESTS = {
+    "a": {"model": "gpt-4o-mini", "messages": [
+        {"role": "system", "content": _O1_SYSTEM},
+        {"role": "user", "content": '{"name": "Acme Widget", "price": null, "specs": {}}'}]},
+    "a_reordered": {"model": "gpt-4o-mini", "messages": [
+        {"role": "system", "content": _O1_SYSTEM},
+        {"role": "user", "content": '{"specs": {}, "name": "Acme Widget", "price": null}'}]},
+    "b": {"model": "gpt-4o", "messages": [
+        {"role": "system", "content": _O1_SYSTEM},
+        {"role": "user", "content": '{"name": "Globex Gadget", "price": null, "specs": {}}'}]},
+}
+
+
+def _o1_usages(order):
+    client = _distinct_client()
+
+    async def run():
+        out = []
+        for name in order:
+            resp = await client.chat.completions.create(**copy.deepcopy(_O1_REQUESTS[name]))
+            out.append((name, resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.model))
+        return out
+
+    return asyncio.run(run())
+
+
+def test_o1_fake_usage_is_keyed_by_model_and_content_not_call_index():
+    """RED (F2-1): the distinct-usage fake answers a request with token counts
+    that depend only on the requested model and the request's content, never on
+    how many calls came before it: the same request gets the same counts at any
+    position, on any fresh client, and with its JSON keys serialised in another
+    order (the compare's verdict prompt dumps each product's dict keys in the
+    order that product's races finished, measured in fix round 2); two requests
+    naming different products on different models get different counts."""
+    seen = {}
+    for name, prompt, completion, model in (_o1_usages(["a", "b", "a", "a_reordered", "b"])
+                                            + _o1_usages(["b", "a_reordered", "b", "a", "a"])):
+        seen.setdefault("a" if name == "a_reordered" else name, set()).add((prompt, completion, model))
+    assert len(seen["a"]) == 1, f"F2-1: one request, several usages {sorted(seen['a'])} (call-index usage)"
+    assert len(seen["b"]) == 1, f"F2-1: one request, several usages {sorted(seen['b'])} (call-index usage)"
+    (pa, ca, ma), = seen["a"]
+    (pb, cb, mb), = seen["b"]
+    assert (ma, mb) == ("gpt-4o-mini", "gpt-4o")
+    assert pa != pb and ca != cb, (pa, ca, pb, cb)
+
+
+def _order_view(meta):
+    view = {key: meta.get(key) for key in ("openai", "total_cost", "serper_calls", "gpt_calls")}
+    if "llm" in meta:
+        view["llm"] = meta["llm"]
+    return view
+
+
+@pytest.mark.parametrize("pattern", PERTURB_PATTERNS)
+@pytest.mark.parametrize("flag", ["false", "true"])
+@pytest.mark.parametrize("path", ["rest", "stream"])
+@pytest.mark.asyncio
+async def test_o2_compare_cost_figures_do_not_follow_the_dispatch_order(monkeypatch, path, flag, pattern):
+    """RED (F2-2, the CI-red reproduction): the REST compare and the stream
+    complete payload carry the same metadata.openai, metadata.total_cost,
+    serper_calls, gpt_calls (and, ON, metadata.llm) when the compare's
+    concurrent LLM legs reach the fake in a perturbed order as when they do not.
+    At 21b37039 a skew moved gpt-4o's completion sum 690 -> 678 and
+    metadata.openai.cost_usd 0.017992 -> 0.017719 (the GitHub runner's 684 /
+    0.017855 is the same class)."""
+    _set_flag(monkeypatch, flag)
+    run = _rest if path == "rest" else _stream
+    plain, plain_client = await run(monkeypatch, _distinct_client())
+    held, held_client = await run(monkeypatch, _perturbed(_distinct_client(), pattern))
+    assert plain_client.chat.completions.create.await_count == 11
+    assert held_client.chat.completions.create.await_count == 11
+    assert _order_view(held["metadata"]) == _order_view(plain["metadata"]), (
+        f"F2-2: the {path} cost figures followed the dispatch order ({pattern}, flag {flag!r})"
+    )
+
+
+@pytest.mark.parametrize("pattern", PERTURB_PATTERNS)
+@pytest.mark.parametrize("flag", [None, "true"])
+def test_o3_camera_real_compare_cost_figures_do_not_follow_the_dispatch_order(monkeypatch, flag, pattern):
+    """RED (F2-2, the I6 shape): the camera route with a REAL compare carries
+    the same metadata.openai, metadata.total_cost (and, ON, metadata.llm) when
+    the compare's legs reach the fake in a perturbed order. At 21b37039 a skew
+    moved the I6 ON total 0.032127 -> 0.031854 (the runner's 0.03199 is the
+    same class)."""
+    plain, _ = _camera_real_compare(monkeypatch, flag)
+    real_factory = _distinct_client
+    monkeypatch.setattr(_THIS_MODULE, "_distinct_client", lambda: _perturbed(real_factory(), pattern))
+    held, _ = _camera_real_compare(monkeypatch, flag)
+    assert _order_view(held) == _order_view(plain), (
+        f"F2-2: the camera cost figures followed the dispatch order ({pattern}, flag {flag!r})"
+    )
