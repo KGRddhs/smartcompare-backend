@@ -115,10 +115,10 @@ ALLOWED_ORIGINS = _get_allowed_origins()
 # type inside the class, as its first statement): registered FIRST so it is the
 # innermost user middleware; RequestID has set request.state.request_id, and
 # SlowAPIASGI (when enabled) / ErrorHandler / SecurityHeaders / CORS run outside
-# the ContextVar scope and cannot depend on it. A device-keyed limiter reads
-# these values never through the default-limit (SlowAPIASGIMiddleware) key_func,
-# which runs outside the ContextVar scope; a per-route @limiter.limit key_func
-# runs inside it and may read these values (measured). Registration is
+# the ContextVar scope and cannot depend on it. A device-keyed limiter must
+# never read these values through the default-limit (SlowAPIASGIMiddleware)
+# key_func, which runs outside the ContextVar scope; a per-route @limiter.limit
+# key_func runs inside it and may read them (measured). Registration is
 # unconditional; flag OFF = one os.getenv per ASGI call.
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(

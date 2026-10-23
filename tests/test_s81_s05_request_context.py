@@ -1718,3 +1718,76 @@ def test_s05_fx1_device_key_fails_closed_on_unencodable_pepper(
     assert dk(FP_A) is None
     recs = [r for r in caplog.records if r.name == LEAF_LOGGER]
     assert len(recs) == 2
+
+
+# ===========================================================================
+# Rebase-round row (the rebase onto e1878dd8; re-verifier minor m1, mutant
+# RV10); every row above is unchanged.
+# ===========================================================================
+
+# Upper / mixed case bytes spellings of the three header names (index order
+# of _header_names: consent, fingerprint, request id).
+_RB1_UPPER_BYTES = (
+    (b"X-AI-Consent-Version", b"X-AI-CONSENT-VERSION"),
+    (b"X-Device-Fingerprint", b"X-DEVICE-FINGERPRINT"),
+    (b"X-Compare-Request-Id", b"X-COMPARE-REQUEST-ID"),
+)
+
+
+def test_s05_rb1_upper_case_bytes_name_reads_absent_and_binds_nothing(
+    monkeypatch,
+):
+    """F1-2 / stated limit 13 (re-verifier m1, kills RV10: bytes-name case
+    folding put back): bytes header names are compared as EXACT bytes.
+    (a) A scope whose three header names are upper / mixed case bytes binds
+    nothing: every value None, every state "absent". (b) Inside a request
+    bound from the lower-case names, every upper / mixed case bytes spelling
+    (bytes and bytearray) reads "absent" while the lower-case constants and
+    the str spellings read "ok". Full configuration present (flag ON, the
+    pepper set to a synthetic value)."""
+    leaf = _leaf()
+    mwmod = _mw()
+    hs = _fn(leaf, "header_state")
+    monkeypatch.setenv(FLAG, "true")
+    monkeypatch.setenv(PEPPER_ENV, PEPPER)
+    lows = (H_CONSENT, H_FP, H_ID)
+    valid = dict(_valid_headers())
+    # (a) upper / mixed case bytes names in the scope bind nothing
+    for spelling in (0, 1):
+        rec = _Recorder(leaf)
+        receive, send = _endpoints()
+        headers = [(_RB1_UPPER_BYTES[i][spelling], valid[lows[i]]) for i in range(3)]
+        _call(mwmod.RequestContextMiddleware(rec), _scope(headers), receive, send)
+        assert len(rec.calls) == 1
+        assert rec.calls[0]["values"] == NONE3
+        assert rec.calls[0]["states"] == ABSENT3
+        assert tuple(hs(s) for s in (x[spelling] for x in _RB1_UPPER_BYTES)) == ABSENT3
+    # (b) bound from the lower-case names: only the exact bytes match
+    seen = {}
+
+    async def downstream(scope, receive_, send_):
+        seen["values"] = _values(leaf)
+        seen["lower"] = tuple(hs(n) for n in lows)
+        seen["upper"] = tuple(tuple(hs(s) for s in x) for x in _RB1_UPPER_BYTES)
+        seen["upper_ba"] = tuple(
+            tuple(hs(bytearray(s)) for s in x) for x in _RB1_UPPER_BYTES
+        )
+        seen["str"] = tuple(
+            tuple(hs(s.decode("ascii")) for s in x) for x in _RB1_UPPER_BYTES
+        )
+
+    receive, send = _endpoints()
+    _call(
+        mwmod.RequestContextMiddleware(downstream),
+        _scope(_valid_headers()),
+        receive,
+        send,
+    )
+    assert seen["values"] == (3, FP_A, UID_A)
+    assert seen["lower"] == ("ok", "ok", "ok")
+    assert seen["upper"] == (("absent", "absent"),) * 3
+    assert seen["upper_ba"] == (("absent", "absent"),) * 3
+    assert seen["str"] == (("ok", "ok"),) * 3
+    # outside a bound request every spelling reads "absent"
+    for x in _RB1_UPPER_BYTES:
+        assert [hs(s) for s in x] == ["absent", "absent"]
