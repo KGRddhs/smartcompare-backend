@@ -68,6 +68,11 @@
 [sqlfluff]
 dialect = postgres
 
+# S81-14 (ruling R-S14-12): lint every file, whatever its size. sqlfluff
+# 4.3.0 silently SKIPS a file above this limit (default 20000 bytes) with a
+# WARNING and exit 0; 0 disables the skip.
+large_file_skip_byte_limit = 0
+
 # The corpus is hand-written DDL with no Jinja/dbt templating. `raw` keeps
 # sqlfluff from trying to render these files through a templater.
 templater = raw
