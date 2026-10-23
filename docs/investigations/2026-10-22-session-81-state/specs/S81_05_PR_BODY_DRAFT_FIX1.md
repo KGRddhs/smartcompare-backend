@@ -1,0 +1,126 @@
+# S81-05 REQUEST-CONTEXT: three request headers into ContextVars + the HMAC device key (dark flag `ENABLE_REQUEST_CONTEXT_HEADERS`)
+
+PLAN_S81 M1, lane B. Spec `.qa-s80/S81-05_UNIT_SPEC.md` (sha 7df306bc...), adversarial review (APPROVE_WITH_CHANGES), rulings `specs/RULINGS_S81_05.md` (R-S05-1..R-S05-11, C1-C14), the RED gate `specs/GATE_S81_05.md` (GC-1..GC-10) and the fix-round rulings `specs/RULINGS_FIX1_S81_05.md` (F1-1..F1-11) in `docs/investigations/2026-10-22-session-81-state/`. Base `84c861f6`. Two commits: the GREEN commit `e9fd7148` and the fix-round-1 commit `b7b30dcd` on top (two SOUND adversaries on the GREEN bytes: correctness 0 blocking / 0 major / 5 minor, engineering 0 / 0 / 7 minor).
+
+## What the flag does
+
+`ENABLE_REQUEST_CONTEXT_HEADERS` (default OFF, read with the house idiom once per ASGI call of any scope type (the flag read is the first statement of the middleware); a new name, so unset in production by construction).
+
+- New stdlib-only leaf `app/utils/request_context.py`: three ContextVars and accessors `consent_version()` (`X-AI-Consent-Version`, int 0..999 written as 1-3 ASCII digits), `device_fingerprint()` (`X-Device-Fingerprint`, `^[a-f0-9]{64}$` matched in full) and `compare_request_id()` (`X-Compare-Request-Id`, canonical uuid4, upper / mixed case normalised to lower case, R-S05-2); `header_state(name)` -> the constants `"absent"` / `"malformed"` / `"ok"` (never a value; the bytes constants compared as exact bytes, since ASGI servers deliver lower-case header names, or the str names case-insensitive, GC-1 / F1-2; an EMPTY value is `"malformed"`, GC-2; only the three constants are ever bound); `bind_from_headers` (TOTAL and ATOMIC: parse all three into locals, set the ContextVars only after every parse finished, any exception -> every value None and every state `"malformed"`, R-S05-4) and a total `reset_request_context`; `device_key(fp)` = HMAC-SHA256(`DEVICE_KEY_PEPPER` stripped, fp), fail closed (invalid fp: None without reading the pepper; an unset / blank pepper, or one that cannot be UTF-8 encoded (F1-1: the `UnicodeError` is caught): None + ONE constant WARNING per process naming `DEVICE_KEY_PEPPER`, the same line for both, never the value, never the exception text). `legacy_hash` / `device_lookup_keys` are NOT shipped (R-S05-1).
+- New pure-ASGI `app/middleware/request_context.py::RequestContextMiddleware`: flag first; OFF = one `os.getenv`, no scope read, nothing bound; ON = bind for `http` scopes only, reset in `finally`; the SAME `scope` / `receive` / `send` objects go downstream in both states; it never logs.
+- `app/main.py`: registered UNCONDITIONALLY as the innermost user middleware, immediately before the CORS add (R-S05-5); the `:97` comment rewritten (C8); the S81-05 comment states the flag read per ASGI call and the key_func rule (F1-3, F1-7). Stack (outermost first): RequestID, SecurityHeaders, ErrorHandler, [SlowAPIASGI under `ENABLE_DEFAULT_RATE_LIMITS`], CORS, RequestContext.
+- `app/api/auth_routes.py:35`: `_DEVICE_FINGERPRINT_RE` is the leaf's `DEVICE_FINGERPRINT_RE` re-imported under its old name (one compiled object, same pattern); nothing else in the file.
+- `tests/_env_safety.py`: `DEVICE_KEY_PEPPER` joins `CREDENTIALS_UNSET` (R-S05-6).
+- `.github/black-clean-paths.txt`: the three new .py files join the ratchet (R-S05-8).
+- `CLAUDE.md`: the SESSION 81 S81-05 flag row (after the D03 block, before `## Tests`), `DEVICE_KEY_PEPPER` in the Optional env list, the `:112` middleware-stack sentence completed in place (C7), the `:184` middleware list gains `request_context`; fix round 1 rewrote the row in place per F1-1..F1-7.
+
+No consumer reads the ContextVars yet (pinned by p01); the flag is inert until S81-06 / S81-09 / S81-22 flip. No route parameter, schema, response key, OpenAPI, DB or Redis change. Flag OFF and ON are byte-identical on every response by construction (the same scope / receive / send objects, r22 / r23); measured on the 401 / 404 envelopes in four states (P4) and on 12 request shapes by the correctness adversary.
+
+## Defect / ruling ids -> node ids
+
+| id | what | node ids (tests/test_s81_s05_request_context.py) |
+|---|---|---|
+| S81-05 | three headers into ContextVars, None rule, flag per call | test_s05_r01 (13), r02 (5), r03 (19), r04 (3), r05 (11), r06 (3), r07 (15), r14, r15 (4), r16 (9), r17 (2 + nested), r19 (2), r21, r26 (2) |
+| S81-05 device key | HMAC, fail closed, never leaks | test_s05_r09 (2), r10 (4), r11 (11), r12 |
+| F1-1 | a pepper that cannot be UTF-8 encoded fails closed (None, the same WARNING, no value, no exception text) | test_s05_fx1_device_key_fails_closed_on_unencodable_pepper (2: surrogateescape, lone-high) |
+| R-S05-1 | no dual-hash map | test_s05_p08 |
+| R-S05-2 | lower-case request id | test_s05_r06, r07[v1-upper], r13[upper-id] |
+| R-S05-3 / GC-1 | header_state constants, str names | test_s05_r13 (7), r14, r22, test_s05_p19 (3, a GREEN-time contract row) |
+| GC-2 | empty value = malformed | test_s05_p20 (3, a GREEN-time contract row) |
+| R-S05-4 / C2 | atomic bind, total bind | test_s05_r20_atomic_bind_when_a_parser_raises (3), r20_bind_is_total (8) |
+| R-S05-5 | innermost, unconditional, pure ASGI, same objects | test_s05_r25 (4), r15, r19, r22 (7), r23 |
+| R-S05-6 | CORS unchanged; pepper sanitised | test_s05_p03, r27 |
+| R-S05-8 | black ratchet | test_s05_r28 |
+| R-S05-9 / GC-3 | P4 401 + 404 bytes | test_s05_p04 (8) |
+| C3 | R26 driver (httpx.ASGITransport, one asyncio.run) | test_s05_r26 (2) |
+| C9 | first occurrence decides | test_s05_r18 (6) |
+| C11 | ScopeSpy reads / writes | test_s05_r22, r23 |
+| R8 / D2 | one regex object (identity + AST) | test_s05_r08 |
+| no-log | sources never log | test_s05_r24, p05 (4) |
+| parity | existing fingerprint readers and route reads unchanged | test_s05_p06, p07 |
+| no-consumer | nothing reads the vars yet | test_s05_p01, p02 |
+
+175 nodes = 149 RED + 18 PIN (the frozen RED bytes, sha ecdb5792...) + 6 GREEN-time contract rows p19 / p20 (GC-1 / GC-2; red at base because the leaf is absent, so they are not green-at-base PINs; F1-10) + 2 fix-round RED rows fx1 (F1-1; red on the GREEN bytes `e9fd7148` on an AssertionError: device_key raised `UnicodeEncodeError` three times). The frozen 52,230 bytes are a strict prefix of the file, and the GREEN file (sha b7a21c74...) is a strict prefix of the fix-round file (sha 4cef1984...).
+
+## Deliberate pin changes (spec 4.1)
+
+| # | node | before | after | why |
+|---|---|---|---|---|
+| E1 | `tests/test_retro_w1_9.py::TestW19cFlagOffIdentity::test_imported_app_has_no_rate_limit_middleware`, `::test_fresh_exec_flag_off_matches_the_imported_app`, `::test_falsy_flag_values_register_nothing[ , 0, false, off, no]` (7 nodes via `EXPECTED_STACK`) | the four base classes | the four + `"RequestContextMiddleware"` last | registered unconditionally and innermost; the list still proves "no rate-limit middleware" with the flag OFF |
+
+No other existing node changes.
+
+## Fix round 1 (RULINGS_FIX1_S81_05)
+
+- F1-1 (correctness m2): `device_key` catches `UnicodeError` around the pepper encode and fails closed: None plus the SAME once-per-process WARNING naming `DEVICE_KEY_PEPPER` (never the value, never the exception text). One new row (2 params) red on the GREEN bytes; five new mutants killed (MF1a the except removed, MF1b the WARNING dropped from the except arm, MF1c a surrogatepass fallback key, MF1d a narrower catch, MF1e the exception text logged).
+- F1-2 (correctness m5, GREEN D6): the dead defensive code in `header_state` is gone: bytes names are compared as exact bytes (no case folding) and the non-constant-state filter is removed (only the three constants are ever bound). No pin for removed code; the STATELEAK / case-fold mutants fall away.
+- F1-3..F1-7, F1-10: wording in the CLAUDE.md row, this body, the main.py S81-05 comment and the leaf docstring (stated limit 4 / the key_func rule; the canary sentence; the r26 executor sentence; the byte-identity sentence; "once per ASGI call of any scope type"; p19 / p20 as GREEN-time contract rows).
+- F1-9: the CI-order set ran in two chunks of 8 files; the hook `-k black` nodes were NOT MEASURED locally this round (the box was not idle; no hook or ratchet file changed; CI covers them).
+
+## Gates (every pytest through pyt.py, one at a time)
+
+GREEN commit `e9fd7148` (unchanged record):
+
+- Bytes: the three new files pure ASCII; existing files keep CRLF; `git diff --stat` content lines only; CLAUDE.md non-ASCII bytes 3961 -> 3946 (the five arrows of the rewritten `:112` line became ASCII `->`; nothing non-ASCII added).
+- Lint: ruff E9,F63,F7,F82 clean and py_compile OK on the 7 Python files; black 26.5.1 `--check` clean on the 3 new files; the pre-commit hook passed (no `--no-verify`).
+- Unit file, flag ON / OFF: `[pyt] tag=s05g-unit-on ... status=OK rc=0`, `[pyt] tag=s05g-unit-off ... status=OK rc=0` (173 passed each).
+- GC-6 mutation table on GREEN's bytes: 53 mutants, 52 KILLED (assertion failures only), 1 SURVIVED = X16 (`len == 36` pre-check removed), EQUIVALENT BY RULING R-S05-11 / GC-5.
+- CI-order pin set (16 files): `[pyt] tag=s05g-ciorder start=2026-10-23 12:55:00 end=2026-10-23 12:56:36 elapsed=95s bound=1200s status=OK rc=0` (900 passed, 1 skipped, 2 deselected; [netguard] blocked 16 attempt(s) from 10 node(s), the baseline sentinel nodes).
+- G6 flag ON identity: `[pyt] tag=s05g-g6-flagon ... status=OK rc=0` (215 passed). Black ratchet + hook black nodes: `[pyt] tag=s05g-black-allow ... status=OK rc=0`, `[pyt] tag=s05g-hook-black start=2026-10-23 12:57:36 end=2026-10-23 13:00:31 elapsed=174s bound=1200s status=OK rc=0` (4 passed).
+- Comm set at HEAD: 210 files (the RED base list of 187 UNION the HEAD re-derivation, MINUS the four `test_precommit_hook*.py`), 15 chunks of 14: 9,318 passed, 2 failed (`tests/test_auth_interceptor.py::test_sign_in_with_social_exception`, `::test_social_login_user_insert_fails_gracefully`, `tests/.pre_impl_failures.txt` known local reds = the base FAILED set), 33 skipped, 35 xfailed; branch-only-NEW = empty. Base comm record (RED agent, 187 files at 84c861f6): 8,662 passed, the same 2 failed.
+
+Fix-round commit (all on the fix bytes; the base for every measurement stays `84c861f6`):
+
+- Bytes: leaf LF 0 bytes > 127; test file LF 0 bytes > 127; main.py CRLF 635/635 (36 bytes > 127, unchanged); CLAUDE.md CRLF 949/949 (3946 bytes > 127, unchanged); 0 non-ASCII bytes in the added lines; the added-line sweep (`@gmail`, `+973`, 8-digit runs, key / JWT / PEM / credentialed-URL shapes) empty. Fix-round diff: 4 files, +94 / -22; branch total vs `84c861f6`: 9 files, +2097 / -5.
+- Lint: ruff E9,F63,F7,F82 clean and py_compile OK on the leaf, main.py and the test file; black 26.5.1 `--check` clean on the leaf and the test file (main.py is outside the black ratchet and was not black-clean at `84c861f6` or `e9fd7148` either); the pre-commit hook passed on the commit.
+- RED step (pre-fix app bytes, leaf sha ae5bc868... = the `e9fd7148` blob, no checkout): `[pyt] tag=s05f1-red start=2026-10-23 17:37:33 end=2026-10-23 17:37:55 elapsed=22s bound=600s status=FAIL rc=1` (2 failed = the two fx1 params, each `AssertionError: ['UnicodeEncodeError', 'UnicodeEncodeError', 'UnicodeEncodeError']`; 173 passed).
+- Unit file: `[pyt] tag=s05f1-unit-off-final start=2026-10-23 18:25:17 end=2026-10-23 18:25:29 elapsed=12s bound=600s status=OK rc=0` (175 passed), `[pyt] tag=s05f1-unit-on-final start=2026-10-23 18:25:33 end=2026-10-23 18:25:40 elapsed=7s bound=600s status=OK rc=0` (175 passed, flag exported); [hermeticity] 175, [netguard] blocked 0 each.
+- P4 401 / 404 literal rows both ways: `[pyt] tag=s05f1-p04-off start=2026-10-23 17:57:35 end=2026-10-23 17:58:20 elapsed=45s bound=600s status=OK rc=0` (8 passed), `[pyt] tag=s05f1-p04-on start=2026-10-23 17:58:24 end=2026-10-23 17:58:30 elapsed=7s bound=600s status=OK rc=0` (8 passed, flag exported).
+- G6 identity pins with the flag exported (FY25, W4-13, T23, w1_9, observability, security_middleware): `[pyt] tag=s05f1-g6-flagon start=2026-10-23 17:58:56 end=2026-10-23 17:59:23 elapsed=27s bound=1200s status=OK rc=0` (215 passed).
+- Mutation rows for device_key and header_state re-run on the fix bytes + the F1-1 mutants (25 mutants, whole unit file per mutant, byte copy, restore, sha256 compare, `.qa-mutation.lock`): 25 KILLED, assertion failures only, 0 errors: X20, X21, X22, X23, X24, X25, X25b, ME8, X37, MF1a, MF1b, MF1c, MF1d, MF1e, X40, XSLV, XP19a, XP19b, XP19c, XP19d (bytes names ignored), X26s, X27s, XP20, XP20b, XHSO (a bound unknown name reads "ok"); every restore sha-verified.
+- CI-order set (F1-9, two chunks of 8): `[pyt] tag=s05f1-ciorder-1 start=2026-10-23 18:00:09 end=2026-10-23 18:00:47 elapsed=38s bound=1200s status=OK rc=0` (329 passed, 1 skipped, 2 deselected; [netguard] blocked 4 attempt(s) from 4 node(s)), `[pyt] tag=s05f1-ciorder-2 start=2026-10-23 18:01:01 end=2026-10-23 18:01:30 elapsed=28s bound=1200s status=OK rc=0` (573 passed; [netguard] blocked 12 attempt(s) from 6 node(s)); together 902 passed = GREEN's 900 + the 2 fx1 rows, the same 16 / 10 netguard count.
+- The 28-file pin set = the 16 CI-order files + `test_image_identify_llm_unavailable_s69`, `test_m18_usage_symmetry`, `test_paid_route_metering`, `test_retro_w2_1`, `test_s80_url_mode_v2` + the seven source-scanning pins `test_migration_index_predicate_immutability`, `test_model_config`, `test_model_config_enforced`, `test_openai_key_log_hygiene_s69`, `test_prompt_fence`, `test_start_command`, `test_u3c_store_false_pin`: `[pyt] tag=s05f1-pins28-a start=2026-10-23 18:02:03 end=2026-10-23 18:02:17 elapsed=14s bound=1200s status=OK rc=0` (647 passed), `[pyt] tag=s05f1-pins28-b start=2026-10-23 18:02:35 end=2026-10-23 18:02:47 elapsed=12s bound=1200s status=OK rc=0` (167 passed); the five billing / identity files with the flag exported: `[pyt] tag=s05f1-billing-on start=2026-10-23 18:02:51 end=2026-10-23 18:03:05 elapsed=14s bound=1200s status=OK rc=0` (604 passed).
+- Comm set at the fix bytes (GREEN's 210 files and chunks verbatim; chunk 05 in two halves): 9,320 passed (= GREEN's 9,318 + the 2 fx1 rows), 2 failed (the same two `test_auth_interceptor` nodes), 33 skipped, 35 xfailed, 79 deselected; **branch-only-NEW vs the GREEN record = empty**; the netguard nodes equal GREEN's per chunk except one baselined egress node (`tests/test_flush_live_price_key.py::test_flag_off_body_is_the_legacy_shape_exactly`, listed in `tests/.network_attempt_baseline.txt`, file unchanged since base) and ephemeral loopback port numbers in `test_hermeticity_pins.py`.
+  - `[pyt] tag=s05f1-comm-c00 start=2026-10-23 18:04:00 end=2026-10-23 18:04:17 elapsed=17s bound=1200s status=OK rc=0` (447 passed)
+  - `[pyt] tag=s05f1-comm-c01 start=2026-10-23 18:04:28 end=2026-10-23 18:04:49 elapsed=22s bound=1200s status=FAIL rc=1` (2 failed = the two baseline auth_interceptor nodes, 555 passed, 25 deselected)
+  - `[pyt] tag=s05f1-comm-c02 start=2026-10-23 18:05:00 end=2026-10-23 18:05:23 elapsed=23s bound=1200s status=OK rc=0` (856 passed)
+  - `[pyt] tag=s05f1-comm-c03 start=2026-10-23 18:05:58 end=2026-10-23 18:06:34 elapsed=35s bound=1200s status=OK rc=0` (154 passed, 1 skipped)
+  - `[pyt] tag=s05f1-comm-c04 start=2026-10-23 18:06:46 end=2026-10-23 18:07:30 elapsed=44s bound=1200s status=OK rc=0` (1262 passed)
+  - `[pyt] tag=s05f1-comm-c05a start=2026-10-23 18:08:42 end=2026-10-23 18:11:27 elapsed=165s bound=1200s status=OK rc=0` (218 passed), `[pyt] tag=s05f1-comm-c05b start=2026-10-23 18:11:57 end=2026-10-23 18:12:07 elapsed=10s bound=1200s status=OK rc=0` (212 passed, 9 deselected)
+  - `[pyt] tag=s05f1-comm-c06 start=2026-10-23 18:12:25 end=2026-10-23 18:12:37 elapsed=12s bound=1200s status=OK rc=0` (132 passed)
+  - `[pyt] tag=s05f1-comm-c07 start=2026-10-23 18:12:48 end=2026-10-23 18:13:11 elapsed=23s bound=1200s status=OK rc=0` (339 passed)
+  - `[pyt] tag=s05f1-comm-c08 start=2026-10-23 18:13:22 end=2026-10-23 18:13:45 elapsed=23s bound=1200s status=OK rc=0` (363 passed, 21 skipped)
+  - `[pyt] tag=s05f1-comm-c09 start=2026-10-23 18:14:47 end=2026-10-23 18:16:39 elapsed=112s bound=1200s status=OK rc=0` (461 passed, 1 skipped)
+  - `[pyt] tag=s05f1-comm-c10 start=2026-10-23 18:16:54 end=2026-10-23 18:18:19 elapsed=85s bound=1200s status=OK rc=0` (598 passed)
+  - `[pyt] tag=s05f1-comm-c11 start=2026-10-23 18:18:57 end=2026-10-23 18:20:56 elapsed=119s bound=1200s status=OK rc=0` (1909 passed)
+  - `[pyt] tag=s05f1-comm-c12 start=2026-10-23 18:21:12 end=2026-10-23 18:21:40 elapsed=28s bound=1200s status=OK rc=0` (612 passed, 1 skipped)
+  - `[pyt] tag=s05f1-comm-c13 start=2026-10-23 18:22:08 end=2026-10-23 18:23:12 elapsed=64s bound=1200s status=OK rc=0` (370 passed)
+  - `[pyt] tag=s05f1-comm-c14 start=2026-10-23 18:23:33 end=2026-10-23 18:24:06 elapsed=33s bound=1200s status=OK rc=0` (832 passed, 9 skipped, 35 xfailed)
+- The two CLAUDE.md readers (`test_ci_gates`, `test_behavior_dimension_translation`) and `test_ci_gates::test_black_allowlist_entries_are_actually_clean` ran green in the CI-order chunk 1.
+- NOT MEASURED this round (F1-9): `tests/test_precommit_hook.py -k black` (the box was not idle; no `.githooks` or black-ratchet change in the round; GREEN's run of the same 4 nodes was green; CI covers them).
+
+## Stated limits
+
+1. Build 3 sends `X-Device-Fingerprint` as a header only on register and the two social sign-ins; share carries the hash in the JSON body; it never sends the other two headers: every accessor reads None on compare, camera, usage and share until the S81-08 OTA.
+2. The consent version is the client's claim; S81-06 treats it as a claim.
+3. The fingerprint is client-generated and only format-checked; the S81-08 composition change and a pepper rotation both restart every device key.
+4. ContextVar rule for consumers: read the accessors before any offload; `asyncio.to_thread`, Starlette's threadpool, `redis_offloop` and the price-parse pool copy the context, a task created in the request keeps its snapshot; `loop.run_in_executor` with the installed default executor reads None (r26 pins the default-executor case; the qaren-worker pool is a plain ThreadPoolExecutor with the same contract (read)).
+5. Innermost position: a CORS preflight never binds; the default-limit 429 of `SlowAPIASGIMiddleware` is produced outside the scope, so a device-keyed limiter must be a decorator or a consumer in the route: never the default-limit (`SlowAPIASGIMiddleware`) key_func, which runs outside the ContextVar scope; a per-route `@limiter.limit` key_func runs inside it and may read these values (measured).
+6. CORS `allow_headers` unchanged (native clients do not preflight; Expo web would be refused).
+7. No minimum pepper length enforced.
+8. The leaf's full match rejects the trailing-newline fingerprint the `auth_routes` / `usage_service` `.match` readers accept; no HTTP/1.1 parser (httptools in production) delivers one.
+9. No DB or privacy-text change (device counters move in S81-12 LEGAL-V3).
+10. One `os.getenv` per ASGI call of any scope type in both flag states (the flag read is the first statement; not timed).
+11. The unknown-route 404 body is FastAPI's default `{"detail":"Not Found"}` (pre-existing; S81-05b), pinned as measured.
+12. The device-fingerprint transition is dual-VALUE (R-S05-1): `X-Device-Fingerprint-Legacy` is S81-08's contract; this unit parses only `X-Device-Fingerprint`.
+13. `header_state` compares bytes names as exact bytes (F1-2): an upper-case bytes name reads `"absent"`; the str form stays case-insensitive.
+
+## Owner steps (names only)
+
+1. Set `DEVICE_KEY_PEPPER` on `web` (a random text value of at least 64 hex characters; never in the repo, chat or a ledger) BEFORE the flag flips.
+2. After approval and after the S81-08 OTA has propagated: set `ENABLE_REQUEST_CONTEXT_HEADERS=true` on `web` in the PLAN_S81 window "ledger, breaker, request context ON", its own canary window, before any consumer flag (S81-06 / S81-09 / S81-22).
+3. Record both as dated ledger lines (names only). Rollback: unset the variable (read per ASGI call, immediate).
+
+**Canary:** none needed for bytes (the flag is inert until a consumer flips); the WARNING can fire only once a consumer calls `device_key` (S81-09); until then confirm `DEVICE_KEY_PEPPER` by NAME on `web` before that consumer flips.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
