@@ -275,6 +275,8 @@ class TestW19cFlagOffIdentity:
         "SecurityHeadersMiddleware",
         "ErrorHandlerMiddleware",
         "CORSMiddleware",
+        # S81-05: innermost, unconditional (pin change E1)
+        "RequestContextMiddleware",
     ]
 
     def test_imported_app_has_no_rate_limit_middleware(self):

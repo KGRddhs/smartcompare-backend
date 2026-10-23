@@ -34,6 +34,7 @@ from app.api.profile_routes import router as profile_router    # Phase 2.6 edito
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.error_handler import ErrorHandlerMiddleware
+from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.rate_limiter import limiter, _default_rate_limits_enabled
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIASGIMiddleware
@@ -94,7 +95,7 @@ app = FastAPI(
 
 # -- Middleware (order matters: outermost added last) --
 
-# CORS (innermost -- runs first on response)
+# CORS (inside ErrorHandler; RequestContext (S81-05) is the innermost user middleware)
 _DEFAULT_ORIGINS = [
     "https://web-production-58776.up.railway.app",
     "http://localhost:8000",
@@ -110,6 +111,16 @@ def _get_allowed_origins() -> list:
     return _DEFAULT_ORIGINS
 
 ALLOWED_ORIGINS = _get_allowed_origins()
+# S81-05 (ENABLE_REQUEST_CONTEXT_HEADERS, read once per ASGI call of any scope
+# type inside the class, as its first statement): registered FIRST so it is the
+# innermost user middleware; RequestID has set request.state.request_id, and
+# SlowAPIASGI (when enabled) / ErrorHandler / SecurityHeaders / CORS run outside
+# the ContextVar scope and cannot depend on it. A device-keyed limiter must
+# never read these values through the default-limit (SlowAPIASGIMiddleware)
+# key_func, which runs outside the ContextVar scope; a per-route @limiter.limit
+# key_func runs inside it and may read them (measured). Registration is
+# unconditional; flag OFF = one os.getenv per ASGI call.
+app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
