@@ -22,6 +22,7 @@ from typing import Optional
 
 from app.services.cache_service import _redis_expire, _redis_get
 from app.services.model_config import standard_model, verdict_model
+from app.services import llm_pricing as _llm_pricing  # S81-03 (ENABLE_LLM_LEDGER_V2), module attribute (BL4)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,14 @@ class ModelRouterService:
         if priority != "high":
             return standard_model()
 
+        # S81-03 (ENABLE_LLM_LEDGER_V2): a verdict served by another provider is
+        # never routed by the OpenAI 4o token counter (S81-04 owns its daily cap).
+        if _llm_pricing.llm_ledger_v2_enabled():
+            try:
+                if _llm_pricing.provider_of(verdict_model()) == "anthropic":
+                    return verdict_model()
+            except Exception as _exc:  # noqa: BLE001 -- routing never breaks on telemetry
+                logger.warning("[LLM-LEDGER] router failed type=%s -- base value", type(_exc).__name__)
         used = await self._get_4o_usage_today()
         cap = self.daily_4o_cap()
         if used / cap >= self.SWITCH_THRESHOLD:
@@ -99,14 +108,26 @@ class ModelRouterService:
             return routed
         return verdict_model()
 
-    async def record_usage(self, model: str, tokens_used: int) -> None:
+    async def record_usage(self, model: str, tokens_used: int, provider: Optional[str] = None) -> None:
         """Record token usage. Only the verdict-model counter is tracked — the
         standard and unknown models are silently ignored (the standard model has
         its own free tier with separate caps; unknown models no-op for safety).
 
         Compares against the configured verdict id so the counter keeps tracking
         the expensive model after an env-driven model change.
+
+        ``provider`` (S81-03, additive, default None; no existing caller passes
+        it): under ENABLE_LLM_LEDGER_V2 a call served by a provider other than
+        OpenAI (the keyword, else the model id's provider) never increments the
+        OpenAI 4o counter. Flag OFF: ignored.
         """
+        if _llm_pricing.llm_ledger_v2_enabled():
+            try:
+                served = provider if provider is not None else _llm_pricing.provider_of(model)
+                if served is not None and served != "openai":
+                    return
+            except Exception as _exc:  # noqa: BLE001 -- routing never breaks on telemetry
+                logger.warning("[LLM-LEDGER] router failed type=%s -- base value", type(_exc).__name__)
         if model == verdict_model():
             await self._increment_4o_usage(tokens_used)
         # standard + unknown: no-op

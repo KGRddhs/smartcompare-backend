@@ -34,6 +34,8 @@ from app.services.openai_pricing import (
     start_openai_ledger,
     summarize_openai_ledger,
 )
+# S81-03 (ENABLE_LLM_LEDGER_V2): the vision call joins metadata.llm; module attribute (BL4).
+from app.services import llm_pricing as _llm_pricing
 from app.services.structured_comparison_service import (
     LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
     StructuredComparisonService,
@@ -548,6 +550,20 @@ async def identify_and_compare(
             }
         if merged_openai is not None and recorded_openai:
             result["metadata"]["openai"] = merged_openai
+        # S81-03 (ENABLE_LLM_LEDGER_V2): the vision call merged into the compare's
+        # metadata.llm under the same condition as metadata.openai; a failure keeps
+        # the body as built, with ONE WARNING (R-S03-5).
+        if _llm_pricing.llm_ledger_v2_enabled():
+            try:
+                vision_llm = _llm_pricing.summarize_llm_records(
+                    [_llm_pricing.openai_entry_record(e) for e in vision_ledger]
+                )
+                compare_llm = result["metadata"].get("llm")
+                merged_llm = _llm_pricing.merge_llm_summaries(vision_llm, compare_llm)
+                if merged_llm is not None and (compare_llm is not None or vision_llm["calls"] > 0):
+                    result["metadata"]["llm"] = merged_llm
+            except Exception as _exc:  # noqa: BLE001 -- telemetry never breaks a delivery
+                logger.warning("[LLM-LEDGER] camera failed type=%s -- base value", type(_exc).__name__)
         # B1-TIMINGS (R0-6): flag first; then only into an EXISTING stage_timings_ms dict.
         stamp_camera_stage_timings(
             result, vision_ms=vision_ms, vision_moderation_ms=vision_moderation_ms,

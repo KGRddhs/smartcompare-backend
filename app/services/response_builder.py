@@ -19,6 +19,8 @@ from app.services.scoring_service import (
 from app.services.text_sanitize import has_score_internals, strip_score_internals, scrub_review_summary
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): the pure predicates; the flag is read per call.
 from app.services.result_gate import STATUS_SUPPORTED, assess_result, result_status_metadata_enabled
+# S81-03 (ENABLE_LLM_LEDGER_V2): the leaf by module attribute (ruling BL4); the flag is read per call.
+from app.services import llm_pricing as _llm_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -2133,6 +2135,26 @@ def build_comparison_response(
     # wins. metadata.total_cost is untouched (it is NOT an OpenAI figure).
     if openai_usage is not None:
         result["metadata"]["openai"] = openai_usage
+    # S81-03 (ENABLE_LLM_LEDGER_V2): the provider-neutral summary metadata.llm
+    # beside metadata.openai (before the override merge, so a caller's
+    # metadata={"llm": ...} wins), and the list price of every bound
+    # OpenAI-ledger entry no tracked call claimed added to metadata.total_cost
+    # (ruling R-S03-2). Each body falls back to the base value with ONE
+    # WARNING naming the exception type only (R-S03-5).
+    if _llm_pricing.llm_ledger_v2_enabled():
+        if openai_usage is not None:
+            try:
+                _llm = _llm_pricing.build_llm_metadata(openai_usage)
+                if _llm is not None:
+                    result["metadata"]["llm"] = _llm
+            except Exception as _exc:  # noqa: BLE001 -- telemetry never breaks a delivery
+                logger.warning("[LLM-LEDGER] builder failed type=%s -- base value", type(_exc).__name__)
+        try:
+            _unclaimed = _llm_pricing.unclaimed_openai_cost_usd()
+            if _unclaimed:
+                result["metadata"]["total_cost"] = round(total_cost + _unclaimed, 6)
+        except Exception as _exc:  # noqa: BLE001 -- telemetry never breaks a delivery
+            logger.warning("[LLM-LEDGER] unclaimed failed type=%s -- base value", type(_exc).__name__)
     if metadata:
         result["metadata"].update(metadata)
     # W4-12 — scrub telemetry: present (True) only when the strip emptied the

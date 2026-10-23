@@ -65,14 +65,17 @@ async def view_shared_comparison(
     # COST-METER (#66) CM11: the PUBLIC view strips metadata.openai (model ids,
     # token counts, list-price USD); the owner's views keep it, as
     # metadata.total_cost ships today. A copy, never the stored dict mutated.
+    # S81-03 (UNFLAGGED, R-A1(c)): metadata.llm (the provider-neutral summary
+    # ENABLE_LLM_LEDGER_V2 writes) is stripped exactly where metadata.openai is;
+    # a row written with the flag OFF carries neither key, so it is a no-op there.
     if (
         isinstance(full_response, dict)
         and isinstance(full_response.get("metadata"), dict)
-        and "openai" in full_response["metadata"]
+        and ("openai" in full_response["metadata"] or "llm" in full_response["metadata"])
     ):
         full_response = {
             **full_response,
-            "metadata": {k: v for k, v in full_response["metadata"].items() if k != "openai"},
+            "metadata": {k: v for k, v in full_response["metadata"].items() if k not in ("openai", "llm")},
         }
 
     return {

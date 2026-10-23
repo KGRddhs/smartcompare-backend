@@ -22,6 +22,7 @@ from app.services.model_config import (
     vision_model,
 )
 from app.services import api_budget_service as _llm_breaker
+from app.services import llm_pricing as _llm_pricing  # S81-03 (ENABLE_LLM_LEDGER_V2), module attribute (BL4)
 from app.utils.prompt_sanitizer import sanitize_prompt_input
 
 logger = logging.getLogger(__name__)
@@ -550,6 +551,9 @@ async def _identify_products_v2(image_data_list: List[Dict]) -> Dict:
     # The V1 cost formula (gpt-4o-mini list price), tolerant of a missing usage.
     if usage is None:
         cost = 0.0
+    elif _llm_pricing.llm_ledger_v2_enabled():
+        # S81-03 (ENABLE_LLM_LEDGER_V2): the vision model's own list price (cached tokens priced).
+        cost = round(_llm_pricing.openai_usage_cost_usd(_vision_model, usage), 6)
     else:
         input_cost = (_vision_usage_int(usage, "prompt_tokens") * 0.15) / 1_000_000
         output_cost = (_vision_usage_int(usage, "completion_tokens") * 0.60) / 1_000_000
@@ -675,9 +679,14 @@ EXAMPLES:
     # Calculate cost (gpt-4o-mini pricing)
     # Input: $0.15 per 1M tokens, Output: $0.60 per 1M tokens
     usage = response.usage
-    input_cost = (usage.prompt_tokens * 0.15) / 1_000_000
-    output_cost = (usage.completion_tokens * 0.60) / 1_000_000
-    total_cost = input_cost + output_cost
+    if _llm_pricing.llm_ledger_v2_enabled():
+        # S81-03 (ENABLE_LLM_LEDGER_V2): the vision model's own list price; a None
+        # usage still raises at usage.total_tokens below, as at base (ruling C1).
+        total_cost = _llm_pricing.openai_usage_cost_usd(_vision_model, usage)
+    else:
+        input_cost = (usage.prompt_tokens * 0.15) / 1_000_000
+        output_cost = (usage.completion_tokens * 0.60) / 1_000_000
+        total_cost = input_cost + output_cost
 
     return {
         "products": normalized,
@@ -920,9 +929,13 @@ async def disambiguate_variant_line(
         cost = 0.0
         usage = getattr(response, "usage", None)
         if usage is not None:
-            input_cost = (getattr(usage, "prompt_tokens", 0) * 0.15) / 1_000_000
-            output_cost = (getattr(usage, "completion_tokens", 0) * 0.60) / 1_000_000
-            cost = round(input_cost + output_cost, 6)
+            if _llm_pricing.llm_ledger_v2_enabled():
+                # S81-03 (ENABLE_LLM_LEDGER_V2): the standard model's own list price.
+                cost = round(_llm_pricing.openai_usage_cost_usd(_model, usage), 6)
+            else:
+                input_cost = (getattr(usage, "prompt_tokens", 0) * 0.15) / 1_000_000
+                output_cost = (getattr(usage, "completion_tokens", 0) * 0.60) / 1_000_000
+                cost = round(input_cost + output_cost, 6)
 
         return {"distinct_product": distinct, "confidence": conf, "cost": cost}
     except Exception as e:  # noqa: BLE001 — hint is additive; fail-closed on any error

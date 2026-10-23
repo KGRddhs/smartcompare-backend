@@ -9625,9 +9625,21 @@ class StructuredComparisonService:
 
     def _track_gpt_cost(self, usage: dict):
         """Track real GPT cost from token usage."""
-        prompt_tokens = usage.get("prompt_tokens", 0) or 0
-        completion_tokens = usage.get("completion_tokens", 0) or 0
-        cost = (prompt_tokens * 0.15 / 1_000_000) + (completion_tokens * 0.60 / 1_000_000)
+        # S81-03 (ENABLE_LLM_LEDGER_V2), the unit's only hunk in this file: ON, the
+        # call is priced from the bound ledger entry it came from (None -> the base
+        # estimate below); a non-dict usage takes the base lines and raises as at base.
+        from app.services import llm_pricing as _llm_pricing
+        cost = None
+        if _llm_pricing.llm_ledger_v2_enabled() and isinstance(usage, dict):
+            try:
+                cost = _llm_pricing.tracked_call_cost_usd(usage)
+            except Exception as _exc:  # noqa: BLE001 -- telemetry never breaks a compare
+                logger.warning("[LLM-LEDGER] track failed type=%s -- base value", type(_exc).__name__)
+                cost = None
+        if cost is None:
+            prompt_tokens = usage.get("prompt_tokens", 0) or 0
+            completion_tokens = usage.get("completion_tokens", 0) or 0
+            cost = (prompt_tokens * 0.15 / 1_000_000) + (completion_tokens * 0.60 / 1_000_000)
         self.total_cost += cost
         self.api_calls += 1
         self.gpt_calls += 1

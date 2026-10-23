@@ -19,6 +19,7 @@ from app.services.cache_service import (
 from app.services.database_service import get_supabase_client, get_admin_supabase_client
 from app.services.model_config import standard_model, verdict_model
 from app.services.openai_pricing import PRICE_TABLE_AS_OF  # COST-METER (#66)
+from app.services import llm_pricing as _llm_pricing  # S81-03 (ENABLE_LLM_LEDGER_V2), module attribute (BL4)
 from app.utils.db_offload import run_db  # COST-METER (#66) G4: never a blocking .execute() on the loop
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
@@ -302,6 +303,166 @@ def _aggregate_openai(rows, truncated=False):
     return out
 
 
+# S81-03 (ENABLE_LLM_LEDGER_V2) -- the all-provider figure. Comparisons persisted
+# while the flag is ON carry ``full_response.metadata.llm`` (llm_pricing's
+# SUMMARY: calls, token sums, list-price USD, by_provider / by_model; no
+# per-call records, ruling R-S03-1). Read ONLY when the flag is ON, through its
+# own JSON-path select on the endpoint's own client (C4), with the
+# _openai_rows paging / ordering / de-duplication / blob fallback; unknown is
+# null, never 0. The openai block above is untouched.
+LLM_COST_NOTE = (
+    "List price over persisted comparisons only, every provider; excludes "
+    "Link-mode compares (never persisted today, issue #340), failed compares, "
+    "calls cancelled by the hard cap or retried by the SDK, and off-clock "
+    "batches and crons (llm_spend_ledger), so this figure is not a bill."
+)
+LLM_COST_SOURCE = "comparisons.full_response.metadata.llm"
+_LLM_SELECT_JSON_PATH = "id,created_at,full_response->metadata->llm"
+_LLM_SELECT_BLOB = "id,created_at,full_response"
+_LLM_TOKEN_SUMS = (
+    "prompt_tokens", "completion_tokens", "input_tokens", "output_tokens",
+    "cache_read_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens",
+    "web_search_requests",
+)
+
+
+def _llm_of_row(row, shape):
+    """The row's metadata.llm value in either select shape (None when absent)."""
+    if shape == "json":
+        return row.get("llm")
+    full = row.get("full_response")
+    meta = full.get("metadata") if isinstance(full, dict) else None
+    return meta.get("llm") if isinstance(meta, dict) else None
+
+
+async def _llm_rows(client, since_iso):
+    """The _openai_rows read for ``metadata.llm``: rows ``{"id", "created_at",
+    "llm"}`` since ``since_iso``, ordered by created_at then id, pages of 1000,
+    at most 10, de-duplicated by id; returns ``(rows, truncated)``; raises when
+    the client raises (the callers read that as unknown, never as 0)."""
+    rows = []
+    seen = set()
+    shape = "json"
+    page = 0
+    while page < _OPENAI_MAX_PAGES:
+        lo = page * _OPENAI_PAGE
+        hi = lo + _OPENAI_PAGE - 1
+        select = _LLM_SELECT_JSON_PATH if shape == "json" else _LLM_SELECT_BLOB
+
+        def _fetch(select=select, lo=lo, hi=hi):
+            return (
+                client.table("comparisons")
+                .select(select)
+                .gte("created_at", since_iso)
+                .order("created_at")
+                .order("id")
+                .range(lo, hi)
+                .execute()
+            )
+
+        try:
+            result = await run_db(_fetch)
+        except Exception as exc:  # noqa: BLE001
+            if shape != "json":
+                raise
+            logger.warning(
+                "[ADMIN] llm JSON-path select rejected (%s); falling back to the blob select",
+                type(exc).__name__,
+            )
+            shape = "blob"
+            continue
+        data = result.data or []
+        for row in data:
+            rid = row.get("id")
+            if rid is not None:
+                if rid in seen:
+                    continue
+                seen.add(rid)
+            rows.append({
+                "id": rid,
+                "created_at": row.get("created_at") or "",
+                "llm": _llm_of_row(row, shape),
+            })
+        page += 1
+        if len(data) < _OPENAI_PAGE:
+            return rows, False
+    return rows, True
+
+
+def _aggregate_llm(rows, truncated=False):
+    """Sum metadata.llm over the paged rows with the _aggregate_openai rules
+    (cost_usd None when no row recorded a cost, never 0; rows_with_cost /
+    rows_partial / rows_without_cost; cost_complete None / False / True;
+    today_usd; by_day) plus calls, the token sums, web_search_requests and
+    by_provider / by_model as {calls, cost_usd}."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    rows = rows or []
+    with_cost = partial = without = 0
+    total = 0.0
+    today_total = None
+    by_day = {}
+    calls = 0
+    sums = {key: 0 for key in _LLM_TOKEN_SUMS}
+    by_provider = {}
+    by_model = {}
+    for row in rows:
+        llm = row.get("llm")
+        cost = _recorded_cost(llm)
+        if cost is None:
+            without += 1
+        else:
+            with_cost += 1
+            total += cost
+            day = (row.get("created_at") or "")[:10]
+            by_day[day] = by_day.get(day, 0.0) + cost
+            if day == today:
+                today_total = (today_total or 0.0) + cost
+        if isinstance(llm, dict):
+            if llm.get("cost_complete") is False:
+                partial += 1
+            calls += _int_field(llm, "calls")
+            for key in _LLM_TOKEN_SUMS:
+                sums[key] += _int_field(llm, key)
+            for field, target in (("by_provider", by_provider), ("by_model", by_model)):
+                entries = llm.get(field)
+                if not isinstance(entries, dict):
+                    continue
+                for name, entry in entries.items():
+                    slot = target.setdefault(str(name), {"calls": 0, "cost_usd": None})
+                    slot["calls"] += _int_field(entry, "calls")
+                    entry_cost = _recorded_cost(entry)
+                    if entry_cost is not None:
+                        slot["cost_usd"] = round((slot["cost_usd"] or 0.0) + entry_cost, 6)
+    if with_cost == 0:
+        cost_complete = None
+    elif partial > 0:
+        cost_complete = False
+    else:
+        cost_complete = True
+    out = {
+        "cost_usd": round(total, 6) if with_cost > 0 else None,
+        "today_usd": round(today_total, 6) if today_total is not None else None,
+        "by_day": {day: round(usd, 6) for day, usd in sorted(by_day.items())},
+        "rows": len(rows),
+        "rows_with_cost": with_cost,
+        "rows_partial": partial,
+        "rows_without_cost": without,
+        "cost_complete": cost_complete,
+        "truncated": bool(truncated),
+        "calls": calls,
+    }
+    out.update(sums)
+    out.update({
+        "by_provider": by_provider,
+        "by_model": by_model,
+        "basis": "list_price",
+        "price_table_as_of": dict(_llm_pricing.PRICE_TABLE_AS_OF),
+        "note": LLM_COST_NOTE,
+        "source": LLM_COST_SOURCE,
+    })
+    return out
+
+
 @router.get("/costs")
 @limiter.limit("30/minute")
 async def api_costs(request: Request, _=Depends(verify_admin_key)):
@@ -349,6 +510,18 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
         pass
 
     summary["openai"] = openai
+    # S81-03 (ENABLE_LLM_LEDGER_V2): the all-provider block, read only ON, on
+    # this endpoint's own client; a failed read is the aggregate of no rows
+    # (cost null, never 0), the exception TYPE only.
+    if _llm_pricing.llm_ledger_v2_enabled():
+        llm_rows = None
+        llm_truncated = False
+        if supabase:
+            try:
+                llm_rows, llm_truncated = await _llm_rows(supabase, month_start)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[ADMIN] Failed to fetch LLM costs: %s", type(e).__name__)
+        summary["llm"] = _aggregate_llm(llm_rows, llm_truncated)
     summary["comparisons_this_month"] = comp_count
     summary["avg_cost_per_comparison"] = (
         round(openai_cost / openai["rows_with_cost"], 6)
@@ -985,7 +1158,7 @@ async def costs_api(
         else None
     )
 
-    return {
+    body = {
         "window_days": days,
         "openai_list_usd": round(openai_cost, 4) if openai_cost is not None else None,
         "comparisons_with_cost": openai["rows_with_cost"],
@@ -1004,6 +1177,18 @@ async def costs_api(
         "note": openai["note"],
         "scrapers": scraper_budgets,
     }
+    # S81-03 (ENABLE_LLM_LEDGER_V2): the all-provider block, read only ON, on
+    # this endpoint's own client (C4); unknown is null, never 0.
+    if _llm_pricing.llm_ledger_v2_enabled():
+        llm_rows = None
+        llm_truncated = False
+        try:
+            if client:
+                llm_rows, llm_truncated = await _llm_rows(client, cutoff_iso)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[ADMIN] Failed to fetch LLM costs: %s", type(exc).__name__)
+        body["llm"] = _aggregate_llm(llm_rows, llm_truncated)
+    return body
 
 
 def _function_map():
