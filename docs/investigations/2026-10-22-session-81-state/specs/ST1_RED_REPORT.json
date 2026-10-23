@@ -1,0 +1,330 @@
+{
+ "unit": "ST1 LOOP-STALL (ENABLE_USAGE_PATH_OFFLOOP), lane B for files; RED agent Opus 5.5; real worktree C:/Users/SynAckITPC/Documents/AI/sc-s81-st1 at 95cf6f864b4e70980ca191daa064c0118e223c13",
+ "test_files": [
+  {
+   "path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-st1/tests/test_s81_st1_usage_path_offloop.py",
+   "sha256": "feb447667a1fd2f5d239b4ae4e0eb3a7ddba13644030bdcec2262800e7a05cc5",
+   "bytes": 114275
+  }
+ ],
+ "base_run": {
+  "failed": 232,
+  "passed": 281,
+  "every_failure_is_assertion_error": true,
+  "failed_node_ids": [
+   "FULL LIST (232 ids): C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/ST1_red/base_failed_final.txt",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r01_new_helpers_exist_and_no_db_twin (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r02_flag_reader_truth_table[*] (16 of 16)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r03a_pool_dispatch_is_independent_of_the_s77_flag[s77_off|s77_on] (2)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r03b_durable_write_lands_when_its_caller_is_cancelled_while_queued (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r03c_non_durable_read_queued_is_dropped_on_cancel (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r05_usage_status_on_placement[11 states x 8 combos] (88 of 88)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r06_usage_status_on_loop_freeze[sync_off|sync_on] (2)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r07_usage_status_on_reads_in_one_gather[sync_off|sync_on] (2)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r10_check_usage_allowed_on_placement_and_equal[11 states x 8 combos] (88 of 88)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r11_check_allowed_on_reads_both_counters_on_the_lifetime_free_path (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r14_dispatch_failure_falls_back_inline[get_usage_status|check_usage_allowed x sync_raise|async_raise] (4)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r15_cancel_propagates_without_fallback[sync_off|sync_on] (2)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r18_reviews_l1_read_on_runs_on_the_pool[s77_off_RED] (1; s77_on_PIN passes)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r19_reviews_post_extraction_write_on_runs_on_the_pool[s77_off|s77_on] (2)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r19b_reviews_write_dispatch_failure_is_logged_and_swallowed (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r21_reviews_recache_writes_on_land_in_order (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r22_reviews_race_cancel_still_lands_the_write_and_the_save (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r25a_source_inventory (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r26_health_shows_the_existing_pool_key_after_an_on_read[st1_on_RED] (1; st1_off_PIN passes)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r28_flag_is_read_per_call (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r28b_reviews_flag_is_read_once_per_call[on_then_off_RED] (1; off_then_on_PIN passes)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r31_reviews_saturated_pool_returns_inside_the_cap[s77_off|s77_on] (2)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r32_reviews_write_stores_the_snapshot_taken_at_write_time (1)",
+   "tests/test_s81_st1_usage_path_offloop.py::test_r35_one_compute_body_for_both_flag_states[11 states] (11)"
+  ],
+  "pyt_line": "[pyt] tag=st1red-unit-base-final start=2026-10-23 02:41:01 end=2026-10-23 02:41:30 elapsed=30s bound=600s status=FAIL rc=1 ([hermeticity] sentinel checked 513 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); 232 x call:AssertionError recorded by a pytest hook, no other type)"
+ },
+ "prototype": {
+  "on_passed": 513,
+  "on_failed": 0,
+  "off_passed": 513,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=st1red-proto-final-on-env start=2026-10-23 02:42:04 end=2026-10-23 02:42:21 elapsed=16s bound=600s status=OK rc=0 (ENABLE_USAGE_PATH_OFFLOOP=true exported on the runner call; 513 passed; hermeticity 513; netguard 0)",
+   "[pyt] tag=st1red-proto-final-off start=2026-10-23 02:41:46 end=2026-10-23 02:42:02 elapsed=16s bound=600s status=OK rc=0 (flag unset; 513 passed; hermeticity 513; netguard 0)",
+   "[pyt] tag=st1red-proto-off start=2026-10-23 02:17:32 end=2026-10-23 02:17:49 elapsed=18s bound=600s status=OK rc=0 (earlier file revision, 513 passed)",
+   "[pyt] tag=st1red-proto-on-env start=2026-10-23 02:18:02 end=2026-10-23 02:18:20 elapsed=18s bound=600s status=OK rc=0 (earlier file revision, 513 passed)",
+   "[pyt] tag=st1red-proto2-off start=2026-10-23 02:21:33 end=2026-10-23 02:21:49 elapsed=16s bound=600s status=OK rc=0 (rebuilt prototype, 513 passed)"
+  ],
+  "notes": "The RED file sets or deletes every flag per row (ON and OFF rows inside one file), so the ON run exports the flag ambiently and the OFF run leaves it unset; both 513/513. Prototype (scratch only, diff kept at <scratchpad>/ST1_red/proto.diff): ro.usage_path_offloop_enabled + ro.run_redis_offloop_pool (shared pool, ctx copy, durable shield); us._usage_reads_offloop = keys on the loop then asyncio.gather(_get_user_tier_info, _get_active_referral_bonus, run_redis_offloop_pool(_get_redis_count, daily_key), run_redis_offloop_pool(_get_redis_count, monthly_key)); pure _usage_status_body/_usage_allowed_body called by both flag states; fork except Exception -> WARNING '[USAGE-OFFLOOP] dispatch failed fn=<fn> type=<T> -- inline fallback'; rs._reviews_l1_write_offloop = deepcopy snapshot, fire_and_forget task that waits for the previous write then run_redis_offloop_pool(set_cached, ..., durable=True), dispatch failure logged by type; get_reviews reads the flag once, L2 save scheduled first, promotion write inline. Findings: (a) the sync-raise fallback leaves two helper coroutines un-awaited (RuntimeWarning, harmless, not pinned); (b) with a NON-awaited write the race cancel never reaches the write task, only the request-loop end does, so r22 kills the unshielded mutant through that path; (c) under the non-awaited design the save-before-write order has no suspension point to protect (M32 survives). No spec row was unsatisfiable under the rulings' design."
+ },
+ "mutants": [
+  {
+   "id": "M01",
+   "description": "redis_offloop: usage_path_offloop_enabled always True (not gated)",
+   "survived": false,
+   "killed_by": "r02, r09, r23, r26, r28, r28b (106 nodes)"
+  },
+  {
+   "id": "M02",
+   "description": "redis_offloop: flag reader always False",
+   "survived": false,
+   "killed_by": "r02, r05, r06, r07, r10, r11, r14, r15, r18, r19, r19b, r21, r22, r26, r28, r28b, r31, r32 (206 nodes)"
+  },
+  {
+   "id": "M03",
+   "description": "redis_offloop: flag reader drops .strip().lower()",
+   "survived": false,
+   "killed_by": "r02 (3 nodes)"
+  },
+  {
+   "id": "M04",
+   "description": "redis_offloop: run_redis_offloop_pool delegates to the S77-gated run_redis_offloop",
+   "survived": false,
+   "killed_by": "r03a, r03b, r03c, r05, r06, r07, r10, r15, r18, r19, r21, r22, r26, r28, r28b, r31 (105 nodes)"
+  },
+  {
+   "id": "M05",
+   "description": "redis_offloop: pool dispatcher drops the contextvars copy",
+   "survived": false,
+   "killed_by": "r03a (2 nodes)"
+  },
+  {
+   "id": "M06",
+   "description": "redis_offloop: durable branch without asyncio.shield",
+   "survived": false,
+   "killed_by": "r03b, r22 (2 nodes)"
+  },
+  {
+   "id": "M07",
+   "description": "redis_offloop: a private pool instead of the shared redis-offloop pool",
+   "survived": false,
+   "killed_by": "r03a, r03b, r03c, r26 (5 nodes)"
+  },
+  {
+   "id": "M08",
+   "description": "usage_service: counter GETs via _get_redis_count_async (ENABLE_ASYNC_REDIS_OFFLOAD-gated)",
+   "survived": false,
+   "killed_by": "r05, r06, r07, r10, r14, r15, r25a, r26, r28 (189 nodes)"
+  },
+  {
+   "id": "M09",
+   "description": "usage_service: Supabase reads dispatched to the redis pool (twin-like, bypasses run_db)",
+   "survived": false,
+   "killed_by": "r05, r10 (88 nodes)"
+  },
+  {
+   "id": "M10",
+   "description": "usage_service: four sequential awaits instead of one gather",
+   "survived": false,
+   "killed_by": "r07, r14 (4 nodes)"
+  },
+  {
+   "id": "M11",
+   "description": "usage_service: _usage_status_body drops the lifetime-free display rule",
+   "survived": false,
+   "killed_by": "r05, r08, r09, r27, r35 (30 nodes)"
+  },
+  {
+   "id": "M12",
+   "description": "usage_service: _usage_status_body monthly cap without the referral bonus",
+   "survived": false,
+   "killed_by": "r05, r08, r09, r27, r35 (30 nodes)"
+  },
+  {
+   "id": "M13",
+   "description": "usage_service: _usage_allowed_body daily check > instead of >=",
+   "survived": false,
+   "killed_by": "r08, r09, r10, r35 (14 nodes)"
+  },
+  {
+   "id": "M14",
+   "description": "usage_service: fork catches BaseException",
+   "survived": false,
+   "killed_by": "r15 (2 nodes)"
+  },
+  {
+   "id": "M15",
+   "description": "usage_service: fork without try/except",
+   "survived": false,
+   "killed_by": "r14 (2 nodes; re-run on the final file, AssertionError)"
+  },
+  {
+   "id": "M16",
+   "description": "usage_service: fork logs the exception text instead of the type",
+   "survived": false,
+   "killed_by": "r14 (2 nodes)"
+  },
+  {
+   "id": "M17",
+   "description": "usage_service: flag read once per process (hoisted)",
+   "survived": false,
+   "killed_by": "r09, r26, r28 (46 nodes)"
+  },
+  {
+   "id": "M18",
+   "description": "usage_service: consume_comparison_credit gathers via _usage_reads_offloop",
+   "survived": false,
+   "killed_by": "r12, r25b[consume_comparison_credit] (89 nodes)"
+  },
+  {
+   "id": "M19",
+   "description": "usage_service: check_usage_allowed ON returns _usage_status_body",
+   "survived": false,
+   "killed_by": "r08, r10, r11, r17, r35 (113 nodes)"
+  },
+  {
+   "id": "M20",
+   "description": "usage_service: get_usage_status OFF tail computes inline (a second compute copy)",
+   "survived": false,
+   "killed_by": "r35 (11 nodes)"
+  },
+  {
+   "id": "M21",
+   "description": "usage_service: date keys computed inside the pool job",
+   "survived": true,
+   "equivalent_by_ruling": true,
+   "killed_by": "none (EQUIVALENT by R-ST1-7; r25a deliberately accepts the lambda form)"
+  },
+  {
+   "id": "M22",
+   "description": "usage_service: both GETs read the daily key",
+   "survived": false,
+   "killed_by": "r05, r06, r07, r08, r10, r11, r17, r27, r30, r35 (215 nodes)"
+  },
+  {
+   "id": "M23",
+   "description": "usage_service: check_usage_allowed fork condition negated",
+   "survived": false,
+   "killed_by": "r09, r10, r11, r14 (135 nodes)"
+  },
+  {
+   "id": "M24",
+   "description": "usage_service: flag read not first (a counter read before the flag check)",
+   "survived": false,
+   "killed_by": "r05, r06, r07, r09, r14, r15, r25a, r28, r30 (143 nodes)"
+  },
+  {
+   "id": "M25",
+   "description": "usage_service: _get_active_referral_bonus drops the consumed_at IS NULL filter (B2)",
+   "survived": false,
+   "killed_by": "r16, r25b[_get_active_referral_bonus] (19 nodes)"
+  },
+  {
+   "id": "M26",
+   "description": "usage_service: _get_user_tier_info drops .single() (B2)",
+   "survived": false,
+   "killed_by": "r16, r25b[_get_user_tier_info] (19 nodes)"
+  },
+  {
+   "id": "M27",
+   "description": "review_service: post-extraction write awaited (on the response path)",
+   "survived": false,
+   "killed_by": "r31, r32 (3 nodes)"
+  },
+  {
+   "id": "M28",
+   "description": "review_service: no per-request chain (later write does not wait for the previous)",
+   "survived": false,
+   "killed_by": "r21 (1 node)"
+  },
+  {
+   "id": "M29",
+   "description": "review_service: no deepcopy (the live dict is written)",
+   "survived": false,
+   "killed_by": "r19, r21, r31, r32 (6 nodes)"
+  },
+  {
+   "id": "M30",
+   "description": "review_service: shallow copy instead of deepcopy",
+   "survived": false,
+   "killed_by": "r32 (1 node)"
+  },
+  {
+   "id": "M31",
+   "description": "review_service: write not durable (not shielded)",
+   "survived": false,
+   "killed_by": "r22, r25a (2 nodes)"
+  },
+  {
+   "id": "M32",
+   "description": "review_service: L2 save scheduled after the write dispatch (spec M25)",
+   "survived": true,
+   "equivalent_by_ruling": false,
+   "killed_by": "none (equivalent under the non-awaited write design: no suspension point between the two schedulings; for an orchestrator ruling)"
+  },
+  {
+   "id": "M33",
+   "description": "review_service: L2-promotion write moved to the pool (RO17 violation)",
+   "survived": false,
+   "killed_by": "r20, r23, r25a (5 nodes)"
+  },
+  {
+   "id": "M34",
+   "description": "review_service: ON L1 read ignores nocache",
+   "survived": false,
+   "killed_by": "r19b, r24 (2 nodes; re-run on the final file, AssertionError)"
+  },
+  {
+   "id": "M35",
+   "description": "review_service: write dispatch failure not swallowed / not logged",
+   "survived": false,
+   "killed_by": "r19b (1 node)"
+  },
+  {
+   "id": "M36",
+   "description": "review_service: flag read twice (second read at the write site)",
+   "survived": false,
+   "killed_by": "r28b (2 nodes)"
+  },
+  {
+   "id": "M37",
+   "description": "review_service: ON L1 read through the S77-gated run_redis_offloop",
+   "survived": false,
+   "killed_by": "r18, r25a, r28b (3 nodes)"
+  }
+ ],
+ "comm_set": {
+  "files": 152,
+  "chunks": 7,
+  "base_failures": [
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR, known cold-tiktoken box noise)",
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR, known cold-tiktoken box noise)"
+  ],
+  "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/ST1_red/comm/comm_list.txt",
+  "pyt_lines": [
+   "[pyt] tag=st1red-comm-base-00 start=2026-10-23 02:50:23 end=2026-10-23 02:51:40 elapsed=78s bound=1200s status=OK rc=0 (739 passed, 1 deselected; hermeticity 739; netguard blocked 18 attempt(s) from 6 node(s))",
+   "[pyt] tag=st1red-comm-base-01 start=2026-10-23 02:52:10 end=2026-10-23 02:55:33 elapsed=203s bound=1200s status=OK rc=0 (1037 passed; hermeticity 1037; netguard blocked 57 attempt(s) from 34 node(s))",
+   "[pyt] tag=st1red-comm-base-02 start=2026-10-23 02:56:04 end=2026-10-23 02:56:35 elapsed=31s bound=1200s status=OK rc=0 (579 passed, 4 deselected; hermeticity 579; netguard blocked 2 attempt(s) from 2 node(s))",
+   "[pyt] tag=st1red-comm-base-03 start=2026-10-23 02:56:46 end=2026-10-23 02:58:45 elapsed=119s bound=1200s status=FAIL rc=1 (1063 passed, 26 skipped, 2 deselected, 1 xfailed, 2 errors = the test_prompt_truth pair; hermeticity 1066; netguard blocked 2 attempt(s) from 2 node(s))",
+   "[pyt] tag=st1red-comm-base-04 start=2026-10-23 02:59:07 end=2026-10-23 03:00:11 elapsed=64s bound=1200s status=OK rc=0 (1722 passed, 1 skipped, 2 deselected; hermeticity 1722; netguard blocked 20 attempt(s) from 8 node(s))",
+   "[pyt] tag=st1red-comm-base-05 start=2026-10-23 03:00:16 end=2026-10-23 03:00:58 elapsed=42s bound=1200s status=OK rc=0 (1049 passed, 10 skipped, 14 deselected, 35 xfailed; hermeticity 1094; netguard blocked 65 attempt(s) from 21 node(s))",
+   "[pyt] tag=st1red-comm-base-06 start=2026-10-23 03:01:05 end=2026-10-23 03:01:12 elapsed=7s bound=1200s status=OK rc=0 (28 passed; hermeticity 28; netguard blocked 0 attempt(s) from 0 node(s))"
+  ]
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "sha256 of all 3410 tracked files of the real worktree byte-identical before (01:51) and after (03:03); git status --short = '?? tests/test_s81_st1_usage_path_offloop.py' only; HEAD 95cf6f86. Scratch worktree <scratchpad>/ST1_red/st1_scratch (detached at base, no node_modules junction, no .env, .qa-mutation.lock removed) removed with git worktree remove --force and absent from git worktree list. Every mutant restored from its byte copy and sha256-verified. No st1red pytest process alive."
+ },
+ "deviations_from_spec": [
+  "Spec R4 (run_db_offloop) dropped per R-ST1-1; replaced by r01 (run_db_offloop absent), r25c PIN (db_offload keeps exactly run_db + sync_db_offload_enabled) and r25a (usage_service keeps its 4 to_thread calls, no run_db_offloop).",
+  "Spec R16/R17 (blocking twins) dropped per R-ST1-2; r16 is now the existing-helper full-query-chain PIN (incl. the lazy-reset update keys), r17 replaces the inverted spec R29 (ON path awaits _get_user_tier_info/_get_active_referral_bonus once, PIN).",
+  "r05/r10 expect the Supabase reads on the loop thread with ENABLE_SYNC_DB_OFFLOAD OFF and on a worker thread with it ON (R-ST1-1), plus the exact op multiset per state (B2 correction).",
+  "r06 thresholds split by sync state (OFF < 0.45 s because the two Supabase reads stay inline; ON < 0.09 s); r07 split by sync state (sync ON: four reads overlap and wall < 0.40 s; sync OFF: the two GETs overlap).",
+  "r19/r21/r22 rewritten for NON-awaited writes (R-ST1-4); new r31 (probe-D saturation: four 1.0 s jobs in the 4-worker shared pool, 0.5 s cap) and r32 (snapshot: caller mutates top level and a nested list). r22 reaches the write task through the request-loop end (asyncio.run teardown) because a race cancel does not reach a non-awaited task.",
+  "r25a pins no write-helper name (the rulings give none): it pins every run_redis_offloop_pool(set_cached, ...) in review_service as durable, exactly one non-durable run_redis_offloop_pool(get_cached, ...) in get_reviews, the S77 read dispatch and the 4 direct set_cached calls unchanged, the flag check as the first statement of get_usage_status/check_usage_allowed, >= 2 pool counter reads (a lambda form accepted so M21 stays equivalent per R-ST1-7). The OFF-tail digest of correction 2 is dropped (R-ST1-3).",
+  "r25b adds four digests beyond spec 2.7 (_atomic_consume_async, _get_redis_count_async, _bump_counters_async, _retrieve_quietly); digests are 32 hex chars written in 4-char groups so the file carries no 8-digit run.",
+  "r14 and r19b keep the spec 2.6 templates the rulings did not delete ('[USAGE-OFFLOOP] dispatch failed fn=<fn> type=RuntimeError -- inline fallback'; '[USAGE-OFFLOOP] reviews L1 write dispatch failed type=RuntimeError'), exactly one record each, no exception text in any log line; both capture an escaping exception and assert on it (so every kill is an AssertionError).",
+  "r27 extended to the free_lifetime and free_reset_past base byte literals (base key order from the route bytes); r03c (non-durable queued read dropped on cancel) and r35 (one compute body, R-ST1-3) are new rows; r34 runs the W4-13 45-scenario ledger with ST1 ON, binding that module's autouse guards as class-level staticmethods (class-scoped).",
+  "Comm set is 152 files (the spec's 119 plus 33: CLAUDE.md readers, the adversary's globbers, the W4-13 ledger pair, consume/refund symbol grep); the four test_precommit_hook*.py and the new RED file excluded; no NETWORK_FLAKY_EXCLUDE node is in any listed file.",
+  "Step 2 had nothing to run: the review's NOT MEASURED section lists no test file.",
+  "Mutants M01-M37 ran on RED file revision 2b08d8de; the final file feb44766 differs only in the r14/r19b exception capture, and every mutant whose killers include r14 or r19b (M02, M08, M10, M15, M16, M23, M24, M34, M35) was re-run on the final file with identical kill sets."
+ ],
+ "open_questions": [
+  "Q1 M32 (L2 save scheduled after the write dispatch) survives: with a non-awaited write there is no suspension point between the two schedulings. Rule it equivalent, or ask for an ordering pin.",
+  "Q2 R-ST1-4 says the response is never delayed; with consult/YouTube ON a design whose re-cache write awaits the previous handle INLINE would delay the response. The file pins only the consult-OFF saturation row (r31). Is a consult-ON saturation row wanted?",
+  "Q3 Accept the four extra r25b digests (consume dispatch helpers and the S77 _retrieve_quietly, all untouched by ST1).",
+  "Q4 r35 binds the compute bodies positionally to (user_info, bonus, daily_used, monthly_used) and requires exactly one body call per public call in both flag states, including the OFF lifetime-free path of check_usage_allowed (the prototype passes 0, 0 there).",
+  "Q5 r06 / r07 / r31 are timing rows (OP 0.15 s; 0.45 / 0.40 / 0.09 s bounds; four 1.0 s blockers vs a 0.5 s cap); green with margin on this box, but a slow CI runner might need a ruling.",
+  "Q6 The sync-raise fallback leaves the two helper coroutine objects un-awaited (RuntimeWarning 'never awaited'); harmless and not pinned; GREEN may close them."
+ ],
+ "not_measured_alone": [],
+ "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/ST1_RED_REPORT.md"
+}
