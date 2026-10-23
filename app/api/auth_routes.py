@@ -32,7 +32,7 @@ _INVITE_CODE_RE = re.compile(r"^QR-[A-HJ-NP-Z2-9]{6}$")
 # emits 64-char lowercase hex. Anything else is dropped at the register
 # endpoint to prevent fingerprint forging / inheritance poisoning of the
 # Migration 021 anti-farming counter.
-_DEVICE_FINGERPRINT_RE = re.compile(r"^[a-f0-9]{64}$")
+from app.utils.request_context import DEVICE_FINGERPRINT_RE as _DEVICE_FINGERPRINT_RE  # S81-05: one compiled object, same pattern
 
 from app.services.auth_service import (
     register_user,

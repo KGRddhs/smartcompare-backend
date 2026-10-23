@@ -132,6 +132,8 @@ CREDENTIALS_UNSET = (
     "TARGET_BASE_URL",
     # Sign in with Apple .p8 (B3-B); absence = revocation inert.
     "APPLE_SIWA_PRIVATE_KEY",
+    # Device-key HMAC pepper (S81-05); absence = device keys disabled (fail closed).
+    "DEVICE_KEY_PEPPER",
 )
 
 #: Variables that must stay PRESENT but must never be real. Both entries here
