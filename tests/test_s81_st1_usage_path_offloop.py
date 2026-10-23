@@ -2376,3 +2376,393 @@ def test_r31b_reviews_recache_write_under_saturated_pool_returns_inside_the_cap(
     assert [e["payload"] for e in env.landings] == [p1, p2], [e["payload"] for e in env.landings]
     assert [_cls(e["thread"], main) for e in env.landings] == ["pool", "pool"]
     assert {(e["key"], e["ttl"]) for e in env.landings} == {(_rkey(), TTL)}
+
+
+# ===========================================================================
+# Fix round 1 (RULINGS_FIX1_ST1 F1-2..F1-8, appended by the fix agent): r36-r42b
+# ===========================================================================
+
+
+async def _drain_background_tasks(timeout=3.0):
+    """Await every fire_and_forget task of THIS loop (the reviews L1 writes and
+    the L2 save), so a write that was scheduled has landed or failed before a row
+    counts the landings."""
+    from app.utils import async_utils as au
+    loop = asyncio.get_running_loop()
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        pending = [t for t in list(au._BACKGROUND_TASKS) if t.get_loop() is loop and not t.done()]
+        if not pending:
+            return True
+        await asyncio.wait(pending, timeout=max(0.01, deadline - time.perf_counter()))
+    return False
+
+
+_R36_CASES = {
+    # FY19: the D5 unified-timeout payload is never persisted (L1 or L2).
+    "unified_timeout": ({"organic": [], "_unified_timeout": True}, None, 0),
+    # An extraction that returns the error shape is never persisted.
+    "extraction_error": ({"organic": []}, {"error": "synthetic-" + "extract-failure"}, 0),
+    # FY19 GUARD: the honest Serper-failure payload is persisted as today.
+    "serper_failure": ({"organic": [], "error": "serper_unavailable"}, None, 1),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_R36_CASES))
+def test_r36_reviews_on_write_respects_the_persist_guard(monkeypatch, case):
+    """PIN (F1-2, MIN-1; kills C02 / C16 with no flag export): the flag is set
+    INSIDE the row; the ON post-extraction L1 write and the L2 save follow the
+    FY19 / error persist guard exactly as OFF: the D5 unified-timeout payload and
+    the extraction-error shape write no reviews L1 entry and no L2 row, the honest
+    Serper-failure payload writes one of each (inline OFF, on the pool ON)."""
+    search_results, extracted, want = _R36_CASES[case]
+    _full_config(monkeypatch)
+    main = threading.current_thread()
+    seen = {}
+    for on in (False, True):
+        _set(monkeypatch, FLAG, on)
+        rec = Rec()
+        env = _RevEnv(monkeypatch, rec)
+        if extracted is not None:
+            async def extract_error(brand, name, variant, ctx, category="other"):
+                return copy.deepcopy(extracted), {"prompt_tokens": 1}
+
+            monkeypatch.setattr(rs, "extract_reviews", extract_error)
+
+        async def go():
+            out = await rs.get_reviews(
+                R_BRAND, R_NAME, R_VARIANT, R_QUERY, nocache=True, category="other",
+                search_results=copy.deepcopy(search_results),
+            )
+            drained = await _drain_background_tasks()
+            await asyncio.sleep(0.02)
+            return out, drained
+
+        out, drained = asyncio.run(go())
+        assert isinstance(out, dict), (case, on, out)
+        assert drained, "a background write never finished (%s, on=%s)" % (case, on)
+        seen[on] = (len(env.landings), len(env.saves),
+                    sorted({_cls(e["thread"], main) for e in env.landings}))
+    assert seen[False][:2] == (want, want), (case, seen)
+    assert seen[True][:2] == seen[False][:2], (case, seen)
+    if want:
+        assert (seen[False][2], seen[True][2]) == (["main"], ["pool"]), (case, seen)
+
+
+_R37_READS = ("db:users:select", "db:referral_redemptions:select", "redis:get:daily", "redis:get:monthly")
+
+
+@pytest.mark.parametrize("raiser", ["null_lifetime", "body_raises"])
+@pytest.mark.parametrize("fn", ["get_usage_status", "check_usage_allowed"])
+def test_r37_compute_failure_is_not_a_dispatch_failure(monkeypatch, caplog, fn, raiser):
+    """RED at feb39dc0 (F1-3, MIN-3): the ON try wraps ONLY the dispatch and the
+    gather of the reads; the compute body runs outside it, so a compute exception
+    (a NULL lifetime_comparisons_used, or any raise inside the body) propagates
+    exactly as with the flag OFF: the same exception type, no [USAGE-OFFLOOP]
+    line, ONE read set (no second inline pass)."""
+    _full_config(monkeypatch)
+    caplog.set_level(logging.WARNING)
+    text = "synthetic-" + "compute-failure-" + str(6 * 7)
+    seen = {}
+    for on in (False, True):
+        _set(monkeypatch, FLAG, on)
+        caplog.clear()
+        rec = Rec()
+        client, _redis = _install_usage(monkeypatch, "free_paid_window", rec)
+        if raiser == "null_lifetime":
+            client.users = dict(client.users, lifetime_comparisons_used=None)
+            want_type = TypeError
+        else:
+            def boom(*args, **kwargs):
+                raise RuntimeError(text)
+
+            body = "_usage_status_body" if fn == "get_usage_status" else "_usage_allowed_body"
+            monkeypatch.setattr(us, body, boom, raising=False)
+            want_type = RuntimeError
+        try:
+            asyncio.run(getattr(us, fn)(UID, "synthetic-access"))
+            outcome = None
+        except Exception as exc:  # noqa: BLE001 - asserted below
+            outcome = exc
+        assert isinstance(outcome, want_type), (fn, raiser, on, type(outcome).__name__)
+        seen[on] = (collections.Counter(rec.names()), [r.getMessage() for r in _usage_records(caplog)])
+        assert text not in caplog.text, "the exception text reached a log line"
+    assert seen[False][1] == [], seen[False][1]
+    assert seen[True][1] == [], ("a compute failure was logged as a dispatch failure", seen[True][1])
+    on_counts = seen[True][0]
+    assert [on_counts[k] for k in _R37_READS] == [1, 1, 1, 1], (
+        "the ON path ran more (or less) than one read set", dict(on_counts))
+    off_counts = seen[False][0]
+    assert all(off_counts[k] <= 1 for k in _R37_READS), dict(off_counts)
+
+
+def test_r38_reviews_write_task_is_in_the_drain_registry(monkeypatch):
+    """PIN (F1-4, MIN-4 / MIN-E4; kills C06 / EM1): every ON reviews L1 write
+    (the post-extraction write and both re-cache writes) is a task of the
+    fire_and_forget registry _BACKGROUND_TASKS (the set the shutdown drain awaits),
+    named reviews.l1_write, while it is pending after the response."""
+    from app.utils import async_utils as au
+    _full_config(monkeypatch)
+    monkeypatch.setenv(FLAG, "true")
+    rec = Rec()
+
+    def delay(value):
+        return 0.3 if "review_source_quotes" not in value else 0.0
+
+    env = _RevEnv(monkeypatch, rec, consult=QUOTES, yt=SIGNAL, set_delay=delay)
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        before = {t for t in au._BACKGROUND_TASKS if t.get_loop() is loop}
+        out = await _get_reviews_call()
+        mine = [t for t in list(au._BACKGROUND_TASKS) if t.get_loop() is loop and t not in before]
+        names = sorted(t.get_name() for t in mine if not t.done())
+        landed_at_return = len(env.landings)
+        drained = await _drain_background_tasks()
+        return out, names, landed_at_return, drained
+
+    out, names, landed_at_return, drained = asyncio.run(go())
+    assert drained
+    assert isinstance(out, dict)
+    assert landed_at_return == 0, "a write landed before the response"
+    assert names.count("reviews.l1_write") == 3, (
+        "the reviews L1 write tasks are not in the drain registry under their label", names)
+    assert set(names) <= {"reviews.l1_write", "save_reviews.l2"}, names
+    assert len(env.landings) == 3, [e["payload"] for e in env.landings]
+
+
+@pytest.mark.parametrize("path", ["direct_cancelled", "reviews_write"])
+def test_r39_durable_pool_job_failure_is_retrieved_quietly(monkeypatch, caplog, path):
+    """PIN (F1-5, MIN-5; kills C07): a durable run_redis_offloop_pool job that
+    raises is retrieved quietly: direct_cancelled = its caller is cancelled while
+    the job runs and the job raises afterwards: no "exception was never retrieved"
+    report reaches the loop's exception handler (also after the loop closed and a
+    gc pass); reviews_write = a reviews L1 write whose pool job raises is logged
+    once by exception TYPE only (never the text), the response is unaffected and
+    the loop handler stays silent."""
+    import gc
+    pool_fn = _require(ro, "run_redis_offloop_pool")
+    _full_config(monkeypatch)
+    caplog.set_level(logging.WARNING)
+    text = "synthetic-" + "durable-failure-" + str(6 * 7)
+    reports = []
+    if path == "direct_cancelled":
+        started, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+        def job():
+            started.set()
+            try:
+                release.wait(2.0)
+            finally:
+                finished.set()
+            raise RuntimeError(text)
+
+        async def go():
+            loop = asyncio.get_running_loop()
+            loop.set_exception_handler(lambda _loop, ctx: reports.append(str(ctx.get("message", ""))))
+            task = asyncio.ensure_future(pool_fn(job, durable=True))
+            ok = await _await_event(started, 2.0)
+            task.cancel()
+            try:
+                await task
+                outcome = "returned"
+            except asyncio.CancelledError:
+                outcome = "cancelled"
+            release.set()
+            done = await _await_event(finished, 2.0)
+            await asyncio.sleep(0.1)
+            gc.collect()
+            await asyncio.sleep(0.02)
+            return ok, outcome, done
+
+        try:
+            ok, outcome, done = asyncio.run(go())
+        finally:
+            release.set()
+        gc.collect()
+        assert (ok, outcome, done) == (True, "cancelled", True), (ok, outcome, done)
+    else:
+        monkeypatch.setenv(FLAG, "true")
+        rec = Rec()
+        env = _RevEnv(monkeypatch, rec)
+
+        def failing_set(key, value, ttl=86400):
+            raise RuntimeError(text)
+
+        monkeypatch.setattr(rs, "set_cached", failing_set)
+
+        async def go():
+            loop = asyncio.get_running_loop()
+            loop.set_exception_handler(lambda _loop, ctx: reports.append(str(ctx.get("message", ""))))
+            out = await _get_reviews_call(nocache=True)
+            drained = await _drain_background_tasks()
+            await asyncio.sleep(0.05)
+            gc.collect()
+            return out, drained
+
+        out, drained = asyncio.run(go())
+        gc.collect()
+        assert drained
+        assert _dumps(out) == BASE_REVIEWS_OUT["miss|off"]
+        msgs = [r.getMessage() for r in _usage_records(caplog)]
+        assert msgs == ["[USAGE-OFFLOOP] reviews L1 write dispatch failed type=RuntimeError"], msgs
+        assert env.saves == [(_rkey(), R_BRAND, R_NAME, R_VARIANT)], env.saves
+    assert text not in caplog.text, "the exception text reached a log line"
+    never = [m for m in reports if "never retrieved" in m]
+    assert never == [], reports
+
+
+def test_r40_cancelled_previous_write_does_not_drop_the_next(monkeypatch):
+    """PIN (F1-6, MIN-E5; kills EM4): the chain waits for the previous write's
+    handle with asyncio.wait, so a CANCELLED previous write does not drop the next
+    write: its snapshot still lands on the pool."""
+    write = _require(rs, "_reviews_l1_write_offloop")
+    _full_config(monkeypatch)
+    monkeypatch.setenv(FLAG, "true")
+    rec = Rec()
+    env = _RevEnv(monkeypatch, rec)
+    main = threading.current_thread()
+    first = {"summary": "first"}
+    second = {"summary": "second"}
+
+    async def go():
+        prev = write(_rkey(), first)
+        prev.cancel()
+        nxt = write(_rkey(), second, prev)
+        drained = await _drain_background_tasks()
+        await asyncio.sleep(0.02)
+        return prev.cancelled(), nxt.cancelled(), nxt.done(), drained
+
+    prev_cancelled, nxt_cancelled, nxt_done, drained = asyncio.run(go())
+    assert drained
+    assert prev_cancelled, "the previous write was not cancelled (the row would prove nothing)"
+    assert nxt_done and not nxt_cancelled, "the next write was cancelled with its predecessor"
+    assert [e["payload"] for e in env.landings] == [second], [e["payload"] for e in env.landings]
+    assert _cls(env.landings[0]["thread"], main) == "pool", env.landings[0]["thread"].name
+    assert {(e["key"], e["ttl"]) for e in env.landings} == {(_rkey(), TTL)}
+
+
+class _NoDeepcopy:
+    """A synthetic payload value whose deepcopy raises."""
+
+    def __deepcopy__(self, memo):
+        raise TypeError("synthetic-" + "no-deepcopy-" + str(6 * 7))
+
+    def __repr__(self):
+        return "<r41-no-deepcopy>"
+
+
+def test_r41_reviews_snapshot_failure_skips_the_write_and_keeps_the_response(monkeypatch, caplog):
+    """PIN (F1-7, GREEN Q1; kills M40): ST1 ON, an extraction whose reviews dict
+    cannot be deep-copied: the snapshot guard logs ONE WARNING by type, the L1
+    write is skipped (as the base set_cached swallows its own failures), the L2
+    save still ran and get_reviews returns the extraction unaffected."""
+    _full_config(monkeypatch)
+    monkeypatch.setenv(FLAG, "true")
+    caplog.set_level(logging.WARNING)
+    rec = Rec()
+    env = _RevEnv(monkeypatch, rec)
+    odd = _NoDeepcopy()
+
+    async def extract_odd(brand, name, variant, ctx, category="other"):
+        return dict(copy.deepcopy(EXTRACTED), odd=odd), {"prompt_tokens": 1}
+
+    monkeypatch.setattr(rs, "extract_reviews", extract_odd)
+
+    async def go():
+        out = await _get_reviews_call(nocache=True)
+        drained = await _drain_background_tasks()
+        await asyncio.sleep(0.02)
+        return out, drained
+
+    try:
+        out, drained = asyncio.run(go())
+    except Exception as exc:  # noqa: BLE001 - asserted below
+        out, drained = exc, None
+    assert not isinstance(out, Exception), "the snapshot failure escaped get_reviews: %s" % type(out).__name__
+    assert drained
+    assert out["odd"] is odd and out["_cached"] is False
+    assert {k: v for k, v in out.items() if k not in ("odd", "_cached")} == EXTRACTED, out
+    msgs = [r.getMessage() for r in _usage_records(caplog)]
+    assert msgs == ["[USAGE-OFFLOOP] reviews L1 write dispatch failed type=TypeError"], msgs
+    assert "no-deepcopy" not in caplog.text
+    assert env.landings == [], "a write landed from a payload that could not be snapshotted"
+    assert env.saves == [(_rkey(), R_BRAND, R_NAME, R_VARIANT)], env.saves
+
+
+# timing row (GT-5): 0.15 s per blocking op; on a slow runner widen the bounds in
+# a test-only commit, never change the code.
+@pytest.mark.parametrize("fn", ["get_usage_status", "check_usage_allowed"])
+def test_r42_on_gets_are_in_flight_before_the_inline_supabase_reads(monkeypatch, fn):
+    """RED at feb39dc0 (F1-8, MIN-7): with ENABLE_SYNC_DB_OFFLOAD OFF (the
+    production shape) the gather lists the two pool GETs FIRST, so both counter
+    GETs have started on pool threads before the first inline Supabase read
+    finishes (they overlap the Supabase RTTs instead of queueing behind them);
+    the response is the base literal."""
+    op_s = 0.15
+    _full_config(monkeypatch, sync=False)
+    monkeypatch.setenv(FLAG, "true")
+    rec = Rec(sleep=op_s)
+    _install_usage(monkeypatch, "free_paid_window", rec)
+    main = threading.current_thread()
+    result = asyncio.run(getattr(us, fn)(UID, "synthetic-access"))
+    res_table = BASE_USAGE_RESULT if fn == "get_usage_status" else BASE_ALLOWED_RESULT
+    assert _dumps(result) == res_table["free_paid_window"]
+    dbs = [e for e in rec.ops if e["op"].startswith("db:")]
+    gets = [e for e in rec.ops if e["op"].startswith("redis:get:")]
+    assert len(dbs) == 2 and len(gets) == 2, rec.names()
+    assert [_cls(e["thread"], main) for e in dbs] == ["main", "main"], rec.seq(main)
+    assert [_cls(e["thread"], main) for e in gets] == ["pool", "pool"], rec.seq(main)
+    first_db_end = min(e["t1"] for e in dbs)
+    assert max(e["t0"] for e in gets) < first_db_end, (
+        "the counter GETs were dispatched after the inline Supabase reads (GETs not first)",
+        [(e["op"], round(e["t0"] - dbs[0]["t0"], 3)) for e in rec.ops])
+
+
+@pytest.mark.parametrize("fn", ["get_usage_status", "check_usage_allowed"])
+def test_r42b_partial_sync_dispatch_failure_closes_what_was_built(monkeypatch, caplog, fn):
+    """PIN (GT-6 kept under F1-8's order; kills M39 without -W error): the first
+    pool dispatch is built, the second raises at the call: every awaitable already
+    built is closed (none left un-awaited), ONE WARNING by type, and the base
+    inline path returns the base literal."""
+    _full_config(monkeypatch)
+    monkeypatch.setenv(FLAG, "true")
+    caplog.set_level(logging.WARNING)
+    rec = Rec()
+    _install_usage(monkeypatch, "free_paid_window", rec)
+    built = []
+
+    def track(target):
+        def wrapper(*args, **kwargs):
+            coro = target(*args, **kwargs)
+            built.append(coro)
+            return coro
+        return wrapper
+
+    monkeypatch.setattr(us, "_get_user_tier_info", track(us._get_user_tier_info))
+    monkeypatch.setattr(us, "_get_active_referral_bonus", track(us._get_active_referral_bonus))
+    calls = []
+
+    async def _never(*args, **kwargs):
+        raise AssertionError("a built dispatch was awaited after the failure")
+
+    def dispatch(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 2:
+            raise RuntimeError("synthetic-" + "second-dispatch-down")
+        coro = _never(*args, **kwargs)
+        built.append(coro)
+        return coro
+
+    monkeypatch.setattr(us, "run_redis_offloop_pool", dispatch, raising=False)
+    result = asyncio.run(getattr(us, fn)(UID, "synthetic-access"))
+    res_table = BASE_USAGE_RESULT if fn == "get_usage_status" else BASE_ALLOWED_RESULT
+    assert _dumps(result) == res_table["free_paid_window"]
+    assert len(calls) == 2, calls
+    assert any(inspect.iscoroutine(c) and c.cr_code is _never.__code__ for c in built), (
+        "no dispatch was built before the failure (the row would prove nothing)")
+    states = [inspect.getcoroutinestate(c) for c in built]
+    assert states and all(s == inspect.CORO_CLOSED for s in states), (
+        "an awaitable built before the failure was left un-awaited", states)
+    want = "[USAGE-OFFLOOP] dispatch failed fn=%s type=RuntimeError -- inline fallback" % fn
+    assert [r.getMessage() for r in _usage_records(caplog)] == [want]
