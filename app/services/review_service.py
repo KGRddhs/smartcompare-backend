@@ -5,6 +5,7 @@ FIX M5: _clean_review_citations processes review_summary.highlights[].point form
 FIX M6: Removed dead code processing detailed_praises/detailed_complaints (never populated).
 """
 import asyncio
+import copy
 import os
 import re
 import logging
@@ -17,7 +18,7 @@ from app.services.extraction_service import (
 )
 from app.services.serper_service import search_web
 from app.services.cache_service import get_cached, set_cached, _redis_offload_enabled
-from app.utils.redis_offloop import run_redis_offloop
+from app.utils.redis_offloop import run_redis_offloop, run_redis_offloop_pool, usage_path_offloop_enabled
 from app.services.api_budget_service import has_budget, record_usage
 # D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
 from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
@@ -675,6 +676,49 @@ def format_review_search_results(results: Dict, retailer_ratings: List[Dict]) ->
     return "\n".join(formatted)
 
 
+def _reviews_l1_write_offloop(cache_key: str, reviews: dict, prev=None):
+    """S81 ST1 (ENABLE_USAGE_PATH_OFFLOOP; R-ST1-4 as amended by GT-2): one
+    reviews L1 write as a DURABLE, NON-AWAITED job on the shared redis-offloop
+    pool, so the response never waits on the pool (a queued write cannot push
+    the reviews leg past its Phase-1 cap).
+
+    - The payload is a deepcopy snapshot taken NOW, on the loop: the caller
+      keeps mutating ``reviews`` (the consult / YouTube keys, ``_cached``).
+    - The write runs in a fire_and_forget task that first waits for ``prev``
+      (the previous write of this request for the same key; never awaited on
+      the request path), so the request's writes land in order and the last
+      snapshot wins, as at base.
+    - ``durable=True`` shields the pool job; the task sits in the
+      fire_and_forget registry that the shutdown drain awaits.
+    - A failure (snapshot or dispatch) is logged once by type and swallowed,
+      as the inline set_cached swallows its own.
+
+    Returns the write's task (the next write's ``prev``), or ``prev`` when no
+    write was scheduled.
+    """
+    try:
+        snapshot = copy.deepcopy(reviews)
+    except Exception as exc:  # noqa: BLE001 - never fail the reviews leg on the L1 write
+        logger.warning(
+            "[USAGE-OFFLOOP] reviews L1 write dispatch failed type=%s", type(exc).__name__,
+        )
+        return prev
+
+    async def _write() -> None:
+        if prev is not None:
+            await asyncio.wait([prev])
+        try:
+            await run_redis_offloop_pool(
+                set_cached, cache_key, snapshot, REVIEWS_CACHE_TTL, durable=True,
+            )
+        except Exception as exc:  # noqa: BLE001 - logged by type, swallowed
+            logger.warning(
+                "[USAGE-OFFLOOP] reviews L1 write dispatch failed type=%s", type(exc).__name__,
+            )
+
+    return fire_and_forget(_write(), label="reviews.l1_write")
+
+
 async def get_reviews(
     brand: str,
     name: str,
@@ -690,11 +734,18 @@ async def get_reviews(
     """Get reviews with caching (L1: Redis, L2: DB)."""
     import asyncio
     cache_key = get_reviews_cache_key(brand, name, variant)
+    offloop = usage_path_offloop_enabled()  # S81 ST1: one read per call
 
     # S77 REDIS-OFFLOOP: the L1 read leaves the loop under
     # ENABLE_PRICE_PATH_REDIS_OFFLOOP. The L2-promotion write below (RO17) and the
     # post-extraction writes (the F3/G2 ordering) stay inline.
-    cached = (await run_redis_offloop(get_cached, cache_key)) if not nocache else None
+    # S81 ST1 (ENABLE_USAGE_PATH_OFFLOOP): the L1 read runs on the shared pool
+    # whatever the S77 flag says, and the post-extraction writes become durable,
+    # non-awaited pool jobs; the L2-promotion write stays inline (RO17).
+    if offloop:
+        cached = (await run_redis_offloop_pool(get_cached, cache_key)) if not nocache else None
+    else:
+        cached = (await run_redis_offloop(get_cached, cache_key)) if not nocache else None
     if cached:
         logger.info(f"Reviews cache hit: {cache_key}")
         cached["_cached"] = True
@@ -735,10 +786,12 @@ async def get_reviews(
     # lost (PYTHON-FASTAPI-J pattern). After this point the extraction is safe
     # regardless of what the consult does.
     extraction_persisted = False
+    l1_write = None  # S81 ST1: the handle of this request's last L1 write (ON only)
     # FY19: a D5 timeout context is never persisted (extraction_persisted stays False,
     # so the two enriched re-cache writes below are skipped as well).
     if reviews and not reviews.get("error") and not unified_search_timed_out(search_results):
-        set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+        if not offloop:
+            set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
         from app.services.product_data_service import save_reviews
         # M13-33: plain asyncio.create_task swallows exceptions — an RLS denial /
         # schema drift / Supabase 5xx in save_reviews would silently stop the L2
@@ -749,6 +802,10 @@ async def get_reviews(
             save_reviews(cache_key, brand, name, variant, reviews),
             label="save_reviews.l2",
         )
+        if offloop:
+            # S81 ST1 (R-ST1-4): the L2 save is scheduled first (above); the L1
+            # write is a durable, non-awaited pool job on a snapshot.
+            l1_write = _reviews_l1_write_offloop(cache_key, reviews)
         extraction_persisted = True
 
     # S2 I2.5 — optional review-content consultation from usage="review" GCC
@@ -766,7 +823,10 @@ async def get_reviews(
             # Re-cache the enriched copy so a subsequent cache hit carries the
             # quotes too (the pre-consult write already protected the baseline).
             if extraction_persisted:
-                set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+                if offloop:  # S81 ST1: chained after the previous write, never awaited here
+                    l1_write = _reviews_l1_write_offloop(cache_key, reviews, l1_write)
+                else:
+                    set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
     except Exception as e:  # noqa: BLE001 — defensive; consult is best-effort
         logger.warning("[I2.5] consult_review_sources wiring error: %s", e)
 
@@ -780,7 +840,10 @@ async def get_reviews(
         if yt_signal and isinstance(reviews, dict):
             reviews["youtube_review_signal"] = yt_signal
             if extraction_persisted:
-                set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
+                if offloop:  # S81 ST1: chained after the previous write, never awaited here
+                    l1_write = _reviews_l1_write_offloop(cache_key, reviews, l1_write)
+                else:
+                    set_cached(cache_key, reviews, REVIEWS_CACHE_TTL)
     except Exception as e:  # noqa: BLE001 — defensive; YouTube is best-effort
         logger.warning("[L2] youtube consult wiring error: %s", e)
 
