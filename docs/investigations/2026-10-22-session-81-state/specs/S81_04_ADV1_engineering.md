@@ -1,0 +1,82 @@
+# S81-04 SPEND-BREAKER: adversary report, lens ENGINEERING (Opus 5.5)
+
+| Header | Value |
+|---|---|
+| Unit | S81-04 SPEND-BREAKER, `ENABLE_LLM_SPEND_BREAKER` (lane B) |
+| HEAD verified | `b5f29e352bfbe786ab67728c921cf4ba9ef053c0` (sc-s81-s04, branch feature/s81-s04-spend-breaker); `git status --short` empty at start and end; HEAD unchanged at end |
+| Base | `e1878dd836e721d7e8c6c53fe1aa3d2b9fadb83e` |
+| RED file | worktree `tests/test_s81_s04_spend_breaker.py` = `1e389248f2ce49e875b977fb4eebd06689746c1abc4343a37325b55853c56de1` at start and end (LF, = the HEAD blob). The task's frozen sha `8e4b0e53...edd4` is the copy `S04_red/test_s81_s04_spend_breaker.py` (re-hashed: equal). The delta is exactly 5 hunks, all gate-named (GC-9 pins + fakes narrowed to the pinned texts, GC-4 R30 amended, r44 GC-9, r45 GC-3, r46 x4 GC-6): `eng_red_delta.diff`. Accepted. |
+| Scratch | `<scratchpad>/S81-04_adv_engineering` (detached at b5f29e35, no node_modules junction); every edited file LF-normalised = its HEAD blob; removed with `git worktree remove --force`; `git worktree list` no longer shows it. No `.env` in the notes folder; no `.qa-mutation.lock` anywhere; no mutation by this lens. |
+| Verdict | **SOUND** for the engineering lens (0 blocking, 0 major, 9 minor). Cross-lens: I confirm by code reading the correctness lens's MAJOR (`settle` keys the day at settle time), so the unit is NOT ready overall on that finding. |
+
+## 1. Runs (every pytest through pyt.py, one at a time, in the scratch worktree)
+
+| Run | Result | [pyt] |
+|---|---|---|
+| unit file, flag unset | 241 passed | `[pyt] tag=s04e-unit-off start=2026-10-23 20:46:12 end=2026-10-23 20:46:19 elapsed=7s bound=600s status=OK rc=0` (`[hermeticity] sentinel checked 241 test(s)`, `[netguard] blocked 24 attempt(s) from 2 node(s)`: r42 + p08, sentinel `neutralized.supabase.invalid:443` only) |
+| unit file, `ENABLE_LLM_SPEND_BREAKER=true` | 241 passed | `[pyt] tag=s04e-unit-on start=2026-10-23 20:46:30 end=2026-10-23 20:46:37 elapsed=7s bound=600s status=OK rc=0` (same guard lines); no "never awaited" / "destroyed but pending" / "never retrieved" / unraisable lines in either log |
+| unit file `--collect-only` | 241 nodes; per-row counts equal every count in the PR body table (r02 13, r04 44, r04b 33, r04c 7, r05 4, r07 10, r07b 8, r08 6, r09 5, r09b 5, r10 4, r10b 4, r14 4, r15 7, r18 4, r19b 5, r23 6, r25 2, r27 2, r28 4, r28b 2, r32c 2, r46 4, p01 8) | `[pyt] tag=s04e-unit-collect start=2026-10-23 21:09:33 end=2026-10-23 21:09:37 elapsed=5s bound=600s status=OK rc=0` |
+| unit file + `QAREN_NETGUARD_REPORT`, then `scripts/netguard_ratchet.py` (GC-10) | ratchet rc=0: `WARNING: new node ...::test_p08_... attempts sentinel hosts only (allowed for now)`, same for r42, `OK: 2 attempting node(s), baseline 205` (CI `ci.yml:133` runs this script; WARNING class passes) | `[pyt] tag=s04e-unit-ng start=2026-10-23 21:16:49 end=2026-10-23 21:16:55 elapsed=7s bound=600s status=OK rc=0` |
+| CI-order set, flag unset: GREEN's 24 files (U3c, K1, FY25, W4-13, T23 via test_s71_u13, both CLAUDE.md readers, health pins, W1-3, D03, S81-03, model_config x2, prompt_fence, the unit file) + 8 more source / manifest readers (test_start_command, test_migration_index_predicate_immutability, test_openai_key_log_hygiene_s69, test_sentry_channels_u8d_unit, test_legal_docs_u8 (T7 app/services host scan), test_legal_disclosure_s77, test_legal_s78, test_be_harness) = 32 files | **2254 passed** | `[pyt] tag=s04e-ci-order start=2026-10-23 20:48:39 end=2026-10-23 20:50:15 elapsed=96s bound=1200s status=OK rc=0` (`[netguard]`: the pre-existing test_openai_breaker / test_retro_w1_3 baseline nodes + r42 + p08) |
+| the same 32 files with the flag exported ON (row limit 15 check) | **34 failed / 2220 passed** = 6 `test_retro_w0_4_efg`, 7 `test_s77_redis_offloop`, 21 `test_s81_s03_llm_ledger_v2`; the 8 extra files, FY25, W4-13 and U3c stay green ON. The row's "34 unedited pins ... 6 / 7 / 21" is TRUE | `[pyt] tag=s04e-ci-order-on start=2026-10-23 20:50:36 end=2026-10-23 20:52:38 elapsed=122s bound=1200s status=FAIL rc=1` |
+| comm chunk 13 at HEAD (24 files) | 463 passed, 8 deselected; failed set = GREEN base chunk 13 set (empty); branch-only-new [] | `[pyt] tag=s04e-comm-head-13 start=2026-10-23 20:55:16 end=2026-10-23 20:56:03 elapsed=48s bound=1200s status=OK rc=0` |
+| comm chunk 05 at HEAD (24 files, the largest node count) | 1563 passed, 5 deselected; branch-only-new [] (GREEN base: 1563 passed) | `[pyt] tag=s04e-comm-head-05 start=2026-10-23 20:56:16 end=2026-10-23 20:58:18 elapsed=121s bound=1200s status=OK rc=0` |
+| comm chunk 11 at HEAD (24 files: the unit file + test_s81_st1 + the later /health reader test_security_hardening) | 2941 passed; branch-only-new [] (GREEN base 1 failed = the ST1 timing row, passes here) | `[pyt] tag=s04e-comm-head-11 start=2026-10-23 20:58:35 end=2026-10-23 21:00:55 elapsed=140s bound=1200s status=OK rc=0` |
+| hook files `--collect-only` | 327 nodes (62 / 114 / 121 / 30) | `[pyt] tag=s04e-hook-collect start=2026-10-23 21:01:11 end=2026-10-23 21:01:14 elapsed=3s bound=600s status=OK rc=0` |
+| hook files `-k black` | 4 passed, 323 deselected (293.68 s: 74 s per node on this box) | `[pyt] tag=s04e-hook-black start=2026-10-23 21:02:20 end=2026-10-23 21:07:16 elapsed=296s bound=1200s status=OK rc=0` |
+
+Non-pytest gates: `ruff 0.16.5 check --select E9,F63,F7,F82 --no-cache` on the 8 changed python files: All checks passed; `--select F401,F841` on the leaf + unit file: All checks passed; `py_compile` of the 8: rc 0. `gitleaks 8.30.1 git --config <base .gitleaks.toml> --log-opts=e1878dd8..b5f29e35 --redact --no-color`: 2 commits, no leaks. K1 recomputed on CPython 3.12.9 over HEAD `guarded_llm_create`: `844692b2fc86027a87add39de447c47b48e6c234a2d8d10e21d8a218c730bb9f` == the re-recorded literal (base `8fa87b61...3a63d` == the old literal); two `client.chat.completions.create(**kwargs)` call sites (the third occurrence is the docstring), `test_u3c_store_false_pin.py` untouched and green ON and OFF. upstash-redis 1.7.0 `eval(script, keys=, args=)` and redis-py 8.1.0 `eval(script, numkeys, *keys_and_args)` measured on the pinned versions: `_eval` matches both; an upstash client's `type().__module__` is `upstash_redis.client`.
+
+## 2. Diff hygiene
+
+- 9 files, +2981 / -5 (`git diff --stat e1878dd8 HEAD`); every index blob LF (0 CR), a fresh checkout CRLF everywhere (autocrlf=true), no whole-file diff; `git diff --check` clean.
+- The 5 deleted lines are each justified: CLAUDE.md 1 (the Feature Flags paragraph: a pure insertion, common prefix 1,227 B + suffix 3,571 B, nothing removed), test_s75 1 (the UNIT_ENV tail gains a comma, E2), test_s81_s03 3 (the K1 literal + its docstring, E1 / GC-8).
+- Bytes > 127 in added lines: only the edited CLAUDE.md line, whose 66 non-ASCII bytes equal the removed line's multiset (net new 0). Leaf and unit file: 0.
+- Imports: `api_budget_service`, `structured_comparison_service`, `admin_routes` each gain one module-attribute import of the leaf. admin_routes is outside the spec change list ("app/api/* not edited") but is required by R-S04-7 (rulings win). The leaf's top-level imports (stdlib incl. concurrent.futures, cache_service, llm_pricing, openai_pricing, async_utils) are inside R01's accepted allowlist; no cycle (none of the four app modules imports api_budget_service).
+- Added-line sweep: ONE hit (minor m1).
+- Secret / key / credentialed-URL / personal shapes in added lines: none.
+
+## 3. Comm set re-derivation (union rule)
+
+`eng_build_comm.py` (independent): module / symbol grep over EVERY `.py` under tests/ incl. subdirectories (llm_spend*, LLM_SPEND, api_budget_service, structured_comparison_service, admin_routes, app.main / `from app import main` / main.py, guarded_llm_create, compare_from_text, health_check, '/health', /api/v1/admin/costs, api_costs, _module_snapshot, spend_snapshot, admin_snapshot, _llm_unavailable_envelope, LLMUnavailableError, K1_GUARDED_AST_SHA, UNIT_ENV, the two edited test modules, fire_and_forget, _BACKGROUND_TASKS) UNION source readers (rglob / glob / inspect / ast.parse / read_text / read_bytes / listdir / scandir / walk / iterdir / tokenize with an app/, `"app"`, `__file__`, .github, CLAUDE.md, Procfile or railway.json reference) UNION CLAUDE.md mentions UNION the named pins, MINUS the 4 hook files. Result: 336 vs GREEN's 335. The 15 files mine adds are all false positives on inspection: 8 mention CLAUDE.md only in a comment or docstring, no read (test_scraping_mode also names app/main.py in its docstring, no import, no read), 3 reference `fire_and_forget` (async_utils is not edited), 2 read app/legal/*.md (not app source; test_legal_docs_u8.py, the T7 app/services scanner, IS in GREEN's set), 1 reads app/data/content_blocklist.json, 1 reads a runbook. Every test that joins an `"app"` / `"services"` path segment is in GREEN's set. GREEN's 14 extras come from the RED list (harmless). No subdirectory test references an edited module. **No missing file.** GREEN's chunks cover 335 head / 334 base files (24 x 13 + 23).
+
+## 4. Findings
+
+### BLOCKING
+None.
+
+### MAJOR
+None in this lens.
+
+### MINOR (documentation rulings / follow-ups)
+
+1. Added-line sweep hit (house rule: an 8-digit run in an added line is a defect; the K1 literal is split for exactly this reason): `app/services/llm_spend_breaker.py` `_cents`, comment `# round, never ceil: 0.07 * 100 == 7.000000000000001 (measured)` carries a 15-digit run. Reword (e.g. "7.0000...01").
+2. The `llm-spend` pool under ordinary concurrency on a HEALTHY Upstash (probe `eng_probe_herd.py` / `.out`: a fake with 0.18 s per GET / EVAL = the row's own 163-203 ms figure, the real leaf, 4 workers, the 0.5 s default bound): (a) no single flight on a stale memo: k concurrent `admit_async` issue k GETs (k=4: 4 GETs, 0.187 s each; k=8: 8 GETs, max 0.36 s; k=12: 4 admits fail OPEN at 0.5 s; k=16: 8 fail open); (b) record EVALs share the FIFO with reads: 4 queued records -> the due read waits 0.406 s; 8 -> the read fails open (0.516 s); 12 -> the read plus 4 records hit their bound; the records still land (12 EVALs) but each is counted in `llm_spend_fail_open` and logged "admitting and not recording". So the row's canary criterion "`llm_spend_fail_open` 0" is unattainable once about 9+ EVALs queue (about two concurrent compares at that RTT) and the counter / WARNING then misreport landed records; row limit (8) states one RTT per due read and "a due read is ONE GET" (per call, not per lane). Ruling-level (R-S04-1 no single flight; R-S04-2 one pool for reads and records, bound = fail-open). Options: count a shielded record's bound expiry separately and log it as pending, single-flight the per-lane refresh, or state the thresholds and reword the canary item. The production Railway-to-Upstash RTT is unmeasured (at 50 ms the threshold is about 40 queued calls). The money effect is small (unchecked admits are still recorded; a fresh memo needs no read).
+3. Row limit (11) is wrong in the safe direction (probes `eng_probe_loopclose.py` A/B, `eng_probe_exit.py`): when a script's `asyncio.run` returns, the `record_soon` task is cancelled, but it has already started and submitted its EVAL (the task's first step runs before the loop stops) and the shield keeps the job; the non-daemon `llm-spend` thread finishes it and interpreter exit WAITS for it (measured: `asyncio.run` returned at 0.91 s, the 2.0 s fake EVAL landed at 3.56 s, then the process exited; `fail_open` 0; A and B: the store holds the delta, in-flight empty). The warmer's last records land; the unstated cost is that process exit blocks on queued records for as long as Upstash takes (the SDK transport has no timeout while `ENABLE_UPSTASH_BOUNDED_TRANSPORT` is held), the REDIS-OFFLOOP limit (5) class.
+4. Row: "Every Redis command runs on the dedicated `llm-spend` pool ... under `asyncio.wait_for(LLM_SPEND_REDIS_TIMEOUT_SECONDS)`": the sync callers (`admit`, `record`, `reserve`, `settle`) wait with `future.result(timeout)` (GREEN deviation 4); say "bounded by".
+5. Rollback / flag-OFF wording: `spend_snapshot` reads `_STATE["ran"]`, never the flag, so after a mid-process rollback (unset) `/health` keeps `llm_spend` + `llm_spend_fail_open` until the next restart; the row's "Flag OFF: ... no health key" and "Rollback: unset the variable (per call, immediate)" should say so (the RO18 precedent: "the flag was ON at least once in this process").
+6. Stall cost unstated in the row (concur with correctness m4 and GREEN Q1), measured again (probe C): 12 admits on a stalled fake took 6.06 s (0.5 s each), 20 work items queued (8 cancelled GETs + 12 records), `fail_open` 24 including the 12 records, which all landed after release (drain 0.36 s, in-flight cleared).
+7. PR body "0 bytes > 127 added": the edited CLAUDE.md Feature Flags line re-adds its 66 pre-existing non-ASCII bytes (net new 0; the GREEN report states it precisely, the PR body does not).
+8. The Feature Flags pointer "the SESSION 81 row at the end of this section" stops being true once S81-05's row is unioned after it (GC-13 rebase); name the row instead (with GREEN Q4 on r38's extract bound).
+9. GC-11 "the hook -k black nodes for the new leaf" is vacuous: the leaf is not in `.github/black-clean-paths.txt` (GREEN deviation 13; `llm_pricing.py` is not either), so no hook black check covers it, and black 26.5.1 would reformat it. House practice, note only.
+
+### Cross-lens (not counted in this verdict)
+- Concur by code reading with the correctness MAJOR: `settle` calls `riyadh_day()` itself, so a reserve before 00:00 Riyadh settled after it writes `actual - ub` into the NEW day's key.
+- Concur with correctness m1 (the `_observe_read` base overwrite) and m2 (a queued sync job cancelled by `_run_bounded_sync` never settles its in-flight delta).
+
+## 5. Prove-nothing rows / unpinned claims (engineering)
+- No row runs two concurrent admits on a stale memo (the herd, m2a) or a due read queued behind records (m2b).
+- `test_r22`'s "durable" half checks registry membership only (concur with correctness).
+- `test_r14` / `test_r39b`: one record in flight; M50 survives (concur).
+- The GC-11 hook `-k black` nodes never touch the leaf (m9).
+
+## 6. Claims checked TRUE against the bytes
+Row: the knob names, defaults and clamp; pool size 4 as a constant; 1,445 = 85 + 170 x 8 and 4,784; 16,384; strict `>` admit and `>=` entry predicate in one helper; the two WARNING templates (ints only, no query); EXPIREAT next Riyadh midnight + 1 h; key `llm_spend:<lane>:<YYYY-MM-DD>`; the entry read before the STREAM_HARD_CAP `wait_for`; the admin `spend_breaker` block outside the S81-03 ledger branch and written only ON; `/health` pure dict read via `_module_snapshot`; 34 = 6 + 7 + 21 with the flag exported; the row placed after the ST1 block (GC-13) with all eight knob names (GC-7). PR body: every node count, the K1 literal, 225 RED-at-base + 16 PIN (the correctness lens measured the HEAD RED file at the base 225 failed AssertionError-only / 16 passed), the gate table figures, lint, the netguard ratchet. Upstash SDK / redis-py eval shapes on the pinned versions. Test isolation: the autouse fixture resets the leaf before and after each test, and the only later `/health` reader (test_security_hardening) passed after the unit file in chunk 11.
+
+## 7. NOT MEASURED
+- The 323 hook nodes outside `-k black`: 74 s per node measured -> about 6.7 h, far beyond the 1800 s ceiling; the unit edits no `.githooks` or hook input; CI covers them.
+- 11 of the 14 comm chunks at HEAD (I re-ran 05, 11, 13; base taken from GREEN's record, comm/base_summary.json).
+- The production Railway-to-Upstash RTT (m2 thresholds scale with it) and Upstash's acceptance of the two Lua scripts.
+
+## 8. Files (notes folder `<scratchpad>/S81-04_adv/`, eng_* prefix; the correctness lens's files untouched)
+eng_notes.md, eng_build_comm.py, eng_comm_set.txt, eng_comm_missing.tsv, eng_chunks.tsv, eng_run_chunks.py, eng_comm_head_05/11/13.log, eng_comm_result.json, eng_ci_order_set.txt, eng_ci_order.log, eng_ci_order_on.log, eng_unit_off.log, eng_unit_on.log, eng_unit_collect.log, eng_unit_ng.log, eng_ng_report.json, eng_hook_collect.log, eng_hook_black.log, eng_diff.patch, eng_claudemd.diff, eng_row.txt, eng_row_head.txt, eng_red_delta.diff (+ the two LF copies), eng_gitleaks_base.toml, eng_probe_loopclose.py/.out, eng_probe_herd.py/.out, eng_probe_exit.py/.out, eng_exit_mark.txt.
