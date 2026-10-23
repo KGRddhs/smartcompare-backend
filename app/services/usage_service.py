@@ -14,6 +14,7 @@ from typing import Optional
 from app.services.cache_service import redis_client, _redis_offload_enabled
 from app.services.database_service import get_admin_supabase_client
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
+from app.utils.redis_offloop import run_redis_offloop_pool, usage_path_offloop_enabled  # S81 ST1
 
 logger = logging.getLogger(__name__)
 
@@ -615,6 +616,37 @@ async def _get_active_referral_bonus(user_id: str) -> int:
         return 0
 
 
+async def _usage_reads_offloop(user_id: str) -> list:
+    """S81 ST1 (ENABLE_USAGE_PATH_OFFLOOP): the four usage reads in ONE gather.
+
+    The Supabase half is the EXISTING async helpers, byte-unchanged: they go
+    through run_db, so they leave the loop only under ENABLE_SYNC_DB_OFFLOAD
+    (R-ST1-1 / R-ST1-2). The two Upstash counter GETs run on the shared
+    redis-offloop pool whatever ENABLE_PRICE_PATH_REDIS_OFFLOOP says. The date
+    keys are computed on the loop before any dispatch. Returns
+    ``[user_info, bonus, daily_used, monthly_used]``.
+
+    If building an awaitable raises (a synchronous dispatch failure), the
+    awaitables already built are closed before the error propagates, so no
+    coroutine is left un-awaited (GT-6); the caller then falls back inline.
+    """
+    daily_key = _daily_key(user_id)
+    monthly_key = _monthly_key(user_id)
+    reads = []
+    try:
+        reads.append(_get_user_tier_info(user_id))
+        reads.append(_get_active_referral_bonus(user_id))
+        reads.append(run_redis_offloop_pool(_get_redis_count, daily_key))
+        reads.append(run_redis_offloop_pool(_get_redis_count, monthly_key))
+    except BaseException:
+        for pending in reads:
+            close = getattr(pending, "close", None)
+            if callable(close):
+                close()
+        raise
+    return await asyncio.gather(*reads)
+
+
 async def check_usage_allowed(user_id: str, access_token: str) -> dict:
     """Check if user can make a comparison.
 
@@ -626,12 +658,40 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
             "remaining": {"daily": int, "monthly": int, "lifetime_free": int}
         }
     """
+    if usage_path_offloop_enabled():
+        # S81 ST1: the four reads in one gather, then the one compute body. A
+        # dispatch failure logs one WARNING and runs the base path below.
+        try:
+            return _usage_allowed_body(*(await _usage_reads_offloop(user_id)))
+        except Exception as exc:  # noqa: BLE001 - dispatch failure: fall back inline
+            logger.warning(
+                "[USAGE-OFFLOOP] dispatch failed fn=check_usage_allowed type=%s -- inline fallback",
+                type(exc).__name__,
+            )
     user_info = await _get_user_tier_info(user_id)
     tier = user_info.get("subscription_tier", "free")
     lifetime_used = user_info.get("lifetime_comparisons_used", 0)
     # Path-(a): entitlement bonus = sum of active referral_redemptions rows
     # (not the INT counter, which stays for analytics only).
     bonus = await _get_active_referral_bonus(user_id)
+    limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+    # Lifetime free comparisons (free tier only): no counter is read, as at base.
+    if tier == "free" and lifetime_used < limits["lifetime_free"]:
+        return _usage_allowed_body(user_info, bonus, 0, 0)
+
+    # Get current usage from Redis
+    daily_used = _get_redis_count(_daily_key(user_id))
+    monthly_used = _get_redis_count(_monthly_key(user_id))
+    return _usage_allowed_body(user_info, bonus, daily_used, monthly_used)
+
+
+def _usage_allowed_body(user_info: dict, bonus: int, daily_used: int, monthly_used: int) -> dict:
+    """S81 ST1 (R-ST1-3): the ONE compute body of check_usage_allowed, called by
+    both flag states. Pure (no I/O); the counters are ignored on the
+    lifetime-free path, as at base."""
+    tier = user_info.get("subscription_tier", "free")
+    lifetime_used = user_info.get("lifetime_comparisons_used", 0)
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
     monthly_cap = limits["monthly"] + bonus
 
@@ -647,10 +707,6 @@ async def check_usage_allowed(user_id: str, access_token: str) -> dict:
                 "lifetime_free": limits["lifetime_free"] - lifetime_used,
             },
         }
-
-    # Get current usage from Redis
-    daily_used = _get_redis_count(_daily_key(user_id))
-    monthly_used = _get_redis_count(_monthly_key(user_id))
 
     # Check daily limit first (more restrictive)
     if daily_used >= limits["daily"]:
@@ -716,15 +772,31 @@ async def get_usage_status(user_id: str, access_token: str) -> dict:
     frontend's "X / Y" display accurately reflects entitlement.
     Path-(a): bonus is summed from active redemptions, not the INT counter.
     """
+    if usage_path_offloop_enabled():
+        # S81 ST1: the four reads in one gather, then the one compute body. A
+        # dispatch failure logs one WARNING and runs the base path below.
+        try:
+            return _usage_status_body(*(await _usage_reads_offloop(user_id)))
+        except Exception as exc:  # noqa: BLE001 - dispatch failure: fall back inline
+            logger.warning(
+                "[USAGE-OFFLOOP] dispatch failed fn=get_usage_status type=%s -- inline fallback",
+                type(exc).__name__,
+            )
     user_info = await _get_user_tier_info(user_id)
-    tier = user_info.get("subscription_tier", "free")
-    lifetime_used = user_info.get("lifetime_comparisons_used", 0)
     bonus = await _get_active_referral_bonus(user_id)
-    limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
-    monthly_cap = limits["monthly"] + bonus
-
     daily_used = _get_redis_count(_daily_key(user_id))
     monthly_used = _get_redis_count(_monthly_key(user_id))
+    return _usage_status_body(user_info, bonus, daily_used, monthly_used)
+
+
+def _usage_status_body(user_info: dict, bonus: int, daily_used: int, monthly_used: int) -> dict:
+    """S81 ST1 (R-ST1-3): the ONE compute body of get_usage_status, called by
+    both flag states. Pure (no I/O); builds the base response in the base key
+    order."""
+    tier = user_info.get("subscription_tier", "free")
+    lifetime_used = user_info.get("lifetime_comparisons_used", 0)
+    limits = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    monthly_cap = limits["monthly"] + bonus
 
     # Mirror check_usage_allowed (line 167): a free-tier user with lifetime-free
     # comparisons left BYPASSES the daily/monthly counters. The DISPLAY must reflect

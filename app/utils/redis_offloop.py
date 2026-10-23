@@ -21,6 +21,11 @@ adapter fan-out's. Leaf module: stdlib imports only.
 
 The flag is read PER CALL; ``REDIS_OFFLOOP_MAX_WORKERS`` (default 16, clamped
 1..32) is read ONCE, when the pool is built, so a change needs a restart.
+
+S81 ST1 (ENABLE_USAGE_PATH_OFFLOOP): ``usage_path_offloop_enabled()`` reads that
+flag per call, and ``run_redis_offloop_pool(fn, *args, durable=False)`` runs ONE
+job on the same shared pool whatever ENABLE_PRICE_PATH_REDIS_OFFLOOP says (the
+caller reads its own flag first).
 """
 from __future__ import annotations
 
@@ -100,6 +105,31 @@ async def run_redis_offloop(fn: Callable[..., Any], *args: Any, durable: bool = 
     ``redis-offloop`` pool (writes shielded when ``durable``)."""
     if not redis_offloop_enabled():
         return fn(*args)
+    loop = asyncio.get_running_loop()
+    ctx = contextvars.copy_context()
+    fut = loop.run_in_executor(
+        _get_redis_offloop_pool(), functools.partial(ctx.run, fn, *args),
+    )
+    if durable:
+        fut.add_done_callback(_retrieve_quietly)
+        return await asyncio.shield(fut)
+    return await fut
+
+
+def usage_path_offloop_enabled() -> bool:
+    """S81 ST1 ENABLE_USAGE_PATH_OFFLOOP - read PER CALL (default OFF)."""
+    return os.getenv("ENABLE_USAGE_PATH_OFFLOOP", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+async def run_redis_offloop_pool(fn: Callable[..., Any], *args: Any, durable: bool = False) -> Any:
+    """S81 ST1: run ``fn(*args)`` as ONE job on the shared ``redis-offloop`` pool
+    WHATEVER ENABLE_PRICE_PATH_REDIS_OFFLOOP says (the caller owns its gate).
+    The mechanics of run_redis_offloop's ON branch: a copied contextvars
+    context; ``durable=True`` shields the job (it lands even when the awaiting
+    coroutine is cancelled) and quietly retrieves its outcome; a read still
+    queued behind a full pool is dropped on cancel."""
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
     fut = loop.run_in_executor(
