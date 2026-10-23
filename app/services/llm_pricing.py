@@ -65,13 +65,15 @@ HAIKU_LONG_CONTEXT: Dict[str, Any] = {
     "cache_write_5m": 0.625,  # derived 1.25x of the tier input (R1, 2026-10-22)
     "cache_write_1h": 1.00,   # derived 2x of the tier input (R1, 2026-10-22)
 }
-# The prompt size above which a model's flat row stops applying: the Haiku tier
-# row replaces it, any other model is unpriced.
+_LONG_CONTEXT_ROWS: Dict[str, Dict[str, Any]] = {"claude-haiku-5-5": HAIKU_LONG_CONTEXT}
+# The prompt size above which a model's flat row stops applying: the tier row
+# replaces it, any other model is unpriced. ONE source per model (engineering
+# m3): a tiered model's threshold is DERIVED from its long-context row's
+# threshold_prompt_tokens; an untiered model's threshold lives only here.
 LONG_CONTEXT_THRESHOLD_PROMPT_TOKENS: Dict[str, int] = {
-    "claude-haiku-5-5": 100000,
+    **{model: row["threshold_prompt_tokens"] for model, row in _LONG_CONTEXT_ROWS.items()},
     "claude-sonnet-5-5": 200000,
 }
-_LONG_CONTEXT_ROWS: Dict[str, Dict[str, Any]] = {"claude-haiku-5-5": HAIKU_LONG_CONTEXT}
 
 # Server web search: 10 USD per 1,000 requests (server_tool_use.web_search_requests);
 # the Batch API halves token charges only, never the search fee (R1).

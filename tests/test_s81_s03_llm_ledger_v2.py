@@ -2531,3 +2531,143 @@ def test_u6_unclaimed_add_fault_keeps_the_base_total_with_one_warning(monkeypatc
     _isolated(body)
     if mod is not None:
         _assert_one_fallback_warning(caplog, "RB unclaimed")
+
+
+# ===========================================================================
+# F1 -- the rebase-round pin rows (RULINGS_FIX1_S81_03 F1-1 / F1-2 / F1-3;
+# appended after U6; every row above stays byte-identical)
+# ===========================================================================
+def test_a9b_sonnet_long_context_boundary_is_200000_prompt_tokens():
+    """PIN (A9b, F1-1, gate G-2; kills G2 = the Sonnet boundary 200,000 ->
+    100,000): a Sonnet request is flat-priced up to and including 200,000
+    prompt tokens and unpriced above it, the count being the WHOLE prompt
+    (input + cache read + cache writes): 150000*2 + 1000*10 = 310000 -> 0.31,
+    200000*2 + 1000*10 = 410000 -> 0.41, 200,001 -> None, 199,999 input + 2
+    cache read -> None."""
+    s = "claude-sonnet-5-5"
+    assert _price("anthropic", s, input_tokens=150000, output_tokens=1000) == pytest.approx(0.31, abs=1e-12)
+    assert _price("anthropic", s, input_tokens=200000, output_tokens=1000) == pytest.approx(0.41, abs=1e-12)
+    assert _price("anthropic", s, input_tokens=200001, output_tokens=1000) is None, (
+        "G-2: a Sonnet request above 200,000 prompt tokens is unpriced"
+    )
+    assert _price("anthropic", s, input_tokens=199999, cache_read_tokens=2) is None, (
+        "G-2: the boundary counts the whole prompt (199,999 input + 2 cache read = 200,001)"
+    )
+
+
+def _camera_unsuccessful(monkeypatch):
+    """I5 harness: the cm15b camera shape (two images, the REAL
+    identify_products dispatching once, 500 / 100 on gpt-4o-mini) with a faked
+    UNSUCCESSFUL compare result carrying no metadata at all (the shape of the
+    orchestrator's failure dicts: success False, a code, a top-level
+    total_cost); metering and the failure envelope stay OFF (UNIT_ENV), so the
+    route serves the result as action "comparison"."""
+    monkeypatch.setenv("OPENAI_MODEL_VISION", "gpt-4o-mini")
+    fake = _usage_client(content=VISION_JSON, prompt=500, completion=100)
+    monkeypatch.setattr(oai, "client", fake)
+    monkeypatch.setattr(content_safety_service, "get_content_safety_service", lambda: _Safety())
+    compare_result = {"success": False, "code": "TIMEOUT", "error": "s03 synthetic timeout",
+                      "total_cost": 0.01}
+
+    async def _fake_compare(self, *a, **k):
+        return copy.deepcopy(compare_result)
+
+    monkeypatch.setattr(image_routes.StructuredComparisonService, "compare_from_text", _fake_compare)
+    monkeypatch.setattr(image_routes, "log_search", lambda **kw: _done())
+    monkeypatch.setattr(image_routes, "save_comparison_and_track_cohort", lambda **kw: _done())
+    files = [("images", (f"p{i}.jpg", JPEG, "image/jpeg")) for i in range(2)]
+    resp = TestClient(app, raise_server_exceptions=False).post("/api/v1/image/identify", files=files)
+    assert resp.status_code == 200, f"harness: {resp.status_code} {resp.text[:300]}"
+    body = resp.json()
+    assert body.get("action") == "comparison" and body.get("success") is False, f"harness: {body!r}"[:300]
+    return body["metadata"], fake
+
+
+def test_i5_camera_unsuccessful_compare_without_llm_gets_the_vision_summary(monkeypatch):
+    """PIN (I5, F1-2; kills MIc = the camera IR condition's `or` -> `and`):
+    ON, an UNSUCCESSFUL compare result carrying no metadata.llm plus the one
+    recorded vision call (gpt-4o-mini 500 / 100 = 0.000135) -> metadata.llm is
+    the vision summary alone (calls 1, cost 0.000135, the G-4 key set)."""
+    _set_flag(monkeypatch, "true")
+    _need_leaf()
+    meta, fake = _camera_unsuccessful(monkeypatch)
+    assert fake.chat.completions.create.await_count == 1
+    llm = meta.get("llm")
+    assert isinstance(llm, dict), f"F1-2: metadata.llm absent with one recorded vision call: {sorted(meta)}"
+    assert set(llm) == SUMMARY_KEYS, sorted(set(llm) ^ SUMMARY_KEYS)
+    assert llm["calls"] == 1 and llm["priced_calls"] == 1
+    assert llm["cost_usd"] == pytest.approx(0.000135, abs=1e-9) and llm["cost_complete"] is True
+    assert llm["prompt_tokens"] == 500 and llm["completion_tokens"] == 100
+    assert llm["by_provider"]["openai"]["calls"] == 1
+    assert meta["openai"]["calls"] == 1
+
+
+def _camera_real_compare(monkeypatch, flag):
+    """I6 harness (the correctness adversary's probe PD): the REAL
+    /image/identify route, the REAL compare (the fan-out harness with the
+    distinct-usage client), the REAL identify_products (500 / 100 on
+    gpt-4o-mini); the content-safety stub delegates every method it does not
+    define to the real service."""
+    _set_flag(monkeypatch, flag)
+    _pin_default_models(monkeypatch)
+    _arm_prod_search_config(monkeypatch)
+    monkeypatch.setattr(oai, "client", _vision_client(prompt=500, completion=100, content=VISION_JSON))
+    real_safety = content_safety_service.get_content_safety_service()
+
+    class _DelegatingSafety(_Safety):
+        def __getattr__(self, name):
+            return getattr(real_safety, name)
+
+    monkeypatch.setattr(content_safety_service, "get_content_safety_service", lambda: _DelegatingSafety())
+    monkeypatch.setattr(image_routes, "log_search", lambda **kw: _done())
+    monkeypatch.setattr(image_routes, "save_comparison_and_track_cohort", lambda **kw: _done())
+    sink = {}
+    _e2e_spies(monkeypatch, sink)
+    fan = _FanOutCounters()
+    files = [("images", (f"p{i}.jpg", JPEG, "image/jpeg")) for i in range(2)]
+    with _all(*fan.patches(_distinct_client()), *_no_supabase(), *_no_egress()):
+        resp = TestClient(app, raise_server_exceptions=False).post("/api/v1/image/identify", files=files)
+    assert resp.status_code == 200, f"harness: {resp.status_code} {resp.text[:300]}"
+    body = resp.json()
+    assert body.get("action") == "comparison" and body.get("success") is True, f"harness: {body!r}"[:300]
+    return body["metadata"], sink
+
+
+def test_i6_camera_real_compare_total_cost_and_llm_mirror_openai(monkeypatch):
+    """PIN (I6, F1-3; coverage, correctness MIN-9): ON, the camera route with a
+    REAL compare: metadata.total_cost = every compare-ledger entry at list
+    price + 8 x 0.001 Serper + 0.006 Tier 1.5 + the 0.000135 vision call =
+    0.032127 (no double count of the vision call, no unclaimed add from the
+    vision ledger); metadata.llm mirrors metadata.openai (12 calls / 0.018127)
+    in the G-4 key set."""
+    _need_leaf()
+    meta, sink = _camera_real_compare(monkeypatch, "true")
+    ledger = sink["ledgers"][-1]
+    compare_list = sum(e["cost_usd"] for e in ledger)
+    assert len(ledger) == 11 and sink["serper"] == 8, (len(ledger), sink["serper"])
+    assert sum(sink["amounts"]) == pytest.approx(0.006, abs=1e-12)
+    assert meta["vision_cost"] == pytest.approx(0.000135, abs=1e-12)
+    expected = compare_list + 0.001 * sink["serper"] + sum(sink["amounts"]) + meta["vision_cost"]
+    assert meta["total_cost"] == pytest.approx(expected, abs=1.5e-6), (meta["total_cost"], expected)
+    assert meta["total_cost"] == 0.032127, meta["total_cost"]
+    _assert_llm_mirrors_openai(meta["llm"], meta["openai"], "camera real compare")
+    assert meta["llm"]["calls"] == meta["openai"]["calls"] == 12
+    assert meta["openai"]["cost_usd"] == pytest.approx(0.018127, abs=1e-6)
+
+
+@pytest.mark.parametrize("flag", [None, "false"])
+def test_i6_off_camera_real_compare_total_cost_is_base(monkeypatch, flag):
+    """PIN (I6 OFF half, B1 rule: the unit state primed, recorders on every
+    leaf function): OFF, the same camera route with a REAL compare ships the
+    base total 0.016769 (the B5 REST base 0.016634 + the 0.000135 vision call),
+    no metadata.llm, metadata.openai 12 calls, zero leaf calls."""
+    def body():
+        _prime_leaf_state(monkeypatch, flag)
+        calls = _leaf_recorders(monkeypatch)
+        meta, _sink = _camera_real_compare(monkeypatch, flag)
+        assert "llm" not in meta, f"flag {flag!r}: metadata.llm leaked OFF"
+        assert meta["total_cost"] == 0.016769, meta["total_cost"]
+        assert meta["openai"]["calls"] == 12
+        assert not _called(calls), _called(calls)
+
+    _isolated(body)
