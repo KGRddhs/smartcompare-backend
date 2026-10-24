@@ -1,0 +1,565 @@
+{
+ "unit": "S81-15 REGISTRY-ROBOTS-DENY (ENABLE_MERCHANT_REGISTRY_DB + ENABLE_ROBOTS_REGISTRY_CRON, lane B) -- RED at base 98d854338be5a4a39ac229e70e37ce0b1f0346e9, worktree C:/Users/SynAckITPC/Documents/AI/sc-s81-s15 (HEAD 98d85433 before and after). Notes folder C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S81-15-red (notes.md, probes, literals.json, base/prototype logs, mutA..mutD + mut_final.json, comm/ with comm_list.txt, comm_reasons.tsv, comm_chunks.json, chunk logs and failed sets, prototype copies proto_merchant_registry.py / proto_robots_registry.py / proto_seed_kb_merchants.py / proto_cron_robots_registry.py / proto_tracked.diff, base_failed_ids.json). S81-14 contract read with git show 0910e7d0 into s14_kb_service.py / s14_045.sql (no sibling path named). Base re-measurements at 98d85433: catalog / registry-OFF / seed-count probes byte-identical to the spec's dfc6502f outputs (410 hosts, 317 live, 92 candidate, 1 denied fragrantica.com, 1 collision footlocker.com.bh, 411 entries, 199 live blank-mechanism json rows; catalog ON 319 = 44 + 275); every cited line anchor unchanged; D9 and S78 UA pins green at base (comm chunks). Recorded base literals: BASE_SNAPSHOT_DIGEST D03 off e1ee4e7f39e418e6753fad386ca4be6978e5e340343dd4d952f652aa3bb140c0 / D03 on 4f3b8ae3ce4401d758701a07c68257fe35f5f572ce9f5951651abd7e8d884f4b (identical across ENABLE_LONGEST_HOST_MATCH), BASE_UA_SHA256 09692ab2fe190ed7a3436c158047e4d84cda320b925821bb0dc47d212f9a974f, FRAG_BASE / SEPHORA_BASE answers. /bot page measurement (R-S15-5): the cron fetches robots.txt plus at most one robots-gated PDP probe per candidate under the QarenBot UA; no sentence of landing/bot/index.html (EN meta, EN paragraph) becomes false, so no S81-12 page edit is owed. Contract pinned for GREEN: merchant_registry {merchant_registry_db_enabled, memo_seconds 600 clamp 300..900, read_timeout_seconds 5.0 clamp 1..30, max_stale_seconds 3600 clamp 900..21600, registry_rows(fallback), registry_lookup_rows(fallback), async refresh_merchant_registry (asyncio.to_thread + wait_for; per page table('kb_merchants').select(READ_COLUMNS within the six decode columns, updated_at tolerated).in_('status',['live','blocked']).range(0,499),(500,999)... until a short page), partner_for_host, source_to_entry(source, order, origin), build_seed_rows(literals, json_rows, aware now), plan_seed(rows, existing mapping), SEED_OWNED_COLUMNS, PLATFORM_FOR_MECHANISM, seams _monotonic / _admin_client / _reset_for_tests}; source_router {Source.deny: bool = False appended after the 19 base fields, registry_rows(), registry_lookup_rows(), _source_from_entry(host, entry)}; robots_registry {robots_registry_cron_enabled, max_hosts_per_run 500 clamp 1..5000, challenge_park_days 7 clamp 1..30, QARENBOT_UA (the robots_eval object), parse_crawl_delay(body, agent), decide_robots(status, headers, body, probe_urls), challenge_vendor(status, headers, body), robots_record(verdict, now, origin, source) == the fixture keys with ISO 'YYYY-MM-DDTHH:MM:SSZ', next_row_update(row, verdict, now, gates=None), run_cron(client, fetch, sleep, now_clock, validate) with fetch awaited as fetch(url, headers=..., timeout=..., allow_redirects=False)}; robots_eval.QARENBOT_UA with sitemap_discovery_service._ROBOTS_UA the same object; scripts/seed_kb_merchants.main(argv, client=None, probe=None); scripts/cron_robots_registry.main(); railway.robots.json. Rows that re-run against the REAL kb_service at GREEN (the RED installs a transcription of its merchant half only when the module is absent): R22, R23, R24, R25, R26, R9 and every row seeding from build_seed_rows (P1/P3 priming, R6, R7, R8, R8b, R10, R11, R11b, R11c, R12, R14). Deliberate pin changes measured on the prototype: E1 tests/test_legal_disclosure_s77.py::test_s77_d9_bot_page_claim_matches_the_runtime (QARENBOT_FILES += app/services/robots_registry.py; green with the widened set), E2 tests/test_legal_s78.py::test_s78_r4_user_agent_is_the_lr7_value goes RED when _ROBOTS_UA becomes the re-export and green again once UA_FILES points at (\"app/services/robots_eval.py\", \"QARENBOT_UA\"); tests/test_s81_d03_deny_and_guards.py all green on the prototype.",
+ "test_files": [
+  {
+   "path": "tests/test_s81_s15_registry_robots.py",
+   "sha256": "5bb3bc4c1ccd21abffeece4b221d82289b9a250008c391bf91f3c0e23f52be09",
+   "bytes": 99424
+  },
+  {
+   "path": "tests/fixtures/s81_s15_robots_record.json",
+   "sha256": "314d5e0d2b8fd81929e0f2ee15399afb77b73efc5735e60b3dccb0b882e50d84",
+   "bytes": 1433
+  }
+ ],
+ "base_run": {
+  "failed": 192,
+  "passed": 37,
+  "every_failure_is_assertion_error": true,
+  "failed_node_ids": [
+   "exact ids: <notes>/base_failed_ids.json (192); by function:",
+   "test_r1_db_flag_reader x13",
+   "test_r2_memo_seconds_knob x11",
+   "test_r2b_read_timeout_and_max_stale_knobs x15",
+   "test_r3_cron_knobs x11",
+   "test_r3b_cron_flag_reader x13",
+   "test_r4_accessors_identity_off_and_source_gains_deny x1",
+   "test_r5_on_before_refresh_serves_code_registry x1",
+   "test_r6_single_flight_refresh_off_loop_with_status_filter x1",
+   "test_r6b_paged_read x1",
+   "test_r7_on_routes_operator_rows_in_both_catalog_states x4",
+   "test_r8_record_equality x2",
+   "test_r8b_lookup_set_keeps_blocked_and_denied_rows x1",
+   "test_r9_entry_round_trip x1",
+   "test_r10_noon_two_entries x1",
+   "test_r11_blocked_candidate_and_denied_never_selected x1",
+   "test_r11b_cron_blocked_global_host_keeps_its_refusals x1",
+   "test_r11c_fragrantica_flag_on_matches_base x2",
+   "test_r12_catalog_flag_read_at_refresh x1",
+   "test_r13_literal_dedup_from_every_literal_origin_entry x1",
+   "test_r14_order_independent_of_row_order x1",
+   "test_r15_memo_window x2",
+   "test_r16_snapshot_keeps_identity_and_sees_unbumped_edits x1",
+   "test_r17_failures_fall_back_with_one_warning_per_window x6",
+   "test_r17b_failed_refresh_keeps_last_good_list_until_max_stale x1",
+   "test_r18_one_bad_row_or_entry_is_skipped x1",
+   "test_r19_worker_thread_call_schedules_nothing x1",
+   "test_r20_partner_for_host_gated_and_never_on_a_source x1",
+   "test_r20b_rollback_next_call_is_the_code_registry x1",
+   "test_r21_direct_readers_read_the_lookup_accessor x1",
+   "test_r21b_blocked_bahrain_host_keeps_its_curl_timeout x1",
+   "test_r22_seed_rows_counts_and_contract x1",
+   "test_r23_seed_platform_and_ops_columns x1",
+   "test_r24_plan_seed_idempotent_and_non_clobbering x1",
+   "test_r25_seed_script_dry_run_writes_nothing_and_apply_batches x1",
+   "test_r26_seed_classify_dry_run_and_apply x1",
+   "test_r26b_seed_records_a_residential_read_by_flag x1",
+   "test_r27_decide_robots_table x36",
+   "test_r28_crawl_delay x12",
+   "test_r28b_verdict_crawl_delay_is_the_max_of_both_groups x1",
+   "test_r29_robots_record_is_the_frozen_d14_contract x1",
+   "test_r29b_body_sha_by_status x1",
+   "test_r29c_stored_rules_answer_per_url_without_a_fetch x3",
+   "test_r29d_rule_lists_are_capped_at_200 x1",
+   "test_r30_challenge_vendor x9",
+   "test_r31_transitions x1",
+   "test_r31b_residential_verdict_is_never_downgraded_by_the_datacenter x1",
+   "test_r32_promotion_gates x7",
+   "test_r32b_adapter_path_joins_the_probe_set x1",
+   "test_r33_cron_flag_off_does_nothing x1",
+   "test_r34_cron_is_sequential_polite_and_named x1",
+   "test_r34b_redirects_followed_by_hand_with_ssrf_on_every_hop x1",
+   "test_r34c_robots_is_read_from_the_probe_origin x1",
+   "test_r35_ssrf_refusal_and_sticky_rows_are_not_fetched x1",
+   "test_r36_run_bound_due_order_parked_and_not_due x1",
+   "test_r36b_cron_updates_are_conditional_and_a_lost_race_is_skipped x1",
+   "test_r37_registry_modules_import_light x1",
+   "test_r38_no_impersonation_and_log_hygiene x1",
+   "test_r39_qarenbot_ua_lives_in_robots_eval x1",
+   "test_r40_d9_emitter_pin_widened_by_exactly_robots_registry x1",
+   "test_r41_railway_robots_cron_config x1",
+   "test_r43_scripts_never_imported_by_app_and_exist x1",
+   "PASSING at base = the 37 PIN nodes: test_p1_flag_off_consumers_identical x28 (D03 x LHM x 7 falsy), test_p2, test_p3, test_p4, test_p5, test_p6, test_p7 x2, test_p8, test_p9"
+  ],
+  "pyt_line": "[pyt] tag=s15red-base-final start=2026-10-24 03:48:16 end=2026-10-24 03:48:38 elapsed=22s bound=600s status=FAIL rc=1 (192 failed, 37 passed; [hermeticity] sentinel checked 229 test(s); [netguard] blocked 0 attempt(s) from 0 node(s); 192 'E AssertionError' lines, the one ModuleNotFoundError text is R37's subprocess stderr quoted inside its assertion message). First base run: [pyt] tag=s15red-base1 start=2026-10-24 03:18:32 end=2026-10-24 03:19:02 elapsed=30s bound=600s status=FAIL rc=1 (192 failed / 37 passed, same classes)."
+ },
+ "prototype": {
+  "on_passed": 229,
+  "on_failed": 0,
+  "off_passed": 37,
+  "off_failed": 0,
+  "pyt_lines": [
+   "[pyt] tag=s15red-proto3 start=2026-10-24 03:47:06 end=2026-10-24 03:47:21 elapsed=15s bound=600s status=OK rc=0 (229 passed; [hermeticity] sentinel checked 229; [netguard] blocked 0 attempt(s) from 0 node(s))",
+   "[pyt] tag=s15red-proto3-off start=2026-10-24 03:47:23 end=2026-10-24 03:47:31 elapsed=8s bound=600s status=OK rc=0 (-k test_p: 37 passed, 192 deselected; netguard blocked 0)",
+   "[pyt] tag=s15red-proto3-exported start=2026-10-24 03:47:54 end=2026-10-24 03:48:08 elapsed=15s bound=600s status=OK rc=0 (ENABLE_MERCHANT_REGISTRY_DB=true ENABLE_ROBOTS_REGISTRY_CRON=true exported for the call; 229 passed)",
+   "[pyt] tag=s15red-proto1 start=2026-10-24 03:27:18 end=2026-10-24 03:27:41 elapsed=23s bound=600s status=OK rc=0 (first prototype run, 229 passed)",
+   "[pyt] tag=s15red-proto2 start=2026-10-24 03:30:57 end=2026-10-24 03:31:12 elapsed=15s bound=600s status=OK rc=0 (after the R11 data_override hardening, 229 passed)",
+   "[pyt] tag=s15red-proto-pins start=2026-10-24 03:28:00 end=2026-10-24 03:28:13 elapsed=13s bound=600s status=FAIL rc=1 (test_legal_disclosure_s77 + test_legal_s78 + test_s81_d03_deny_and_guards on the prototype with E1 applied: 1 failed / 351 passed; the failure is test_legal_s78.py::test_s78_r4_user_agent_is_the_lr7_value = deliberate change E2)",
+   "[pyt] tag=s15red-proto-e2 start=2026-10-24 03:28:29 end=2026-10-24 03:28:34 elapsed=5s bound=600s status=OK rc=0 (test_legal_s78.py with UA_FILES -> robots_eval.py QARENBOT_UA: 29 passed)"
+  ],
+  "notes": "Prototype in a detached scratch worktree at 98d85433 (no node_modules junction), removed afterwards; copies kept in the notes folder. Because every row sets / deletes its own flags (autouse fixture deletes all unit flags first), 'flag ON' = the full file on the prototype and 'flag OFF' = the PIN rows; an exported-flag run changes nothing. Spec points the prototype showed wrong or underspecified: (1) Source already has a 'status' field, so 'Source gains status' can only mean reusing it with the new value 'blocked' on decoded lookup rows, plus a new appended 'deny' field; (2) every host-evidence consumer the ruling names reaches the registry through registry_tier -> _registry_row_for_host -> _routable_registry(), so R-S15-1 needs _registry_row_for_host's default to be a D03-filtered LOOKUP view while the selectors keep the selection view; (3) moving _ROBOTS_UA into robots_eval reddens tests/test_legal_s78.py R4 (E2, measured); (4) kb_service (S81-14 GREEN) imports price_service / result_gate / spec_spine_service at module top, so the seed builders must import it lazily or R37 (light import) fails; (5) build_merchant_row needs an aware datetime and refuses adapter '' (render-only json rows carry genuine_method ''), so the seed passes genuine_method or None; (6) R-S15-13's 'only where platform is NULL' requires blank-mechanism rows to seed platform NULL, not the spec's 'unknown'; (7) extract_price_from_html needs a product name (an empty one makes JSON-LD unreachable), the prototype used the PDP <title>; the RED patches the extractor with a recorder, so real extraction on a real PDP is not measured."
+ },
+ "mutants": [
+  {
+   "id": "M1",
+   "description": "registry_rows skips the flag read",
+   "survived": false,
+   "killed_by": "test_p1_flag_off_consumers_identical[off-off-unset]"
+  },
+  {
+   "id": "M1b",
+   "description": "memo freshness checked before the flag (new, R-S15-8)",
+   "survived": false,
+   "killed_by": "test_p1_flag_off_consumers_identical[off-off-unset]"
+  },
+  {
+   "id": "M1c",
+   "description": "partner_for_host ungated (new, R-S15-8)",
+   "survived": false,
+   "killed_by": "test_p1_flag_off_consumers_identical[off-off-unset]"
+  },
+  {
+   "id": "M1d",
+   "description": "registry_lookup_rows ungated",
+   "survived": false,
+   "killed_by": "test_p1_flag_off_consumers_identical[off-off-unset]"
+  },
+  {
+   "id": "M2",
+   "description": "flag reader without strip/lower",
+   "survived": false,
+   "killed_by": "test_r1_db_flag_reader[TRUE]"
+  },
+  {
+   "id": "M3",
+   "description": "memo knob without the clamp",
+   "survived": false,
+   "killed_by": "test_r2_memo_seconds_knob[60-300.0]"
+  },
+  {
+   "id": "M4",
+   "description": "knob accepts nan / inf",
+   "survived": false,
+   "killed_by": "test_r2_memo_seconds_knob[nan-600.0]"
+  },
+  {
+   "id": "M5",
+   "description": "decode admits candidate rows to selection (both exclusions removed; first one-edit form was equivalent in the prototype)",
+   "survived": false,
+   "killed_by": "test_r11_blocked_candidate_and_denied_never_selected"
+  },
+  {
+   "id": "M6",
+   "description": "decode ignores deny",
+   "survived": false,
+   "killed_by": "test_r11_blocked_candidate_and_denied_never_selected"
+  },
+  {
+   "id": "M7",
+   "description": "decode drops the is_denied_host belt",
+   "survived": false,
+   "killed_by": "test_r11_blocked_candidate_and_denied_never_selected"
+  },
+  {
+   "id": "M8",
+   "description": "no sort by order",
+   "survived": false,
+   "killed_by": "test_r14_order_independent_of_row_order"
+  },
+  {
+   "id": "M9",
+   "description": "catalog flag ignored at refresh",
+   "survived": false,
+   "killed_by": "test_r8_record_equality[off]"
+  },
+  {
+   "id": "M10",
+   "description": "rebuild on an equal snapshot",
+   "survived": false,
+   "killed_by": "test_r16_snapshot_keeps_identity_and_sees_unbumped_edits"
+  },
+  {
+   "id": "M11",
+   "description": "empty result stored as an empty list (no fallback)",
+   "survived": false,
+   "killed_by": "test_r17_failures_fall_back_with_one_warning_per_window[empty]"
+  },
+  {
+   "id": "M12",
+   "description": "WARNING on every refresh, not once per window",
+   "survived": false,
+   "killed_by": "test_r17_failures_fall_back_with_one_warning_per_window[no_client]"
+  },
+  {
+   "id": "M13",
+   "description": "the read runs inline on the caller",
+   "survived": false,
+   "killed_by": "test_r6_single_flight_refresh_off_loop_with_status_filter"
+  },
+  {
+   "id": "M14",
+   "description": "single flight removed",
+   "survived": false,
+   "killed_by": "test_r6_single_flight_refresh_off_loop_with_status_filter"
+  },
+  {
+   "id": "M15",
+   "description": "_routable_registry D03-OFF branch returns SOURCE_REGISTRY instead of reg",
+   "survived": false,
+   "killed_by": "test_r7_on_routes_operator_rows_in_both_catalog_states[off-off]"
+  },
+  {
+   "id": "M16",
+   "description": "price_service._curl_timeout_for_url reverted to SOURCE_REGISTRY",
+   "survived": false,
+   "killed_by": "test_r7_on_routes_operator_rows_in_both_catalog_states[off-off]"
+  },
+  {
+   "id": "M16b",
+   "description": "cache_service._registry_domains reverted to SOURCE_REGISTRY",
+   "survived": false,
+   "killed_by": "test_r21_direct_readers_read_the_lookup_accessor"
+  },
+  {
+   "id": "M16c",
+   "description": "magento _expected_currency_for reverted to SOURCE_REGISTRY",
+   "survived": false,
+   "killed_by": "test_r21_direct_readers_read_the_lookup_accessor"
+  },
+  {
+   "id": "M17",
+   "description": "decide_robots treats 403 as allow",
+   "survived": false,
+   "killed_by": "test_r27_decide_robots_table[403-...-unreadable-None-off]"
+  },
+  {
+   "id": "M18",
+   "description": "only the QarenBot group consulted",
+   "survived": false,
+   "killed_by": "test_r27_decide_robots_table[200-headers3-...]"
+  },
+  {
+   "id": "M19",
+   "description": "404 treated as unreadable",
+   "survived": false,
+   "killed_by": "test_r27_decide_robots_table[404-...-allow-None-off]"
+  },
+  {
+   "id": "M20",
+   "description": "a 200 challenge page treated as readable",
+   "survived": false,
+   "killed_by": "test_r27_decide_robots_table[200-headers12-<!DOCTYPE...]"
+  },
+  {
+   "id": "M21",
+   "description": "crawl delay = min of the groups",
+   "survived": false,
+   "killed_by": "test_r28b_verdict_crawl_delay_is_the_max_of_both_groups"
+  },
+  {
+   "id": "M22",
+   "description": "promotion without the ToS gate",
+   "survived": false,
+   "killed_by": "test_r32_promotion_gates[tos_missing]"
+  },
+  {
+   "id": "M23",
+   "description": "PDP fetched before the ToS gate",
+   "survived": false,
+   "killed_by": "test_r32_promotion_gates[tos_missing]"
+  },
+  {
+   "id": "M24",
+   "description": "cron not gated on its flag",
+   "survived": false,
+   "killed_by": "test_r33_cron_flag_off_does_nothing"
+  },
+  {
+   "id": "M25",
+   "description": "asyncio.gather over hosts",
+   "survived": false,
+   "killed_by": "test_r34_cron_is_sequential_polite_and_named"
+  },
+  {
+   "id": "M26",
+   "description": "2 s floor removed",
+   "survived": false,
+   "killed_by": "test_r34_cron_is_sequential_polite_and_named"
+  },
+  {
+   "id": "M27",
+   "description": "cron changes a deny / owner / tos row",
+   "survived": false,
+   "killed_by": "test_r35_ssrf_refusal_and_sticky_rows_are_not_fetched"
+  },
+  {
+   "id": "M27b",
+   "description": "cron drops the is_denied_host belt",
+   "survived": false,
+   "killed_by": "test_r35_ssrf_refusal_and_sticky_rows_are_not_fetched"
+  },
+  {
+   "id": "M28",
+   "description": "Option A rejoin always to live (SURVIVED first as equivalent: the cron never blocks a candidate; R31 gained a legacy pre_block_status=candidate row)",
+   "survived": false,
+   "killed_by": "test_r31_transitions",
+   "equivalent_by_ruling": false
+  },
+  {
+   "id": "M29",
+   "description": "seed writes fragrantica as live",
+   "survived": false,
+   "killed_by": "test_r22_seed_rows_counts_and_contract"
+  },
+  {
+   "id": "M30",
+   "description": "plan_seed updates status on existing hosts",
+   "survived": false,
+   "killed_by": "test_r24_plan_seed_idempotent_and_non_clobbering"
+  },
+  {
+   "id": "M31",
+   "description": "impersonate=chrome added to the production fetcher",
+   "survived": false,
+   "killed_by": "test_r38_no_impersonation_and_log_hygiene"
+  },
+  {
+   "id": "M32",
+   "description": "the per-host INFO logs the URL",
+   "survived": false,
+   "killed_by": "test_r34_cron_is_sequential_polite_and_named"
+  },
+  {
+   "id": "M33",
+   "description": "lookup set filters blocked rows (R-S15-1)",
+   "survived": false,
+   "killed_by": "test_r8b_lookup_set_keeps_blocked_and_denied_rows"
+  },
+  {
+   "id": "M34",
+   "description": "no SSRF check on redirect hops (R-S15-2)",
+   "survived": false,
+   "killed_by": "test_r34b_redirects_followed_by_hand_with_ssrf_on_every_hop"
+  },
+  {
+   "id": "M35",
+   "description": "allow_redirects not passed False (R-S15-2)",
+   "survived": false,
+   "killed_by": "test_r34_cron_is_sequential_polite_and_named"
+  },
+  {
+   "id": "M36",
+   "description": "snapshot keyed on updated_at (R-S15-7)",
+   "survived": false,
+   "killed_by": "test_r16_snapshot_keeps_identity_and_sees_unbumped_edits"
+  },
+  {
+   "id": "M36b",
+   "description": "snapshot lacks the catalog flag (R-S15-7)",
+   "survived": false,
+   "killed_by": "test_r12_catalog_flag_read_at_refresh"
+  },
+  {
+   "id": "M37",
+   "description": "a failed refresh reverts to the code registry at once (R-S15-7)",
+   "survived": false,
+   "killed_by": "test_r17b_failed_refresh_keeps_last_good_list_until_max_stale"
+  },
+  {
+   "id": "M37b",
+   "description": "last good list kept forever (no max stale)",
+   "survived": false,
+   "killed_by": "test_r17b_failed_refresh_keeps_last_good_list_until_max_stale"
+  },
+  {
+   "id": "M38",
+   "description": "wall check on plain-text robots (R-S15-12)",
+   "survived": false,
+   "killed_by": "test_r27_decide_robots_table[200-headers14-#...]"
+  },
+  {
+   "id": "M39",
+   "description": "server: cloudflare counted as a challenge (R-S15-12)",
+   "survived": false,
+   "killed_by": "test_r27_decide_robots_table[520-...-unreadable-None-off]"
+  },
+  {
+   "id": "M40",
+   "description": "young residential verdict downgraded by the datacenter (R-S15-4)",
+   "survived": false,
+   "killed_by": "test_r31b_residential_verdict_is_never_downgraded_by_the_datacenter"
+  },
+  {
+   "id": "M41",
+   "description": "PDP gate without a price (R-S15-18)",
+   "survived": false,
+   "killed_by": "test_r32_promotion_gates[no_price]"
+  },
+  {
+   "id": "M42",
+   "description": "candidate blocked on a robots failure (R-S15-11/15)",
+   "survived": false,
+   "killed_by": "test_r31_transitions"
+  },
+  {
+   "id": "M43",
+   "description": "seed writes deny False on existing rows (R-S15-11, GC-3)",
+   "survived": false,
+   "killed_by": "test_r24_plan_seed_idempotent_and_non_clobbering"
+  },
+  {
+   "id": "M44",
+   "description": "the read is not off the loop (no to_thread) (R-S15-7)",
+   "survived": false,
+   "killed_by": "test_r6_single_flight_refresh_off_loop_with_status_filter"
+  },
+  {
+   "id": "M45",
+   "description": "no server-side status filter (R-S15-10)",
+   "survived": false,
+   "killed_by": "test_r6_single_flight_refresh_off_loop_with_status_filter"
+  },
+  {
+   "id": "M46",
+   "description": "no paging (R-S15-10)",
+   "survived": false,
+   "killed_by": "test_r6b_paged_read"
+  },
+  {
+   "id": "M47",
+   "description": "cron update not conditional on updated_at (R-S15-11)",
+   "survived": false,
+   "killed_by": "test_r36b_cron_updates_are_conditional_and_a_lost_race_is_skipped"
+  },
+  {
+   "id": "M48",
+   "description": "probe order by host only (R-S15-15)",
+   "survived": false,
+   "killed_by": "test_r36_run_bound_due_order_parked_and_not_due"
+  },
+  {
+   "id": "M49",
+   "description": "a browser UA instead of QARENBOT_UA",
+   "survived": false,
+   "killed_by": "test_r34_cron_is_sequential_polite_and_named"
+  },
+  {
+   "id": "M50",
+   "description": "adapter path left out of the probe set (R-S15-3)",
+   "survived": false,
+   "killed_by": "test_r32b_adapter_path_joins_the_probe_set"
+  },
+  {
+   "id": "M51",
+   "description": "robots read from the kb host, not the probe origin (R-S15-2)",
+   "survived": false,
+   "killed_by": "test_r34c_robots_is_read_from_the_probe_origin"
+  },
+  {
+   "id": "M53",
+   "description": "rule lists not capped at 200 (R-S15-3)",
+   "survived": false,
+   "killed_by": "test_r29d_rule_lists_are_capped_at_200"
+  },
+  {
+   "id": "M54",
+   "description": "ROBOTS_CHALLENGE_PARK_DAYS ignored",
+   "survived": false,
+   "killed_by": "test_r31_transitions"
+  },
+  {
+   "id": "M55",
+   "description": "sitemap _ROBOTS_UA retyped as a literal, not the re-export (first form '%s' % s was equivalent: CPython returns the same str object)",
+   "survived": false,
+   "killed_by": "test_r39_qarenbot_ua_lives_in_robots_eval"
+  },
+  {
+   "id": "M56",
+   "description": "classify writes where platform is already set (R-S15-13; R26 gained a preset-platform blank row)",
+   "survived": false,
+   "killed_by": "test_r26_seed_classify_dry_run_and_apply"
+  },
+  {
+   "id": "M57",
+   "description": "seed --apply batches above 100",
+   "survived": false,
+   "killed_by": "test_r25_seed_script_dry_run_writes_nothing_and_apply_batches"
+  },
+  {
+   "id": "M58",
+   "description": "D14 record drops probed (R-S15-3 fixture)",
+   "survived": false,
+   "killed_by": "test_r29_robots_record_is_the_frozen_d14_contract"
+  }
+ ],
+ "comm_set": {
+  "files": 308,
+  "chunks": 13,
+  "base_failures": [
+   "tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (known cold-tiktoken ERROR, chunk 07)",
+   "tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (known cold-tiktoken ERROR, chunk 07)",
+   "tests/test_s81_s15_registry_robots.py: the 192 RED nodes (chunk 09) = the base_run failed set exactly",
+   "nothing else fails at base; union file <notes>/comm/comm_base_failed_all.txt (194 ids)"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=s15comm-base-00 start=2026-10-24 03:51:28 end=2026-10-24 03:52:01 elapsed=33s bound=1200s status=OK rc=0 | 807 passed, 1 deselected | [netguard] blocked 22 attempt(s) from 5 node(s)",
+   "[pyt] tag=s15comm-base-01 start=2026-10-24 03:52:02 end=2026-10-24 03:52:58 elapsed=56s bound=1200s status=OK rc=0 | 1592 passed, 1 skipped, 33 deselected | [netguard] blocked 17 attempt(s) from 4 node(s)",
+   "[pyt] tag=s15comm-base-02 start=2026-10-24 03:52:59 end=2026-10-24 03:53:17 elapsed=17s bound=1200s status=OK rc=0 | 644 passed, 10 deselected, 1 xfailed | [netguard] blocked 0",
+   "[pyt] tag=s15comm-base-03 start=2026-10-24 03:53:18 end=2026-10-24 03:55:45 elapsed=147s bound=1200s status=OK rc=0 | 2113 passed, 1 skipped | [netguard] blocked 72 attempt(s) from 37 node(s)",
+   "[pyt] tag=s15comm-base-04 start=2026-10-24 03:55:46 end=2026-10-24 03:56:09 elapsed=23s bound=1200s status=OK rc=0 | 518 passed, 19 deselected, 1 xfailed | [netguard] blocked 0",
+   "[pyt] tag=s15comm-base-05 start=2026-10-24 03:56:10 end=2026-10-24 03:56:27 elapsed=17s bound=1200s status=OK rc=0 | 413 passed, 1 skipped | [netguard] blocked 0",
+   "[pyt] tag=s15comm-base-06 start=2026-10-24 03:56:28 end=2026-10-24 03:56:57 elapsed=29s bound=1200s status=OK rc=0 | 3807 passed, 22 skipped | [netguard] blocked 128 attempt(s) from 7 node(s)",
+   "[pyt] tag=s15comm-base-07 start=2026-10-24 03:56:59 end=2026-10-24 03:57:28 elapsed=29s bound=1200s status=FAIL rc=1 | 744 passed, 5 skipped, 1 xfailed, 2 errors (the two prompt_truth tiktoken nodes) | [netguard] blocked 7 attempt(s) from 2 node(s)",
+   "[pyt] tag=s15comm-base-08 start=2026-10-24 03:57:29 end=2026-10-24 04:01:19 elapsed=230s bound=1200s status=OK rc=0 | 2226 passed | [netguard] blocked 0",
+   "[pyt] tag=s15comm-base-09 start=2026-10-24 04:01:58 end=2026-10-24 04:03:20 elapsed=81s bound=1200s status=FAIL rc=1 | 192 failed (the unit file), 1847 passed | [netguard] blocked 13 attempt(s) from 7 node(s) (none from the unit file)",
+   "[pyt] tag=s15comm-base-10 start=2026-10-24 04:03:21 end=2026-10-24 04:03:44 elapsed=23s bound=1200s status=OK rc=0 | 792 passed, 7 skipped, 1 deselected | [netguard] blocked 24 attempt(s) from 4 node(s)",
+   "[pyt] tag=s15comm-base-11 start=2026-10-24 04:03:45 end=2026-10-24 04:04:40 elapsed=55s bound=1200s status=OK rc=0 | 1144 passed, 9 skipped, 6 deselected | [netguard] blocked 81 attempt(s) from 30 node(s)",
+   "[pyt] tag=s15comm-base-12 start=2026-10-24 04:04:41 end=2026-10-24 04:05:02 elapsed=21s bound=1200s status=OK rc=0 | 252 passed, 1 skipped | [netguard] blocked 0"
+  ],
+  "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S81-15-red/comm/comm_list.txt (reasons: comm/comm_reasons.tsv; chunks: comm/comm_chunks.json). Rule: tests/test_*.py naming an EDITED module (source_router, price_service, cache_service, magento_graphql_service, robots_eval, sitemap_discovery_service: 263) UNION the symbol grep (54) UNION the named source-scanning pins + CLAUDE.md readers + the two edited legal tests (12) UNION tree walkers over app/ scripts/ tests/ (22) UNION source readers (50) UNION railway*.json readers (21) UNION importers of the edited tests (2) UNION the unit file, MINUS test_precommit_hook*.py, NETWORK_FLAKY_EXCLUDE nodes deselected. Every [hermeticity] line clean; every [netguard] line counts BLOCKED pre-existing egress nodes. Versus the spec's 366-file upper bound: 74 spec-only names (consumers of the unedited deny_hosts / database_service / db_offload / platform_router / search_descriptor_service / shopify_pdp_service plus 3 non-test helpers), 16 rule-only names (walkers, railway readers, the unit file)."
+ },
+ "restore_check": {
+  "worktree_clean_except_new_tests": true,
+  "scratch_removed": true,
+  "note": "git status --short of the real worktree: exactly '?? tests/fixtures/s81_s15_robots_record.json' and '?? tests/test_s81_s15_registry_robots.py'; git ls-files -m empty; git diff --quiet HEAD true (every tracked file equals the base); HEAD 98d85433 before and after. Scratch worktree <notes>/s15_scratch removed with git worktree remove --force (it held no node_modules junction; git worktree list no longer shows it); the mutation lock lived and was deleted inside the scratch worktree only; every mutant restore sha256-verified (65/65) and the prototype shas re-checked after the last batch. No python process with an s15red / s15comm / s15mut tag left running. The required report file <scratchpad>/S81-15_RED_REPORT.md was NOT written: the tool refused to write a report .md for a subagent; this structured output carries the full report."
+ },
+ "deviations_from_spec": [
+  "Report file: <scratchpad>/S81-15_RED_REPORT.md could not be written (the Write tool refuses report .md files from a subagent); everything it would hold is in this structured output and the notes folder.",
+  "R-S15-1 'Source gains status + deny': Source already carries a 'status' field ('' / live / provider-test-candidate / render-only), so the RED pins the existing field (decoded lookup rows read 'blocked') plus ONE new appended field deny: bool = False; code-registry rows keep their base status values.",
+  "R-S15-1 consumer split: the RED pins the ruling's listed lookup consumers (registry_tier, _shopping_bh_host_evidence, _is_genuine_bh_candidate, the scs:2170 downgrade through scs.registry_tier, _organic_host_bh_gcc_retail, _curl_timeout_for_url, _registry_domains, _expected_currency_for) on a cron-blocked sephora.com and on fragrantica.com (D03 off / on); spec R11's 'registry_tier never sees a blocked row' is superseded (it now does), R11 pins the selection consumers only.",
+  "Candidates are never blocked by the cron (R-S15-11 ownership 'candidate -> live and live -> blocked', R-S15-15 'blocked is for live hosts'): spec 2.6 'candidate | not allow | blocked, pre_block_status candidate' and spec R32 'robots disallow -> blocked robots_disallow' are superseded; a failing candidate stays candidate with health.promotion.failing_gate 'robots', a challenge parks it.",
+  "live -> blocked keeps 'robots_disallow' as a cron-managed reason (spec 2.2 BLOCKED_REASONS) although R-S15-11's list names only robots_unreadable | challenge | ssrf_redirect (open question 1).",
+  "Blank-mechanism and unmapped-mechanism rows seed platform NULL / platform_confidence NULL (not the spec's 'unknown'), so R-S15-13's classify 'only where platform is NULL' and R-S15-11's 'platform written only when NULL' can act.",
+  "Seed rows carry created_at (R-S15-15: key set = KB_COLUMNS['kb_merchants'] incl. created_at) on top of kb_service.build_merchant_row's output, which emits no created_at (GC-4 builder; open question 2).",
+  "R17 failure classes: 'truncated' dropped (R-S15-10 paging replaces the 1,000-row refusal); 'timeout' added (R-S15-7, reason 'timeout' or 'TimeoutError'); R17b added for the last-good list and MERCHANT_REGISTRY_MAX_STALE_SECONDS.",
+  "Snapshot = sha256 over the six decode columns + the catalog flag (R-S15-7), never max(updated_at); READ_COLUMNS = the six decode columns (updated_at tolerated); the read goes through asyncio.to_thread (no run_db), so the recorder seams are merchant_registry._admin_client and _monotonic; the RED chose the knob reader names read_timeout_seconds() and max_stale_seconds().",
+  "decide_robots takes a list of probe URLs (R-S15-3 probed set) instead of a single probe_url; robots_record(verdict, now, origin, source); run_cron(client, fetch, sleep, now_clock, validate) gains the SSRF seam (R-S15-2 / C12) and requires allow_redirects=False on every fetch.",
+  "R-S15-15 politeness reference host: the sleep before each request after the first is max(crawl-delay of the host about to be fetched, 2.0), the delay being unknown (so 2.0) before that host's robots read; probe order: never-read first, then next_reread ascending, then host ascending.",
+  "Comm set re-derived under the common-brief rule at 98d85433: 308 files / 13 chunks (the spec's 366 was the stated over-inclusive upper bound).",
+  "Mutation table extended from the spec's 32 to 65 mutants for the rulings (M1b, M1c, M1d, M33-M58); four first-pass survivors were closed by strengthening rows (R11 data_override, R31 legacy pre_block_status, R26 preset-platform row) or redefining an equivalent mutant (M5, M55).",
+  "Deliberate pin changes the spec's 4.1 must now list: E1 tests/test_legal_disclosure_s77.py QARENBOT_FILES += app/services/robots_registry.py (R-S15-5) and E2 tests/test_legal_s78.py UA_FILES ('app/services/robots_eval.py', 'QARENBOT_UA') (R-S15-6; measured RED without it on the prototype).",
+  "R26b (seed --source residential flag) is a source-text pin only; the residential-read path is not exercised behaviourally.",
+  "The PDP price gate (R-S15-18) is pinned through a recorder on price_service.extract_price_from_html and the platform gate through recorders on platform_router.detect_platform_verdict / detect_platform; their real behaviour on a real PDP is not measured by the RED."
+ ],
+ "open_questions": [
+  "1. R-S15-11 lists the cron's live -> blocked reasons as robots_unreadable | challenge | ssrf_redirect; the RED also keeps robots_disallow (spec 2.2). Confirm robots_disallow is a cron-managed block reason.",
+  "2. R-S15-15 'R22 key set includes created_at' vs GATE_S81_14 GC-4 'the seed calls build_merchant_row' (whose output has no created_at): the RED makes the seed add created_at = updated_at. Keep, or drop created_at from R22?",
+  "3. GC-4 says the entry validator checks 'every Source field', but kb_service._registry_ok at 0910e7d0 checks only list-of-dicts, origin and order >= 0. The RED pins every Source field itself (R9). Should S81-14 tighten the validator, or is the S81-15 pin enough?",
+  "4. Range paging has no .order(); PostgREST paging without an order is not stable under concurrent writes. Should GREEN add .order('host') (unpinned today)?",
+  "5. R-S15-4: the RED pins only that a datacenter UNREADABLE never downgrades a residential / operator verdict younger than 30 days. Should a datacenter ALLOW replace a young residential record, or be recorded under health.last_datacenter_result too?",
+  "6. An SSRF refusal of the INITIAL robots URL: blocked_reason robots_unreadable or ssrf_redirect (the RED accepts either; a refused hop must be ssrf_redirect).",
+  "7. For a host whose sample URL lives on another origin (rtbahplus.myshopify.com, salla.sa) the RED pins only robots.other_origins; which robots.txt the cron fetches for it is left to GREEN.",
+  "8. --classify picks every live blank-mechanism row with platform NULL, which includes literal rows as well as the 199 json rows. Is that the intended scope?",
+  "9. score_source / source_usage / is_render_only_domain are not in the ruling's lookup list; the prototype keeps them on SELECTION (so a cron-blocked host scores as off-registry), while match_registry_apex and descriptor_for_host move to LOOKUP through _registry_row_for_host. Confirm the split.",
+  "10. The PDP price gate needs a product name for extract_price_from_html (an empty one makes the JSON-LD branch unreachable). The prototype used the page <title>; the RED does not pin the source of the name."
+ ],
+ "not_measured_alone": [
+  "The review named no file as not measured; nothing was owed a separate run.",
+  "GREEN-side gates not run here: the comm set at head, the spec's gate 6 ON-measurement (router chunks with ENABLE_MERCHANT_REGISTRY_DB exported), CLAUDE.md readers after the row lands.",
+  "Rows against the REAL kb_service (S81-14 is not on this base; a transcription of its merchant half stood in): R22, R23, R24, R25, R26, R9 and the build_seed_rows-seeded rows. They re-run against the real module at GREEN.",
+  "Protego crawl-delay parity: NOT MEASURED by ruling (R-S15-19).",
+  "Real curl_cffi fetch / redirect behaviour and validate_external_url_async DNS: every fetch and SSRF check is a seam (the netguard stayed on; the unit file's own runs blocked 0 attempts).",
+  "extract_price_from_html and detect_platform_verdict on a real PDP (recorders in R32 / R34)."
+ ],
+ "report_path": "NOT WRITTEN (the Write tool refused a report .md for a subagent); the full report is this structured output plus C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S81-15-red/notes.md"
+}
