@@ -1,0 +1,145 @@
+{
+ "unit": "S81-14 KB-SCHEMA fix round 1 (RULINGS_FIX1_S81_14 F1-1..F1-12), commit ee09729da43cb4a0769736c2ab04951a5fad51fd on feature/s81-s14-kb-schema",
+ "lens": "correctness (re-verifier). Engineering-lens items were also checked: comm set re-derivation, scanners, APPLY files, and closure of the previous engineering MAJ-E1 and m1-m10.",
+ "head_sha_verified": "ee09729da43cb4a0769736c2ab04951a5fad51fd",
+ "verdict": "NOT_READY",
+ "blocking": [],
+ "major": [
+  "MAJ-1 (residual of F1-4; the CLAUDE.md row and the PR body describe a tie-break the bytes do not produce). In the view, the card and the prune, the key (list_vs_sale = 'sale') DESC comes AFTER captured_at DESC. So the sale wins only when last_seen AND captured_at both tie. The row tells S81-17 to write a list and a sale price as two rows of one observation, and a changed amount is a new row with a later captured_at. Under that contract, when a LIST price changes during an ongoing sale, the new list row ranks first at every later observation that sees both rows. Measured on PostgreSQL 18.1 (probe S-b, rolled back): sale 30 first seen 2026-10-10 and list 55 (new row, captured 2026-10-18), both last_seen 2026-10-20. The view and kb_product_card both serve list 55, and kb_prune_offers(1, 1) deletes the still-observed sale row. Three sentences are false in that case. (1) CLAUDE.md S81-14 row, Offers bullet: '(a sale row ranks before a list row observed at the same instant: the sale is what the shopper pays; S81-17's ingest writes a list and a sale price as two rows of one observation)'. (2) PR body, What lands: 'a sale row beats a list row of the same instant'. (3) PR body stated limit 17: 'A sale and a list row of one observation tie-break to the sale'. Two texts are true as written: the 045 header ('of the same last_seen and captured_at') and F1-4's literal key order. 045 is not applied yet, so either fix is cheap now. (a) A ruling that moves the key ahead of captured_at in the view, the card and the prune, with OFFER_ORDER / VIEW_TEXT / CARD_TEXT / HEADER_OFFERS / the POSTCHECK tie-break re-pinned and an S-b row added. (b) Rewrite the row and PR sentences to the header's exact condition, state the S-b outcome as a limit, and give S81-17 / S81-18 a contract: the reader picks the sale within one observation, or the writer re-captures the sale row when the list amount changes."
+ ],
+ "minor": [
+  "m1 (V4 survived; pin gap in F1-3): a bool Source field (is_shopify / is_render_only / is_algolia / requires_super) that accepts an int survives the whole file, because registry_bool_field_type tests only the string 'yes'. One refusal row with is_shopify: 1 kills it.",
+  "m2 (V6 survived; pin gap in F1-3): the domain == host check is pinned only against a domain with a different registrable name (other.example; noon.com on shop.example). A 'last two labels equal' mutant survives, so a sibling-subdomain entry would pass, for example om.swissarabian.com on ksa.swissarabian.com (the M13-12 class, with real rows in the registry). One refusal row (host ksa.shop.example, domain om.shop.example) kills it.",
+  "m3 (F1-6 completeness): the stated reason for refusing all-digit hosts is 'a WHATWG parser reads a numeric last label as IPv4'. That rule also covers a 0x-hex last label, and glibc inet_aton reads 127.0.0.0x1 as 127.0.0.1. Such hosts pass the leaf: canonical_offer_url returns http://127.0.0.0x1/p, http://0x7f.0x0.0x0.0x1/p and http://1.2.3.0x4/p unchanged, and the merchant and image builders accept them. They also pass the 045 kb_merchants_host_top_label_letter CHECK; PG probe S-c inserted the merchant and an offer on 127.0.0.0x1. Incomplete as written: the row's 'canonical_offer_url ... refuses ... an IP literal', the comment on KB_HOST_TOP_LABEL_REGEX, and PR stated limit 18. Fix: refuse a last label matching ^(0x[0-9a-f]*|[0-9]+)$ in the leaf and the constraint, or state the limit. Impact today is a stored, user-facing loopback link (every server fetch path goes through url_validator).",
+  "m4 (next to F1-1, outside the R-A5 text): a placeholder BRAND still mints an id under a placeholder brand axis. Measured: (Unknown, Sauvage) -> fragrances|unknown|sauvage|-, (N/A, Sauvage) -> fragrances|a+n|sauvage|-, (Unknown Brand, Sauvage) -> fragrances|brand+unknown|sauvage|-, (Product, Sauvage) -> fragrances|product|sauvage|-. So 'brand unknown, name X' scans from different houses share one juice id per name. Either record it as a writer contract (S81-16 / S81-17 never pass a placeholder brand) or extend the rule with is_placeholder_identity(brand).",
+  "m5 (F1-11 wording): the row, the leaf docstring and the PR body say 'its own code does no I/O ... no env read'. But the function-local 'from app.services import source_router' in _registry_ok runs source_router's module body on the first merchant build. That body reads ENABLE_BH_GCC_CATALOG_SOURCES, reads data/bh_gcc_sources.json when the flag is ON (ON in production), and imports search_descriptor_service. The import-hazard sentence names only the dotenv path; one more clause would complete it.",
+  "m6 (previous round's correctness m13: neither closed nor recorded): kb_feedback has no index leading on compare_request_id, and S81-22's deletion hook will filter on that column. RULINGS_FIX1, the CLAUDE.md row and the PR body do not mention it. Record it for S81-22's 048, or add the index to 045 before apply.",
+  "m7 (PR body count): 'the eleven belt-only rows' is wrong. The diff re-points NINE deny rows: offers url_denied; images url_denied, provenance_denied, provenance_denied_sub; specs source_denied; reviews source_url_denied; gaps hint_denied_host, hint_denied_url, hint_denied_name. That makes 14 re-pointed rows with the five named before it, while the fix report says 15.",
+  "m8 (noted for readers; stated by the ruling): only kb_merchants.host carries the top-label CHECK. Offers inherit it through the merchant FK plus url_on_merchant. The other data tables' URL and host columns have no such CHECK: SQL stored an image with provenance_host 10.0.0.1 and url https://10.0.0.1/i.jpg (measured; the leaf refuses both). The 045 header's 'Every host carries a letter in its top-level label' sits in the kb_merchants paragraph and is true there.",
+  "Previous-round closure: correctness M1, M2, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12 and m14 are CLOSED. Correctness m1 is CLOSED for exact ties (PG S-a, S-g), with the residual raised here as MAJ-1. Correctness m13 is OPEN (m6 above). Engineering MAJ-E1, m1, m3, m4, m5, m6, m7, m8, m9 and m10 are CLOSED. Engineering m2 (the apply-record line is unpinned) is RECORDED and accepted as docs.",
+  "Gate questions. Fix Q1: I agree with the top-level-label reading (a regex cannot compute the registrable label, and 4711.com / 163.com are real hosts); add the 0x-hex last label from m3 to the same rule. Fix Q2: 55 of the 115 clause mutants are now measured through pyt and all were KILLED; the remaining 60 are NOT MEASURED (see reruns). Fix Q3: renaming merchant_upper -> merchant_single_label fits F1-7's intent, since the old row could only ever be two-clause. Fix deviation 2: adding host='noon.com' to ACCEPTS[registry_entries] is the only way F1-3 and 'the frozen accept row stays green' can both hold; its entries are byte-identical.",
+  "NOT MEASURED. (a) The four test_precommit_hook*.py files. I ran test_precommit_hook.py + _round2.py alone with -k 'not dash': [pyt] tag=s14rv-hook-a-nodash start=2026-10-24 09:13:31 end=2026-10-24 09:16:47 elapsed=195s bound=1200s status=FAIL rc=1. One node passed, then test_scenario hit the runner's 120 s per-test timeout (thread dump, the process ended with no summary). The box was in the slow-spawn pathology (node -e 0 took 9.2 s; another session's pytest was running), so I did not re-run, following the hold rule. These files have 0 references to sqlfluff, migrations, .sql or kb_service, and .githooks has no diff since 98d85433. (b) 60 of the 115 clause mutants (from offers.list_vs_sale through coverage.*): the run was stopped at the budget, and the interrupted mutant was restored and sha-verified. (c) The 60,000-offer planner check with the new tie key (fix Q4). (d) The Supabase SQL editor itself (emulated with single-query psql -c) and PostgreSQL 15 / 16 / 17.",
+  "Report file: the harness refused to let this subagent write the report to <scratchpad>/S81-14_fix1/REVERIFY_REPORT.md ('Subagents should return findings as text'), and the partial draft was removed, so this output is the report. Raw data is under C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fd8b3d1b-a491-48e3-953f-ca3a804fd9ca/scratchpad/S81-14_fix1/reverify/ (notes.md, probe1.json, probe2.json, rv_mutation_results.jsonl, mutlogs/, *.log, pg/out_*.txt, pg/10_rv_probe.sql, prefix_red_failed_full.txt, apply/). The PostgreSQL data dir reverify/pg/data is stopped and left for the orchestrator, because recursive deletes are forbidden. End state: the assigned worktree is at HEAD ee09729d with git status empty, no lock, and the RED sha ba8ef857; the scratch worktree is removed and no longer appears in git worktree list; no s14rv pytest process is left."
+ ],
+ "mutants_applied": [
+  {
+   "id": "V1 F1-1 name arm removed",
+   "survived": false,
+   "killed_by": "test_s14_r22c_placeholder_name_arm x10"
+  },
+  {
+   "id": "V2 F1-2 view gains WHERE o.amount > 0",
+   "survived": false,
+   "killed_by": "test_s14_r13b_view_text"
+  },
+  {
+   "id": "V3 F1-2 card images WHERE i.product_id IS NOT NULL",
+   "survived": false,
+   "killed_by": "test_s14_r14b_card_subselects"
+  },
+  {
+   "id": "V4 F1-3 bool Source field accepts int",
+   "survived": true
+  },
+  {
+   "id": "V5 F1-3 unique-order check disabled",
+   "survived": false,
+   "killed_by": "test_s14_r28_builders_refuse[kb_merchants-registry_duplicate_order]"
+  },
+  {
+   "id": "V6 F1-3 domain == host relaxed to last two labels",
+   "survived": true
+  },
+  {
+   "id": "V7 F1-4 card prefers list row",
+   "survived": false,
+   "killed_by": "test_s14_r14_card, test_s14_r14b_card_subselects"
+  },
+  {
+   "id": "V8 F1-4 prune loses the sale key",
+   "survived": false,
+   "killed_by": "test_s14_r15_prune_offers"
+  },
+  {
+   "id": "V9 F1-5 gap builder drops kb_source_allowed",
+   "survived": false,
+   "killed_by": "r28[kb_gaps-hint_denied_host/_url/_name]"
+  },
+  {
+   "id": "V10 F1-6 rating bound on rounded value",
+   "survived": false,
+   "killed_by": "r28[kb_reviews-rating_just_over/_just_below], r30_numeric_mirror"
+  },
+  {
+   "id": "V11 F1-6 URL top-label check removed",
+   "survived": false,
+   "killed_by": "r25d_top_label_rule + 5 r28 all-digit url rows"
+  },
+  {
+   "id": "V12 F1-8 jsonb keys unchecked",
+   "survived": false,
+   "killed_by": "r28[kb_merchants-nul_jsonb_key]"
+  },
+  {
+   "id": "V13 F1-8 lone surrogate accepted",
+   "survived": false,
+   "killed_by": "r28 surrogate_adapter/url_surrogate/surrogate_brand/value_surrogate"
+  },
+  {
+   "id": "V14 F1-9 kb_prune_feedback REVOKE without service_role",
+   "survived": false,
+   "killed_by": "test_s14_r06_functions[kb_prune_feedback]"
+  },
+  {
+   "id": "V15 F1-11 header sentence edited",
+   "survived": false,
+   "killed_by": "test_s14_r19b_header_observation_paragraph"
+  },
+  {
+   "id": "V16 F1-6 host top-label removed from _belted_host",
+   "survived": false,
+   "killed_by": "r28[kb_gaps-hint_all_digit_host], r28[kb_images-provenance_all_digit]"
+  },
+  {
+   "id": "V17 F1-6 045 top-label CHECK weakened",
+   "survived": false,
+   "killed_by": "r04b_table_constraints[kb_merchants], r25d_top_label_rule"
+  },
+  {
+   "id": "V18 F1-3 unknown-key check disabled",
+   "survived": false,
+   "killed_by": "r28[kb_merchants-registry_unknown_key], r28f"
+  },
+  {
+   "id": "V19 F1-3 str Source field accepts int",
+   "survived": false,
+   "killed_by": "r28[registry_str_field_type], r28[registry_tuple_member_type]"
+  },
+  {
+   "id": "V20 F1-3 Optional arm refuses None",
+   "survived": false,
+   "killed_by": "r28b[kb_merchants-registry_typed_entries]"
+  },
+  {
+   "id": "C:* F1-7 clause-only mutants, fix table ALL[92:147] (55 of 115: merchants.pg_text..offers.size_range)",
+   "survived": false,
+   "killed_by": "each by ALL of its own named r28 refusal rows (checked against REFUSAL_CLAUSES: 0 gaps); AssertionError only, 0 ERROR nodes, every restore sha-verified"
+  }
+ ],
+ "reruns": [
+  "unit OFF: [pyt] tag=s14rv-unit-off start=2026-10-24 08:00:41 end=2026-10-24 08:00:50 elapsed=9s bound=600s status=OK rc=0 -- 465 passed; [hermeticity] sentinel checked 465 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)",
+  "unit ON (DATA_GUARDS_V2, EXACT_PRICE_GATE, NORMALIZE_WORDS_EMPTY_FIX = true): [pyt] tag=s14rv-unit-on start=2026-10-24 08:01:19 end=2026-10-24 08:01:28 elapsed=9s bound=600s status=OK rc=0 -- 465 passed; hermeticity 465; netguard 0",
+  "unit ON2 (EXACT_PRICE_GATE=false): [pyt] tag=s14rv-unit-on2 start=2026-10-24 08:01:30 end=2026-10-24 08:01:39 elapsed=8s bound=600s status=OK rc=0 -- 465 passed; hermeticity 465; netguard 0",
+  "RED step re-measured (HEAD RED file against the 0910e7d0 leaf and 045, byte copies swapped in and restored, sha-verified): [pyt] tag=s14rv-prefix-red start=2026-10-24 09:09:44 end=2026-10-24 09:09:55 elapsed=11s bound=600s status=FAIL rc=1 -- 62 failed / 403 passed, AssertionError only, 0 ERROR nodes, failed set identical to the fix agent's red_head (comm -3 empty); hermeticity 465; netguard 0",
+  "CI-order 18 files: [pyt] tag=s14rv-ci-order start=2026-10-24 08:14:26 end=2026-10-24 08:17:47 elapsed=201s bound=1200s status=OK rc=0 -- 1392 passed, 4 deselected; [hermeticity] sentinel checked 1392 test(s); [netguard] blocked 22 attempt(s) from 21 node(s)",
+  "comm A (25): [pyt] tag=s14rv-head-A start=2026-10-24 08:18:42 end=2026-10-24 08:19:19 elapsed=37s bound=1200s status=OK rc=0 -- 627 passed, 10 deselected; netguard 12 from 6",
+  "comm B1+B2 (16): [pyt] tag=s14rv-head-B12 start=2026-10-24 08:19:28 end=2026-10-24 08:21:17 elapsed=109s bound=1200s status=OK rc=0 -- 1113 passed; netguard 0",
+  "comm B3+C1 (14, both CLAUDE.md readers): [pyt] tag=s14rv-head-B3C1 start=2026-10-24 08:21:53 end=2026-10-24 08:23:51 elapsed=117s bound=1200s status=OK rc=0 -- 1547 passed; netguard 34 from 25",
+  "comm C2+D (12): [pyt] tag=s14rv-head-C2D start=2026-10-24 08:23:57 end=2026-10-24 08:25:05 elapsed=69s bound=1200s status=OK rc=0 -- 869 passed; netguard 28 from 10. HEAD failures 0 across the 67 files, so comm -13 against GREEN's 98d85433 base record is EMPTY. Re-derived: the new function-local source_router import adds no comm member.",
+  "probes: [pyt] tag=s14rv-probe1 start=2026-10-24 08:03:54 end=2026-10-24 08:04:00 elapsed=6s bound=600s status=OK rc=0; [pyt] tag=s14rv-probe2 (ENABLE_BH_GCC_CATALOG_SOURCES=true) start=2026-10-24 08:05:12 end=2026-10-24 08:05:17 elapsed=5s bound=600s status=OK rc=0. Results: F1-1 probe pairs mint no id; all 319 registry rows pass the validator with domain == host; hex-IPv4 hosts accepted (m3); placeholder brands mint ids (m4).",
+  "mutants: 20 of mine (V1-V20; 18 KILLED, V4 and V6 SURVIVED), e.g. [pyt] tag=s14rv-v4 start=2026-10-24 08:08:30 end=2026-10-24 08:08:38 elapsed=9s bound=600s status=OK rc=0 and [pyt] tag=s14rv-v6 start=2026-10-24 08:08:50 end=2026-10-24 08:09:15 elapsed=25s bound=600s status=OK rc=0. Plus 55 clause-only mutants, all KILLED, from [pyt] tag=s14rv-c-merchants-pg-text start=2026-10-24 08:39:59 elapsed=27s status=FAIL rc=1 to [pyt] tag=s14rv-c-offers-size-range start=2026-10-24 09:05:10 end=2026-10-24 09:06:09 elapsed=59s bound=600s status=FAIL rc=1. Every line is in rv_mutation_results.jsonl.",
+  "hook tests alone: [pyt] tag=s14rv-hook-collect start=2026-10-24 09:11:42 end=2026-10-24 09:11:45 elapsed=3s bound=600s status=OK rc=0 (327 collected). [pyt] tag=s14rv-hook-a-nodash start=2026-10-24 09:13:31 end=2026-10-24 09:16:47 elapsed=195s bound=1200s status=FAIL rc=1: 1 passed, then the 120 s per-test timeout fired under the pathology (node -e 0 = 9.2 s). NOT MEASURED; not re-run, per the hold rule.",
+  "PostgreSQL 18.1 throwaway cluster on 127.0.0.1:55501 (one 'listening on' line). 045 PRECHECK t 0 0 t t t t. APPLY_045_2 rc 0 with 77 tags; re-apply gives 23 skip NOTICEs. APPLY_045_3 passes ('every behaviour check passed'), grid t t f t t f 10 t 0 t f f f 5 f t f 3 0. 047 POSTCHECK: every anon / authenticated privilege f, including TRUNCATE / REFERENCES / TRIGGER, and service_role S/I/U/D t. rollback/047 restores the 8 policies and the stock relacl; 047 re-applied. rollback/045 with rows present, then PRECHECK t 0 0, re-apply, POSTCHECK green with the same grid. Probes: S-a and S-g serve the sale; S-b serves list 55 (MAJ-1); S-c accepts the hex hosts (m3); all five kb function proacl = {postgres=X/postgres,service_role=X/postgres}. Stopped with 'server stopped'.",
+  "ruff E9,F63,F7,F82 on the leaf and the RED file: all checks passed; full repo config on the leaf: passed; py_compile OK; sqlfluff on the 4 SQL files: rc 0 'All Finished!'; bytes > 127: leaf, 045, RED file and both POSTCHECKs 0, PR body 4 (the attribution emoji); added-line sweep 98d85433..HEAD: 0 hits"
+ ]
+}

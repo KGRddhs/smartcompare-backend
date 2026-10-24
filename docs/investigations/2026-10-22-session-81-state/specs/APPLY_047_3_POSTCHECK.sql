@@ -11,6 +11,12 @@
 --   authenticated_insert  = false
 --   authenticated_update  = false
 --   authenticated_delete  = false
+--   anon_truncate         = false  (ruling F1-10: the grid covers every table privilege)
+--   anon_references       = false
+--   anon_trigger          = false
+--   authenticated_truncate   = false
+--   authenticated_references = false
+--   authenticated_trigger    = false
 --   public_any            = false  (no privilege of any kind left to PUBLIC)
 --   sr_select             = true   (every app reader and writer uses the service-role client)
 --   sr_insert             = true
@@ -34,11 +40,19 @@ SELECT
     has_table_privilege('authenticated', c.oid, 'INSERT') AS authenticated_insert,
     has_table_privilege('authenticated', c.oid, 'UPDATE') AS authenticated_update,
     has_table_privilege('authenticated', c.oid, 'DELETE') AS authenticated_delete,
+    has_table_privilege('anon', c.oid, 'TRUNCATE') AS anon_truncate,
+    has_table_privilege('anon', c.oid, 'REFERENCES') AS anon_references,
+    has_table_privilege('anon', c.oid, 'TRIGGER') AS anon_trigger,
+    has_table_privilege('authenticated', c.oid, 'TRUNCATE') AS authenticated_truncate,
+    has_table_privilege('authenticated', c.oid, 'REFERENCES') AS authenticated_references,
+    has_table_privilege('authenticated', c.oid, 'TRIGGER') AS authenticated_trigger,
     has_table_privilege('public', c.oid, 'SELECT')
     OR has_table_privilege('public', c.oid, 'INSERT')
     OR has_table_privilege('public', c.oid, 'UPDATE')
     OR has_table_privilege('public', c.oid, 'DELETE')
-    OR has_table_privilege('public', c.oid, 'TRUNCATE') AS public_any,
+    OR has_table_privilege('public', c.oid, 'TRUNCATE')
+    OR has_table_privilege('public', c.oid, 'REFERENCES')
+    OR has_table_privilege('public', c.oid, 'TRIGGER') AS public_any,
     has_table_privilege('service_role', c.oid, 'SELECT') AS sr_select,
     has_table_privilege('service_role', c.oid, 'INSERT') AS sr_insert,
     has_table_privilege('service_role', c.oid, 'UPDATE') AS sr_update,
