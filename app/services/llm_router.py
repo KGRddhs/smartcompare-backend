@@ -424,7 +424,7 @@ def _refuses(role: str) -> bool:
 
 
 def compare_refuses_for_consent() -> bool:
-    """The text compare entries' gate: False after the five flag reads when
+    """The text compare entries' gate: False after the four flag reads when
     every entry role is OFF (no consent read); else True iff an ON entry role
     refuses (consent below 3 with ENABLE_OPENAI_PRE_V3 OFF, or anthropic with
     the key unset). VISION ON alone never refuses a text compare."""
@@ -945,15 +945,28 @@ async def guarded_anthropic_create(
     the breaker admission (Redis off the loop, 0.5 s, fail-open) -> the call
     under ``asyncio.wait_for`` (ANTHROPIC_CALL_DEADLINE_SECONDS) -> the llm-ledger
     record and the spend record (``record_soon``) -> a refusal raise. A
-    cancellation releases a held probe and records nothing."""
+    cancellation releases a held probe and records nothing; a client
+    construction failure is a terminal AnthropicDispatchError (F1-7)."""
     key = _anthropic_api_key()
     if key is None:
         _warn_key_missing_once()
         raise AnthropicNotConfiguredError()
     bound = await _spend_admit(lane, model, system, messages, max_tokens, output_config)
     outcome_matters, probe = await _anthropic_dispatch_admission()
+    # F1-7: client construction is part of the guarded region -- any failure of
+    # _client_for / the factory (ImportError, a constructor error) is a terminal
+    # dispatch failure: the held probe released, logged by TYPE only.
     try:
         client = _client_for(key)
+    except Exception as exc:  # noqa: BLE001 (F1-7)
+        if probe:
+            await _release_probe()
+        logger.warning(
+            "[ROUTER] anthropic client construction failed site=%s class=%s",
+            site,
+            type(exc).__name__,
+        )
+        raise AnthropicDispatchError(type(exc).__name__, None, False) from None
     except BaseException:
         if probe:
             await _release_probe()
@@ -1171,6 +1184,12 @@ async def _moderate_step(
         return None, "unavailable"
     except (ValueError, TypeError):
         return None, "malformed"
+    except Exception as exc:  # noqa: BLE001 (F1-7: every other class fails CLOSED)
+        logger.warning(
+            "[ROUTER] moderation step failed class=%s -- failing closed",
+            type(exc).__name__,
+        )
+        return None, "unavailable"
 
 
 async def moderate_with_claude(text: str) -> Tuple[bool, Optional[str]]:

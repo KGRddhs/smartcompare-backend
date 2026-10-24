@@ -224,7 +224,7 @@ async def _compare_urls_metered(
     """
     # S81-06 (R-S06-3 / GC-4): the consent entry gate of both verbs, BEFORE the
     # credit reserve (nothing consumed, nothing to refund): the coded 503
-    # LLM_UNAVAILABLE envelope. Every role flag OFF: five getenv reads.
+    # LLM_UNAVAILABLE envelope. Every role flag OFF: four getenv reads.
     if _llm_router.compare_refuses_for_consent():
         logger.info("[ROUTER] consent update required at compare entry")
         raise HTTPException(

@@ -7,8 +7,10 @@ SDK installed by its autouse fixture, the consent recorder, the Redis fake, the
 route harness); PIN halves run with the FULL unit configuration (ruling B1).
 """
 
+import ast
 import asyncio
 import logging
+import pathlib
 
 import pytest
 
@@ -17,9 +19,13 @@ from tests.test_s81_s06_anthropic_router import (  # noqa: F401  (the autouse fi
     ESC_FLAG,
     HAIKU,
     JPEG_BYTES,
+    P1,
+    P2,
     PIN_OFF,
     PRE_FLAG,
     ROLE_FLAGS,
+    TERMINAL,
+    DispatchRec,
     RateLimitError,
     _base_dispatch_kwargs,
     _capture,
@@ -27,11 +33,14 @@ from tests.test_s81_s06_anthropic_router import (  # noqa: F401  (the autouse fi
     _knobs,
     _mod_setup,
     _open_state,
+    _patch_router_models,
+    _route,
     _route_harness,
     _router,
     _run,
     _s06_env,
     _set_flag,
+    _sym,
     abs_,
     c_msg,
     consent,
@@ -507,3 +516,290 @@ def test_g09_escalation_alone_never_routes(monkeypatch, consent):
 
     assert _run(_go()) == (None, False)
     assert asyncio.iscoroutinefunction(_router().route)
+
+
+# ===========================================================================
+# FIX ROUND 1 (RULINGS_FIX1_S81_06): F1-6, F1-7, F1-8, F1-14
+# ===========================================================================
+FACTORY_SENTINEL = "FACTORY" + "BROKE" + "k4"
+
+
+def _factory_boom(**kw):
+    raise RuntimeError("factory broke " + FACTORY_SENTINEL)
+
+
+def _no_sentinel_logged(caplog, needle):
+    return [r.getMessage() for r in caplog.records if needle in r.getMessage()]
+
+
+# ---------------------------------------------------------------------------
+# G10 (F1-6; correctness MAJ-1; mutant A-IMPLARM): the REAL impl path of the REST
+# entry maps an in-impl LLMUnavailableError to the coded LLM_UNAVAILABLE result
+# ---------------------------------------------------------------------------
+async def _parse_raises(self, query):
+    raise abs_.LLMUnavailableError("verdict unavailable")
+
+
+@pytest.mark.parametrize("flag", FLAG_ROWS)
+def test_g10_rest_impl_llm_unavailable_is_coded_under_on(monkeypatch, consent, flag):
+    """F1-6 (R-S06-2 on the REAL impl body): a role flag ON + consent 3, an
+    LLMUnavailableError raised INSIDE _compare_from_text_impl (the parse-step seam)
+    reaches the REST entry as the coded LLM_UNAVAILABLE result (the impl's own
+    except arm maps it; the wrapper's arm is unreachable for an in-impl error)."""
+    _knobs(monkeypatch)
+    consent.set(3)
+    monkeypatch.setenv(flag, "true")
+    monkeypatch.setattr(
+        scs.StructuredComparisonService, "_parse_with_budget", _parse_raises
+    )
+    st, res = _run(
+        _capture(scs.StructuredComparisonService().compare_from_text("a vs b"))
+    )
+    assert st == "ok" and isinstance(res, dict), (st, res)
+    assert res.get("success") is False and res.get("code") == "LLM_UNAVAILABLE", res
+
+
+@pytest.mark.parametrize("off_value", PIN_OFF)
+def test_g10b_flag_off_rest_impl_keeps_the_base_internal_error(
+    monkeypatch, consent, off_value
+):
+    """F1-6 PIN (FULL config, ruling B1): every role flag OFF (each spelling), the
+    same in-impl LLMUnavailableError -> the base INTERNAL_ERROR body; the consent
+    accessor is never read."""
+    _full_config(monkeypatch, consent)
+    monkeypatch.setenv(ESC_FLAG, "true")
+    monkeypatch.setenv(PRE_FLAG, "true")
+    for name in FLAG_ROWS:
+        _set_flag(monkeypatch, name, off_value)
+    monkeypatch.setattr(
+        scs.StructuredComparisonService, "_parse_with_budget", _parse_raises
+    )
+    st, res = _run(
+        _capture(scs.StructuredComparisonService().compare_from_text("a vs b"))
+    )
+    assert st == "ok" and isinstance(res, dict), (st, res)
+    assert res.get("success") is False and res.get("code") == "INTERNAL_ERROR", res
+    assert consent.reads == []
+
+
+# ---------------------------------------------------------------------------
+# G11 (F1-7; correctness MAJ-2): client construction inside the guarded region;
+# the moderation classifier fails CLOSED on every failure class
+# ---------------------------------------------------------------------------
+def test_g11a_moderation_client_factory_error_fails_closed(
+    monkeypatch, consent, caplog
+):
+    """F1-7: MODERATION ON + consent 3 + the key set, the client factory raising a
+    non-typed error -> SafetyResult(allowed=False, reason='unavailable');
+    moderations.create is never called; the error text is never logged."""
+    caplog.set_level(logging.DEBUG)
+    mods = _mod_setup(monkeypatch, consent)
+    monkeypatch.setattr(_router(), "_anthropic_client_factory", _factory_boom)
+    _router()._reset_router_state()
+    res = _run(
+        css.get_content_safety_service().moderate_output("a synthetic shopping text")
+    )
+    assert (res.allowed, res.reason) == (False, "unavailable"), res
+    assert mods == []
+    assert _no_sentinel_logged(caplog, FACTORY_SENTINEL) == []
+
+
+def test_g11b_verdict_client_factory_error_is_a_non_delivery(
+    monkeypatch, consent, caplog
+):
+    """F1-7 (R-S06-2): VERDICT ON + consent 3, the client factory raising a
+    non-typed error -> generate_comparison raises an LLMUnavailableError (the
+    non-delivery), never the base degraded delivery dict; no error text logged."""
+    caplog.set_level(logging.DEBUG)
+    _knobs(monkeypatch)
+    consent.set(3)
+    monkeypatch.setenv("ENABLE_ANTHROPIC_VERDICT", "true")
+    monkeypatch.setattr(_router(), "_anthropic_client_factory", _factory_boom)
+    _router()._reset_router_state()
+    _patch_router_models(monkeypatch)
+    st, out = _run(
+        _capture(es.generate_comparison(P1, P2, "bahrain", category="electronics"))
+    )
+    assert st == "raised" and isinstance(out, abs_.LLMUnavailableError), (st, out)
+    assert _no_sentinel_logged(caplog, FACTORY_SENTINEL) == []
+
+
+def test_g11c_client_factory_error_is_a_typed_dispatch_error_and_releases_the_probe(
+    monkeypatch, consent, redis_fake, caplog
+):
+    """F1-7: TEXT ON + consent 3, the breaker OPEN past its cooldown (the half-open
+    probe admitted), the client factory raising -> AnthropicDispatchError
+    ('RuntimeError', None, False) with no cause and no SDK text, no record_failure,
+    one WARNING by type (never the error text), and the held probe released (the
+    next request is admitted)."""
+    caplog.set_level(logging.DEBUG)
+    _knobs(monkeypatch)
+    consent.set(3)
+    monkeypatch.setenv("ENABLE_ANTHROPIC_TEXT", "true")
+    redis_fake.data[abs_._circuit_key("anthropic")] = _open_state(
+        abs_.CB_RECOVERY_TIMEOUT + 5
+    )
+    fails = []
+    real_fail = abs_.record_failure
+    monkeypatch.setattr(
+        abs_, "record_failure", lambda p: (fails.append(p), real_fail(p))[1]
+    )
+    real_factory = _router()._anthropic_client_factory
+    monkeypatch.setattr(_router(), "_anthropic_client_factory", _factory_boom)
+    _router()._reset_router_state()
+    st, exc = _run(
+        _capture(_route("parse", DispatchRec(), **_base_dispatch_kwargs("parse")))
+    )
+    disp = _sym("AnthropicDispatchError")
+    assert st == "raised" and isinstance(exc, disp), (st, exc)
+    assert (exc.error_class, exc.status, exc.transient) == ("RuntimeError", None, False)
+    assert exc.__cause__ is None and exc.__suppress_context__ is True
+    assert str(exc) == "anthropic dispatch suppressed"
+    assert fails == []
+    assert ANTH.calls == []
+    warns = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "RuntimeError" in r.getMessage()
+    ]
+    assert warns, "no WARNING by type for the factory failure"
+    assert _no_sentinel_logged(caplog, FACTORY_SENTINEL) == []
+    monkeypatch.setattr(_router(), "_anthropic_client_factory", real_factory)
+    _router()._reset_router_state()
+    st, _res = _run(
+        _capture(_route("parse", DispatchRec(), **_base_dispatch_kwargs("parse")))
+    )
+    assert st == "ok" and len(ANTH.calls) == 1, "the held probe was not released"
+
+
+def test_g11d_moderation_any_other_failure_fails_closed(monkeypatch, consent):
+    """F1-7: MODERATION ON + consent 3, a failure of any other class inside the
+    classifier step (not an LLMUnavailableError / ValueError / TypeError) ->
+    SafetyResult(allowed=False, reason='unavailable'), never the base fail-open."""
+    mods = _mod_setup(monkeypatch, consent)
+
+    async def _boom(**kw):
+        raise LookupError("classifier step broke " + FACTORY_SENTINEL)
+
+    monkeypatch.setattr(_router(), "guarded_anthropic_create", _boom)
+    res = _run(
+        css.get_content_safety_service().moderate_output("a synthetic shopping text")
+    )
+    assert (res.allowed, res.reason) == (False, "unavailable"), res
+    assert mods == []
+
+
+# ---------------------------------------------------------------------------
+# G12 (F1-8; correctness m2; mutant M20): a HALF_OPEN probe answered by a
+# terminal 4xx records success once and no failure (the W1-3b rule)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("i", range(len(TERMINAL)))
+def test_g12_half_open_probe_terminal_4xx_records_success_once(
+    monkeypatch, consent, redis_fake, i
+):
+    """F1-8: TEXT ON + consent 3, circuit:anthropic OPEN past its cooldown (the
+    half-open probe admitted), the call ends in a terminal 4xx -> a terminal
+    AnthropicDispatchError, record_success('anthropic') exactly once and no
+    record_failure."""
+    _knobs(monkeypatch)
+    consent.set(3)
+    monkeypatch.setenv("ENABLE_ANTHROPIC_TEXT", "true")
+    redis_fake.data[abs_._circuit_key("anthropic")] = _open_state(
+        abs_.CB_RECOVERY_TIMEOUT + 5
+    )
+    probes, succ, fails = [], [], []
+    real_icc, real_succ, real_fail = (
+        abs_.is_circuit_closed,
+        abs_.record_success,
+        abs_.record_failure,
+    )
+    monkeypatch.setattr(
+        abs_, "is_circuit_closed", lambda p: (probes.append(p), real_icc(p))[1]
+    )
+    monkeypatch.setattr(
+        abs_, "record_success", lambda p: (succ.append(p), real_succ(p))[1]
+    )
+    monkeypatch.setattr(
+        abs_, "record_failure", lambda p: (fails.append(p), real_fail(p))[1]
+    )
+    ANTH.script = [TERMINAL[i]()]
+    st, exc = _run(
+        _capture(_route("parse", DispatchRec(), **_base_dispatch_kwargs("parse")))
+    )
+    disp = _sym("AnthropicDispatchError")
+    assert st == "raised" and isinstance(exc, disp), (st, exc)
+    assert exc.transient is False and isinstance(exc.status, int), exc
+    assert probes == ["anthropic"], probes
+    assert succ == ["anthropic"], succ
+    assert fails == [], fails
+
+
+# ---------------------------------------------------------------------------
+# G13 (F1-14; engineering m2; mutant MPC): no direct guarded_llm_create call in
+# app/ outside the router and its definition module
+# ---------------------------------------------------------------------------
+APP_DIR = pathlib.Path(__file__).resolve().parents[1] / "app"
+ROUTING_EXEMPT = {
+    APP_DIR / "services" / "llm_router.py",
+    APP_DIR / "services" / "api_budget_service.py",
+}
+
+
+def _dotted_name(node):
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def _direct_guarded_calls(tree):
+    return [
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and _dotted_name(n.func).split(".")[-1] == "guarded_llm_create"
+    ]
+
+
+def _routed_calls(tree):
+    return [
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and _dotted_name(n.func).split(".")[-1] == "route"
+        and "llm_router" in _dotted_name(n.func)
+        and len(n.args) >= 2
+        and _dotted_name(n.args[1]).split(".")[-1] == "guarded_llm_create"
+    ]
+
+
+def test_g13_every_llm_site_dispatches_through_the_router():
+    """F1-14: an AST census over app/ finds NO call to guarded_llm_create( outside
+    app/services/llm_router.py and app/services/api_budget_service.py, and at least
+    16 _llm_router.route(<site>, <x>.guarded_llm_create, ...) calls (the 16 sites);
+    self-checks: a direct call and a routed call are each recognised."""
+    direct_src = (
+        "async def f(c):\n    await _llm_breaker.guarded_llm_create(c, model='m')\n"
+    )
+    routed_src = (
+        "async def f(c):\n"
+        "    await _llm_router.route('x', _llm_breaker.guarded_llm_create, c)\n"
+    )
+    assert _direct_guarded_calls(ast.parse(direct_src)), "harness: direct call missed"
+    assert _routed_calls(ast.parse(routed_src)), "harness: routed call missed"
+    assert (
+        _direct_guarded_calls(ast.parse(routed_src)) == []
+    ), "harness: routed != direct"
+    direct, routed = [], 0
+    for path in sorted(APP_DIR.rglob("*.py")):
+        if path in ROUTING_EXEMPT:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        rel = path.relative_to(APP_DIR.parent).as_posix()
+        direct += ["%s:%d" % (rel, ln) for ln in _direct_guarded_calls(tree)]
+        routed += len(_routed_calls(tree))
+    assert direct == [], "guarded_llm_create called outside the router: %s" % direct
+    assert routed >= 16, "harness: census floor is 16 routed sites, saw %d" % routed

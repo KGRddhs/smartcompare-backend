@@ -69,9 +69,7 @@ from app.services.api_budget_service import (
     has_budget, record_usage, record_failure, record_success,
     is_circuit_closed,
     # W1-3 — the OpenAI preflight breaker (ENABLE_LLM_PREFLIGHT_BREAKER).
-    # openai_preflight_allows_compare is the READ-ONLY half deliberately: the
-    # half-open probe budget belongs to the dispatch chokepoint, never here.
-    llm_preflight_breaker_enabled, openai_preflight_allows_compare,
+    llm_preflight_breaker_enabled,
 )
 # COST-METER (#66): the per-request OpenAI usage ledger (bound at each compare
 # entry, recorded at guarded_llm_create, summarised into metadata.openai).
@@ -4059,7 +4057,7 @@ class StructuredComparisonService:
         # S81-06 (2.6 / R-S06-5): a request an ON role would refuse (consent below
         # 3 with ENABLE_OPENAI_PRE_V3 OFF, or anthropic with the key unset) gets the
         # existing LLM_UNAVAILABLE envelope BEFORE any provider work. Every role
-        # flag OFF: five getenv reads, no consent read, no log.
+        # flag OFF: four getenv reads, no consent read, no log.
         if _llm_router.compare_refuses_for_consent():
             logger.info("[ROUTER] consent update required at compare entry")
             return self._llm_unavailable_envelope()

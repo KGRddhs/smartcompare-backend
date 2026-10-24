@@ -192,6 +192,42 @@ ANTHROPIC_BYPASS_SHAPES = {
 ANTHROPIC_LEGIT_SHAPES = {
     "list_append": "self.messages.append(x)",
 }
+# S81-06 fix round 1 (F1-13): two more arms OUTSIDE app/services/llm_router.py --
+# (a) an assignment binding a Messages object (an Attribute named `messages`, or
+# `batches` of it) to a name (the alias bypass), (b) the Messages REST path string.
+ANTHROPIC_ALIAS_REST_BYPASS_SHAPES = {
+    "alias_messages": "msgs = client.messages\nawait msgs.create(model='m', max_tokens=1, messages=[])",
+    "alias_batches": "b = client.messages.batches\nawait b.create(requests=[])",
+    "alias_annotated": "msgs: object = client.messages",
+    "alias_walrus": "(msgs := client.messages)",
+    "rest_path": "await http.post('https://api.anthropic.com/v1/messages', json={})",
+}
+ANTHROPIC_ALIAS_REST_LEGIT_SHAPES = {
+    "subscript_messages": "msgs = payload['messages']",
+    "attribute_store": "self.messages = []",
+    "other_path": "url = '/v1/models'",
+}
+
+
+def _anthropic_alias_rest_hits(tree):
+    hits = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign):
+            named = any(isinstance(t, ast.Name) for t in n.targets)
+        elif isinstance(n, (ast.AnnAssign, ast.NamedExpr)):
+            named = isinstance(n.target, ast.Name)
+        else:
+            named = False
+        if named and n.value is not None:
+            v = n.value
+            is_messages = isinstance(v, ast.Attribute) and v.attr == "messages"
+            is_batches = (isinstance(v, ast.Attribute) and v.attr == "batches"
+                          and isinstance(v.value, ast.Attribute) and v.value.attr == "messages")
+            if is_messages or is_batches:
+                hits.append("line %d a Messages object bound to a name" % getattr(n, "lineno", 0))
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and "/v1/messages" in n.value:
+            hits.append("line %d the Messages REST path" % getattr(n, "lineno", 0))
+    return hits
 
 
 def _anthropic_surface_hits(tree, allowed_ids=frozenset()):
@@ -366,6 +402,10 @@ def test_u3c_02_no_chat_dispatch_outside_the_chokepoint_under_app():
         assert _anthropic_surface_hits(ast.parse(src)), "harness: the rule misses the %s shape" % shape
     for shape, src in ANTHROPIC_LEGIT_SHAPES.items():
         assert _anthropic_surface_hits(ast.parse(src)) == [], "harness: the rule flags the legit %s shape" % shape
+    for shape, src in ANTHROPIC_ALIAS_REST_BYPASS_SHAPES.items():
+        assert _anthropic_alias_rest_hits(ast.parse(src)), "harness: the rule misses the %s shape" % shape
+    for shape, src in ANTHROPIC_ALIAS_REST_LEGIT_SHAPES.items():
+        assert _anthropic_alias_rest_hits(ast.parse(src)) == [], "harness: the rule flags the legit %s shape" % shape
     anthropic_offenders = []
     for path in _py_files(APP):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -374,6 +414,9 @@ def test_u3c_02_no_chat_dispatch_outside_the_chokepoint_under_app():
             allowed = frozenset(id(n) for n in ast.walk(_func(tree, "guarded_anthropic_create")))
         anthropic_offenders += ["%s %s" % (path.relative_to(REPO).as_posix(), h)
                                 for h in _anthropic_surface_hits(tree, allowed)]
+        if path != ANTHROPIC_CHOKEPOINT_FILE:  # F1-13: the alias + REST arms
+            anthropic_offenders += ["%s %s" % (path.relative_to(REPO).as_posix(), h)
+                                    for h in _anthropic_alias_rest_hits(tree)]
     assert anthropic_offenders == [], (
         "Anthropic Messages surface outside guarded_anthropic_create: %s" % anthropic_offenders)
 
