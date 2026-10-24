@@ -2641,13 +2641,16 @@ async def test_r60_f2_1_a_pre_midnight_record_landing_after_midnight(monkeypatch
 async def test_r60b_f2_1_a_pre_midnight_get_returning_after_a_new_day_read(monkeypatch):
     """F2-1 (the _observe_read half): a GET of day D1 that returns after a D2 read
     stored the new-day memo decides its own admit on the D1 total and replaces
-    nothing: the /health day and the admin view stay on D2."""
+    nothing: the /health day and the admin view stay on D2. The D1 total (2.95)
+    is near the cap, so the old-day admit of 0.1 is REFUSED (2.95 + 0.1 > 3.00),
+    where a decision on the D2 view (1.0) or on 0 would admit it (fix-2
+    re-verifier m2, survivors RB / RB2)."""
     leaf = _leaf()
     _freeze(monkeypatch, leaf, when=AT_2359_D1, clock=Clock(0.0))
     monkeypatch.setenv(TIMEOUT_ENV, "5.0")
-    fake = _install(monkeypatch, _ReadGateUpstash(seed={_key("live", D1): "2.5", _key("live", D2): "1.0"}))
+    fake = _install(monkeypatch, _ReadGateUpstash(seed={_key("live", D1): "2.95", _key("live", D2): "1.0"}))
     fake.gated = True
-    old = asyncio.ensure_future(leaf.admit_async("live", 0.1))  # the D1 GET reads 2.5 and is held
+    old = asyncio.ensure_future(leaf.admit_async("live", 0.1))  # the D1 GET reads 2.95 and is held
     try:
         assert await asyncio.to_thread(fake.read_done.wait, 5.0), "the D1 GET never ran"
         fake.gated = False
@@ -2655,7 +2658,12 @@ async def test_r60b_f2_1_a_pre_midnight_get_returning_after_a_new_day_read(monke
         assert await leaf.admit_async("live", 0.1) is None  # the D2 GET: memo D2 1.0
     finally:
         fake.release.set()
-    assert await old is None  # 2.5 + 0.1 <= 3.00 on its own day
+    refused = False
+    try:
+        await old
+    except abs_mod.LLMUnavailableError:
+        refused = True
+    assert refused, "the old-day GET's admit did not decide on its own day's total (2.95 + 0.1 > 3.00)"
     view = leaf.admin_snapshot()["live"]
     assert (view["day"], view["spent_usd"]) == (D2, _approx(1.0)), (
         "the old-day GET replaced the new-day memo: %r" % (view,))
@@ -2860,3 +2868,145 @@ def test_r64_f2_4_a_record_that_failed_before_its_awaiter_gave_up_is_a_fail_open
     assert snap["llm_spend_late_records"] == 0
     msgs = [r.getMessage() for r in caplog.records if "fail-open" in r.getMessage()]
     assert msgs == ["[SPEND] breaker fail-open (ConnectionError) -- admitting and not recording"]
+
+
+# ---------------------------------------------------------------------------
+# rebase-round PIN rows (fix-2 re-verifier m1 / m2): the F2-2 paths the real code
+# already gets right, each pinned so its named survivor (RD, RD2, RF, RE) is killed
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["async", "sync"])
+async def test_r65_f2_2_a_record_that_timed_out_and_then_failed_keeps_its_delta(monkeypatch, path):
+    """F2-2 (fix-2 re-verifier m1, survivor RD): a record whose awaiter gave up at
+    its 0.1 s bound and whose EVAL then FAILS (raising after 0.3 s) keeps its
+    delta in this process's memo (the overcount-safe direction), counts ONE
+    fail-open and is never a late record: on a stored 1.0 the view after the
+    failed 0.25 record is 1.25, so an admit of 0.1 against a 1.3 cap is REFUSED;
+    record_soon (async) and the sync record alike."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(CAP_ENV["live"], "1.3")
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0"}, delay=0.3))
+    assert await leaf.admit_async("live", 0.1) is None  # memo 1.0
+    monkeypatch.setenv(TIMEOUT_ENV, "0.1")
+    if path == "async":
+        task = leaf.record_soon("live", 0.25)
+        assert task is not None
+        await task  # returns at its 0.1 s bound; the EVAL is still running
+    else:
+        assert leaf.record("live", 0.25) is None  # returns at its 0.1 s bound
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline and leaf.spend_snapshot()["llm_spend_fail_open"] < 1:
+        await asyncio.sleep(0.02)
+    assert len(_spend(fake, "eval")) == 1
+    snap = leaf.spend_snapshot()
+    assert (snap["llm_spend_fail_open"], snap["llm_spend_late_records"]) == (1, 0), snap
+    assert leaf.admin_snapshot()["live"]["spent_usd"] == _approx(1.25), (
+        "the record that timed out and then failed dropped its delta: %r" % (leaf.admin_snapshot(),))
+    refused = False
+    try:
+        await leaf.admit_async("live", 0.1)
+    except abs_mod.LLMUnavailableError:
+        refused = True
+    assert refused, "the failed record's delta left this process's view"
+    assert len(_spend(fake, "get")) == 1
+
+
+def test_r66_f2_2_a_sync_record_that_failed_before_its_give_up_keeps_its_delta(monkeypatch):
+    """F2-2 (fix-2 re-verifier m1, survivor RD2): the r64 interleave (a sync
+    record's EVAL fails AFTER its 0.1 s bound expired but BEFORE the awaiter's
+    give-up runs, forced by wrapping the real _record_gave_up so it runs only once
+    the job has finished) keeps the record's delta in this process's memo: on a
+    stored 1.0 the view after the failed 0.25 record is 1.25 and an admit of 0.1
+    against a 1.3 cap is REFUSED; one fail-open, no late record."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(CAP_ENV["live"], "1.3")
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0"}, delay=0.3))
+    assert leaf.admit("live", 0.1) is None  # memo 1.0
+    monkeypatch.setenv(TIMEOUT_ENV, "0.1")
+    real = _need(leaf, "_record_gave_up")
+    seen = []
+
+    def _gave_up_once_the_job_failed(flight):
+        deadline = time.monotonic() + 5.0
+        while not flight.watch.finished and time.monotonic() < deadline:
+            time.sleep(0.01)
+        seen.append((flight.watch.finished, flight.watch.error))
+        real(flight)
+
+    monkeypatch.setattr(leaf, "_record_gave_up", _gave_up_once_the_job_failed)
+    assert leaf.record("live", 0.25) is None
+    assert seen == [(True, "ConnectionError")], seen
+    snap = leaf.spend_snapshot()
+    assert (snap["llm_spend_fail_open"], snap["llm_spend_late_records"]) == (1, 0), snap
+    assert leaf.admin_snapshot()["live"]["spent_usd"] == _approx(1.25), (
+        "the give-up of an already-failed record dropped its delta: %r" % (leaf.admin_snapshot(),))
+    refused = False
+    try:
+        leaf.admit("live", 0.1)
+    except abs_mod.LLMUnavailableError:
+        refused = True
+    assert refused, "the already-failed record's delta left this process's view"
+    assert len(_spend(fake, "get")) == 1
+
+
+def test_r67_f2_2_a_failed_sync_record_never_opens_the_read_window(monkeypatch):
+    """F2-2 (fix-2 re-verifier m1, survivor RF): a SYNC record whose EVAL fails
+    inside its bound keeps its delta, counts one fail-open and opens NO read
+    window (the window gates READS only): with the memo stale, the next admit
+    still reaches Upstash (a second GET) and decides on the GET total plus the
+    kept delta (1.0 + 0.2 + 0.1 > 1.25: REFUSED)."""
+    leaf = _leaf()
+    clock = _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(CAP_ENV["live"], "1.25")
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0"}))
+    assert leaf.admit("live", 0.1) is None  # memo 1.0
+    clock.t = 6.0  # the memo is stale
+    assert leaf.record("live", 0.2) is None
+    assert len(_spend(fake, "eval")) == 1
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1, leaf.spend_snapshot()
+    refused = False
+    try:
+        leaf.admit("live", 0.1)
+    except abs_mod.LLMUnavailableError:
+        refused = True
+    assert len(_spend(fake, "get")) == 2, "a failed sync record opened the read window"
+    assert refused, "the read after a failed sync record did not decide on the GET total + the kept delta"
+    assert leaf.admin_snapshot()["live"]["spent_usd"] == _approx(1.2)
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1, leaf.spend_snapshot()
+
+
+@pytest.mark.asyncio
+async def test_r68_f2_2_the_record_failure_count_window_is_per_lane(monkeypatch):
+    """F2-2 (fix-2 re-verifier m1, survivor RE): the record-failure counting window
+    is PER LANE: a failed record on the live lane (record_soon) and then one on the
+    offclock lane (the sync record) inside the same memo window count TWO
+    fail-opens, one per lane; a second failure on each lane inside the window
+    counts nothing more, and no lane's read window opens (each lane's next read
+    reaches Upstash and sees its kept deltas)."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0", _key("offclock"): "0.5"}))
+    task = leaf.record_soon("live", 0.2)
+    assert task is not None
+    await task
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1, leaf.spend_snapshot()
+    assert leaf.record("offclock", 0.2) is None
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 2, (
+        "the live lane's counted record failure suppressed the offclock lane's: %r" % (leaf.spend_snapshot(),))
+    again = leaf.record_soon("live", 0.2)
+    assert again is not None
+    await again
+    assert leaf.record("offclock", 0.2) is None
+    assert len(_spend(fake, "eval")) == 4
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 2, leaf.spend_snapshot()
+    assert await leaf.admit_async("live", 0.1) is None  # 1.0 + 0.4 + 0.1 <= 3.00
+    assert leaf.admit("offclock", 0.1) is None  # 0.5 + 0.4 + 0.1 <= 2.00
+    assert len(_spend(fake, "get")) == 2, "a failed record opened a read window"
+    view = leaf.admin_snapshot()
+    assert (view["live"]["spent_usd"], view["offclock"]["spent_usd"]) == (_approx(1.4), _approx(0.9)), view
