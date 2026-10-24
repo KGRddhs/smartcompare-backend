@@ -715,7 +715,7 @@ EXPECTED_COLUMN_TUPLES = {'kb_merchants': [('host', 'text', True, None),
                        ('value', 'numeric', True, None),
                        ('n', 'integer', True, None)]}
 # Table-level constraints by name, plus the primary key items (review C10).
-EXPECTED_CONSTRAINTS = {'kb_merchants': ["CONSTRAINT kb_merchants_host_top_label_letter CHECK (host ~ '[a-z][a-z0-9-]*$')",
+EXPECTED_CONSTRAINTS = {'kb_merchants': ["CONSTRAINT kb_merchants_host_top_label_letter CHECK (host ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
                   "CONSTRAINT kb_merchants_deny_is_blocked CHECK (NOT deny OR status = 'blocked')",
                   "CONSTRAINT kb_merchants_blocked_has_reason CHECK (status <> 'blocked' OR blocked_reason "
                   'IS NOT NULL)'],
@@ -723,19 +723,25 @@ EXPECTED_CONSTRAINTS = {'kb_merchants': ["CONSTRAINT kb_merchants_host_top_label
  'kb_variants': ['CONSTRAINT kb_variants_id_extends_product CHECK (left(id, char_length(product_id) + 1) = '
                  "product_id || '|' AND char_length(id) BETWEEN char_length(product_id) + 2 AND "
                  'char_length(product_id) + 5)'],
- 'kb_offers': ['CONSTRAINT kb_offers_seen_order CHECK (first_seen <= last_seen)',
+ 'kb_offers': ["CONSTRAINT kb_offers_url_top_label_letter CHECK (canonical_url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
+               'CONSTRAINT kb_offers_seen_order CHECK (first_seen <= last_seen)',
                "CONSTRAINT kb_offers_url_on_merchant CHECK (split_part(split_part(canonical_url, '://', 2), "
                "'/', 1) = merchant_id OR right(split_part(split_part(canonical_url, '://', 2), '/', 1), "
                "char_length(merchant_id) + 1) = '.' || merchant_id)",
                'CONSTRAINT kb_offers_observation UNIQUE (variant_id, merchant_id, market, observed_currency, '
                'amount, list_vs_sale)'],
- 'kb_images': ['CONSTRAINT kb_images_product_url UNIQUE (product_id, url)'],
- 'kb_specs': ['CONSTRAINT kb_specs_cited_has_source CHECK (NOT cited OR source_url IS NOT NULL)',
+ 'kb_images': ["CONSTRAINT kb_images_url_top_label_letter CHECK (url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
+               "CONSTRAINT kb_images_provenance_top_label_letter CHECK (provenance_host ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
+               'CONSTRAINT kb_images_product_url UNIQUE (product_id, url)'],
+ 'kb_specs': ["CONSTRAINT kb_specs_source_top_label_letter CHECK (source_url IS NULL OR source_url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
+              'CONSTRAINT kb_specs_cited_has_source CHECK (NOT cited OR source_url IS NOT NULL)',
               'CONSTRAINT kb_specs_product_field_lang UNIQUE (product_id, field, lang)'],
- 'kb_reviews': ['CONSTRAINT kb_reviews_has_signal CHECK (aggregate_rating IS NOT NULL OR review_count IS NOT '
+ 'kb_reviews': ["CONSTRAINT kb_reviews_source_top_label_letter CHECK (source_url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
+                'CONSTRAINT kb_reviews_has_signal CHECK (aggregate_rating IS NOT NULL OR review_count IS NOT '
                 'NULL)',
                 'CONSTRAINT kb_reviews_product_url UNIQUE (product_id, source_url)'],
- 'kb_gaps': ['CONSTRAINT kb_gaps_seen_order CHECK (first_seen <= last_seen)',
+ 'kb_gaps': ["CONSTRAINT kb_gaps_hint_top_label_letter CHECK (source_hint IS NULL OR source_hint ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)')",
+             'CONSTRAINT kb_gaps_seen_order CHECK (first_seen <= last_seen)',
              'CONSTRAINT kb_gaps_key_field UNIQUE (product_key, field)'],
  'kb_feedback': [],
  'kb_coverage_daily': ['PRIMARY KEY (day, metric)']}
@@ -912,7 +918,8 @@ EXPECTED_INDEXES = {'idx_kb_merchants_status': 'CREATE INDEX IF NOT EXISTS idx_k
  'idx_kb_variants_gtin': 'CREATE INDEX IF NOT EXISTS idx_kb_variants_gtin ON public.kb_variants (gtin) WHERE '
                          'gtin IS NOT NULL',
  'idx_kb_offers_latest': 'CREATE INDEX IF NOT EXISTS idx_kb_offers_latest ON public.kb_offers (variant_id, '
-                         'merchant_id, market, observed_currency, last_seen DESC, captured_at DESC, id DESC)',
+                         "merchant_id, market, observed_currency, last_seen DESC, (list_vs_sale = 'sale') DESC, "
+                         'captured_at DESC, id DESC)',
  'idx_kb_offers_merchant': 'CREATE INDEX IF NOT EXISTS idx_kb_offers_merchant ON public.kb_offers '
                            '(merchant_id)',
  'idx_kb_images_product': 'CREATE INDEX IF NOT EXISTS idx_kb_images_product ON public.kb_images (product_id)',
@@ -928,6 +935,8 @@ EXPECTED_INDEXES = {'idx_kb_merchants_status': 'CREATE INDEX IF NOT EXISTS idx_k
                             '(product_id) WHERE product_id IS NOT NULL',
  'idx_kb_feedback_created': 'CREATE INDEX IF NOT EXISTS idx_kb_feedback_created ON public.kb_feedback '
                             '(created_at)',
+ 'idx_kb_feedback_request': 'CREATE INDEX IF NOT EXISTS idx_kb_feedback_request ON public.kb_feedback '
+                            '(compare_request_id)',
  'uq_kb_feedback_one_vote': 'CREATE UNIQUE INDEX IF NOT EXISTS uq_kb_feedback_one_vote ON public.kb_feedback '
                             "(device_key, compare_request_id, field, coalesce(product_id, '')) WHERE "
                             'device_key IS NOT NULL'}
@@ -946,8 +955,9 @@ def test_s14_r12_indexes():
         assert timm._volatile_hits(pred) == []
 
 
-# F1-4 (fix round 1): a sale row ranks before a list row observed at the same instant.
-OFFER_ORDER = "o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC"
+# F1-4 / F2-1 (fix rounds 1 and 2): among the rows last seen at the same instant the sale wins,
+# then the newest capture (the sale key sits BEFORE captured_at).
+OFFER_ORDER = "o.last_seen DESC, (o.list_vs_sale = 'sale') DESC, o.captured_at DESC, o.id DESC"
 OFFER_PARTITION = "o.variant_id, o.merchant_id, o.market, o.observed_currency"
 
 
@@ -1644,6 +1654,44 @@ REFUSALS = [
     ("kb_reviews", "source_url_nul", dict(source_url="https://shop.example/p" + chr(0))),
     ("kb_gaps", "key_nul", dict(product_key=PID + chr(0))),
     ("kb_feedback", "product_nul", dict(product_id="p" + chr(0))),
+    # --- fix round 2 (RULINGS_FIX2_S81_14) ---
+    # F2-2: a bool Source field refuses a non-bool (an int 1)
+    ("kb_merchants", "registry_bool_field_int",
+     dict(registry=[{"origin": "literal", "order": 0, "is_shopify": 1}])),
+    # F2-3: domain == host is EXACT equality after lower-casing: no sibling, apex or Unicode-fold shortcut
+    ("kb_merchants", "registry_domain_sibling",
+     dict(host="ksa.shop.example", registry=[{"origin": "literal", "order": 0, "domain": "om.shop.example"}])),
+    ("kb_merchants", "registry_domain_apex_of_host",
+     dict(host="ksa.shop.example", registry=[{"origin": "literal", "order": 0, "domain": "shop.example"}])),
+    ("kb_merchants", "registry_domain_non_ascii_fold",
+     dict(host="k.example", registry=[{"origin": "literal", "order": 0, "domain": chr(0x212A) + ".example"}])),
+    # F2-4: a last label that is all digits or 0x-hex (IPv4 to a WHATWG parser or inet_aton) is refused
+    # on every host and URL host (10.0.0.1 rows exist from fix round 1 except on kb_offers)
+    ("kb_merchants", "host_hex_last_label", dict(host="127.0.0.0x1")),
+    ("kb_merchants", "host_hex_every_label", dict(host="0x7f.0x0.0x0.0x1")),
+    ("kb_merchants", "host_hex_after_digits", dict(host="1.2.3.0x4")),
+    ("kb_offers", "url_hex_last_label", dict(merchant_id="127.0.0.0x1", canonical_url="https://127.0.0.0x1/p")),
+    ("kb_offers", "url_hex_every_label", dict(merchant_id="0x7f.0x0.0x0.0x1", canonical_url="https://0x7f.0x0.0x0.0x1/p")),
+    ("kb_offers", "url_hex_after_digits", dict(merchant_id="1.2.3.0x4", canonical_url="https://1.2.3.0x4/p")),
+    ("kb_offers", "url_all_digit_host", dict(merchant_id="10.0.0.1", canonical_url="https://10.0.0.1/p")),
+    ("kb_images", "url_hex_last_label", dict(url="https://127.0.0.0x1/i.jpg")),
+    ("kb_images", "provenance_hex_last_label", dict(provenance_host="127.0.0.0x1")),
+    ("kb_specs", "source_hex_last_label", dict(source_url="https://127.0.0.0x1/x")),
+    ("kb_reviews", "source_url_hex_last_label", dict(source_url="https://127.0.0.0x1/p")),
+    ("kb_gaps", "hint_hex_last_label_host", dict(source_hint="127.0.0.0x1")),
+    ("kb_gaps", "hint_hex_last_label_url", dict(source_hint="https://127.0.0.0x1/p")),
+    ("kb_images", "url_hex_every_label", dict(url="https://0x7f.0x0.0x0.0x1/i.jpg")),
+    ("kb_images", "provenance_hex_every_label", dict(provenance_host="0x7f.0x0.0x0.0x1")),
+    ("kb_specs", "source_hex_every_label", dict(source_url="https://0x7f.0x0.0x0.0x1/x")),
+    ("kb_reviews", "source_url_hex_every_label", dict(source_url="https://0x7f.0x0.0x0.0x1/p")),
+    ("kb_gaps", "hint_hex_every_label_host", dict(source_hint="0x7f.0x0.0x0.0x1")),
+    ("kb_gaps", "hint_hex_every_label_url", dict(source_hint="https://0x7f.0x0.0x0.0x1/p")),
+    ("kb_images", "url_hex_after_digits", dict(url="https://1.2.3.0x4/i.jpg")),
+    ("kb_images", "provenance_hex_after_digits", dict(provenance_host="1.2.3.0x4")),
+    ("kb_specs", "source_hex_after_digits", dict(source_url="https://1.2.3.0x4/x")),
+    ("kb_reviews", "source_url_hex_after_digits", dict(source_url="https://1.2.3.0x4/p")),
+    ("kb_gaps", "hint_hex_after_digits_host", dict(source_hint="1.2.3.0x4")),
+    ("kb_gaps", "hint_hex_after_digits_url", dict(source_hint="https://1.2.3.0x4/p")),
 ]
 
 
@@ -1695,6 +1743,21 @@ ACCEPTS = [
     ("kb_reviews", "rating_five", dict(aggregate_rating=5.0)),
     ("kb_reviews", "rating_rounds_to_five", dict(aggregate_rating=4.995)),
     ("kb_offers", "amount_half_tie", dict(amount=0.0005)),
+    # --- fix round 2 (RULINGS_FIX2_S81_14) ---
+    # F2-3: the comparison lower-cases the domain (source_router lower-cases both sides at every lookup)
+    ("kb_merchants", "registry_domain_case",
+     dict(registry=[{"origin": "literal", "order": 0, "domain": "Shop.Example"}])),
+    # F2-4: a digit or hex-looking registrable label, or a letter-bearing top label, stays a host
+    ("kb_merchants", "host_digit_registrable_163", dict(host="163.com")),
+    ("kb_merchants", "host_hex_registrable_label", dict(host="0xbeef.example")),
+    ("kb_merchants", "host_hex_like_top_label", dict(host="shop.0xg")),
+    ("kb_offers", "url_digit_registrable_163", dict(merchant_id="163.com", canonical_url="https://www.163.com/p")),
+    ("kb_images", "url_hex_registrable_label",
+     dict(url="https://0xbeef.example/i.jpg", provenance_host="0xbeef.example")),
+    ("kb_specs", "source_digit_registrable_label", dict(source_url="https://4711.com/x")),
+    ("kb_reviews", "source_url_digit_registrable_163", dict(source_url="https://163.com/p")),
+    ("kb_gaps", "hint_digit_registrable_host", dict(source_hint="4711.com")),
+    ("kb_gaps", "hint_digit_registrable_url", dict(source_hint="https://cdn.163.com/p")),
 ]
 
 
@@ -2016,10 +2079,12 @@ HEADER_OFFERS = (
     "Offers: captured_at is the first observation of one exact (variant, merchant, market, currency, amount, "
     "list_vs_sale) row and never moves. A re-observation upserts on kb_offers_observation and sets last_seen, "
     "in_stock, evidence_rung and canonical_url only; a changed amount is a NEW row. Latest = last_seen DESC, "
-    "captured_at DESC, id DESC per (variant, merchant, market, currency), except that a sale row ranks before a "
-    "list row of the same last_seen and captured_at (the key (list_vs_sale = 'sale') DESC sits before id DESC: "
-    "the sale is what the shopper pays); the prune ages rows by last_seen. The view and the card serve the "
-    "latest row whatever its age or stock: freshness and stock filtering are S81-18's reader contract."
+    "(list_vs_sale = 'sale') DESC, captured_at DESC, id DESC per (variant, merchant, market, currency): the "
+    "R-S14-1 order last_seen DESC, captured_at DESC, id DESC with the sale key placed right after last_seen "
+    "DESC, so among the rows last seen at the same instant the sale wins, then the newest capture (the sale is "
+    "what the shopper pays, also when the list amount changed during the sale: F2-1); idx_kb_offers_latest "
+    "carries the same key in the same position, and the prune ages rows by last_seen. The view and the card "
+    "serve the latest row whatever its age or stock: freshness and stock filtering are S81-18's reader contract."
 )
 
 
@@ -2029,7 +2094,8 @@ def test_s14_r19b_header_observation_paragraph():
     assert HEADER_OFFERS in h, h[h.find("Offers:"):][:600]
 
 
-TOP_LABEL_RE = "[a-z][a-z0-9-]*$"
+# F2-4 (fix round 2): the last label carries a letter AND is not all digits or 0x-hex.
+TOP_LABEL_RE = "^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)"
 
 
 def test_s14_r25d_top_label_rule():
@@ -2112,3 +2178,232 @@ def test_s14_r28g_registry_validator_contract():
     two_noon = [{"origin": "literal", "order": 0, "domain": "noon.com"}, {"origin": "literal", "order": 1, "domain": "noon.com"}]
     assert build(host="noon.com", updated_at=T0, registry=two_noon) is not None
     assert build(host="shop.example", updated_at=T0, registry=two_noon) is None, "domain == host"
+
+
+# ===========================================================================
+# Fix round 2 (RULINGS_FIX2_S81_14, F2-1..F2-6): rows appended after the
+# round-1 re-verifier on ee09729d. RED = fails on the pre-fix bytes (an
+# AssertionError); PIN = green there and kills a named mutant.
+# ===========================================================================
+
+# F1-7 carried forward: the fix-round-2 refusal rows name their ONE clause; merged into
+# REFUSAL_CLAUSES at import so r28e checks the union (the fix-round-1 literal is untouched).
+_FIX2_CLAUSES = {
+    "kb_merchants": {
+        "registry.types": ("registry_bool_field_int",),
+        "registry.domain_is_host": (
+            "registry_domain_sibling", "registry_domain_apex_of_host", "registry_domain_non_ascii_fold",
+        ),
+        "merchants.host_top_label": ("host_hex_last_label", "host_hex_every_label", "host_hex_after_digits"),
+    },
+    "kb_offers": {
+        "offers.canonical": (
+            "url_hex_last_label", "url_hex_every_label", "url_hex_after_digits", "url_all_digit_host",
+        ),
+    },
+    "kb_images": {
+        "url.top_label": ("url_hex_last_label", "url_hex_every_label", "url_hex_after_digits"),
+        "host.top_label": ("provenance_hex_last_label", "provenance_hex_every_label", "provenance_hex_after_digits"),
+    },
+    "kb_specs": {
+        "url.top_label": ("source_hex_last_label", "source_hex_every_label", "source_hex_after_digits"),
+    },
+    "kb_reviews": {
+        "url.top_label": ("source_url_hex_last_label", "source_url_hex_every_label", "source_url_hex_after_digits"),
+    },
+    "kb_gaps": {
+        "host.top_label": ("hint_hex_last_label_host", "hint_hex_every_label_host", "hint_hex_after_digits_host"),
+        "url.top_label": ("hint_hex_last_label_url", "hint_hex_every_label_url", "hint_hex_after_digits_url"),
+    },
+}
+for _fx_table, _fx_clauses in _FIX2_CLAUSES.items():
+    for _fx_clause, _fx_names in _fx_clauses.items():
+        REFUSAL_CLAUSES[_fx_table][_fx_clause] = tuple(REFUSAL_CLAUSES[_fx_table].get(_fx_clause, ())) + _fx_names
+
+
+# ---------------------------------------------------------------------------
+# F2-1 (MAJ-1): the offer ranking as BEHAVIOUR. The ORDER BY lists are read from
+# the 045 text and evaluated on Python rows (an unknown key fails), so the row
+# goes red whenever the bytes rank captured_at before the sale key.
+# ---------------------------------------------------------------------------
+
+T_DAY = datetime(2026, 10, 24, 9, 0, tzinfo=timezone.utc)
+
+_ORDER_GETTERS = {
+    "o.variant_id": lambda r: r["variant_id"],
+    "o.merchant_id": lambda r: r["merchant_id"],
+    "o.market": lambda r: r["market"],
+    "o.observed_currency": lambda r: r["observed_currency"],
+    "o.last_seen": lambda r: r["last_seen"],
+    "o.captured_at": lambda r: r["captured_at"],
+    "(o.list_vs_sale = 'sale')": lambda r: r["list_vs_sale"] == "sale",
+    "o.id": lambda r: uuid.UUID(r["id"]).int,  # PostgreSQL orders uuid bytewise = by its int
+}
+
+
+def _order_spec(order_by: str) -> list:
+    spec = []
+    for part in order_by.split(", "):
+        m = re.fullmatch(r"(.+?)(?: (ASC|DESC))?", part.strip())
+        assert m and m.group(1) in _ORDER_GETTERS, "unknown ORDER BY key %r in %r" % (part, order_by)
+        spec.append((_ORDER_GETTERS[m.group(1)], m.group(2) == "DESC"))
+    return spec
+
+
+def _sorted_offers(rows: list, order_by: str) -> list:
+    out = list(rows)
+    for getter, desc in reversed(_order_spec(order_by)):
+        out.sort(key=getter, reverse=desc)  # stable, so the keys compose like ORDER BY
+    return out
+
+
+def _offer_partition(r: dict) -> tuple:
+    return (r["variant_id"], r["merchant_id"], r["market"], r["observed_currency"])
+
+
+def _latest_offers(rows: list, order_by: str) -> list:
+    seen, out = set(), []
+    for r in _sorted_offers(rows, order_by):
+        if _offer_partition(r) not in seen:
+            seen.add(_offer_partition(r))
+            out.append(r)
+    return out
+
+
+def _pruned_offers(rows: list, order_by: str, max_age_days: int, keep: int, now: datetime) -> list:
+    rn: dict = {}
+    kept = []
+    for r in _sorted_offers(rows, order_by):
+        rn[_offer_partition(r)] = rn.get(_offer_partition(r), 0) + 1
+        if not (rn[_offer_partition(r)] > keep and r["last_seen"] < now - timedelta(days=max_age_days)):
+            kept.append(r)
+    return kept
+
+
+def _offer_orders() -> dict:
+    sql = _require(F045)
+    views = [s for s in _statements(sql) if s.startswith("CREATE OR REPLACE VIEW public.kb_offers_latest ")]
+    assert len(views) == 1, views
+    card = re.search(r"FROM public\.kb_offers AS o WHERE .*? ORDER BY (.*?)\) AS l\)",
+                     _compact(_function_body(sql, "kb_product_card")))
+    prune = re.search(r"ORDER BY (.*?)\) AS rn", _compact(_function_body(sql, "kb_prune_offers")))
+    assert card and prune, "no offer ORDER BY in the card or the prune"
+    return {"view": views[0].split(" ORDER BY ", 1)[1], "card": card.group(1), "prune": prune.group(1)}
+
+
+def _offer(id_int: int, amount: str, lvs: str, captured_days_ago: float, seen_days_ago: float) -> dict:
+    return dict(
+        variant_id=VID, merchant_id="shop.example", market="BH", observed_currency="BHD",
+        id=str(uuid.UUID(int=id_int)), amount=amount, list_vs_sale=lvs,
+        captured_at=T_DAY - timedelta(days=captured_days_ago), last_seen=T_DAY - timedelta(days=seen_days_ago),
+    )
+
+
+@pytest.mark.parametrize("where", ["view", "card", "prune"])
+def test_s14_r31_sale_wins_among_rows_last_seen_together(where):
+    """F2-1 (S-b): a sale 30 first seen 10 days ago and a list 55 in a NEWER row (the list amount changed
+    during the sale), both last seen today: the view and the card serve the SALE and kb_prune_offers(1, 1)
+    keeps it (the prune runs two days later). Among the rows last seen at the same instant the sale wins,
+    then the newest capture."""
+    order = _offer_orders()[where]
+    sb = [
+        _offer(1, "30.000", "sale", 10, 0),
+        _offer(2, "50.000", "list", 10, 4),
+        _offer(9, "55.000", "list", 4, 0),  # the larger id too, so an id fallback serves the list
+    ]
+    if where == "prune":
+        kept = _pruned_offers(sb, order, 1, 1, T_DAY + timedelta(days=2))
+        assert [r["amount"] for r in kept] == ["30.000"], [r["amount"] for r in kept]
+        assert len(_pruned_offers(sb, order, 1, 1, T_DAY)) == 2, "today only the list 50 is old enough"
+    else:
+        assert [r["amount"] for r in _latest_offers(sb, order)] == ["30.000"], order
+    # controls on the same key list (green on both byte sets)
+    ended = [_offer(1, "30.000", "sale", 10, 1), _offer(2, "55.000", "list", 4, 0)]
+    assert _sorted_offers(ended, order)[0]["amount"] == "55.000", "last_seen decides first: the sale ended"
+    two_lists = [_offer(9, "40.000", "list", 5, 0), _offer(1, "45.000", "list", 1, 0)]
+    assert _sorted_offers(two_lists, order)[0]["amount"] == "45.000", "then the newest capture"
+    one_instant = [_offer(9, "50.000", "list", 1, 1), _offer(1, "30.000", "sale", 1, 1)]
+    assert _sorted_offers(one_instant, order)[0]["amount"] == "30.000", "an exact tie serves the sale (S-a)"
+
+
+# ---------------------------------------------------------------------------
+# F2-4: one top-label belt on every host and URL column (SQL and the leaf)
+# ---------------------------------------------------------------------------
+
+TOP_LABEL_COLUMNS = [
+    ("kb_merchants", "kb_merchants_host_top_label_letter", "host", "host", False),
+    ("kb_offers", "kb_offers_url_top_label_letter", "canonical_url", "url", False),
+    ("kb_images", "kb_images_url_top_label_letter", "url", "url", False),
+    ("kb_images", "kb_images_provenance_top_label_letter", "provenance_host", "host", False),
+    ("kb_specs", "kb_specs_source_top_label_letter", "source_url", "url", True),
+    ("kb_reviews", "kb_reviews_source_top_label_letter", "source_url", "url", False),
+    ("kb_gaps", "kb_gaps_hint_top_label_letter", "source_hint", "both", True),
+]
+NUMERIC_LAST_LABEL_HOSTS = ("127.0.0.0x1", "0x7f.0x0.0x0.0x1", "1.2.3.0x4", "10.0.0.1", "shop.123", "shop.0x")
+LETTER_LAST_LABEL_HOSTS = ("shop.example", "4711.com", "163.com", "0xbeef.example", "shop.0xg", "a.b-c", "shop.1a")
+
+
+@pytest.mark.parametrize("table,name,col,kind,nullable", TOP_LABEL_COLUMNS, ids=[c[1] for c in TOP_LABEL_COLUMNS])
+def test_s14_r25e_top_label_belt_on_every_host_column(table, name, col, kind, nullable):
+    """F2-4 (m3, m8): the SAME belt CHECK (the leaf's KB_HOST_TOP_LABEL_REGEX) on every host / URL column, so
+    SQL refuses a last label that is all digits or 0x-hex (127.0.0.0x1, 0x7f.0x0.0x0.0x1, 1.2.3.0x4, 10.0.0.1)
+    everywhere the leaf does; 4711.com and 163.com stay valid; the path never decides."""
+    sql = _require(F045)
+    cons = [c for c in _constraints(sql, table) if c.startswith("CONSTRAINT %s " % name)]
+    lead = "%s IS NULL OR " % col if nullable else ""
+    assert cons == ["CONSTRAINT %s CHECK (%s%s ~ '%s')" % (name, lead, col, TOP_LABEL_RE)], cons
+    assert _attr(_kb(), "KB_HOST_TOP_LABEL_REGEX") == TOP_LABEL_RE
+    rx = _py(TOP_LABEL_RE)
+    forms = {"host": ("%s",), "url": ("https://%s/p",), "both": ("%s", "https://%s/p")}[kind]
+    for form in forms:
+        for h in NUMERIC_LAST_LABEL_HOSTS:
+            assert not rx.search(form % h), form % h
+        for h in LETTER_LAST_LABEL_HOSTS:
+            assert rx.search(form % h), form % h
+    if kind != "host":
+        for url in ("https://10.0.0.1/x.abc", "http://127.0.0.0x1/a.b/c", "https://1.2.3.0x4/"):
+            assert not rx.search(url), "a letter in the path must not rescue %s" % url
+
+
+def test_s14_r25f_canonical_offer_url_refuses_numeric_last_labels():
+    """F2-4: canonical_offer_url (and so every offer) refuses an all-digit or 0x-hex last label."""
+    canon = _attr(_kb(), "canonical_offer_url")
+    for h in NUMERIC_LAST_LABEL_HOSTS:
+        for scheme in ("https", "http"):
+            assert canon("%s://%s/p" % (scheme, h)) is None, h
+    for h in LETTER_LAST_LABEL_HOSTS:
+        assert canon("https://%s/p" % h) == "https://%s/p" % h, h
+    assert canon("https://127.0.0.0X1/p") is None, "the host is lower-cased before the check"
+
+
+# ---------------------------------------------------------------------------
+# F2-5 (m4; R-A5): a placeholder BRAND mints no id either
+# ---------------------------------------------------------------------------
+
+PLACEHOLDER_BRANDS = [("Unknown", "Sauvage"), ("N/A", "Sauvage"), ("Unknown Brand", "Sauvage"), ("Product", "Sauvage")]
+
+
+@pytest.mark.parametrize("gate", [None, "true"])
+@pytest.mark.parametrize("brand,name", PLACEHOLDER_BRANDS, ids=["%s-%s" % p for p in PLACEHOLDER_BRANDS])
+def test_s14_r22d_placeholder_brand_arm(prod_identity_env, monkeypatch, gate, brand, name):
+    """F2-5: the house placeholder rule on the brand axis (the word "brand" dropped first), so 'brand
+    unknown, name X' scans from different houses never share one juice id; the writers (S81-16 / S81-17)
+    never pass a placeholder brand or name."""
+    prod_identity_env(gate)
+    kb = _kb()
+    fn = _attr(kb, "kb_product_id")
+    from app.services import result_gate, spec_spine_service
+
+    calls = []
+    real = spec_spine_service.spine_key
+    monkeypatch.setattr(spec_spine_service, "spine_key", lambda *a, **k: calls.append(a) or real(*a, **k))
+    assert fn(brand, name) is None, (brand, name)
+    assert calls == [], "a placeholder brand must not reach spine_key"
+    assert fn("Dior", name) == "fragrances|christian+dior|sauvage|-", "positive control"
+    for real_brand in ("Brand Collection", "Generic", "No Brand"):
+        assert fn(real_brand, name) is not None, "only a placeholder brand is refused: %s" % real_brand
+    seen = []
+    monkeypatch.setattr(result_gate, "is_placeholder_identity",
+                        lambda text, site_title=None: seen.append(text) or False)
+    assert fn(brand, name) is not None, "read result_gate.is_placeholder_identity at CALL time"
+    assert brand in seen, seen

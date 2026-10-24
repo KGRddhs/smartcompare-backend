@@ -2,15 +2,24 @@
 
 A pure leaf: its own code does no I/O, no logging, no clock, no environment
 read, no flag, and it never raises. No importer in app/ yet; S81-15..S81-22 call
-it. Import hazard (F1-11): importing this leaf imports price_service, which
-imports extraction_service, which calls ``load_dotenv(override=True)`` at
+it. Import hazards (F1-11, F2-8): importing this leaf imports price_service,
+which imports extraction_service, which calls ``load_dotenv(override=True)`` at
 import; every S81-15..S81-22 script that imports the leaf inherits that
 dotenv-override hazard (the one P8 pins: set a flag AFTER the first import).
+And the function-local ``from app.services import source_router`` in the
+registry validator runs source_router's module body on the first merchant
+build: it reads ``ENABLE_BH_GCC_CATALOG_SOURCES``, reads
+``data/bh_gcc_sources.json`` when that flag is ON (production) and imports
+search_descriptor_service; "no environment read" covers the leaf's own code
+only.
 
 Identity (rulings R-S14-3, F1-1): a JUICE id is ``spine_key(...)`` minus its ml
 field (brand axis + identity tokens + concentration); a SKU id is the juice id
 plus ``|<ml>``; no id when ``result_gate.product_is_placeholder`` says the
-identity (brand + name deduplicated) OR the name alone is a placeholder. The
+identity (brand + name deduplicated) OR the name alone is a placeholder, or
+when the BRAND is one (F2-5: the house rule on the brand axis, the generic
+word "brand" dropped first, so Unknown, N/A, Product and Unknown Brand mint
+no id; the writers S81-16 / S81-17 never pass a placeholder brand or name). The
 deny rule is ``deny_hosts.kb_source_allowed`` (read by module attribute at call
 time); the 045 SQL label CHECKs are belts derived from
 ``deny_hosts.DENY_LABELS`` and a strict SUBSET of the rule (a belt hit is always
@@ -18,8 +27,10 @@ a whole-token hit of the rule, so a belt never refuses a row a builder accepted;
 the rule also refuses path and query tokens, hyphenated labels and top-level
 labels). kb_merchants deliberately carries no deny check: a denied host is
 stored with deny = True and status 'blocked' (R-S14-2). Every host, and the
-host of every URL, carries a letter in its top-level label (F1-6: no all-digit
-host). Every builder refuses a NUL character or a lone surrogate in any text or
+host of every URL, has a last label that carries a letter and is neither all
+digits nor 0x-hex (F1-6, F2-4: no IPv4 literal shape; the 045
+*_top_label_letter constraints carry the same regex on every host and URL
+column). Every builder refuses a NUL character or a lone surrogate in any text or
 jsonb value, keys included (PostgreSQL 22P05 / 22P02, F1-8).
 """
 from __future__ import annotations
@@ -102,11 +113,13 @@ KB_BUILDER_KEYS: Dict[str, Tuple[str, ...]] = {
 
 #: The 045 text of the host CHECK (one constant; the RED pins it equal to the SQL).
 KB_HOST_REGEX = r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
-#: F1-6: the top-level label carries a letter, so no all-digit host (an IPv4
-#: literal shape: a WHATWG URL parser reads a host whose last label is a number
-#: as IPv4) is stored; the 045 constraint kb_merchants_host_top_label_letter
-#: carries the same text. A digit registrable label (4711.com) stays valid.
-KB_HOST_TOP_LABEL_REGEX = "[a-z][a-z0-9-]*$"
+#: F1-6 / F2-4: the LAST label carries a letter and is neither all digits nor
+#: 0x-hex (^(0x[0-9a-f]*|[0-9]+)$: a WHATWG URL parser, and inet_aton, read such
+#: a host as IPv4, e.g. 10.0.0.1 or 127.0.0.0x1). It matches a bare host and,
+#: with the optional scheme, the host part of a URL (the path never decides), so
+#: the 045 *_top_label_letter constraints carry this ONE text on every host and
+#: URL column. A digit registrable label (4711.com, 163.com) stays valid.
+KB_HOST_TOP_LABEL_REGEX = "^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)"
 _HOST_CORE = KB_HOST_REGEX[1:-1]
 KB_OFFER_URL_REGEX = "^https?://" + _HOST_CORE + "/[^?#[:space:]]*$"
 KB_IMAGE_URL_REGEX = "^https://" + _HOST_CORE + "/[^#[:space:]]*$"
@@ -207,6 +220,14 @@ def kb_source_allowed(value: Any) -> bool:
         return False
 
 
+def _brand_is_placeholder(brand: str) -> bool:
+    """F2-5 (R-A5): ``result_gate.is_placeholder_identity`` on the brand, and on the
+    brand with the generic word "brand" dropped (Unknown Brand -> unknown), both
+    read by module attribute at call time."""
+    words = [w for w in _rg.norm(brand).split() if w != "brand"]
+    return bool(_rg.is_placeholder_identity(brand) or _rg.is_placeholder_identity(" ".join(words)))
+
+
 def kb_product_id(brand: Any, name: Any, variant: Any = None) -> Optional[str]:
     """The JUICE id (spine_key minus ml), or None when no id can be minted."""
     try:
@@ -218,6 +239,9 @@ def kb_product_id(brand: Any, name: Any, variant: Any = None) -> Optional[str]:
             return None
         # R-A5 / F1-1: the house rule, the identity OR the name alone.
         if _rg.product_is_placeholder({"brand": brand, "name": name}):
+            return None
+        # F2-5: the house rule on the brand axis (writers never pass one).
+        if _brand_is_placeholder(brand):
             return None
         key = _spine.spine_key(brand, name, variant)
         if not isinstance(key, str):
@@ -401,7 +425,9 @@ def _registry_ok(value: Any, host: Any) -> bool:
     order and the ``source_router.Source`` field names (read by module attribute
     at call time, imported here so the leaf stays import-light); each present
     value of its field's declared type; origin one of the four; order an int
-    >= 0, unique within the array; domain (when present) == the row's host.
+    >= 0, unique within the array; domain (when present) == the row's host as
+    EXACT equality after lower-casing (F2-3: ASCII only, no sibling, apex or
+    registrable-name shortcut; source_router lower-cases both sides at lookup).
     Presence of every Source field is S81-15's seed contract, not this check."""
     if not _json_ok(value, list):
         return False
@@ -424,7 +450,7 @@ def _registry_ok(value: Any, host: Any) -> bool:
             return False
         if not all(_source_value_ok(fields[k], v) for k, v in entry.items() if k in fields):
             return False
-        if "domain" in entry and entry["domain"] != host:
+        if "domain" in entry and (not entry["domain"].isascii() or entry["domain"].lower() != host):
             return False
     return True
 
