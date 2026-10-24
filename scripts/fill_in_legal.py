@@ -75,6 +75,8 @@ SEVEN_FLAGS = (
     "ENABLE_FIRECRAWL",
     "ENABLE_SCRAPEDO",
     "ENABLE_BRIGHTDATA_FALLBACK",
+    # S81-06 (R-S06-14): the eighth fill-in flag, the anthropic processors row's gate.
+    "ENABLE_ANTHROPIC_TEXT",
 )
 ENUM_ANSWERS = {
     "deletion_variant": ("043", "old"),

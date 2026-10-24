@@ -20,7 +20,8 @@
     "ENABLE_FEWSHOT_ROTATION": "off",
     "ENABLE_FIRECRAWL": "on",
     "ENABLE_SCRAPEDO": "on",
-    "ENABLE_BRIGHTDATA_FALLBACK": "on"
+    "ENABLE_BRIGHTDATA_FALLBACK": "on",
+    "ENABLE_ANTHROPIC_TEXT": "off"
   },
   "placeholders": {
     "ANON_LOG_RETENTION": "no fixed period",

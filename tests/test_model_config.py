@@ -128,11 +128,15 @@ class TestNoStrayModelLiterals:
     # definition and dispatches nothing -- a model change there is a
     # priced / unpriced outcome (cost_complete False), never a routing
     # change, so it is data, not a stray literal.
-    ALLOWED = {"model_config.py", "openai_pricing.py"}
+    # S81-06 (E5): llm_pricing.py (S81-03) holds the Anthropic list-price table
+    # keyed by the exact Claude id, the same data-not-routing reasoning; the
+    # pattern now also catches claude- ids (they live only in model_config).
+    ALLOWED = {"model_config.py", "openai_pricing.py", "llm_pricing.py"}
 
     def test_no_hardcoded_openai_model_ids_in_services(self):
         services = Path(__file__).resolve().parents[1] / "app" / "services"
-        pattern = re.compile(r'["\'](gpt-[0-9a-zA-Z.\-]+|omni-moderation-[a-z]+)["\']')
+        pattern = re.compile(
+            r'["\'](gpt-[0-9a-zA-Z.\-]+|omni-moderation-[a-z]+|claude-[0-9a-zA-Z.\-]+)["\']')
         offenders = {}
         for path in sorted(services.glob("*.py")):
             if path.name in self.ALLOWED:

@@ -346,6 +346,14 @@ def llm_spend_health_snapshot() -> dict:
     return _module_snapshot("app.services.llm_spend_breaker", "spend_snapshot")
 
 
+def anthropic_breaker_health_snapshot() -> dict:
+    """S81-06 (GC-3): `anthropic_breaker` {state, memo_age_seconds}, present only
+    once an ENABLE_ANTHROPIC_* role flag was ON in this process (the
+    redis_offloop_pool precedent); a pure read of the router's breaker memo (no
+    Redis command, no thread); absent in a process where every role flag stayed OFF."""
+    return _module_snapshot("app.services.llm_router", "breaker_snapshot")
+
+
 async def _loop_lag_heartbeat() -> None:
     """Sleep on the interval and record how far each wake-up overshot it.
 
@@ -637,6 +645,7 @@ async def health_check():
         **adapter_executor_snapshot(),
         **brightdata_auth_health_snapshot(),
         **llm_spend_health_snapshot(),
+        **anthropic_breaker_health_snapshot(),
     }
 
 

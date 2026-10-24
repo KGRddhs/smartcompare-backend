@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional
 
 from app.services.api_budget_service import try_consume_serper_image_credit
 from app.services import api_budget_service as _llm_breaker
+from app.services import llm_router as _llm_router
 from app.services.model_config import sampling_kwargs, standard_model, token_limit_kwargs
 from app.services.openai_service import get_client
 from app.services.serper_service import search_images
@@ -183,7 +184,7 @@ async def extract_image_via_gpt(
         client = get_client()
         _model = standard_model()
         # W4-11 (R7): through the W1-3 breaker chokepoint (a bare create with its flag OFF).
-        completion = await _llm_breaker.guarded_llm_create(
+        completion = await _llm_router.route("image_tier3", _llm_breaker.guarded_llm_create,
             client,
             model=_model,
             messages=[{"role": "user", "content": prompt}],

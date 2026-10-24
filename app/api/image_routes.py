@@ -36,6 +36,7 @@ from app.services.openai_pricing import (
 )
 # S81-03 (ENABLE_LLM_LEDGER_V2): the vision call joins metadata.llm; module attribute (BL4).
 from app.services import llm_pricing as _llm_pricing
+from app.services import llm_router as _llm_router
 from app.services.structured_comparison_service import (
     LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
     StructuredComparisonService,
@@ -340,12 +341,25 @@ async def identify_and_compare(
     # fresh ledger, so this route keeps ITS OWN list (G5) and merges the two
     # summaries into metadata.openai once the compare has returned.
     vision_ledger = start_openai_ledger()
+    # S81-06 (F1-9 / R-S06-10): the camera scope (llm ledger + escalation count)
+    # in the parent task before the vision call; every role flag OFF binds nothing.
+    camera_scope = _llm_router.bind_request_scope()
     try:
+        # S81-06 (R-S06-5 / GC-5): a request ANY reached role would refuse is
+        # refused BEFORE the paid vision call, through this exit's coded 503 and
+        # both refunds. Every role flag OFF: five getenv reads.
+        if _llm_router.camera_refuses_for_consent():
+            raise _llm_router.ConsentUpdateRequiredError()
         _t_vision = time.perf_counter()
         vision_result = await identify_products(image_data_list)
         vision_ms = int((time.perf_counter() - _t_vision) * 1000)
     except Exception as e:
-        logger.error(f"[IMAGE] Vision call failed: {e}")
+        # S81-06 (GC-3): under a role flag ON a dispatch-level refusal logs at
+        # WARNING by type; flags OFF the base line, byte-unchanged.
+        if _llm_router.any_role_enabled() and isinstance(e, LLMUnavailableError):
+            logger.warning("[IMAGE] Vision call failed: %s", type(e).__name__)
+        else:
+            logger.error(f"[IMAGE] Vision call failed: {e}")
         # Non-delivery exit 1 of 6.
         _refund_reserved_credit("usage_refund.image.vision_exception")
         _refund_anon_credit("usage_refund.image.anon.vision_exception")
@@ -555,8 +569,12 @@ async def identify_and_compare(
         # the body as built, with ONE WARNING (R-S03-5).
         if _llm_pricing.llm_ledger_v2_enabled():
             try:
+                # S81-06 (R-S06-10 / C13): the camera scope's non-OpenAI records
+                # (a Claude vision call, an escalation) join the vision summary;
+                # None when no role flag is ON, so the base list is unchanged.
+                _camera_llm = list(camera_scope.get("llm_records") or []) if camera_scope else []
                 vision_llm = _llm_pricing.summarize_llm_records(
-                    [_llm_pricing.openai_entry_record(e) for e in vision_ledger]
+                    [_llm_pricing.openai_entry_record(e) for e in vision_ledger] + _camera_llm
                 )
                 compare_llm = result["metadata"].get("llm")
                 merged_llm = _llm_pricing.merge_llm_summaries(vision_llm, compare_llm)

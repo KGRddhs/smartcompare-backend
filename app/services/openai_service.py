@@ -22,6 +22,7 @@ from app.services.model_config import (
     vision_model,
 )
 from app.services import api_budget_service as _llm_breaker
+from app.services import llm_router as _llm_router
 from app.services import llm_pricing as _llm_pricing  # S81-03 (ENABLE_LLM_LEDGER_V2), module attribute (BL4)
 from app.utils.prompt_sanitizer import sanitize_prompt_input
 
@@ -467,11 +468,13 @@ async def _identify_products_v2(image_data_list: List[Dict]) -> Dict:
     content = [{"type": "text", "text": VISION_PROMPT_V2}]
     content.extend(_vision_image_parts(image_data_list))
 
-    bound = vision_timeout_seconds()
+    # S81-06 (R-S06-9): the base read unless the vision role decides anthropic.
+    bound = (vision_timeout_seconds() if _llm_router.decide("vision") != "anthropic"
+             else _llm_router.vision_timeout())
     _vision_model = vision_model()
     try:
         response = await asyncio.wait_for(
-            _llm_breaker.guarded_llm_create(
+            _llm_router.route("vision_v2", _llm_breaker.guarded_llm_create,
                 client,
                 model=_vision_model,
                 messages=[{"role": "user", "content": content}],
@@ -549,7 +552,11 @@ async def _identify_products_v2(image_data_list: List[Dict]) -> Dict:
     )
 
     # The V1 cost formula (gpt-4o-mini list price), tolerant of a missing usage.
-    if usage is None:
+    # S81-06 (2.5): a Claude-served result carries its own list price (False for
+    # every OpenAI object, so flag OFF is identical).
+    if getattr(response, "provider", None) == "anthropic":
+        cost = round(response.cost_usd or 0.0, 6)
+    elif usage is None:
         cost = 0.0
     elif _llm_pricing.llm_ledger_v2_enabled():
         # S81-03 (ENABLE_LLM_LEDGER_V2): the vision model's own list price (cached tokens priced).
@@ -639,7 +646,7 @@ EXAMPLES:
     
     # Call OpenAI Vision API
     _vision_model = vision_model()
-    response = await _llm_breaker.guarded_llm_create(client,
+    response = await _llm_router.route("vision_v1", _llm_breaker.guarded_llm_create, client,
         model=_vision_model,
         messages=[{"role": "user", "content": content}],
         **token_limit_kwargs(_vision_model, 500),
@@ -679,7 +686,10 @@ EXAMPLES:
     # Calculate cost (gpt-4o-mini pricing)
     # Input: $0.15 per 1M tokens, Output: $0.60 per 1M tokens
     usage = response.usage
-    if _llm_pricing.llm_ledger_v2_enabled():
+    if getattr(response, "provider", None) == "anthropic":
+        # S81-06 (2.5): a Claude-served result carries its own list price.
+        total_cost = response.cost_usd or 0.0
+    elif _llm_pricing.llm_ledger_v2_enabled():
         # S81-03 (ENABLE_LLM_LEDGER_V2): the vision model's own list price; a None
         # usage still raises at usage.total_tokens below, as at base (ruling C1).
         total_cost = _llm_pricing.openai_usage_cost_usd(_vision_model, usage)
@@ -755,7 +765,7 @@ Rules:
     try:
         client_local = get_client()
         _model = standard_model()
-        response = await _llm_breaker.guarded_llm_create(client_local,
+        response = await _llm_router.route("specs_targeted", _llm_breaker.guarded_llm_create, client_local,
             model=_model,
             messages=[
                 {"role": "system", "content": system},
@@ -830,7 +840,7 @@ Rules:
         # explicit id (structured_comparison_service routes one in from
         # model_router) are unaffected.
         _model = model or verdict_model()
-        response = await _llm_breaker.guarded_llm_create(client_local,
+        response = await _llm_router.route("specs_synthesized", _llm_breaker.guarded_llm_create, client_local,
             model=_model,
             messages=[
                 {"role": "system", "content": system},
@@ -892,7 +902,7 @@ async def disambiguate_variant_line(
     try:
         client_local = get_client()
         _model = standard_model()
-        response = await _llm_breaker.guarded_llm_create(client_local,
+        response = await _llm_router.route("disambiguate", _llm_breaker.guarded_llm_create, client_local,
             model=_model,
             messages=[
                 {"role": "system", "content": system},
@@ -928,7 +938,10 @@ async def disambiguate_variant_line(
 
         cost = 0.0
         usage = getattr(response, "usage", None)
-        if usage is not None:
+        if getattr(response, "provider", None) == "anthropic":
+            # S81-06 (R-S06-10): the third provider-aware cost reader.
+            cost = round(response.cost_usd or 0.0, 6)
+        elif usage is not None:
             if _llm_pricing.llm_ledger_v2_enabled():
                 # S81-03 (ENABLE_LLM_LEDGER_V2): the standard model's own list price.
                 cost = round(_llm_pricing.openai_usage_cost_usd(_model, usage), 6)

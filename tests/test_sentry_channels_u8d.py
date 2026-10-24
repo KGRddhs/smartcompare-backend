@@ -189,7 +189,11 @@ EXPECTED_EVENT_COUNT = {
     "success": 0,
 }
 
+# S81-06 (E8): AnthropicIntegration joins the list (the explicit one, include_prompts
+# False, added only when the anthropic SDK imports; the u8d child runs in a venv that
+# carries the S81-06 lock, so it is present).
 BASE_INTEGRATIONS = [
+    "AnthropicIntegration",
     "ArgvIntegration", "AtexitIntegration", "DedupeIntegration", "ExcepthookIntegration",
     "FastApiIntegration", "Httpx2Integration", "HttpxIntegration", "LoggingIntegration",
     "ModulesIntegration", "OpenAIIntegration", "RedisIntegration", "StarletteIntegration",
@@ -277,6 +281,7 @@ _opts = _cl.options
 _ints = list(_cl.integrations.values())
 _li = [i for i in _ints if type(i).__name__ == "LoggingIntegration"]
 _oi = [i for i in _ints if type(i).__name__ == "OpenAIIntegration"]
+_ai = [i for i in _ints if type(i).__name__ == "AnthropicIntegration"]
 INIT = {
     "init_calls": len(INIT_CALLS),
     "transport_is_memory": _opts.get("transport") is _MemoryTransport,
@@ -289,6 +294,7 @@ INIT = {
     "crumb_level": (_li[0]._breadcrumb_handler.level if _li and _li[0]._breadcrumb_handler is not None else None),
     "event_level": (_li[0]._handler.level if _li and _li[0]._handler is not None else None),
     "openai_include_prompts": (getattr(_oi[0], "include_prompts", None) if _oi else None),
+    "anthropic_include_prompts": (getattr(_ai[0], "include_prompts", None) if _ai else None),
 }
 if not INIT["transport_is_memory"]:
     print("RESULT " + json.dumps({"fatal": "real init_sentry() did not install the memory transport", "init": INIT}))
@@ -807,6 +813,8 @@ class TestU8dRedChannels:
             ("crumb_level", 40),
             ("trace_propagation_targets", []),
             ("openai_include_prompts", False),
+            # S81-06 (E8 / R-S06-11): the explicit AnthropicIntegration, prompts off.
+            ("anthropic_include_prompts", False),
         ],
     )
     def test_u8d_red_options_effective(self, u8d_child, option, expected):
@@ -967,7 +975,8 @@ class TestU8dPins:
 
     def test_u8d_pin_integration_list_unchanged(self, u8d_child):
         """SR8: the integration list is the base list (OpenAIIntegration's
-        include_prompts is the only change)."""
+        include_prompts is the only change; S81-06 adds the explicit
+        AnthropicIntegration with include_prompts False)."""
         assert u8d_child["init"]["integrations"] == BASE_INTEGRATIONS, u8d_child["init"]["integrations"]
 
     def test_u8d_pin_privacy_options_kept(self, u8d_child):

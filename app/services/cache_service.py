@@ -722,7 +722,13 @@ def get_price_cache_key(product_name: str, country: str) -> str:
 def get_comparison_cache_key(products: list, country: str) -> str:
     """Generate cache key for comparison results."""
     product_key = "_vs_".join(sorted([p.lower().replace(' ', '_') for p in products]))
-    return f"comparison:{country}:{product_key}"
+    # S81-06 (GC-3 / R-S06-12): the provider + model axis (':anthropic:<model>')
+    # only when the verdict role is ON and routes this request to Claude, so a
+    # Claude verdict never serves a pre-v3 user or survives a rollback; every
+    # role flag OFF returns '' (the base key, byte-identical). Lazy import: the
+    # router imports api_budget_service, which imports this module.
+    from app.services import llm_router as _llm_router
+    return f"comparison:{country}:{product_key}" + _llm_router.comparison_cache_key_axis()
 
 
 # ============================================

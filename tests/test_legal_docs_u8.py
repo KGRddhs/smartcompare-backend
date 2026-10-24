@@ -238,6 +238,9 @@ SEVEN_FLAGS = (
     "ENABLE_FIRECRAWL",
     "ENABLE_SCRAPEDO",
     "ENABLE_BRIGHTDATA_FALLBACK",
+    # S81-06 (R-S06-14, a deliberate pin change): the eighth fill-in flag gates the
+    # anthropic processors row.
+    "ENABLE_ANTHROPIC_TEXT",
 )
 _ENUM_ANSWERS = {
     "deletion_variant": ("043", "old"),
@@ -760,7 +763,9 @@ FIRST_PARTY_HOST_SUFFIXES = ("qaren.app", "getmyez.com")
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0"})
 URL_HOST = re.compile(r"https?://([A-Za-z0-9.-]+)")
 VALID_HOST = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$")
-CLIENT_CONSTRUCTORS = frozenset({"AsyncOpenAI", "OpenAI", "create_client", "Redis", "StrictRedis"})
+# S81-06 (E6): the Anthropic client constructors join the scan (R0-8 named the gap).
+CLIENT_CONSTRUCTORS = frozenset({"AsyncOpenAI", "OpenAI", "create_client", "Redis", "StrictRedis",
+                                 "AsyncAnthropic", "Anthropic"})
 
 # Modules the scan finds that send no personal data (UL14; reason >= 40 characters).
 NOT_PERSONAL = {
@@ -920,7 +925,10 @@ def test_t7_scanner_positive_controls():
         "app/services/serper_service.py": "google.serper.dev",
         "app/services/youtube_service.py": "www.googleapis.com",
         "app/services/exchange_rate_service.py": "api.frankfurter.app",
+        # S81-06 (E6): the new chokepoint's client construction and its host.
+        "app/services/llm_router.py": "AsyncAnthropic",
     }
+    assert "api.anthropic.com" in found.get("app/services/llm_router.py", (set(), []))[0]
     misses = []
     for rel, needle in expected.items():
         hosts, calls = found.get(rel, (set(), []))

@@ -59,6 +59,9 @@ from app.services.usage_service import (
     record_lifetime_comparison,
 )
 from app.utils.async_utils import fire_and_forget
+# S81-06 ANTHROPIC-ROUTER: the consent entry gate (R-S06-3) and its copy.
+from app.services import llm_router as _llm_router
+from app.services.structured_comparison_service import LLM_UNAVAILABLE_FRIENDLY_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +222,15 @@ async def _compare_urls_metered(
     a non-delivery through the SAME failure exit below (R-A3: refund once, no
     lifetime bump, no history row, the failure row with the code's constant).
     """
+    # S81-06 (R-S06-3 / GC-4): the consent entry gate of both verbs, BEFORE the
+    # credit reserve (nothing consumed, nothing to refund): the coded 503
+    # LLM_UNAVAILABLE envelope. Every role flag OFF: five getenv reads.
+    if _llm_router.compare_refuses_for_consent():
+        logger.info("[ROUTER] consent update required at compare entry")
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "LLM_UNAVAILABLE", "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE},
+        )
     _start = time.time()
     usage_consumed = await _reserve_comparison_credit(user)
     user_id = user.get("id") if user else None
