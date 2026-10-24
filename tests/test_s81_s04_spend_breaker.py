@@ -793,8 +793,8 @@ def test_r07_prompt_token_upper_bound(case):
         "arabic": (lambda: fn(_msg(arabic)), 16 + 4 + 20),
         "image_big": (lambda: fn(_image_msg(1000000), model=GPT4O), 16 + 4 + 100 + 1445),
         "image_small": (lambda: fn(_image_msg(10), model=GPT4O), 16 + 4 + 100 + 1445),
-        "image_mini": (lambda: fn(_image_msg(10), model=MINI), 16 + 4 + 100 + 37000),
-        "image_nomodel": (lambda: fn(_image_msg(10)), 16 + 4 + 100 + 37000),
+        "image_mini": (lambda: fn(_image_msg(10), model=MINI), 16 + 4 + 100 + 49000),
+        "image_nomodel": (lambda: fn(_image_msg(10)), 16 + 4 + 100 + 49000),
         "none": (lambda: fn(None), 16),
         "content_none": (lambda: fn([{"role": "user", "content": None}]), 20),
         "unknown_part": (lambda: fn([{"role": "user", "content": [part]}]), 16 + 4 + len(json.dumps(part))),
@@ -1262,10 +1262,10 @@ async def test_r28_chokepoint_bound_from_kwargs(monkeypatch, case):
     monkeypatch.setattr(leaf, "admit_async", _spy)
     _install(monkeypatch, FakeUpstash())
     client = _mock_openai_client(usage=None)
-    # F1-7 re-pin: the image bound is per MODEL id (gpt-4o-mini 37,000, gpt-4o 1,445)
+    # F1-7 re-pin: the image bound is per MODEL id (gpt-4o-mini 49,000 since F2-3, gpt-4o 1,445)
     table = {
         "text": (MINI, dict(messages=_msg("x" * 4000), max_tokens=800), 4020, 800),
-        "image": (MINI, dict(messages=_image_msg(1000000), max_tokens=500), 16 + 4 + 100 + 37000, 500),
+        "image": (MINI, dict(messages=_image_msg(1000000), max_tokens=500), 16 + 4 + 100 + 49000, 500),
         "completion_tokens": (MINI, dict(messages=_msg("x" * 4000), max_completion_tokens=1200), 4020, 1200),
         "response_format": (MINI, dict(messages=_msg("x" * 100), max_tokens=300, response_format=_RF),
                             16 + 4 + 100 + len(json.dumps(_RF, default=str).encode("utf-8")), 300),
@@ -2304,9 +2304,10 @@ async def test_r53_f1_4b_concurrent_reads_on_a_stale_memo_share_one_get(monkeypa
 @pytest.mark.asyncio
 async def test_r54_f1_4c_a_failed_read_opens_a_per_lane_fail_open_window(monkeypatch, caplog):
     """F1-4(c) (GREEN Q1, correctness m4, engineering m6): after a read failure or
-    timeout, admit / entry / record fail open WITHOUT a Redis hop for the memo
+    timeout, admit and the entry check fail open WITHOUT a Redis hop for the memo
     window of that lane (counted once per window), so a stalled Upstash costs at
-    most one timeout per lane per window; another lane still reads."""
+    most one timeout per lane per window; another lane still reads. F2-2 re-pin:
+    the window gates READS only, records are never windowed (test_r62)."""
     leaf = _leaf()
     clock = _freeze(monkeypatch, leaf, clock=Clock(0.0))
     monkeypatch.setenv(TIMEOUT_ENV, "0.2")
@@ -2319,8 +2320,6 @@ async def test_r54_f1_4c_a_failed_read_opens_a_per_lane_fail_open_window(monkeyp
         t0 = time.monotonic()
         assert await leaf.admit_async("live", 0.1) is None
         assert await leaf.entry_refuses_async("live") is False
-        assert leaf.record_soon("live", 0.2) is None
-        assert leaf.record("live", 0.2) is None
         assert leaf.admit("live", 0.1) is None
         assert time.monotonic() - t0 < 0.15, "an in-window call waited on Upstash"
         assert [c[1] for c in _spend(fake)] == [_key("live")], "an in-window call reached Upstash"
@@ -2429,18 +2428,435 @@ async def test_r56_f1_6_the_entry_check_reads_the_chokepoint_lane(monkeypatch, s
 
 @pytest.mark.parametrize("model,provider,expected", [
     (GPT4O, "openai", 1445), (GPT4O + "-2024-08-06", "openai", 1445),
-    (MINI, "openai", 37000), (MINI + "-2024-07-18", "openai", 37000),
-    (UNPRICED_OPENAI, "openai", 37000), (None, "openai", 37000),
-    (SONNET, "anthropic", 4784), (None, "mistral", 37000),
+    (MINI, "openai", 49000), (MINI + "-2024-07-18", "openai", 49000),
+    (UNPRICED_OPENAI, "openai", 49000), (None, "openai", 49000),
+    (SONNET, "anthropic", 4784), (None, "mistral", 49000),
 ])
 def test_r57_f1_7_the_image_bound_is_per_model(model, provider, expected):
-    """F1-7 (correctness m6, GREEN Q2): gpt-4o keeps 1,445 tokens per image; the
-    gpt-4o-mini rows (the default vision model), an unpriced or missing OpenAI id
-    and an unknown provider take OPENAI_MINI_IMAGE_TOKENS_UPPER = 37,000 (2,833 +
-    5,667 x 6 rounded up, UNVERIFIED, for S81-07); Anthropic keeps 4,784."""
+    """F1-7 (correctness m6, GREEN Q2) as amended by F2-3: gpt-4o keeps 1,445
+    tokens per image; the gpt-4o-mini rows (the default vision model), an unpriced
+    or missing OpenAI id and an unknown provider take
+    OPENAI_MINI_IMAGE_TOKENS_UPPER = 49,000 (2,833 + 5,667 x 8 tiles of the same
+    768 x 2048 resize the 4o bound uses = 48,169, rounded up; UNVERIFIED, for
+    S81-07); Anthropic keeps 4,784."""
     leaf = _leaf()
-    assert _need(leaf, "OPENAI_MINI_IMAGE_TOKENS_UPPER") == 37000 >= 2833 + 5667 * 6
+    assert _need(leaf, "OPENAI_MINI_IMAGE_TOKENS_UPPER") == 49000 >= 2833 + 5667 * 8
     assert leaf.OPENAI_IMAGE_PART_TOKEN_BOUND == 1445
     fn = leaf.prompt_token_upper_bound
     assert "model" in inspect.signature(fn).parameters, "prompt_token_upper_bound takes no model (F1-7)"
     assert fn(_image_msg(10), provider=provider, model=model) == 16 + 4 + 100 + expected
+
+
+# ===========================================================================
+# Fix round 2 (RULINGS_FIX2_S81_04): the day-aware memo (F2-1), records are
+# never windowed (F2-2), the 8-tile mini image bound (F2-3, test_r57 above) and
+# the _follow / _record_gave_up pins (F2-4). Added by the fix round.
+# ===========================================================================
+D1, D2 = "2026-10-23", "2026-10-24"
+AT_2350_D1 = datetime(2026, 10, 23, 20, 50, tzinfo=UTC)  # 23:50 Asia/Riyadh, day D1
+AT_2359_D1 = datetime(2026, 10, 23, 20, 59, tzinfo=UTC)  # 23:59 Asia/Riyadh, day D1
+AT_0005_D2 = datetime(2026, 10, 23, 21, 5, tzinfo=UTC)  # 00:05 Riyadh, day D2 (the D1 key in its grace hour)
+AT_0200_D2 = datetime(2026, 10, 23, 23, 0, tzinfo=UTC)  # 02:00 Riyadh, day D2 (the D1 key expired at 01:00)
+
+
+class _LateEvalUpstash(_ReadGateUpstash):
+    """_ReadGateUpstash whose FIRST eval stores its total, signals ``eval_done``
+    and waits for ``eval_release`` before returning it (a record submitted before
+    00:00 Riyadh whose EVAL lands after it)."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.eval_done = threading.Event()
+        self.eval_release = threading.Event()
+        self._eval_lock = threading.Lock()
+        self._eval_holds = 1
+
+    def eval(self, script, keys=None, args=None):
+        result = self._run_script(script, list(keys or []), list(args or []))
+        with self._eval_lock:
+            hold = self._eval_holds > 0
+            self._eval_holds -= 1 if hold else 0
+        if hold:
+            self.eval_done.set()
+            self.eval_release.wait(8.0)
+        return result
+
+
+_LateEvalUpstash.__module__ = "upstash_redis.client"
+
+
+class _SlowUpstash(FakeUpstash):
+    """A HEALTHY but slow Upstash: every GET and EVAL takes ``delay`` seconds."""
+
+    def __init__(self, delay, *a, **k):
+        super().__init__(*a, **k)
+        self.delay = delay
+
+    def get(self, key):
+        time.sleep(self.delay)
+        return super().get(key)
+
+    def eval(self, script, keys=None, args=None):
+        time.sleep(self.delay)
+        return super().eval(script, keys=keys, args=args)
+
+
+_SlowUpstash.__module__ = "upstash_redis.client"
+
+
+class _EvalRaisesUpstash(FakeUpstash):
+    """GET works; every EVAL is recorded, waits ``delay`` seconds and raises (an
+    EVAL-only failure)."""
+
+    def __init__(self, *a, delay=0.0, **k):
+        super().__init__(*a, **k)
+        self.delay = delay
+
+    def eval(self, script, keys=None, args=None):
+        self._rec("eval", (list(keys or []) or [""])[0])
+        if self.delay:
+            time.sleep(self.delay)
+        raise ConnectionError(_sentinel_text())
+
+
+_EvalRaisesUpstash.__module__ = "upstash_redis.client"
+
+
+@pytest.mark.asyncio
+async def test_r59_f2_1_a_previous_day_settle_never_replaces_the_new_day_memo(monkeypatch):
+    """F2-1 (round-1 re-verifier m1): a settle of a previous-day ticket that lands
+    after 00:00 Riyadh updates nothing in the live memo. Interleaved with a new-day
+    GET submitted before a new-day record landed, the memo keeps that record's
+    total (true D2 1.4: an admit of 0.7 against the 2.00 cap is REFUSED); after the
+    grace hour (the D1 key expired, the settle's EVAL total is negative) the
+    /health day stays D2 and the admin spent_usd stays the D2 total."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, when=AT_2350_D1, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _ReadGateUpstash())
+    first = leaf.reserve("offclock", 0.5)
+    second = leaf.reserve("offclock", 0.5)
+    assert first is not None and second is not None and first.day == D1
+    monkeypatch.setattr(leaf, "_utcnow", lambda: AT_0005_D2)
+    fake.store[_key("offclock", D2)] = "1.0"  # another process's new-day spend
+    fake.gated = True
+    admit = asyncio.ensure_future(leaf.admit_async("offclock", 0.7))
+    try:
+        assert await asyncio.to_thread(fake.read_done.wait, 5.0), "the new-day GET never ran"
+        fake.gated = False
+        task = leaf.record_soon("offclock", 0.4)
+        assert task is not None
+        await task  # the D2 EVAL lands: 1.4
+        leaf.settle(first, 0.2)  # the D1 EVAL lands after it: 1.0 - 0.3 = 0.7
+    finally:
+        fake.release.set()
+    refused = False
+    try:
+        await admit
+    except abs_mod.LLMUnavailableError:
+        refused = True
+    assert refused, "the previous-day settle replaced the new-day memo (the GET's 1.0 + 0.7 admitted)"
+    assert float(fake.store[_key("offclock", D1)]) == _approx(0.7)
+    view = leaf.admin_snapshot()["offclock"]
+    assert (view["day"], view["spent_usd"]) == (D2, _approx(1.4)), view
+    monkeypatch.setattr(leaf, "_utcnow", lambda: AT_0200_D2)
+    del fake.store[_key("offclock", D1)]  # the D1 key expired at 01:00 Riyadh
+    leaf.settle(second, 0.0)  # INCRBYFLOAT -0.5 on the missing key: the EVAL total is -0.5
+    view = leaf.admin_snapshot()["offclock"]
+    assert (view["day"], view["spent_usd"]) == (D2, _approx(1.4)), view
+    assert leaf.spend_snapshot()["llm_spend"]["offclock"]["day"] == D2, "the /health day reverted"
+
+
+def test_r59b_f2_1_an_eval_total_below_zero_is_observed_as_zero(monkeypatch):
+    """F2-1: the admin spent_usd is never negative: a settle whose EVAL total is
+    below 0 (its reserve-day key expired after the grace hour) is observed as 0
+    when the memo holds no entry for the lane."""
+    leaf = _leaf()
+    ticket_cls = _need(leaf, "ReserveTicket")
+    exp1 = int(datetime(2026, 10, 23, 22, 0, tzinfo=UTC).timestamp())
+    _freeze(monkeypatch, leaf, when=AT_0200_D2)
+    fake = _install(monkeypatch, FakeUpstash())
+    leaf.settle(ticket_cls("offclock", 0.5, D1, exp1), 0.0)
+    assert float(fake.store[_key("offclock", D1)]) == _approx(-0.5)
+    view = leaf.admin_snapshot()["offclock"]
+    assert view["spent_usd"] == 0.0, view
+    assert _health()["llm_spend"]["offclock"] == {"exhausted": False, "day": D1}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("landing", ["after_the_new_day_get", "inside_the_new_day_get"])
+async def test_r60_f2_1_a_pre_midnight_record_landing_after_midnight(monkeypatch, landing):
+    """F2-1 (round-1 re-verifier m1): a record submitted before 00:00 Riyadh whose
+    EVAL lands after it updates nothing in the live memo. Landing AFTER a new-day
+    GET it neither reverts the /health day nor throws the fresh new-day memo away
+    (no extra GET); landing INSIDE a new-day GET's round trip, after a new-day
+    record landed, it cannot make that GET undercount (true D2 1.4: an admit of
+    0.5 against a 1.6 cap is REFUSED)."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, when=AT_2359_D1, clock=Clock(0.0))
+    monkeypatch.setenv(CAP_ENV["live"], "1.6")
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _LateEvalUpstash(seed={_key("live", D1): "0.5", _key("live", D2): "1.0"}))
+    await leaf.admit_async("live", 0.1)  # memo D1 0.5
+    late = leaf.record_soon("live", 0.2)  # a D1 record: its EVAL (D1 0.7) is held
+    assert late is not None
+    admit = None
+    try:
+        assert await asyncio.to_thread(fake.eval_done.wait, 5.0), "the pre-midnight EVAL never ran"
+        monkeypatch.setattr(leaf, "_utcnow", lambda: AT_0005_D2)
+        if landing == "after_the_new_day_get":
+            assert await leaf.admit_async("live", 0.1) is None  # the D2 GET: memo D2 1.0
+        else:
+            fake.gated = True
+            admit = asyncio.ensure_future(leaf.admit_async("live", 0.5))
+            assert await asyncio.to_thread(fake.read_done.wait, 5.0), "the new-day GET never ran"
+            fake.gated = False
+            record = leaf.record_soon("live", 0.4)
+            assert record is not None
+            await record  # the D2 EVAL lands inside the GET's round trip: 1.4
+        fake.eval_release.set()
+        await late  # the D1 EVAL lands after midnight
+    finally:
+        fake.eval_release.set()
+        fake.release.set()
+    assert float(fake.store[_key("live", D1)]) == _approx(0.7)
+    if landing == "after_the_new_day_get":
+        assert leaf.spend_snapshot()["llm_spend"]["live"]["day"] == D2, "the /health day reverted"
+        view = leaf.admin_snapshot()["live"]
+        assert (view["day"], view["spent_usd"]) == (D2, _approx(1.0)), view
+        assert await leaf.admit_async("live", 0.1) is None
+        assert len(_spend(fake, "get")) == 2, "the old-day landing threw the fresh new-day memo away"
+    else:
+        refused = False
+        try:
+            await admit
+        except abs_mod.LLMUnavailableError:
+            refused = True
+        assert refused, "the old-day landing let the new-day GET undercount a landed record"
+        view = leaf.admin_snapshot()["live"]
+        assert (view["day"], view["spent_usd"]) == (D2, _approx(1.4)), view
+
+
+@pytest.mark.asyncio
+async def test_r60b_f2_1_a_pre_midnight_get_returning_after_a_new_day_read(monkeypatch):
+    """F2-1 (the _observe_read half): a GET of day D1 that returns after a D2 read
+    stored the new-day memo decides its own admit on the D1 total and replaces
+    nothing: the /health day and the admin view stay on D2."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, when=AT_2359_D1, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _ReadGateUpstash(seed={_key("live", D1): "2.5", _key("live", D2): "1.0"}))
+    fake.gated = True
+    old = asyncio.ensure_future(leaf.admit_async("live", 0.1))  # the D1 GET reads 2.5 and is held
+    try:
+        assert await asyncio.to_thread(fake.read_done.wait, 5.0), "the D1 GET never ran"
+        fake.gated = False
+        monkeypatch.setattr(leaf, "_utcnow", lambda: AT_0005_D2)
+        assert await leaf.admit_async("live", 0.1) is None  # the D2 GET: memo D2 1.0
+    finally:
+        fake.release.set()
+    assert await old is None  # 2.5 + 0.1 <= 3.00 on its own day
+    view = leaf.admin_snapshot()["live"]
+    assert (view["day"], view["spent_usd"]) == (D2, _approx(1.0)), (
+        "the old-day GET replaced the new-day memo: %r" % (view,))
+    assert leaf.spend_snapshot()["llm_spend"]["live"] == {"exhausted": False, "day": D2}
+
+
+def test_r61_f2_1_health_exhausted_reads_the_current_day_only(monkeypatch):
+    """F2-1 (round-1 survivor A03): /health `exhausted` reads the CURRENT Riyadh
+    day's entry only: a memo entry of the previous day (no read since 00:00)
+    shows its own day and exhausted false, whatever its total."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, when=AT_2359_D1)
+    _install(monkeypatch, FakeUpstash(seed={_key("live", D1): "2.95"}))
+    leaf.admit("live", 0.01)  # 2.95 + 0.01 <= 3.00: admitted, memo D1 2.95
+    assert _health()["llm_spend"] == {"live": {"exhausted": True, "day": D1}}
+    monkeypatch.setattr(leaf, "_utcnow", lambda: AT_0005_D2)
+    assert _health()["llm_spend"] == {"live": {"exhausted": False, "day": D1}}
+
+
+@pytest.mark.asyncio
+async def test_r62_f2_2_records_under_fifo_congestion_are_never_windowed(monkeypatch):
+    """F2-2 (round-1 re-verifier m2, fix Q3): the fail-open window gates READS
+    only. On a HEALTHY but slow Upstash (0.1 s per command, 4 workers, a 0.2 s
+    bound) 12 queued records push the due read past its bound (the window opens:
+    one fail-open); the 18 records issued inside that window are ALL sent (none
+    dropped): every one of the 30 EVALs lands, on time or late (the late ones in
+    llm_spend_late_records, never as fail-opens)."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "0.2")
+    fake = _install(monkeypatch, _SlowUpstash(0.1))
+    burst = [leaf.record_soon("live", 0.01) for _ in range(12)]
+    assert all(t is not None for t in burst)
+    await asyncio.sleep(0)  # the 12 record tasks submit their EVALs first (FIFO)
+    assert await leaf.admit_async("live", 0.001) is None  # the read is the 13th job
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1, "the congested read did not open the window"
+    inside = [leaf.record_soon("live", 0.01) for _ in range(18)]
+    assert all(t is not None for t in inside), (
+        "%d of 18 records inside the read window were dropped" % sum(t is None for t in inside))
+    await asyncio.gather(*burst, *inside)
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline and len(_spend(fake, "eval")) < 30:
+        await asyncio.sleep(0.05)
+    await asyncio.sleep(0.2)
+    assert len(_spend(fake, "eval")) == 30
+    assert float(fake.store[_key("live")]) == _approx(0.30), "spend was dropped"
+    snap = leaf.spend_snapshot()
+    assert snap["llm_spend_fail_open"] == 1, snap
+    assert snap["llm_spend_late_records"] >= 1, snap
+
+
+@pytest.mark.asyncio
+async def test_r62b_f2_2_a_failed_record_keeps_its_delta_and_counts_once_per_window(monkeypatch, caplog):
+    """F2-2: a record whose EVAL fails keeps its delta in this process's memo (the
+    overcount-safe direction), counts ONE fail-open per lane per window however
+    many records fail, and opens no read window (the window gates READS only):
+    after three failed 0.2 records on a stored 1.0 the next read still reaches
+    Upstash and the view is 1.6 (an admit of 0.1 against a 1.6 cap is REFUSED and
+    /health shows the lane exhausted)."""
+    leaf = _leaf()
+    clock = _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(CAP_ENV["live"], "1.6")
+    monkeypatch.setenv(TIMEOUT_ENV, "5.0")
+    fake = _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0"}))
+    caplog.set_level("WARNING")
+    await leaf.admit_async("live", 0.1)  # memo 1.0
+    clock.t = 6.0  # the memo is stale
+    tasks = [leaf.record_soon("live", 0.2) for _ in range(3)]
+    assert all(t is not None for t in tasks)
+    await asyncio.gather(*tasks)
+    assert len(_spend(fake, "eval")) == 3
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1, leaf.spend_snapshot()
+    refused = False
+    try:
+        await leaf.admit_async("live", 0.1)
+    except abs_mod.LLMUnavailableError:
+        refused = True
+    assert len(_spend(fake, "get")) == 2, "a failed record opened the read window"
+    assert refused, "the failed records' deltas left this process's view"
+    assert leaf.admin_snapshot()["live"]["spent_usd"] == _approx(1.6)
+    assert leaf.spend_snapshot()["llm_spend"]["live"] == {"exhausted": True, "day": DAY}
+    msgs = [r.getMessage() for r in caplog.records if "fail-open" in r.getMessage()]
+    assert msgs == ["[SPEND] breaker fail-open (ConnectionError) -- admitting and not recording"]
+    assert _sentinel_text() not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_r62c_f2_2_both_records_are_sent_inside_an_open_read_window(monkeypatch):
+    """F2-2: inside an open read window (a stalled GET) the sync record and
+    record_soon both send their EVAL and land (the window skips reads, never a
+    write); their EVAL totals refresh the memo, so the next admit decides on the
+    landed total without a GET."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "0.2")
+    monkeypatch.setenv(CAP_ENV["live"], "1.6")
+    fake = _install(monkeypatch, FakeUpstash(seed={_key("live"): "1.0"}))
+    fake.block = threading.Event()
+    try:
+        assert await leaf.admit_async("live", 0.1) is None  # the stalled GET: the read window opens
+        assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1
+        assert leaf.record("live", 0.2) is None
+        task = leaf.record_soon("live", 0.2)
+        assert task is not None, "record_soon inside the read window was dropped"
+        await task
+        assert [c[0] for c in _spend(fake)] == ["get", "eval", "eval"], (
+            "a record inside the read window was not sent")
+        assert float(fake.store[_key("live")]) == _approx(1.4)
+        refused = False
+        try:
+            await leaf.admit_async("live", 0.3)
+        except abs_mod.LLMUnavailableError:
+            refused = True
+        assert refused, "the landed records' EVAL totals did not reach the memo"
+        assert len(_spend(fake, "get")) == 1
+        assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1
+    finally:
+        fake.block.set()
+
+
+@pytest.mark.asyncio
+async def test_r62d_f2_2_a_record_failing_inside_the_read_window_is_not_counted_again(monkeypatch):
+    """F2-2: a record failure counts once per lane per window: inside a read
+    window that already counted the lane's fail-open, a failing record is still
+    sent and is not counted again."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "0.2")
+    fake = _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0"}))
+    fake.block = threading.Event()
+    try:
+        assert await leaf.admit_async("live", 0.1) is None  # a stalled GET opens the read window
+        task = leaf.record_soon("live", 0.2)
+        assert task is not None, "record_soon inside the read window was dropped"
+        await task
+    finally:
+        fake.block.set()
+    assert len(_spend(fake, "eval")) == 1, "the record inside the read window was not sent"
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1, leaf.spend_snapshot()
+
+
+@pytest.mark.asyncio
+async def test_r63_f2_4_a_waiters_timeout_never_cancels_the_shared_get(monkeypatch):
+    """F2-4 (round-1 re-verifier m4, survivor X1): with the llm-spend pool
+    saturated, waiter A's GET is queued and waiter B joins the same shared GET;
+    A's timeout cancels only A's own follower: B fails open at its own bound
+    (never a CancelledError out of admit_async), the shared GET still runs once the
+    pool frees up, and the two timeouts count ONE fail-open."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "1.0")
+    fake = _install(monkeypatch, FakeUpstash(seed={_key("live"): "1.0"}))
+    gate = threading.Event()
+    blockers = _saturate_spend_pool(leaf, gate)
+
+    async def _waiter(delay):
+        await asyncio.sleep(delay)
+        try:
+            return await leaf.admit_async("live", 0.1)
+        except asyncio.CancelledError:
+            return "CancelledError"
+
+    try:
+        results = await asyncio.gather(_waiter(0.0), _waiter(0.3))
+    finally:
+        gate.set()
+    concurrent.futures.wait(blockers, timeout=5.0)
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline and not _spend(fake, "get"):
+        await asyncio.sleep(0.02)
+    assert results == [None, None], "a waiter's timeout cancelled the shared GET: %r" % (results,)
+    assert len(_spend(fake, "get")) == 1, "the shared GET never ran"
+    assert leaf.spend_snapshot()["llm_spend_fail_open"] == 1
+
+
+def test_r64_f2_4_a_record_that_failed_before_its_awaiter_gave_up_is_a_fail_open(monkeypatch, caplog):
+    """F2-4 (round-1 re-verifier m6, survivor X6): when a sync record's EVAL fails
+    AFTER its bound expired but BEFORE the awaiter's give-up runs, the give-up
+    reports the failure (one counted fail-open), never drops it and never counts
+    it late. The interleave is forced by wrapping the real _record_gave_up so it
+    runs only once the job has finished."""
+    leaf = _leaf()
+    _freeze(monkeypatch, leaf, clock=Clock(0.0))
+    monkeypatch.setenv(TIMEOUT_ENV, "0.1")
+    _install(monkeypatch, _EvalRaisesUpstash(seed={_key("live"): "1.0"}, delay=0.25))
+    real = _need(leaf, "_record_gave_up")
+    seen = []
+
+    def _gave_up_once_the_job_failed(flight):
+        deadline = time.monotonic() + 5.0
+        while not flight.watch.finished and time.monotonic() < deadline:
+            time.sleep(0.01)
+        seen.append((flight.watch.finished, flight.watch.error))
+        real(flight)
+
+    monkeypatch.setattr(leaf, "_record_gave_up", _gave_up_once_the_job_failed)
+    caplog.set_level("WARNING")
+    assert leaf.record("live", 0.5) is None
+    assert seen == [(True, "ConnectionError")], seen
+    snap = leaf.spend_snapshot()
+    assert snap["llm_spend_fail_open"] == 1, "the failure that finished before the give-up was dropped"
+    assert snap["llm_spend_late_records"] == 0
+    msgs = [r.getMessage() for r in caplog.records if "fail-open" in r.getMessage()]
+    assert msgs == ["[SPEND] breaker fail-open (ConnectionError) -- admitting and not recording"]

@@ -47,23 +47,29 @@ binding on S81-06 / S81-16 / S81-21 / S81-22 and the escalation unit):
    and crons. The breaker is not a ``PROVIDER_CONFIGS`` provider (R-S03-9).
 
 Reads are memoised per process for ``LLM_SPEND_MEMO_SECONDS`` together with this
-process's own in-flight record deltas (R-S04-1); a GET submitted before a record
-landed never lowers the memo below that record's total (F1-2), and concurrent
-reads of one lane share ONE in-flight GET (single flight, F1-4b). Every Redis
-command is bounded by ``LLM_SPEND_REDIS_TIMEOUT_SECONDS`` (async callers through
-``asyncio.wait_for``, sync callers through ``future.result(timeout)``) and runs on
-the dedicated ``llm-spend`` pool of four workers, never on the event loop and
-never on the default executor (R-S04-2). Every Redis problem fails OPEN: no
-client, an error, a stalled command or a bad stored value admits and records
-nothing, with one rate-limited WARNING (type names only) and the
-``llm_spend_fail_open`` counter on /health; a read failure or timeout opens a
-per-lane fail-open window as long as the memo window, inside which admit, the
-entry check and record fail open without a Redis hop (counted once per window,
-F1-4c). A shielded record that lands after its bound expired is counted in
-``llm_spend_late_records`` (one INFO line), never as a fail-open (F1-4a); a sync
-record still queued at its bound is cancelled and its in-flight delta settled
-(F1-3). A negative stored total (only a pre-fix settle wrote one) reads as 0 with
-one rate-limited WARNING per key.
+process's own in-flight record deltas (R-S04-1). Within one Riyadh day a GET
+submitted before a record of that day landed keeps the larger of its total and
+that record's EVAL total (F1-2); an observation of an EARLIER Riyadh day (a
+previous-day settle, a pre-midnight record or GET landing after midnight) never
+replaces the memo entry of a later day, so the /health ``day`` never reverts, and
+an EVAL total below 0 is observed as 0 (F2-1). Concurrent reads of one lane share
+ONE in-flight GET (single flight, F1-4b). Every Redis command is bounded by
+``LLM_SPEND_REDIS_TIMEOUT_SECONDS`` (async callers through ``asyncio.wait_for``,
+sync callers through ``future.result(timeout)``) and runs on the dedicated
+``llm-spend`` pool of four workers, never on the event loop and never on the
+default executor (R-S04-2). Every Redis problem fails OPEN: no client, an error,
+a stalled command or a bad stored value admits, with one rate-limited WARNING
+(type names only) and the ``llm_spend_fail_open`` counter on /health. A read
+failure or timeout opens a per-lane fail-open window as long as the memo window,
+inside which admit and the entry check fail open without a Redis hop (counted
+once per window, F1-4c); the window gates READS only: a record is never windowed
+and always attempts its EVAL (F2-2). A record whose EVAL fails keeps its delta in
+this process's memo for the rest of its Riyadh day (the overcount-safe
+direction) and counts at most once per lane per window; a shielded record that
+lands after its bound expired is counted in ``llm_spend_late_records`` (one INFO
+line), never as a fail-open (F1-4a); a sync record still queued at its bound is
+cancelled and its in-flight delta settled (F1-3). A negative stored total (only a
+pre-fix settle wrote one) reads as 0 with one rate-limited WARNING per key.
 
 Imports: the stdlib, ``cache_service`` (the client, read per call through the
 module attribute), ``llm_pricing`` and ``openai_pricing`` (prices) and
@@ -134,13 +140,13 @@ OVERHEAD_TOKENS_PER_MESSAGE = 4
 # R-S04-9: OpenAI's published high-detail image rule for the 4o family: 85 base
 # tokens + 170 per 512-px tile, at most 8 tiles (768 x 2048 after the resize).
 OPENAI_IMAGE_PART_TOKEN_BOUND = 85 + 170 * 8
-# F1-7: gpt-4o-mini (the default vision model) bills an image at 2,833 base +
-# 5,667 tokens per 512-px tile, at most 6 tiles for a 768-px-short-side scaled
-# image (2,833 + 5,667 x 6 = 36,835), rounded up. UNVERIFIED by a web read in fix
-# round 1 (S81-07's pricing read verifies it); over-bounding only refuses earlier
-# near the cap and never spends. Every OpenAI id not priced at the 4o rate row
-# takes it (the mini rows, an unpriced or missing id).
-OPENAI_MINI_IMAGE_TOKENS_UPPER = 37_000
+# F1-7 / F2-3: gpt-4o-mini (the default vision model) bills an image at 2,833
+# base + 5,667 tokens per 512-px tile; the same 768 x 2048 resize the 4o bound
+# uses gives at most 8 tiles (2,833 + 5,667 x 8 = 48,169), rounded up. UNVERIFIED
+# by a web read (S81-07's pricing read verifies it): over-bounding only refuses
+# earlier near the cap, and only at THIS constant. Every OpenAI id not priced at
+# the 4o rate row takes it (the mini rows, an unpriced or missing id).
+OPENAI_MINI_IMAGE_TOKENS_UPPER = 49_000
 # R-S04-9: Anthropic's rule ceil(w/28) x ceil(h/28), the long edge downscaled to
 # 2,576 px, capped at 4,784 tokens (runs/research/R14.json).
 ANTHROPIC_IMAGE_TILE_PX = 28
@@ -228,7 +234,8 @@ _LOCK = threading.Lock()
 # lane -> {"day": str, "base": float, "read_at": float}: the last total this
 # process observed in Upstash (a GET, or the total an EVAL returned).
 _MEMO: Dict[str, Dict[str, Any]] = {}
-# (lane, day) -> [sum, count] of the record deltas submitted and not yet landed.
+# (lane, day) -> [sum, count] of the record deltas submitted and not yet landed,
+# and of the records whose EVAL failed (kept for the rest of their day, F2-2).
 _INFLIGHT: Dict[Tuple[str, str], List[float]] = {}
 # lane -> the number of EVAL totals observed (F1-2: a GET submitted before a
 # write landed keeps the larger of its total and the memo base).
@@ -239,6 +246,10 @@ _READS: Dict[Tuple[str, str], Tuple[concurrent.futures.Future, int]] = {}
 # lane -> (the monotonic time a read failed, the exception type name): the
 # fail-open window of the lane, as long as the memo window (F1-4c).
 _FAILOPEN_WINDOW: Dict[str, Tuple[float, str]] = {}
+# lane -> (the monotonic time a record failure was counted, the reason): a record
+# failure counts at most once per lane per memo window and opens no read window
+# (F2-2: the fail-open window gates READS only).
+_RECORD_FAIL_COUNTED: Dict[str, Tuple[float, str]] = {}
 _WARN_AT: Dict[str, float] = {}
 _STATE: Dict[str, Any] = {
     "ran": False,
@@ -631,6 +642,24 @@ def _fail_open_in_window(reason: str) -> None:
     _warn_limited("failopen", _FAILOPEN_TEMPLATE, reason)
 
 
+def _record_failed(lane: str, reason: str) -> None:
+    """F2-2: a record whose EVAL failed, or that timed out and never ran, fails
+    open: counted in llm_spend_fail_open at most once per lane per memo window (not
+    again while the lane's read window or a counted record failure's window is
+    open), the same rate-limited WARNING, and NO read window (the window gates
+    READS only, so an EVAL-only failure never blinds the reads)."""
+    now = _monotonic()
+    with _LOCK:
+        _STATE["ran"] = True
+        if not (
+            _window_open(_FAILOPEN_WINDOW.get(lane), now)
+            or _window_open(_RECORD_FAIL_COUNTED.get(lane), now)
+        ):
+            _RECORD_FAIL_COUNTED[lane] = (now, reason)
+            _STATE["fail_open"] += 1
+    _warn_limited("failopen", _FAILOPEN_TEMPLATE, reason)
+
+
 def _warn_unpriced(lane: str) -> None:
     _warn_limited(
         "unpriced",
@@ -672,11 +701,16 @@ def _memo_view(lane: str, day: str) -> Optional[float]:
 def _observe_read(lane: str, day: str, total: float, seq0: int) -> float:
     """A GET replaces the base, unless a write of the lane landed AFTER the GET
     was submitted (``seq0`` = the write sequence at submit): then the base keeps
-    the larger of the two, so the memo never undercounts (F1-2). Returns the
-    spent view."""
+    the larger of the two, so a same-day memo never undercounts a landed record
+    (F1-2). A GET of an EARLIER day than the memo entry replaces nothing (F2-1).
+    Returns the spent view of ``day``."""
     now = _monotonic()
     with _LOCK:
         entry = _MEMO.get(lane)
+        if entry is not None and entry["day"] > day:
+            # F2-1: ISO dates compare as strings; the later day's entry stays
+            _STATE["ran"] = True
+            return total + _inflight_sum(lane, day)
         base = total
         if (
             entry is not None
@@ -692,9 +726,15 @@ def _observe_read(lane: str, day: str, total: float, seq0: int) -> float:
 def _observe_write_locked(lane: str, day: str, total: float) -> None:
     """An EVAL total includes this write and everything that landed before it;
     concurrent writes can return out of order, so the base only moves up here
-    (a decrease, from a settle, is seen at the next GET submitted after it).
-    Caller holds _LOCK."""
+    (a decrease, from a settle, is seen at the next GET submitted after it). An
+    EVAL of an EARLIER day than the memo entry (a previous-day settle, a
+    pre-midnight record landing after midnight) updates nothing, and a total
+    below 0 is observed as 0 (F2-1). Caller holds _LOCK."""
     entry = _MEMO.get(lane)
+    if entry is not None and entry["day"] > day:
+        _STATE["ran"] = True
+        return  # F2-1: an older-day EVAL updates nothing in the live memo
+    total = max(total, 0.0)  # F2-1: an EVAL total below 0 is observed as 0
     now = _monotonic()
     _WRITE_SEQ[lane] = _WRITE_SEQ.get(lane, 0) + 1
     if entry is None or entry["day"] != day:
@@ -755,7 +795,7 @@ def _record_finished(flight: _Flight, error: Optional[str]) -> None:
     if not late:
         return
     if error is not None:
-        _fail_open(error)
+        _record_failed(flight.lane, error)
         return
     # the line first, then the counter: a visible count implies the line is out
     logger.info("[SPEND] late record landed -- recorded after its bound expired")
@@ -776,15 +816,15 @@ def _record_gave_up(flight: _Flight) -> None:
             return
         error = watch.error
     if error is not None:
-        _fail_open(error)
+        _record_failed(flight.lane, error)
 
 
 def _record_cancelled(flight: _Flight) -> None:
     """F1-3: a sync record job still QUEUED at its bound was cancelled and never
     runs: settle its in-flight delta now (a fail-open never becomes a refusal for
-    the rest of the day) and count the fail-open."""
+    the rest of the day) and count the fail-open (once per window, F2-2)."""
     _inflight_done(flight, None)
-    _fail_open(TimeoutError.__name__)
+    _record_failed(flight.lane, TimeoutError.__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -961,12 +1001,13 @@ def _read_spent(client: Any, key: str) -> float:
 def _record_job(
     client: Any, key: str, amount: float, expireat: int, flight: _Flight
 ) -> Any:
-    """The record EVAL, run on a pool thread; it settles its own in-flight delta
-    exactly once (success or failure), even after its awaiter gave up."""
+    """The record EVAL, run on a pool thread. A landed EVAL settles its own
+    in-flight delta exactly once, even after its awaiter gave up; a failed EVAL
+    leaves the delta in the in-flight sum for the rest of its Riyadh day (F2-2:
+    this process keeps seeing its own spend, the overcount-safe direction)."""
     try:
         raw = _eval(client, RECORD_SCRIPT, [key], [_fmt(amount), str(expireat)])
     except BaseException as exc:
-        _inflight_done(flight, None)
         _record_finished(flight, type(exc).__name__)
         raise
     _inflight_done(flight, raw)
@@ -1060,9 +1101,10 @@ def _record_amount(actual_usd: Any, admitted_usd: Any) -> Optional[float]:
 
 def record(lane: str, actual_usd: Any, admitted_usd: Any = None) -> None:
     """Sync record: ONE Lua EVAL (INCRBYFLOAT + EXPIREAT) on the pool under the
-    timeout. Fail-open on any problem (no raise); inside an open fail-open window
-    nothing is sent (F1-4c); a job still queued at the bound is cancelled and its
-    delta settled (F1-3); a running one that lands later is a late record."""
+    timeout. Fail-open on any problem (no raise). Never windowed: it always
+    attempts its EVAL (F2-2); a failed EVAL keeps its delta in this process's
+    memo; a job still queued at the bound is cancelled and its delta settled
+    (F1-3); a running one that lands later is a late record."""
     _check_lane(lane)
     amount = _record_amount(actual_usd, admitted_usd)
     if amount is None:
@@ -1070,10 +1112,6 @@ def record(lane: str, actual_usd: Any, admitted_usd: Any = None) -> None:
     client = _client()
     if client is None:
         _fail_open(RedisUnconfigured.__name__)
-        return None
-    reason = _window_reason(lane)
-    if reason is not None:
-        _fail_open_in_window(reason)
         return None
     day, expireat = riyadh_day()
     flight = _inflight_add(lane, day, amount)
@@ -1090,7 +1128,7 @@ def record(lane: str, actual_usd: Any, admitted_usd: Any = None) -> None:
     except TimeoutError:
         _record_gave_up(flight)
     except Exception as exc:  # noqa: BLE001 -- fail-open, the type name only
-        _fail_open(type(exc).__name__)
+        _record_failed(lane, type(exc).__name__)
     return None
 
 
@@ -1107,7 +1145,7 @@ async def _record_task(
         _record_gave_up(flight)
         raise
     except Exception as exc:  # noqa: BLE001 -- fail-open, the type name only
-        _fail_open(type(exc).__name__)
+        _record_failed(flight.lane, type(exc).__name__)
     return None
 
 
@@ -1118,8 +1156,9 @@ def record_soon(
     EVAL runs as a durable background task (registered in
     ``async_utils._BACKGROUND_TASKS``, so the W1-6 shutdown drain covers it and a
     request cancellation never cancels it); one that lands after its bound is a
-    late record (F1-4a). None when nothing is recorded (inside an open fail-open
-    window nothing is sent, F1-4c)."""
+    late record (F1-4a). Never windowed: it always attempts its EVAL, and a failed
+    EVAL keeps its delta in this process's memo (F2-2). None when nothing is
+    recorded (an invalid amount, no Redis client)."""
     _check_lane(lane)
     amount = _record_amount(actual_usd, admitted_usd)
     if amount is None:
@@ -1127,10 +1166,6 @@ def record_soon(
     client = _client()
     if client is None:
         _fail_open(RedisUnconfigured.__name__)
-        return None
-    reason = _window_reason(lane)
-    if reason is not None:
-        _fail_open_in_window(reason)
         return None
     day, expireat = riyadh_day()
     flight = _inflight_add(lane, day, amount)
@@ -1287,7 +1322,9 @@ def _memo_copy() -> (
 def spend_snapshot() -> Dict[str, Any]:
     """/health (R-S04-7): ``{}`` until the breaker ran in this process (a
     fail-open counts, GC-5); then ``llm_spend`` {lane: {exhausted, day}} for each
-    observed lane (``exhausted`` = ``lane_exhausted`` on the current Riyadh day),
+    observed lane (``exhausted`` = ``lane_exhausted`` over this process's view, its
+    in-flight record deltas included, on the current Riyadh day only: an entry of
+    an earlier day reads False, F2-1),
     the ``llm_spend_fail_open`` counter and the ``llm_spend_late_records`` counter
     (F1-4a: records that landed after their bound). No amounts; never raises."""
     try:
@@ -1346,6 +1383,7 @@ def _reset_spend_breaker_state() -> None:
         _WRITE_SEQ.clear()
         _READS.clear()
         _FAILOPEN_WINDOW.clear()
+        _RECORD_FAIL_COUNTED.clear()
         _WARN_AT.clear()
         _STATE["ran"] = False
         _STATE["fail_open"] = 0
