@@ -21,26 +21,34 @@
 -- HMAC-SHA256 of the device header under DEVICE_KEY_PEPPER, NOT a user id and
 -- NOT the raw header, so it sits outside the 043 user-table fence by design.
 -- It is nullable (a vote with no key is stored device-less and never counts
--- toward one vote per device). Deletion: S81-22's account-deletion hook plus
--- the 365-day TTL prune kb_prune_feedback(365) run by S81-22's nightly job.
+-- toward one vote per device). Deletion: S81-22's account-deletion hook (its
+-- compare_request_id filter is served by idx_kb_feedback_request) plus the
+-- 365-day TTL prune kb_prune_feedback(365) run by S81-22's nightly job.
 --
 -- Offers: captured_at is the first observation of one exact (variant,
 -- merchant, market, currency, amount, list_vs_sale) row and never moves. A
 -- re-observation upserts on kb_offers_observation and sets last_seen,
 -- in_stock, evidence_rung and canonical_url only; a changed amount is a NEW
--- row. Latest = last_seen DESC, captured_at DESC, id DESC per (variant,
--- merchant, market, currency), except that a sale row ranks before a list row
--- of the same last_seen and captured_at (the key (list_vs_sale = 'sale') DESC
--- sits before id DESC: the sale is what the shopper pays); the prune ages
--- rows by last_seen. The view and the card serve the latest row whatever its
--- age or stock: freshness and stock filtering are S81-18's reader contract.
+-- row. Latest = last_seen DESC, (list_vs_sale = 'sale') DESC, captured_at
+-- DESC, id DESC per (variant, merchant, market, currency): the R-S14-1 order
+-- last_seen DESC, captured_at DESC, id DESC with the sale key placed right
+-- after last_seen DESC, so among the rows last seen at the same instant the
+-- sale wins, then the newest capture (the sale is what the shopper pays, also
+-- when the list amount changed during the sale: F2-1); idx_kb_offers_latest
+-- carries the same key in the same position, and the prune ages rows by
+-- last_seen. The view and the card serve the latest row whatever its age or
+-- stock: freshness and stock filtering are S81-18's reader contract.
 --
 -- kb_merchants: the decode reads host, registry, status, deny, blocked_reason
 -- and partner only; country, currency_hint, platform, adapter and
 -- search_template are display / ops-only columns. A denied host is STORED with
 -- deny = true and status 'blocked' (the owner's blocked list), so no deny
--- label check applies to kb_merchants. Every host carries a letter in its
--- top-level label (kb_merchants_host_top_label_letter: no all-digit host).
+-- label check applies to kb_merchants. Every host column and the host of
+-- every URL column of kb_* has a last label that carries a letter and is
+-- neither all digits nor 0x-hex (a WHATWG parser or inet_aton reads 10.0.0.1
+-- and 127.0.0.0x1 as IPv4): one belt, the leaf's KB_HOST_TOP_LABEL_REGEX, in
+-- the *_top_label_letter constraints (F2-4; a digit registrable label such as
+-- 4711.com stays valid).
 -- The kb_* data tables refuse the denied labels (basenotes, fimgs, fragrantica,
 -- parfumo) by CHECK: a belt that is a strict SUBSET of the rule,
 -- deny_hosts.kb_source_allowed in the builders (a belt never refuses a row a
@@ -117,7 +125,9 @@ CREATE TABLE IF NOT EXISTS public.kb_merchants (
     partner jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(partner) = 'object'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT kb_merchants_host_top_label_letter CHECK (host ~ '[a-z][a-z0-9-]*$'),
+    CONSTRAINT kb_merchants_host_top_label_letter CHECK (
+        host ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
+    ),
     CONSTRAINT kb_merchants_deny_is_blocked CHECK (NOT deny OR status = 'blocked'),
     CONSTRAINT kb_merchants_blocked_has_reason CHECK (status <> 'blocked' OR blocked_reason IS NOT NULL)
 );
@@ -175,6 +185,9 @@ CREATE TABLE IF NOT EXISTS public.kb_offers (
         canonical_url ~ '^https?://[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+/[^?#[:space:]]*$'
         AND canonical_url !~ '^https?://([^/]*[.])?(basenotes|fimgs|fragrantica|parfumo)[.]'
     ),
+    CONSTRAINT kb_offers_url_top_label_letter CHECK (
+        canonical_url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
+    ),
     CONSTRAINT kb_offers_seen_order CHECK (first_seen <= last_seen),
     CONSTRAINT kb_offers_url_on_merchant CHECK (
         split_part(split_part(canonical_url, '://', 2), '/', 1) = merchant_id
@@ -203,6 +216,12 @@ CREATE TABLE IF NOT EXISTS public.kb_images (
         source IN ('retailer_jsonld', 'retailer_og', 'brand_site', 'partner_feed', 'operator')
     ),
     captured_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT kb_images_url_top_label_letter CHECK (
+        url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
+    ),
+    CONSTRAINT kb_images_provenance_top_label_letter CHECK (
+        provenance_host ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
+    ),
     CONSTRAINT kb_images_product_url UNIQUE (product_id, url)
 );
 
@@ -223,6 +242,9 @@ CREATE TABLE IF NOT EXISTS public.kb_specs (
     model text CHECK (model IS NULL OR char_length(model) BETWEEN 1 AND 64),
     cited boolean NOT NULL DEFAULT false,
     captured_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT kb_specs_source_top_label_letter CHECK (
+        source_url IS NULL OR source_url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
+    ),
     CONSTRAINT kb_specs_cited_has_source CHECK (NOT cited OR source_url IS NOT NULL),
     CONSTRAINT kb_specs_product_field_lang UNIQUE (product_id, field, lang)
 );
@@ -241,6 +263,9 @@ CREATE TABLE IF NOT EXISTS public.kb_reviews (
         AND char_length(source_url) <= 2048
     ),
     captured_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT kb_reviews_source_top_label_letter CHECK (
+        source_url ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
+    ),
     CONSTRAINT kb_reviews_has_signal CHECK (aggregate_rating IS NOT NULL OR review_count IS NOT NULL),
     CONSTRAINT kb_reviews_product_url UNIQUE (product_id, source_url)
 );
@@ -265,6 +290,9 @@ CREATE TABLE IF NOT EXISTS public.kb_gaps (
             AND source_hint !~ '(^|[.])(basenotes|fimgs|fragrantica|parfumo)[.]'
             AND source_hint !~ '^https?://([^/]*[.])?(basenotes|fimgs|fragrantica|parfumo)[.]'
         )
+    ),
+    CONSTRAINT kb_gaps_hint_top_label_letter CHECK (
+        source_hint IS NULL OR source_hint ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
     ),
     CONSTRAINT kb_gaps_seen_order CHECK (first_seen <= last_seen),
     CONSTRAINT kb_gaps_key_field UNIQUE (product_key, field)
@@ -292,7 +320,8 @@ CREATE INDEX IF NOT EXISTS idx_kb_merchants_status ON public.kb_merchants (statu
 CREATE INDEX IF NOT EXISTS idx_kb_variants_product ON public.kb_variants (product_id);
 CREATE INDEX IF NOT EXISTS idx_kb_variants_gtin ON public.kb_variants (gtin) WHERE gtin IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_kb_offers_latest ON public.kb_offers (
-    variant_id, merchant_id, market, observed_currency, last_seen DESC, captured_at DESC, id DESC
+    variant_id, merchant_id, market, observed_currency, last_seen DESC, (list_vs_sale = 'sale') DESC,
+    captured_at DESC, id DESC
 );
 CREATE INDEX IF NOT EXISTS idx_kb_offers_merchant ON public.kb_offers (merchant_id);
 CREATE INDEX IF NOT EXISTS idx_kb_images_product ON public.kb_images (product_id);
@@ -304,6 +333,7 @@ CREATE INDEX IF NOT EXISTS idx_kb_feedback_device_key
     ON public.kb_feedback (device_key) WHERE device_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_kb_feedback_product ON public.kb_feedback (product_id) WHERE product_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_kb_feedback_created ON public.kb_feedback (created_at);
+CREATE INDEX IF NOT EXISTS idx_kb_feedback_request ON public.kb_feedback (compare_request_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_kb_feedback_one_vote
     ON public.kb_feedback (device_key, compare_request_id, field, coalesce(product_id, ''))
     WHERE device_key IS NOT NULL;
@@ -338,7 +368,7 @@ SELECT DISTINCT ON (o.variant_id, o.merchant_id, o.market, o.observed_currency)
 FROM public.kb_offers AS o
 ORDER BY
     o.variant_id ASC, o.merchant_id ASC, o.market ASC, o.observed_currency ASC,
-    o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC;
+    o.last_seen DESC, (o.list_vs_sale = 'sale') DESC, o.captured_at DESC, o.id DESC;
 
 CREATE OR REPLACE FUNCTION public.kb_prune_offers(p_max_age_days integer, p_keep_per_merchant integer)
 RETURNS integer
@@ -359,7 +389,7 @@ BEGIN
       o.last_seen,
       row_number() OVER (
         PARTITION BY o.variant_id, o.merchant_id, o.market, o.observed_currency
-        ORDER BY o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC
+        ORDER BY o.last_seen DESC, (o.list_vs_sale = 'sale') DESC, o.captured_at DESC, o.id DESC
       ) AS rn
     FROM public.kb_offers AS o
   )
@@ -414,7 +444,7 @@ AS $$
         WHERE o.variant_id IN (SELECT v2.id FROM public.kb_variants AS v2 WHERE v2.product_id = p.id)
         ORDER BY
           o.variant_id, o.merchant_id, o.market, o.observed_currency,
-          o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC
+          o.last_seen DESC, (o.list_vs_sale = 'sale') DESC, o.captured_at DESC, o.id DESC
       ) AS l
     ), '[]'::jsonb),
     'images', coalesce((

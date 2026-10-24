@@ -10,11 +10,16 @@
 --     again today through the observation upsert (sets last_seen, in_stock, evidence_rung,
 --     canonical_url only); the latest offer (view and card) is A, kb_prune_offers(30, 1)
 --     deletes exactly one row (B) and A survives;
---   the sale tie-break (ruling F1-4): a list row (50) and a sale row (30) of one observation
---     (same last_seen and captured_at) -> the view and the card serve the sale (30);
+--   the sale tie-break (rulings F1-4, F2-1; probe S-b): a sale (30) first captured 10 days ago
+--     and a list price that changed during the sale (55, a NEWER row with the larger id), both
+--     last seen at the same instant -> the view and the card serve the sale (30) and
+--     kb_prune_offers(1, 1) deletes the list row only (among the rows last seen at the same
+--     instant the sale wins, then the newest capture);
 --   the BEFORE UPDATE trigger moves kb_products.updated_at;
 --   kb_merchants STORES a denied host (deny, blocked), while kb_offers refuses a denied URL;
---   kb_merchants refuses an all-digit host such as 10.0.0.1 (ruling F1-6);
+--   the top-label belts refuse an all-digit or 0x-hex last label (10.0.0.1, 127.0.0.0x1,
+--     0x7f.0x0.0x0.0x1, 1.2.3.0x4) on kb_merchants, kb_offers, kb_images (url and
+--     provenance_host), kb_specs, kb_reviews and kb_gaps, and accept 4711.com (F1-6, F2-4);
 --   kb_variants refuses a GTIN whose check digit is wrong;
 --   the card serves cited specs only, in p_lang with an English fallback;
 --   the card rating is the review-count-weighted mean (4.5 x 10 and 3.5 x 30 -> 3.75);
@@ -44,9 +49,11 @@
 -- FIRST APPLY ONLY: part 1 calls the global kb_prune_offers(30, 1) / kb_prune_feedback(365) and
 -- part 2 expects kb_row_count 0, so a re-run after a kb_* writer has written reports a false
 -- FAILED or a non-zero count (harmless: part 1 is rolled back).
--- Measured on a throwaway local PostgreSQL 18.1 cluster (S81-14 GREEN, 2026-10-24; the fix round
--- re-ran it on the fix bytes): this exact grid, and part 1 FAILS ("kb_offers_latest serves
--- 25.000, expected 30") on a 045 whose view ranks captured_at before last_seen (the BL1 defect).
+-- Measured on a throwaway local PostgreSQL 18.1 cluster (S81-14 GREEN, 2026-10-24; fix rounds 1
+-- and 2 re-ran it on their fix bytes): this exact grid, and part 1 FAILS ("kb_offers_latest serves
+-- 25.000, expected 30") on a 045 whose view ranks captured_at before last_seen (the BL1 defect)
+-- and ("the tie-break serves 55.000, expected the sale 30") on a 045 whose view ranks
+-- captured_at before the sale key (the fix-round-1 order).
 -- Any other value: send the grid back before anything else is applied.
 
 BEGIN;
@@ -121,16 +128,16 @@ BEGIN
 
   INSERT INTO public.kb_variants (id, product_id, concentration, size_ml)
   VALUES (v_pid || '|30', v_pid, 'EDP', 30);
-  -- explicit ids: the list row carries the LARGER id, so a 045 that falls through to
-  -- id DESC (no sale key) serves the list row and this check fails deterministically
+  -- S-b: explicit ids, the list row carries the LARGER id and the NEWER capture, so a 045 that
+  -- ranks captured_at (or id) before the sale key serves the list row and this check fails
   INSERT INTO public.kb_offers (
     id, variant_id, merchant_id, market, amount, observed_currency, evidence_rung, list_vs_sale,
     first_seen, last_seen, captured_at, canonical_url
   ) VALUES
-    ('f0000000-0000-4000-8000-f0000f00000f', v_pid || '|30', v_host, 'BH', 50, 'BHD', 'own_token', 'list',
-     now() - interval '1 day', now() - interval '1 day', now() - interval '1 day', v_url || '/30'),
+    ('f0000000-0000-4000-8000-f0000f00000f', v_pid || '|30', v_host, 'BH', 55, 'BHD', 'own_token', 'list',
+     now() - interval '4 days', now() - interval '2 days', now() - interval '4 days', v_url || '/30'),
     ('a0000000-0000-4000-8000-a0000a00000a', v_pid || '|30', v_host, 'BH', 30, 'BHD', 'own_token', 'sale',
-     now() - interval '1 day', now() - interval '1 day', now() - interval '1 day', v_url || '/30');
+     now() - interval '10 days', now() - interval '2 days', now() - interval '10 days', v_url || '/30');
   SELECT l.amount INTO v_amount FROM public.kb_offers_latest AS l WHERE l.variant_id = v_pid || '|30';
   IF v_amount IS DISTINCT FROM 30 THEN
     RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: the tie-break serves %, expected the sale 30', v_amount;
@@ -141,12 +148,69 @@ BEGIN
   IF v_amount IS DISTINCT FROM 30 THEN
     RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: the card tie-break serves %, expected the sale 30', v_amount;
   END IF;
-  BEGIN
-    INSERT INTO public.kb_merchants (host, status) VALUES ('10.0.0.1', 'live');
-    RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_merchants accepted an all-digit host';
-  EXCEPTION WHEN check_violation THEN
-    NULL;
-  END;
+  v_n := public.kb_prune_offers(1, 1);
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_prune_offers(1, 1) deleted %, expected 1 (the list row)', v_n;
+  END IF;
+  SELECT count(*), max(o.amount) INTO v_n, v_amount FROM public.kb_offers AS o WHERE o.variant_id = v_pid || '|30';
+  IF v_n <> 1 OR v_amount <> 30 THEN
+    RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: after kb_prune_offers(1, 1) % rows, amount %', v_n, v_amount;
+  END IF;
+
+  INSERT INTO public.kb_merchants (host, status) VALUES ('4711.com', 'live');
+  FOREACH v_got IN ARRAY ARRAY['10.0.0.1', '127.0.0.0x1', '0x7f.0x0.0x0.0x1', '1.2.3.0x4'] LOOP
+    BEGIN
+      INSERT INTO public.kb_merchants (host, status) VALUES (v_got, 'live');
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_merchants accepted the host %', v_got;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO public.kb_offers (
+        variant_id, merchant_id, market, amount, observed_currency, evidence_rung, canonical_url
+      ) VALUES (v_vid, v_got, 'BH', 9, 'BHD', 'own_token', 'https://' || v_got || '/p');
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_offers accepted the url host %', v_got;
+    EXCEPTION
+      WHEN check_violation THEN
+        NULL;
+      WHEN foreign_key_violation THEN
+        RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: only the merchant FK refused the url host %', v_got;
+    END;
+    BEGIN
+      INSERT INTO public.kb_images (product_id, url, provenance_host, source)
+      VALUES (v_pid, 'https://' || v_got || '/i.jpg', v_host, 'retailer_og');
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_images accepted the url host %', v_got;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO public.kb_images (product_id, url, provenance_host, source)
+      VALUES (v_pid, 'https://cdn.' || v_host || '/i.jpg', v_got, 'retailer_og');
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_images accepted the provenance host %', v_got;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO public.kb_specs (product_id, field, value, source_url, extractor)
+      VALUES (v_pid, 'longevity', 'x', 'https://' || v_got || '/x', 'jsonld');
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_specs accepted the source host %', v_got;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO public.kb_reviews (product_id, source, review_count, source_url)
+      VALUES (v_pid, 'retailer_jsonld', 1, 'https://' || v_got || '/p');
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_reviews accepted the source host %', v_got;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO public.kb_gaps (product_key, field, source_hint) VALUES (v_pid, 'longevity', v_got);
+      RAISE EXCEPTION 'APPLY_045 POSTCHECK FAILED: kb_gaps accepted the hint %', v_got;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+  END LOOP;
 
   UPDATE public.kb_products SET line = 'Check' WHERE id = v_pid;
   SELECT p.updated_at INTO v_upd FROM public.kb_products AS p WHERE p.id = v_pid;
