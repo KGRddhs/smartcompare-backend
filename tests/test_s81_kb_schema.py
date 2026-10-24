@@ -715,7 +715,8 @@ EXPECTED_COLUMN_TUPLES = {'kb_merchants': [('host', 'text', True, None),
                        ('value', 'numeric', True, None),
                        ('n', 'integer', True, None)]}
 # Table-level constraints by name, plus the primary key items (review C10).
-EXPECTED_CONSTRAINTS = {'kb_merchants': ["CONSTRAINT kb_merchants_deny_is_blocked CHECK (NOT deny OR status = 'blocked')",
+EXPECTED_CONSTRAINTS = {'kb_merchants': ["CONSTRAINT kb_merchants_host_top_label_letter CHECK (host ~ '[a-z][a-z0-9-]*$')",
+                  "CONSTRAINT kb_merchants_deny_is_blocked CHECK (NOT deny OR status = 'blocked')",
                   "CONSTRAINT kb_merchants_blocked_has_reason CHECK (status <> 'blocked' OR blocked_reason "
                   'IS NOT NULL)'],
  'kb_products': [],
@@ -777,7 +778,10 @@ def test_s14_r06_functions(name):
     assert "set search_path to 'public'" in head
     sig = ", ".join(KB_FUNCTIONS[name])
     code = _compact(_code(sql)).lower()
-    assert code.count("revoke all on function public.%s(%s) from public, anon, authenticated;" % (name, sig)) == 1
+    # F1-9 (fix round 1): the 050 form, service_role included, then the one GRANT EXECUTE.
+    assert code.count(
+        "revoke all on function public.%s(%s) from public, anon, authenticated, service_role;" % (name, sig)
+    ) == 1
     grants = re.findall(r"grant execute on function public\.%s\(([a-z, ]*)\) to ([a-z_, ]+);" % name, code)
     assert grants == [(sig, "service_role")], grants
     assert _sql.security_definer_creates(sql) == []
@@ -942,7 +946,8 @@ def test_s14_r12_indexes():
         assert timm._volatile_hits(pred) == []
 
 
-OFFER_ORDER = "o.last_seen DESC, o.captured_at DESC, o.id DESC"
+# F1-4 (fix round 1): a sale row ranks before a list row observed at the same instant.
+OFFER_ORDER = "o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC"
 OFFER_PARTITION = "o.variant_id, o.merchant_id, o.market, o.observed_currency"
 
 
@@ -1148,7 +1153,8 @@ def test_s14_r20b_ascii(path):
 # ===========================================================================
 
 STDLIB_OK = {"__future__", "re", "ipaddress", "json", "math", "uuid", "datetime", "decimal", "typing", "urllib.parse"}
-APP_OK = {"deny_hosts", "price_service", "result_gate", "spec_spine_service", "text_sanitize"}
+# F1-3 (fix round 1): source_router is imported INSIDE the registry validator only (r21b).
+APP_OK = {"deny_hosts", "price_service", "result_gate", "spec_spine_service", "text_sanitize", "source_router"}
 
 
 def test_s14_r21_leaf_pure():
@@ -1442,11 +1448,12 @@ REFUSALS = [
     ("kb_merchants", "registry_bad_origin", dict(registry=[{"origin": "web", "order": 0}])),
     ("kb_merchants", "registry_negative_order", dict(registry=[{"origin": "literal", "order": -1}])),
     ("kb_merchants", "registry_bool_order", dict(registry=[{"origin": "literal", "order": True}])),
-    ("kb_merchants", "registry_nan", dict(registry=[{"origin": "literal", "order": 0, "w": float("nan")}])),
+    ("kb_merchants", "registry_nan",
+     dict(registry=[{"origin": "literal", "order": 0, "search_descriptor": {"w": float("nan")}}])),
     ("kb_merchants", "robots_array", dict(robots=[])),
     ("kb_merchants", "partner_array", dict(partner=[])),
     ("kb_merchants", "tos_string", dict(tos="x")),
-    ("kb_merchants", "deny_not_bool", dict(deny=1)),
+    ("kb_merchants", "deny_not_bool", dict(deny=0)),
     ("kb_merchants", "status_unknown", dict(status="dead")),
     ("kb_merchants", "blocked_reason_long", dict(status="blocked", blocked_reason="x" * 65)),
     ("kb_merchants", "deny_without_blocked", dict(deny=True, status="live")),
@@ -1467,7 +1474,7 @@ REFUSALS = [
     ("kb_products", "identity_unresolved", dict(identity_confidence="unresolved")),
     ("kb_products", "updated_at_naive", dict(updated_at=NAIVE)),
     # kb_variants
-    ("kb_variants", "id_not_extending", dict(id="fragrances|other|x|EDP|100")),
+    ("kb_variants", "id_not_extending", dict(id="fragrances|christian+dior|sauvage|EDX|100")),
     ("kb_variants", "id_bare_pipe", dict(id=PID + "|")),
     ("kb_variants", "id_too_long", dict(id=PID + "|12345")),
     ("kb_variants", "concentration_lower", dict(concentration="edp")),
@@ -1481,7 +1488,7 @@ REFUSALS = [
     ("kb_variants", "updated_at_none", dict(updated_at=None)),
     # kb_offers
     ("kb_offers", "variant_empty", dict(variant_id="")),
-    ("kb_offers", "merchant_upper", dict(merchant_id="Shop.Example")),
+    ("kb_offers", "merchant_single_label", dict(merchant_id="example")),
     ("kb_offers", "market_lower", dict(market="bh")),
     ("kb_offers", "market_long", dict(market="BAHR")),
     ("kb_offers", "market_none", dict(market=None)),
@@ -1502,19 +1509,19 @@ REFUSALS = [
     ("kb_offers", "first_after_last", dict(first_seen=LATER, last_seen=T0)),
     ("kb_offers", "captured_naive", dict(captured_at=NAIVE)),
     ("kb_offers", "url_with_query", dict(canonical_url="https://shop.example/p?x=1")),
-    ("kb_offers", "url_upper_host", dict(canonical_url="https://SHOP.example/p")),
+    ("kb_offers", "url_upper_host", dict(canonical_url="https://WWW.shop.example/p")),
     ("kb_offers", "url_other_host", dict(canonical_url="https://other.example/p")),
     ("kb_offers", "url_suffix_trick", dict(canonical_url="https://notshop.example/p")),
-    ("kb_offers", "url_denied", dict(merchant_id="fragrantica.com", canonical_url="https://www.fragrantica.com/p")),
+    ("kb_offers", "url_denied", dict(merchant_id="fragrantica-x.example", canonical_url="https://fragrantica-x.example/p")),
     ("kb_offers", "url_denied_token", dict(canonical_url="https://shop.example/fragrantica-notes")),
     # kb_images
     ("kb_images", "url_http", dict(url="http://cdn.shop.example/i.jpg")),
-    ("kb_images", "url_denied", dict(url="https://fimgs.net/x.jpg")),
+    ("kb_images", "url_denied", dict(url="https://cdn.shop.example/fimgs/x.jpg")),
     ("kb_images", "url_fragment", dict(url="https://cdn.shop.example/i.jpg#x")),
     ("kb_images", "url_long", dict(url="https://cdn.shop.example/" + "x" * 2048)),
     ("kb_images", "url_space", dict(url="https://cdn.shop.example/a b")),
-    ("kb_images", "provenance_denied", dict(provenance_host="fragrantica.com")),
-    ("kb_images", "provenance_denied_sub", dict(provenance_host="parfumo.shop.example")),
+    ("kb_images", "provenance_denied", dict(provenance_host="fragrantica-x.example")),
+    ("kb_images", "provenance_denied_sub", dict(provenance_host="parfumo-cdn.shop.example")),
     ("kb_images", "provenance_upper", dict(provenance_host="Shop.Example")),
     ("kb_images", "source_google", dict(source="google")),
     ("kb_images", "variant_empty", dict(variant_id="")),
@@ -1527,7 +1534,7 @@ REFUSALS = [
     ("kb_specs", "lang_upper", dict(lang="EN")),
     ("kb_specs", "value_empty", dict(value="")),
     ("kb_specs", "value_long", dict(value="x" * 2001)),
-    ("kb_specs", "source_denied", dict(source_url="https://www.basenotes.net/x")),
+    ("kb_specs", "source_denied", dict(source_url="https://basenotes-archive.example/x")),
     ("kb_specs", "source_denied_token", dict(source_url="https://shop.example/fragrantica-notes")),
     ("kb_specs", "source_ftp", dict(source_url="ftp://shop.example/x")),
     ("kb_specs", "source_space", dict(source_url="https://shop.example/a b")),
@@ -1549,7 +1556,7 @@ REFUSALS = [
     ("kb_reviews", "count_float", dict(review_count=1.5)),
     ("kb_reviews", "count_overflow", dict(review_count=2 ** 31)),
     ("kb_reviews", "no_signal", dict(aggregate_rating=None, review_count=None)),
-    ("kb_reviews", "source_url_denied", dict(source_url="https://parfumo.de/p")),
+    ("kb_reviews", "source_url_denied", dict(source_url="https://shop.example/parfumo-review/p")),
     ("kb_reviews", "source_url_no_path", dict(source_url="http://shop.example")),
     # kb_gaps
     ("kb_gaps", "key_short", dict(product_key="fragrances|a")),
@@ -1558,9 +1565,9 @@ REFUSALS = [
     ("kb_gaps", "demand_negative", dict(demand_count=-1)),
     ("kb_gaps", "demand_bool", dict(demand_count=True)),
     ("kb_gaps", "state_done", dict(state="done")),
-    ("kb_gaps", "hint_denied_host", dict(source_hint="fragrantica.com")),
-    ("kb_gaps", "hint_denied_url", dict(source_hint="https://www.parfumo.de/x")),
-    ("kb_gaps", "hint_denied_name", dict(source_hint="Fragrantica")),
+    ("kb_gaps", "hint_denied_host", dict(source_hint="x.fragrantica")),
+    ("kb_gaps", "hint_denied_url", dict(source_hint="https://shop.example/fragrantica-notes")),
+    ("kb_gaps", "hint_denied_name", dict(source_hint="fragrantica-x.example")),
     ("kb_gaps", "hint_user_text", dict(source_hint="dior sauvage review please")),
     ("kb_gaps", "hint_no_scheme_path", dict(source_hint="shop.example/p")),
     ("kb_gaps", "hint_query", dict(source_hint="https://shop.example/p?q=1")),
@@ -1588,6 +1595,55 @@ REFUSALS = [
     ("kb_coverage_daily", "value_string", dict(value="1")),
     ("kb_coverage_daily", "n_negative", dict(n=-1)),
     ("kb_coverage_daily", "n_bool", dict(n=True)),
+    # --- fix round 1 (RULINGS_FIX1_S81_14) ---
+    # F1-6: no all-digit host (the top-level label carries a letter), on every host and URL host
+    ("kb_merchants", "host_all_digit", dict(host="10.0.0.1")),
+    ("kb_merchants", "host_digit_top_label", dict(host="shop.123")),
+    ("kb_offers", "url_digit_top_label", dict(merchant_id="shop.123", canonical_url="https://shop.123/p")),
+    ("kb_images", "url_all_digit_host", dict(url="https://10.0.0.1/i.jpg")),
+    ("kb_images", "provenance_all_digit", dict(provenance_host="10.0.0.1")),
+    ("kb_specs", "source_all_digit_host", dict(source_url="https://10.0.0.1/x")),
+    ("kb_reviews", "source_url_all_digit_host", dict(source_url="https://10.0.0.1/p")),
+    ("kb_gaps", "hint_all_digit_host", dict(source_hint="10.0.0.1")),
+    ("kb_gaps", "hint_all_digit_url", dict(source_hint="https://10.0.0.1/p")),
+    # F1-6: the raw rating is bounded (PostgreSQL would round these into range)
+    ("kb_reviews", "rating_just_over", dict(aggregate_rating=5.001)),
+    ("kb_reviews", "rating_just_below", dict(aggregate_rating=-0.001)),
+    ("kb_reviews", "rating_half_over", dict(aggregate_rating=5.005)),
+    # F1-3: the PRESENT registry keys and their types, unique orders, domain == host
+    ("kb_merchants", "registry_unknown_key", dict(registry=[{"origin": "literal", "order": 0, "bogus": "x"}])),
+    ("kb_merchants", "registry_str_field_type", dict(registry=[{"origin": "literal", "order": 0, "tier": 5}])),
+    ("kb_merchants", "registry_float_field_type",
+     dict(registry=[{"origin": "literal", "order": 0, "weight": "heavy"}])),
+    ("kb_merchants", "registry_bool_field_type",
+     dict(registry=[{"origin": "literal", "order": 0, "is_shopify": "yes"}])),
+    ("kb_merchants", "registry_tuple_field_type",
+     dict(registry=[{"origin": "literal", "order": 0, "categories": "fragrances"}])),
+    ("kb_merchants", "registry_tuple_member_type",
+     dict(registry=[{"origin": "literal", "order": 0, "categories": [1]}])),
+    ("kb_merchants", "registry_int_field_type",
+     dict(registry=[{"origin": "literal", "order": 0, "priority_rank": 1.5}])),
+    ("kb_merchants", "registry_optional_field_type",
+     dict(registry=[{"origin": "literal", "order": 0, "search_descriptor": "x"}])),
+    ("kb_merchants", "registry_duplicate_order",
+     dict(registry=[{"origin": "literal", "order": 0}, {"origin": "catalog", "order": 0}])),
+    ("kb_merchants", "registry_domain_other_host",
+     dict(registry=[{"origin": "literal", "order": 0, "domain": "other.example"}])),
+    # F1-8: no NUL character and no lone surrogate in any text or jsonb value
+    ("kb_merchants", "nul_platform", dict(platform="ab" + chr(0))),
+    ("kb_merchants", "surrogate_adapter", dict(adapter="ab" + chr(0xD800))),
+    ("kb_merchants", "nul_jsonb_key", dict(robots={"a" + chr(0): 1})),
+    ("kb_merchants", "nul_jsonb_value", dict(tos={"note": "a" + chr(0)})),
+    ("kb_products", "nul_name", dict(name="Sau" + chr(0) + "vage")),
+    ("kb_products", "surrogate_brand", dict(brand="Di" + chr(0xD800) + "or")),
+    ("kb_variants", "nul_sku", dict(sku="S" + chr(0) + "K")),
+    ("kb_offers", "url_surrogate", dict(canonical_url="https://shop.example/p" + chr(0xD800))),
+    ("kb_images", "url_nul", dict(url="https://cdn.shop.example/i" + chr(0) + ".jpg")),
+    ("kb_specs", "value_nul", dict(value="berg" + chr(0) + "amot")),
+    ("kb_specs", "value_surrogate", dict(value="berg" + chr(0xDC00) + "amot")),
+    ("kb_reviews", "source_url_nul", dict(source_url="https://shop.example/p" + chr(0))),
+    ("kb_gaps", "key_nul", dict(product_key=PID + chr(0))),
+    ("kb_feedback", "product_nul", dict(product_id="p" + chr(0))),
 ]
 
 
@@ -1621,7 +1677,24 @@ ACCEPTS = [
     ("kb_merchants", "registry_entries",
      dict(registry=[{"origin": "literal", "order": 0, "domain": "noon.com"},
                     {"origin": "literal", "order": 1, "domain": "noon.com"}],
-          platform_confidence="mechanism")),
+          platform_confidence="mechanism", host="noon.com")),
+    # --- fix round 1 (RULINGS_FIX1_S81_14) ---
+    # F1-3: presence of every Source field is S81-15's seed contract, so a bare entry is ACCEPTED here
+    ("kb_merchants", "registry_no_source_field", dict(registry=[{"origin": "literal", "order": 0}])),
+    ("kb_merchants", "registry_typed_entries",
+     dict(registry=[{"origin": "catalog", "order": 0, "domain": "shop.example", "tier": "bahrain",
+                     "categories": ["fragrances"], "weight": 3.0, "usage": "price", "is_shopify": True,
+                     "priority_rank": 5, "search_descriptor": None, "locale_paths": []},
+                    {"origin": "operator", "order": 2, "weight": 1, "search_descriptor": {"search": "x"}}])),
+    # F1-6: a digit registrable label is a real host (4711.com); only the top-level label needs a letter
+    ("kb_merchants", "host_digit_registrable_label", dict(host="4711.com")),
+    ("kb_images", "url_digit_registrable_label",
+     dict(url="https://cdn.4711.com/i.jpg", provenance_host="4711.com")),
+    # F1-6: the rating bounds and the half tie
+    ("kb_reviews", "rating_zero", dict(aggregate_rating=0)),
+    ("kb_reviews", "rating_five", dict(aggregate_rating=5.0)),
+    ("kb_reviews", "rating_rounds_to_five", dict(aggregate_rating=4.995)),
+    ("kb_offers", "amount_half_tie", dict(amount=0.0005)),
 ]
 
 
@@ -1680,3 +1753,362 @@ def test_s14_r29_leaf_never_raises_on_junk():
 def _table_of(builder: str) -> str:
     return {v: k for k, v in BUILDERS.items()}[builder]
 
+
+# ===========================================================================
+# Fix round 1 (RULINGS_FIX1_S81_14, F1-1..F1-10): rows appended after the
+# adversaries on GREEN 0910e7d0. RED = fails on the pre-fix bytes (an
+# AssertionError); PIN = green there and kills a named mutant.
+# ===========================================================================
+
+# F1-7: every refusal row names the ONE clause it exercises; the fix round's
+# mutation table removes only that clause and the row goes red (the clause ids
+# are the mutant ids of the round's clause table).
+REFUSAL_CLAUSES = {
+    "kb_merchants": {
+        "merchants.host_regex": ("host_upper", "host_no_dot", "host_empty_label", "host_edge_hyphen"),
+        "merchants.host_top_label": ("host_all_digit", "host_digit_top_label"),
+        "merchants.country": ("country_lower", "country_long"),
+        "merchants.currency": ("currency_lower",),
+        "merchants.platform_len": ("platform_empty", "platform_long"),
+        "merchants.platform_confidence": ("platform_confidence_numeric", "platform_confidence_word"),
+        "merchants.adapter_len": ("adapter_long",),
+        "merchants.search_template_len": ("search_template_long",),
+        "registry.list": ("registry_object",),
+        "registry.entry_object": ("registry_scalar_member",),
+        "registry.origin": ("registry_bad_origin",),
+        "registry.order_nonnegative": ("registry_negative_order",),
+        "registry.order_int": ("registry_bool_order",),
+        "registry.order_unique": ("registry_duplicate_order",),
+        "registry.json": ("registry_nan",),
+        "registry.keys": ("registry_unknown_key",),
+        "registry.types": (
+            "registry_str_field_type", "registry_float_field_type", "registry_bool_field_type",
+            "registry_tuple_field_type", "registry_tuple_member_type", "registry_int_field_type",
+            "registry_optional_field_type",
+        ),
+        "registry.domain_is_host": ("registry_domain_other_host",),
+        "merchants.jsonb_objects": ("robots_array", "partner_array", "tos_string"),
+        "merchants.deny_bool": ("deny_not_bool",),
+        "merchants.status": ("status_unknown",),
+        "merchants.blocked_reason_len": ("blocked_reason_long",),
+        "merchants.deny_is_blocked": ("deny_without_blocked",),
+        "merchants.blocked_has_reason": ("blocked_without_reason",),
+        "merchants.updated_at": ("updated_at_naive", "updated_at_none"),
+        "merchants.pg_text": ("nul_platform", "surrogate_adapter", "nul_jsonb_key", "nul_jsonb_value"),
+    },
+    "kb_products": {
+        "products.id_len": ("id_short", "id_long"),
+        "products.id_prefix": ("id_other_category",),
+        "products.brand_len": ("brand_empty", "brand_long"),
+        "products.line_len": ("line_empty",),
+        "products.name_len": ("name_long", "name_none"),
+        "products.concentration": ("concentration_lower",),
+        "products.audience": ("audience_male",),
+        "products.identity_confidence": ("identity_unresolved",),
+        "products.updated_at": ("updated_at_naive",),
+        "products.pg_text": ("nul_name", "surrogate_brand"),
+    },
+    "kb_variants": {
+        "variants.id_prefix": ("id_not_extending",),
+        "variants.id_len": ("id_bare_pipe", "id_too_long"),
+        "variants.concentration": ("concentration_lower",),
+        "variants.size_range": ("size_zero", "size_huge"),
+        "variants.size_int": ("size_bool", "size_float"),
+        "variants.gtin": ("gtin_bad_digit", "gtin_letters"),
+        "variants.sku_len": ("sku_long",),
+        "variants.updated_at": ("updated_at_none",),
+        "variants.pg_text": ("nul_sku",),
+    },
+    "kb_offers": {
+        "offers.variant_len": ("variant_empty",),
+        "offers.merchant_host": ("merchant_single_label",),
+        "offers.market": ("market_lower", "market_long", "market_none"),
+        "offers.amount_positive": ("amount_zero", "amount_negative", "amount_rounds_to_zero"),
+        "offers.amount_number": ("amount_bool", "amount_string", "amount_nan", "amount_inf"),
+        "offers.amount_max": ("amount_overflow",),
+        "offers.currency": ("currency_lower", "currency_long"),
+        "offers.evidence_rung": ("rung_raw_token",),
+        "offers.size_range": ("size_zero",),
+        "offers.list_vs_sale": ("list_vs_sale_rrp",),
+        "offers.in_stock": ("in_stock_string",),
+        "offers.seen_order": ("first_after_last",),
+        "offers.timestamps": ("captured_naive",),
+        "offers.canonical": ("url_with_query", "url_upper_host", "url_digit_top_label"),
+        "offers.url_on_merchant": ("url_other_host", "url_suffix_trick"),
+        "offers.deny_rule": ("url_denied", "url_denied_token"),
+        "offers.pg_text": ("url_surrogate",),
+    },
+    "kb_images": {
+        "images.url_format": ("url_http", "url_fragment", "url_space"),
+        "images.url_len": ("url_long",),
+        "url.top_label": ("url_all_digit_host",),
+        "images.url_deny_rule": ("url_denied",),
+        "images.provenance_host_regex": ("provenance_upper",),
+        "host.top_label": ("provenance_all_digit",),
+        "images.provenance_deny_rule": ("provenance_denied", "provenance_denied_sub"),
+        "images.source": ("source_google",),
+        "images.variant_len": ("variant_empty",),
+        "images.captured_at": ("captured_none",),
+        "images.pg_text": ("url_nul",),
+    },
+    "kb_specs": {
+        "specs.field": ("field_upper", "field_digit_first", "field_long"),
+        "specs.lang": ("lang_fr", "lang_upper"),
+        "specs.value_len": ("value_empty", "value_long"),
+        "specs.deny_rule": ("source_denied", "source_denied_token"),
+        "specs.source_format": ("source_ftp", "source_space"),
+        "url.top_label": ("source_all_digit_host",),
+        "specs.extractor_len": ("extractor_empty",),
+        "specs.model_len": ("model_long",),
+        "specs.cited_bool": ("cited_not_bool",),
+        "specs.cited_has_source": ("cited_without_source",),
+        "specs.captured_at": ("captured_naive",),
+        "specs.pg_text": ("value_nul", "value_surrogate"),
+    },
+    "kb_reviews": {
+        "reviews.source": ("source_fragrantica", "source_google"),
+        "reviews.rating_bound": (
+            "rating_over", "rating_negative", "rating_just_over", "rating_just_below", "rating_half_over",
+        ),
+        "reviews.rating_number": ("rating_string", "rating_bool", "rating_nan"),
+        "reviews.count_range": ("count_negative", "count_overflow"),
+        "reviews.count_int": ("count_bool", "count_float"),
+        "reviews.has_signal": ("no_signal",),
+        "reviews.deny_rule": ("source_url_denied",),
+        "reviews.source_format": ("source_url_no_path",),
+        "url.top_label": ("source_url_all_digit_host",),
+        "reviews.pg_text": ("source_url_nul",),
+    },
+    "kb_gaps": {
+        "gaps.key_len": ("key_short", "key_long"),
+        "gaps.field": ("field_upper",),
+        "gaps.demand_range": ("demand_negative",),
+        "gaps.demand_int": ("demand_bool",),
+        "gaps.state": ("state_done",),
+        "gaps.hint_deny_rule": ("hint_denied_host", "hint_denied_url", "hint_denied_name"),
+        "gaps.hint_shape": ("hint_user_text", "hint_no_scheme_path", "hint_query"),
+        "gaps.hint_len": ("hint_long",),
+        "host.top_label": ("hint_all_digit_host",),
+        "url.top_label": ("hint_all_digit_url",),
+        "gaps.seen_order": ("first_after_last",),
+        "gaps.pg_text": ("key_nul",),
+    },
+    "kb_feedback": {
+        "feedback.request_uuid": ("request_not_uuid",),
+        "feedback.request_type": ("request_int",),
+        "feedback.field": ("field_upper",),
+        "feedback.verdict": ("verdict_yes",),
+        "feedback.device_key": ("device_upper", "device_short", "device_not_hex", "device_newline"),
+        "feedback.product_len": ("product_empty",),
+        "feedback.pg_text": ("product_nul",),
+    },
+    "kb_coverage_daily": {
+        "coverage.day_date": ("day_datetime", "day_string"),
+        "coverage.metric": ("metric_upper", "metric_digit_first", "metric_long", "metric_space"),
+        "coverage.value_number": ("value_bool", "value_nan", "value_string"),
+        "coverage.n_range": ("n_negative",),
+        "coverage.n_int": ("n_bool",),
+    },
+}
+
+
+def _clause_of() -> dict:
+    out = {}
+    for table, clauses in REFUSAL_CLAUSES.items():
+        for clause, labels in clauses.items():
+            for label in labels:
+                assert (table, label) not in out, (table, label)
+                out[(table, label)] = clause
+    return out
+
+
+def test_s14_r28e_every_refusal_names_its_clause():
+    """F1-7: the clause map covers every refusal row exactly once (and nothing else)."""
+    mapped = _clause_of()
+    rows = [(t, lab) for t, lab, _o in REFUSALS]
+    assert len(rows) == len(set(rows)), "duplicate refusal ids"
+    assert set(mapped) == set(rows), (sorted(set(rows) - set(mapped)), sorted(set(mapped) - set(rows)))
+
+
+PLACEHOLDER_PROBES = [
+    ("Dior", "Unknown"), ("Dior", "Unknown Product"), ("Dior", "This Product"), ("Dior", "Product"),
+    ("Lattafa", "Unknown"),
+]
+
+
+@pytest.mark.parametrize("gate", [None, "true"])
+@pytest.mark.parametrize("brand,name", PLACEHOLDER_PROBES, ids=["%s-%s" % p for p in PLACEHOLDER_PROBES])
+def test_s14_r22c_placeholder_name_arm(prod_identity_env, monkeypatch, gate, brand, name):
+    """F1-1 (R-A5): the name alone being a placeholder mints no id, and spine_key is never asked."""
+    prod_identity_env(gate)
+    kb = _kb()
+    fn = _attr(kb, "kb_product_id")
+    from app.services import result_gate, spec_spine_service
+
+    assert result_gate.product_is_placeholder({"brand": brand, "name": name}) is True
+    calls = []
+    real = spec_spine_service.spine_key
+    monkeypatch.setattr(spec_spine_service, "spine_key", lambda *a, **k: calls.append(a) or real(*a, **k))
+    assert fn(brand, name) is None, (brand, name)
+    assert calls == [], "a placeholder name must not reach spine_key"
+    assert fn("Dior", "Sauvage EDP") == PID, "positive control"
+    seen = []
+    monkeypatch.setattr(result_gate, "product_is_placeholder", lambda p: seen.append(p) or False)
+    assert fn(brand, name) is not None, "read result_gate.product_is_placeholder at CALL time"
+    assert seen == [{"brand": brand, "name": name}]
+
+
+VIEW_TEXT = (
+    "CREATE OR REPLACE VIEW public.kb_offers_latest WITH (security_invoker = true) AS "
+    "SELECT DISTINCT ON (o.variant_id, o.merchant_id, o.market, o.observed_currency) "
+    "o.id, o.variant_id, o.merchant_id, o.market, o.amount, o.observed_currency, o.evidence_rung, o.size_ml, "
+    "o.list_vs_sale, o.in_stock, o.first_seen, o.last_seen, o.captured_at, o.canonical_url "
+    "FROM public.kb_offers AS o "
+    "ORDER BY o.variant_id ASC, o.merchant_id ASC, o.market ASC, o.observed_currency ASC, " + OFFER_ORDER
+)
+
+
+def test_s14_r13b_view_text():
+    """F1-2 (A13): the whole view as compact text: the DISTINCT ON key, the full ORDER BY and NO WHERE."""
+    sql = _require(F045)
+    views = [s for s in _statements(sql) if s.startswith("CREATE OR REPLACE VIEW public.kb_offers_latest ")]
+    assert views == [VIEW_TEXT], views
+    assert " WHERE " not in views[0]
+
+
+CARD_TEXT = (
+    "SELECT jsonb_build_object('product', to_jsonb(p.*), "
+    "'variants', coalesce((SELECT jsonb_agg(to_jsonb(v.*) ORDER BY v.id) FROM public.kb_variants AS v "
+    "WHERE v.product_id = p.id), '[]'::jsonb), "
+    "'offers', coalesce((SELECT jsonb_agg(to_jsonb(l.*) ORDER BY l.variant_id, l.merchant_id, l.market, "
+    "l.observed_currency) FROM (SELECT DISTINCT ON (" + OFFER_PARTITION + ") o.* FROM public.kb_offers AS o "
+    "WHERE o.variant_id IN (SELECT v2.id FROM public.kb_variants AS v2 WHERE v2.product_id = p.id) "
+    "ORDER BY " + OFFER_PARTITION + ", " + OFFER_ORDER + ") AS l), '[]'::jsonb), "
+    "'images', coalesce((SELECT jsonb_agg(to_jsonb(i.*) ORDER BY i.captured_at DESC, i.id) "
+    "FROM public.kb_images AS i WHERE i.product_id = p.id), '[]'::jsonb), "
+    "'specs', coalesce((SELECT jsonb_agg(to_jsonb(s.*) ORDER BY s.field) FROM (SELECT DISTINCT ON (s0.field) s0.* "
+    "FROM public.kb_specs AS s0 WHERE s0.product_id = p.id AND s0.cited AND s0.lang IN (p_lang, 'en') "
+    "ORDER BY s0.field, (s0.lang = p_lang) DESC) AS s), '[]'::jsonb), "
+    "'rating', (SELECT jsonb_build_object('sources', count(*), 'review_count', sum(r.review_count), "
+    "'rating', round(sum(r.aggregate_rating * r.review_count) "
+    "FILTER (WHERE r.aggregate_rating IS NOT NULL AND r.review_count IS NOT NULL) / nullif(sum(r.review_count) "
+    "FILTER (WHERE r.aggregate_rating IS NOT NULL AND r.review_count IS NOT NULL), 0), 2)) "
+    "FROM public.kb_reviews AS r WHERE r.product_id = p.id)) "
+    "FROM public.kb_products AS p WHERE p.id = p_product_id"
+)
+
+
+def test_s14_r14b_card_subselects():
+    """F1-2 (A11, A12): every card sub-select's correlation predicate, as the whole compact body; no
+    stock or freshness filter (that is S81-18's reader contract)."""
+    sql = _require(F045)
+    body = _compact(_function_body(sql, "kb_product_card"))
+    for pred in ("WHERE v.product_id = p.id", "WHERE v2.product_id = p.id", "WHERE i.product_id = p.id",
+                 "WHERE s0.product_id = p.id AND s0.cited AND s0.lang IN (p_lang, 'en')",
+                 "WHERE r.product_id = p.id", "WHERE p.id = p_product_id"):
+        assert pred in body, pred
+    for bad in ("in_stock", "now()", "interval", "last_seen >", "last_seen <", "captured_at >", "WHERE true"):
+        assert bad not in body, bad
+    assert body == CARD_TEXT
+
+
+HEADER_OFFERS = (
+    "Offers: captured_at is the first observation of one exact (variant, merchant, market, currency, amount, "
+    "list_vs_sale) row and never moves. A re-observation upserts on kb_offers_observation and sets last_seen, "
+    "in_stock, evidence_rung and canonical_url only; a changed amount is a NEW row. Latest = last_seen DESC, "
+    "captured_at DESC, id DESC per (variant, merchant, market, currency), except that a sale row ranks before a "
+    "list row of the same last_seen and captured_at (the key (list_vs_sale = 'sale') DESC sits before id DESC: "
+    "the sale is what the shopper pays); the prune ages rows by last_seen. The view and the card serve the "
+    "latest row whatever its age or stock: freshness and stock filtering are S81-18's reader contract."
+)
+
+
+def test_s14_r19b_header_observation_paragraph():
+    """F1-11 (E13): the 045 header's observation paragraph, verbatim (compact)."""
+    h = " ".join(_sql.comment_lines(_require(F045)).split())
+    assert HEADER_OFFERS in h, h[h.find("Offers:"):][:600]
+
+
+TOP_LABEL_RE = "[a-z][a-z0-9-]*$"
+
+
+def test_s14_r25d_top_label_rule():
+    """F1-6: every host (and URL host) carries a letter in its top-level label; one constant = the 045 text."""
+    sql = _require(F045)
+    kb = _kb()
+    assert _attr(kb, "KB_HOST_TOP_LABEL_REGEX") == TOP_LABEL_RE
+    cons = [c for c in _constraints(sql, "kb_merchants") if "host_top_label_letter" in c]
+    assert cons == ["CONSTRAINT kb_merchants_host_top_label_letter CHECK (host ~ '%s')" % TOP_LABEL_RE], cons
+    rx = _py(TOP_LABEL_RE)
+    for bad in ("10.0.0.1", "shop.123", "1.2.3.4"):
+        assert not rx.search(bad), bad
+    for ok in ("shop.example", "4711.com", "163.com", "xn--caf-dma.example", "a.b-c"):
+        assert rx.search(ok), ok
+    canon = _attr(kb, "canonical_offer_url")
+    assert canon("https://shop.123/p") is None
+    assert canon("https://cdn.4711.com/p") == "https://cdn.4711.com/p"
+
+
+def test_s14_r30_numeric_mirror():
+    """F1-6 (M65, A2, A3): the builders round half away from zero, like PostgreSQL numeric."""
+    kb = _kb()
+    offer = _attr(kb, "build_offer_row")
+    review = _attr(kb, "build_review_row")
+    for raw, want in ((0.0005, "0.001"), (1.0025, "1.003"), (Decimal("29.9995"), "30.000"), (30, "30.000")):
+        row = offer(**dict(_valid_kwargs("kb_offers"), amount=raw))
+        assert row is not None and row["amount"] == want, (raw, row)
+    for raw, want in ((4.985, "4.99"), (4.995, "5.00"), (0, "0.00"), (5, "5.00"), (5.0, "5.00")):
+        row = review(**dict(_valid_kwargs("kb_reviews"), aggregate_rating=raw))
+        assert row is not None and row["aggregate_rating"] == want, (raw, row)
+    for raw in (5.001, -0.001, 5.005, 5.01):
+        assert review(**dict(_valid_kwargs("kb_reviews"), aggregate_rating=raw)) is None, raw
+
+
+def test_s14_r21b_source_router_read_inside_the_validator():
+    """F1-3: source_router is imported only inside the registry validator (the leaf stays import-light)."""
+    tree = ast.parse(LEAF.read_text(encoding="utf-8"))
+    top = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
+    assert not [n for n in top if "source_router" in ast.dump(n)], "no module-level source_router import"
+    hits = []
+    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        for node in ast.walk(fn):
+            if isinstance(node, ast.ImportFrom) and any(a.name == "source_router" for a in node.names):
+                hits.append((fn.name, node.module, [a.asname for a in node.names]))
+    assert hits == [("_registry_ok", "app.services", ["_sr"])], hits
+
+
+def test_s14_r28f_registry_reads_source_fields_at_call_time(monkeypatch):
+    """F1-3: the validator reads source_router.Source by module attribute at CALL time."""
+    import dataclasses
+
+    kb = _kb()
+    build = _attr(kb, "build_merchant_row")
+    from app.services import source_router
+
+    entry = {"origin": "literal", "order": 0, "domain": "shop.example", "tier": "bahrain"}
+    assert build(host="shop.example", updated_at=T0, registry=[entry]) is not None
+
+    @dataclasses.dataclass(frozen=True)
+    class _OnlyDomain:
+        domain: str
+
+    monkeypatch.setattr(source_router, "Source", _OnlyDomain)
+    assert build(host="shop.example", updated_at=T0, registry=[entry]) is None, "tier is no longer a field"
+    assert build(host="shop.example", updated_at=T0, registry=[{"origin": "literal", "order": 0,
+                                                                 "domain": "shop.example"}]) is not None
+
+
+def test_s14_r28g_registry_validator_contract():
+    """F1-3: a bare entry is accepted (presence is S81-15's seed contract); present fields are typed."""
+    kb = _kb()
+    build = _attr(kb, "build_merchant_row")
+    from app.services import source_router
+
+    fields = set(source_router.Source.__dataclass_fields__)
+    assert {"domain", "tier", "categories", "weight", "search_descriptor", "priority_rank"} <= fields
+    for entries in ([{"origin": "literal", "order": 0}],
+                    [{"origin": o, "order": i} for i, o in enumerate(("literal", "catalog", "operator", "discovery"))]):
+        assert build(host="shop.example", updated_at=T0, registry=entries) is not None, entries
+    two_noon = [{"origin": "literal", "order": 0, "domain": "noon.com"}, {"origin": "literal", "order": 1, "domain": "noon.com"}]
+    assert build(host="noon.com", updated_at=T0, registry=two_noon) is not None
+    assert build(host="shop.example", updated_at=T0, registry=two_noon) is None, "domain == host"

@@ -1,14 +1,26 @@
 """S81-14 KB-SCHEMA: identity helpers and row builders for the kb_* tables.
 
-A pure leaf: no I/O, no logging, no clock, no environment read, no flag, and
-it never raises. No importer in app/ yet; S81-15..S81-22 call it.
+A pure leaf: its own code does no I/O, no logging, no clock, no environment
+read, no flag, and it never raises. No importer in app/ yet; S81-15..S81-22 call
+it. Import hazard (F1-11): importing this leaf imports price_service, which
+imports extraction_service, which calls ``load_dotenv(override=True)`` at
+import; every S81-15..S81-22 script that imports the leaf inherits that
+dotenv-override hazard (the one P8 pins: set a flag AFTER the first import).
 
-Identity (ruling R-S14-3): a JUICE id is ``spine_key(...)`` minus its ml field
-(brand axis + identity tokens + concentration); a SKU id is the juice id plus
-``|<ml>``. The deny rule is ``deny_hosts.kb_source_allowed`` (read by module
-attribute at call time); the 045 SQL label CHECKs are belts derived from
-``deny_hosts.DENY_LABELS``. kb_merchants deliberately carries no deny check: a
-denied host is stored with deny = True and status 'blocked' (R-S14-2).
+Identity (rulings R-S14-3, F1-1): a JUICE id is ``spine_key(...)`` minus its ml
+field (brand axis + identity tokens + concentration); a SKU id is the juice id
+plus ``|<ml>``; no id when ``result_gate.product_is_placeholder`` says the
+identity (brand + name deduplicated) OR the name alone is a placeholder. The
+deny rule is ``deny_hosts.kb_source_allowed`` (read by module attribute at call
+time); the 045 SQL label CHECKs are belts derived from
+``deny_hosts.DENY_LABELS`` and a strict SUBSET of the rule (a belt hit is always
+a whole-token hit of the rule, so a belt never refuses a row a builder accepted;
+the rule also refuses path and query tokens, hyphenated labels and top-level
+labels). kb_merchants deliberately carries no deny check: a denied host is
+stored with deny = True and status 'blocked' (R-S14-2). Every host, and the
+host of every URL, carries a letter in its top-level label (F1-6: no all-digit
+host). Every builder refuses a NUL character or a lone surrogate in any text or
+jsonb value, keys included (PostgreSQL 22P05 / 22P02, F1-8).
 """
 from __future__ import annotations
 
@@ -19,14 +31,13 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union, get_type_hints
 from urllib.parse import urlsplit
 
 from app.services import deny_hosts as _deny
 from app.services import price_service as _ps
 from app.services import result_gate as _rg
 from app.services import spec_spine_service as _spine
-from app.services import text_sanitize as _ts
 
 KB_CATEGORY = "fragrances"
 
@@ -91,6 +102,11 @@ KB_BUILDER_KEYS: Dict[str, Tuple[str, ...]] = {
 
 #: The 045 text of the host CHECK (one constant; the RED pins it equal to the SQL).
 KB_HOST_REGEX = r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+#: F1-6: the top-level label carries a letter, so no all-digit host (an IPv4
+#: literal shape: a WHATWG URL parser reads a host whose last label is a number
+#: as IPv4) is stored; the 045 constraint kb_merchants_host_top_label_letter
+#: carries the same text. A digit registrable label (4711.com) stays valid.
+KB_HOST_TOP_LABEL_REGEX = "[a-z][a-z0-9-]*$"
 _HOST_CORE = KB_HOST_REGEX[1:-1]
 KB_OFFER_URL_REGEX = "^https?://" + _HOST_CORE + "/[^?#[:space:]]*$"
 KB_IMAGE_URL_REGEX = "^https://" + _HOST_CORE + "/[^#[:space:]]*$"
@@ -159,8 +175,16 @@ def _sql_match(sql_regex: str, value: Any) -> bool:
     return re.search(pattern, value) is not None
 
 
+def _top_label_ok(host: Any) -> bool:
+    return _sql_match(KB_HOST_TOP_LABEL_REGEX, host)
+
+
 def _belted_host(value: Any) -> bool:
-    return _sql_match(KB_HOST_REGEX, value) and not _sql_match(kb_host_deny_regex(), value)
+    return (
+        _sql_match(KB_HOST_REGEX, value)
+        and _top_label_ok(value)
+        and not _sql_match(kb_host_deny_regex(), value)
+    )
 
 
 def _belted_url(sql_regex: str, value: Any, limit: Optional[int] = 2048) -> bool:
@@ -168,7 +192,11 @@ def _belted_url(sql_regex: str, value: Any, limit: Optional[int] = 2048) -> bool
         return False
     if limit is not None and len(value) > limit:
         return False
-    return _sql_match(sql_regex, value) and not _sql_match(kb_url_deny_regex(), value)
+    return (
+        _sql_match(sql_regex, value)
+        and _top_label_ok(_url_host(value))
+        and not _sql_match(kb_url_deny_regex(), value)
+    )
 
 
 def kb_source_allowed(value: Any) -> bool:
@@ -188,7 +216,8 @@ def kb_product_id(brand: Any, name: Any, variant: Any = None) -> Optional[str]:
             return None
         if not brand.strip() and not name.strip():
             return None
-        if _rg.is_placeholder_identity(_ts.dedup_brand_name(brand, name)):
+        # R-A5 / F1-1: the house rule, the identity OR the name alone.
+        if _rg.product_is_placeholder({"brand": brand, "name": name}):
             return None
         key = _spine.spine_key(brand, name, variant)
         if not isinstance(key, str):
@@ -327,9 +356,59 @@ def _decimal(value: Any, places: int) -> Optional[Decimal]:
         return None
 
 
-def _registry_ok(value: Any) -> bool:
+def _pg_text_ok(value: Any) -> bool:
+    """F1-8: no NUL character and no lone surrogate in a text or jsonb value, keys
+    included (PostgreSQL refuses both: 22P05 / 22P02); other types pass."""
+    if isinstance(value, str):
+        if chr(0) in value:
+            return False
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    if isinstance(value, dict):
+        return all(_pg_text_ok(k) and _pg_text_ok(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return all(_pg_text_ok(v) for v in value)
+    return True
+
+
+def _source_value_ok(ftype: Any, value: Any) -> bool:
+    """A present registry entry value against the declared type of its Source field."""
+    origin = getattr(ftype, "__origin__", None)
+    args = getattr(ftype, "__args__", None) or ()
+    if origin is Union:
+        return value is None or any(_source_value_ok(a, value) for a in args if a is not type(None))
+    if origin is tuple:
+        elem = args[0] if args else str
+        return isinstance(value, (list, tuple)) and all(_source_value_ok(elem, x) for x in value)
+    if ftype is bool:
+        return isinstance(value, bool)
+    if ftype is int:
+        return _is_int(value)
+    if ftype is float:
+        return _is_int(value) or (isinstance(value, float) and math.isfinite(value))
+    if ftype is str:
+        return isinstance(value, str)
+    if hasattr(ftype, "__dataclass_fields__"):
+        return isinstance(value, dict)
+    return False
+
+
+def _registry_ok(value: Any, host: Any) -> bool:
+    """F1-3: the PRESENT keys of every entry and their types. Keys within origin,
+    order and the ``source_router.Source`` field names (read by module attribute
+    at call time, imported here so the leaf stays import-light); each present
+    value of its field's declared type; origin one of the four; order an int
+    >= 0, unique within the array; domain (when present) == the row's host.
+    Presence of every Source field is S81-15's seed contract, not this check."""
     if not _json_ok(value, list):
         return False
+    from app.services import source_router as _sr
+
+    fields = get_type_hints(_sr.Source)
+    orders = []
     for entry in value:
         if not isinstance(entry, dict):
             return False
@@ -337,6 +416,15 @@ def _registry_ok(value: Any) -> bool:
             return False
         order = entry.get("order")
         if not _is_int(order) or order < 0:
+            return False
+        if order in orders:
+            return False
+        orders.append(order)
+        if any(k not in fields and k not in ("origin", "order") for k in entry):
+            return False
+        if not all(_source_value_ok(fields[k], v) for k, v in entry.items() if k in fields):
+            return False
+        if "domain" in entry and entry["domain"] != host:
             return False
     return True
 
@@ -368,15 +456,21 @@ def build_merchant_row(
             "partner": {} if partner is None else partner,
         }
         upd = _ts_iso(updated_at)
+        if not _pg_text_ok((
+            host, country, currency_hint, platform, platform_confidence, adapter, search_template,
+            registry, objs, deny, status, blocked_reason,
+        )):
+            return None
         ok = (
             _sql_match(KB_HOST_REGEX, host)
+            and _top_label_ok(host)
             and (country is None or _sql_match(KB_MARKET_REGEX, country))
             and (currency_hint is None or _sql_match(KB_CURRENCY_REGEX, currency_hint))
             and _opt_len(platform, 1, 32)
             and (platform_confidence is None or platform_confidence in KB_PLATFORM_CONFIDENCE)
             and _opt_len(adapter, 1, 64)
             and _opt_len(search_template, 1, 1024)
-            and _registry_ok(registry)
+            and _registry_ok(registry, host)
             and all(_json_ok(v, dict) for v in objs.values())
             and isinstance(deny, bool)
             and status in KB_MERCHANT_STATUS
@@ -406,6 +500,8 @@ def build_product_row(
 ) -> Optional[Dict[str, Any]]:
     try:
         upd = _ts_iso(updated_at)
+        if not _pg_text_ok((id, brand, name, identity_confidence, line, concentration, audience)):
+            return None
         ok = (
             _str_len(id, 14, 512) and id.startswith(KB_CATEGORY + "|")
             and _str_len(brand, 1, 128)
@@ -433,6 +529,8 @@ def build_variant_row(
 ) -> Optional[Dict[str, Any]]:
     try:
         upd = _ts_iso(updated_at)
+        if not _pg_text_ok((id, product_id, concentration, size_ml, gtin, sku)):
+            return None
         ok = (
             isinstance(id, str) and _str_len(product_id, 1, 10 ** 6)
             and id.startswith(product_id + "|")
@@ -464,6 +562,10 @@ def build_offer_row(
         last_seen = captured_at if last_seen is None else last_seen
         cap, fst, lst = _ts_iso(captured_at), _ts_iso(first_seen), _ts_iso(last_seen)
         amt = _decimal(amount, 3)
+        if not _pg_text_ok((
+            variant_id, merchant_id, market, observed_currency, evidence_rung, canonical_url, list_vs_sale,
+        )):
+            return None
         ok = (
             _str_len(variant_id, 1, 10 ** 6)
             and _sql_match(KB_HOST_REGEX, merchant_id)
@@ -477,8 +579,9 @@ def build_offer_row(
             and None not in (cap, fst, lst)
             and first_seen <= last_seen
             and isinstance(canonical_url, str)
+            # canonical_offer_url applies the 045 regex, the top label and the belt to
+            # its output, so equality alone carries them (F1-7: one clause per row)
             and canonical_offer_url(canonical_url) == canonical_url
-            and _belted_url(KB_OFFER_URL_REGEX, canonical_url, limit=None)
             and kb_source_allowed(canonical_url)
             and (
                 _url_host(canonical_url) == merchant_id
@@ -504,6 +607,8 @@ def build_image_row(
 ) -> Optional[Dict[str, Any]]:
     try:
         cap = _ts_iso(captured_at)
+        if not _pg_text_ok((product_id, url, provenance_host, source, variant_id)):
+            return None
         ok = (
             _str_len(product_id, 1, 10 ** 6)
             and (variant_id is None or _str_len(variant_id, 1, 10 ** 6))
@@ -530,6 +635,8 @@ def build_spec_row(
 ) -> Optional[Dict[str, Any]]:
     try:
         cap = _ts_iso(captured_at)
+        if not _pg_text_ok((product_id, field, value, extractor, lang, source_url, model)):
+            return None
         ok = (
             _str_len(product_id, 1, 10 ** 6)
             and _sql_match(KB_FIELD_REGEX, field)
@@ -562,10 +669,15 @@ def build_review_row(
     try:
         cap = _ts_iso(captured_at)
         rating = None if aggregate_rating is None else _decimal(aggregate_rating, 2)
+        if not _pg_text_ok((product_id, source, source_url)):
+            return None
         ok = (
             _str_len(product_id, 1, 10 ** 6)
             and source in KB_REVIEW_SOURCES
-            and (aggregate_rating is None or (rating is not None and 0 <= rating <= 5))
+            and (aggregate_rating is None or rating is not None)
+            # F1-6: the RAW value is bounded (stricter than PostgreSQL, which would
+            # round -0.001 and 5.001 into range); the stored value is the rounded one
+            and (aggregate_rating is None or rating is None or 0 <= Decimal(str(aggregate_rating)) <= 5)
             and (review_count is None or (_is_int(review_count) and 0 <= review_count <= _INT4_MAX))
             and (aggregate_rating is not None or review_count is not None)
             and _belted_url(KB_SOURCE_URL_REGEX, source_url)
@@ -590,6 +702,8 @@ def build_gap_row(
     try:
         last_seen = first_seen if last_seen is None else last_seen
         fst, lst = _ts_iso(first_seen), _ts_iso(last_seen)
+        if not _pg_text_ok((product_key, field, demand_count, state, source_hint)):
+            return None
         hint_ok = source_hint is None or (
             _str_len(source_hint, 1, 256)
             and (_belted_host(source_hint) or _belted_url(KB_OFFER_URL_REGEX, source_hint, limit=None))
@@ -619,6 +733,8 @@ def build_feedback_row(
     device_key: Any = None,
 ) -> Optional[Dict[str, Any]]:
     try:
+        if not _pg_text_ok((field, verdict, product_id, device_key)):
+            return None
         if isinstance(compare_request_id, uuid.UUID):
             req = str(compare_request_id)
         elif isinstance(compare_request_id, str):
@@ -658,6 +774,7 @@ def build_coverage_row(*, day: Any, metric: Any, value: Any, n: Any) -> Optional
         )
         if not ok:
             return None
-        return {"day": day.isoformat(), "metric": metric, "value": str(num), "n": n}
+        # str(date) is its isoformat(); the date CHECK above is the one barrier (F1-7)
+        return {"day": str(day), "metric": metric, "value": str(num), "n": n}
     except Exception:
         return None

@@ -12,9 +12,10 @@
 --
 -- Service role only (044 / 050; the 037 both-readings rule): RLS on, no
 -- policy, REVOKE ALL from PUBLIC, anon, authenticated, service_role, then one
--- GRANT to service_role. Functions: SECURITY INVOKER, pinned search_path,
--- EXECUTE for service_role only. No users FK and no user / email / address
--- column (the 043 fence sees no kb_* table).
+-- GRANT to service_role, for every table, the view and every function
+-- (functions: SECURITY INVOKER, pinned search_path, EXECUTE for service_role
+-- only). No users FK and no user / email / address column (the 043 fence sees
+-- no kb_* table).
 --
 -- kb_feedback.device_key is a pseudonymous device identifier: the S81-05
 -- HMAC-SHA256 of the device header under DEVICE_KEY_PEPPER, NOT a user id and
@@ -28,15 +29,23 @@
 -- re-observation upserts on kb_offers_observation and sets last_seen,
 -- in_stock, evidence_rung and canonical_url only; a changed amount is a NEW
 -- row. Latest = last_seen DESC, captured_at DESC, id DESC per (variant,
--- merchant, market, currency); the prune ages rows by last_seen.
+-- merchant, market, currency), except that a sale row ranks before a list row
+-- of the same last_seen and captured_at (the key (list_vs_sale = 'sale') DESC
+-- sits before id DESC: the sale is what the shopper pays); the prune ages
+-- rows by last_seen. The view and the card serve the latest row whatever its
+-- age or stock: freshness and stock filtering are S81-18's reader contract.
 --
 -- kb_merchants: the decode reads host, registry, status, deny, blocked_reason
 -- and partner only; country, currency_hint, platform, adapter and
 -- search_template are display / ops-only columns. A denied host is STORED with
 -- deny = true and status 'blocked' (the owner's blocked list), so no deny
--- label check applies to kb_merchants. The kb_* data tables refuse the denied
--- labels (basenotes, fimgs, fragrantica, parfumo) by CHECK: a belt; the rule
--- is deny_hosts.kb_source_allowed in the builders.
+-- label check applies to kb_merchants. Every host carries a letter in its
+-- top-level label (kb_merchants_host_top_label_letter: no all-digit host).
+-- The kb_* data tables refuse the denied labels (basenotes, fimgs, fragrantica,
+-- parfumo) by CHECK: a belt that is a strict SUBSET of the rule,
+-- deny_hosts.kb_source_allowed in the builders (a belt never refuses a row a
+-- builder accepted; the rule also refuses path, query, hyphenated and
+-- top-level label tokens).
 --
 -- Postcheck: APPLY_045_3_POSTCHECK.sql. Rollback: migrations/rollback/045_kb_core.sql
 
@@ -108,6 +117,7 @@ CREATE TABLE IF NOT EXISTS public.kb_merchants (
     partner jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(partner) = 'object'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT kb_merchants_host_top_label_letter CHECK (host ~ '[a-z][a-z0-9-]*$'),
     CONSTRAINT kb_merchants_deny_is_blocked CHECK (NOT deny OR status = 'blocked'),
     CONSTRAINT kb_merchants_blocked_has_reason CHECK (status <> 'blocked' OR blocked_reason IS NOT NULL)
 );
@@ -328,7 +338,7 @@ SELECT DISTINCT ON (o.variant_id, o.merchant_id, o.market, o.observed_currency)
 FROM public.kb_offers AS o
 ORDER BY
     o.variant_id ASC, o.merchant_id ASC, o.market ASC, o.observed_currency ASC,
-    o.last_seen DESC, o.captured_at DESC, o.id DESC;
+    o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC;
 
 CREATE OR REPLACE FUNCTION public.kb_prune_offers(p_max_age_days integer, p_keep_per_merchant integer)
 RETURNS integer
@@ -349,7 +359,7 @@ BEGIN
       o.last_seen,
       row_number() OVER (
         PARTITION BY o.variant_id, o.merchant_id, o.market, o.observed_currency
-        ORDER BY o.last_seen DESC, o.captured_at DESC, o.id DESC
+        ORDER BY o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC
       ) AS rn
     FROM public.kb_offers AS o
   )
@@ -404,7 +414,7 @@ AS $$
         WHERE o.variant_id IN (SELECT v2.id FROM public.kb_variants AS v2 WHERE v2.product_id = p.id)
         ORDER BY
           o.variant_id, o.merchant_id, o.market, o.observed_currency,
-          o.last_seen DESC, o.captured_at DESC, o.id DESC
+          o.last_seen DESC, o.captured_at DESC, (o.list_vs_sale = 'sale') DESC, o.id DESC
       ) AS l
     ), '[]'::jsonb),
     'images', coalesce((
@@ -476,11 +486,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.kb_feedback TO service_role
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.kb_coverage_daily TO service_role;
 GRANT SELECT ON TABLE public.kb_offers_latest TO service_role;
 
-REVOKE ALL ON FUNCTION public.kb_gtin_check_digit_ok(text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.kb_set_updated_at() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.kb_prune_offers(integer, integer) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.kb_prune_feedback(integer) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.kb_product_card(text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.kb_gtin_check_digit_ok(text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.kb_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.kb_prune_offers(integer, integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.kb_prune_feedback(integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.kb_product_card(text, text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.kb_gtin_check_digit_ok(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.kb_set_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.kb_prune_offers(integer, integer) TO service_role;
