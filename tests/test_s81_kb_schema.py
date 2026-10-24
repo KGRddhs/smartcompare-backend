@@ -410,7 +410,7 @@ def test_s14_p05_every_migration_is_linted_by_sqlfluff():
 
 
 IDENTITY_NODES = {
-    "tests/test_s75_fanout_identity.py": "f00cd11c5c29566f0f89140c20b0b4d2cee571fe8821203ed846a89b91f73e54",
+    "tests/test_s75_fanout_identity.py": "004604278b4090cf93de52dbac988937f83aad3074b8f1efe9be7a0ee41cf532",
     "tests/fixtures/s75_fanout_identity_digests.json": "56c378bf05d5135b597367cb8aec9920193dcefd703be047c821df9b3814dc56",
     "tests/test_w4_13_flag_off_ledger.py": "4c051821da78517c0f17a7feaabffa24eaa0d7445737b67d3ace88f544b59993",
     "tests/fixtures/w4_13_flag_off_ledger.json": "9fbf73e177365f352b9243009d9552b5626d7cf7e618adaad5a1856d66231f40",
@@ -423,7 +423,8 @@ def _lf_sha(rel: str) -> str:
 
 @pytest.mark.parametrize("rel", sorted(IDENTITY_NODES))
 def test_s14_p06_identity_nodes_untouched(rel):
-    """The FY25 nine-digest node and the W4-13 ledger run unedited (LF sha at e1878dd8)."""
+    """The FY25 nine-digest node and the W4-13 ledger run unedited (LF sha at e1878dd8; the FY25 node
+    at the rebase main ea3aef15, where S81-04 #372 added one UNIT_ENV entry)."""
     assert _lf_sha(rel) == IDENTITY_NODES[rel], "%s changed: S81-14 edits no identity node" % rel
 
 
@@ -2407,3 +2408,30 @@ def test_s14_r22d_placeholder_brand_arm(prod_identity_env, monkeypatch, gate, br
                         lambda text, site_title=None: seen.append(text) or False)
     assert fn(brand, name) is not None, "read result_gate.is_placeholder_identity at CALL time"
     assert brand in seen, seen
+
+
+# ---------------------------------------------------------------------------
+# RB-5 (re-verifier m1; mutant X12): the brand arm splits with the house result_gate.norm
+# ---------------------------------------------------------------------------
+
+PLACEHOLDER_BRANDS_PUNCT = [("Unknown-Brand", "Sauvage"), ("Unknown Brand.", "Sauvage"), ("Unknown_Brand", "Sauvage")]
+
+
+@pytest.mark.parametrize("gate", [None, "true"])
+@pytest.mark.parametrize("brand,name", PLACEHOLDER_BRANDS_PUNCT, ids=["%s-%s" % p for p in PLACEHOLDER_BRANDS_PUNCT])
+def test_s14_r22d2_placeholder_brand_house_norm_split(prod_identity_env, monkeypatch, gate, brand, name):
+    """RB-5: the brand arm drops the word "brand" from the HOUSE word split (result_gate.norm: every run
+    outside [0-9a-z Arabic] is one space), never a whitespace split, so 'Unknown-Brand', 'Unknown Brand.'
+    and 'Unknown_Brand' read as 'unknown' and mint no id (a str.split keeps 'unknown-brand', 'brand.' or
+    'unknown_brand' and mints a fragrances|unknownbrand|sauvage|... juice id: mutant X12)."""
+    prod_identity_env(gate)
+    fn = _attr(_kb(), "kb_product_id")
+    from app.services import result_gate, spec_spine_service
+
+    assert result_gate.norm(brand) == "unknown brand", "the probe is the house split of Unknown Brand"
+    calls = []
+    real = spec_spine_service.spine_key
+    monkeypatch.setattr(spec_spine_service, "spine_key", lambda *a, **k: calls.append(a) or real(*a, **k))
+    assert fn(brand, name) is None, (brand, name)
+    assert calls == [], "a placeholder brand must not reach spine_key"
+    assert fn("Dior", name) == "fragrances|christian+dior|sauvage|-", "positive control"
