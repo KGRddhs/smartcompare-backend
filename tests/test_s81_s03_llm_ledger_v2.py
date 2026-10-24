@@ -187,7 +187,10 @@ B5_BASE_OPENAI = {
 B5_BASE_TOTAL_COST = 0.017175
 
 # K1 / K2 (spec 1.8): split so the added-line sweep's 8-digit rule cannot misfire.
-K1_GUARDED_AST_SHA = "8fa87b616" + "45971d65a41d38cf70938f38d441d0b0a0d91a055b16d74b1b3a63d"
+# Re-recorded DELIBERATELY by S81-04 (gate GC-8, R-S03-10): the two spend-breaker
+# insertions in guarded_llm_create (the admit before the W1-3 admission, the
+# record_openai_response_soon after each served tail's ledger record).
+K1_GUARDED_AST_SHA = "844692b2f" + "c86027a87add39de447c47b48e6c234a2d8d10e21d8a218c730bb9f"
 K2_OPENAI_PRICING_LF_SHA = "0406b617bd91b2a1ea5a5bac" + "d37fd48e28e106ed99991bfec9087d144ec14094"
 
 # The base literal of OPENAI_COST_NOTE (admin_routes.py:133-139 at 95cf6f86).
@@ -2478,8 +2481,8 @@ def test_i4_camera_merge_fault_delivers_with_one_warning(monkeypatch, caplog):
 # K / L / BL4 -- static pins
 # ===========================================================================
 def test_k1_guarded_llm_create_untouched():
-    """PIN (K1): sha256 of ast.dump(guarded_llm_create) on CPython 3.12 (S81-04
-    re-records it deliberately, R-S03-10)."""
+    """PIN (K1): sha256 of ast.dump(guarded_llm_create) on CPython 3.12
+    (re-recorded by S81-04 for the spend-breaker admit/record, R-S03-10)."""
     src = (APP_DIR / "services" / "api_budget_service.py").read_text(encoding="utf-8")
     nodes = [n for n in ast.walk(ast.parse(src))
              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "guarded_llm_create"]

@@ -20,6 +20,7 @@ from app.services.database_service import get_supabase_client, get_admin_supabas
 from app.services.model_config import standard_model, verdict_model
 from app.services.openai_pricing import PRICE_TABLE_AS_OF  # COST-METER (#66)
 from app.services import llm_pricing as _llm_pricing  # S81-03 (ENABLE_LLM_LEDGER_V2), module attribute (BL4)
+from app.services import llm_spend_breaker as _llm_spend_breaker  # S81-04 (ENABLE_LLM_SPEND_BREAKER), module attribute
 from app.utils.db_offload import run_db  # COST-METER (#66) G4: never a blocking .execute() on the loop
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
@@ -522,6 +523,11 @@ async def api_costs(request: Request, _=Depends(verify_admin_key)):
             except Exception as e:  # noqa: BLE001
                 logger.warning("[ADMIN] Failed to fetch LLM costs: %s", type(e).__name__)
         summary["llm"] = _aggregate_llm(llm_rows, llm_truncated)
+    # S81-04 (R-S04-7): the spend-breaker AMOUNTS (per observed lane: spent_usd,
+    # cap_usd, day, memo_age_seconds) live on this X-Admin-Key surface, written
+    # only ON; the public /health carries {exhausted, day} only.
+    if _llm_spend_breaker.spend_breaker_enabled():
+        summary["spend_breaker"] = _llm_spend_breaker.admin_snapshot()
     summary["comparisons_this_month"] = comp_count
     summary["avg_cost_per_comparison"] = (
         round(openai_cost / openai["rows_with_cost"], 6)

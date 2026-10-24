@@ -77,6 +77,9 @@ from app.services.api_budget_service import (
 # entry, recorded at guarded_llm_create, summarised into metadata.openai).
 from app.services.openai_pricing import start_openai_ledger, summarize_openai_ledger
 from app.services import firecrawl_service, scrapedo_service
+# S81-04 SPEND-BREAKER (ENABLE_LLM_SPEND_BREAKER): the compare-entry lane check,
+# reached through the module attribute (a test patch sees every call).
+from app.services import llm_spend_breaker as _llm_spend_breaker
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
 from app.services.adapter_timeouts import adapter_inner_ceiling
@@ -4036,6 +4039,14 @@ class StructuredComparisonService:
                 query,
             )
             return self._llm_unavailable_envelope()
+        # S81-04 (R-S04-4): the chokepoint's spend lane (F1-6: chokepoint_lane(),
+        # live by default) is exhausted (spent + the entry reserve >= cap) -> the
+        # same coded LLM_UNAVAILABLE non-delivery BEFORE any paid provider work
+        # (the W1-3 placement). Flag OFF: the `and` short-circuits before the
+        # await (no coroutine, no new suspension point).
+        if (_llm_spend_breaker.spend_breaker_enabled()
+                and await _llm_spend_breaker.entry_refuses_async(_llm_spend_breaker.chokepoint_lane())):
+            return self._llm_unavailable_envelope()
         _t0 = time.time()
         try:
             return await asyncio.wait_for(
@@ -4765,6 +4776,14 @@ class StructuredComparisonService:
                 "compare for query=%r BEFORE the provider fan-out",
                 query,
             )
+            yield ("error", self._llm_unavailable_envelope())
+            return
+        # S81-04 (R-S04-4): the stream twin of the REST entry check above, before
+        # the L1 content-safety prefilter; the `error` event is what the route's
+        # refund branch keys off; the same chokepoint lane (F1-6). Flag OFF: no
+        # await, byte-identical.
+        if (_llm_spend_breaker.spend_breaker_enabled()
+                and await _llm_spend_breaker.entry_refuses_async(_llm_spend_breaker.chokepoint_lane())):
             yield ("error", self._llm_unavailable_envelope())
             return
 

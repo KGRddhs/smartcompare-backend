@@ -15,6 +15,10 @@ from typing import Dict, Any, Optional
 from app.services.cache_service import _redis_get, _redis_set, _redis_incr, _redis_expire
 # COST-METER (#66): the stdlib-only usage-ledger leaf (no cycle: it imports nothing from app).
 from app.services.openai_pricing import record_openai_response
+# S81-04 SPEND-BREAKER (ENABLE_LLM_SPEND_BREAKER): the per-Riyadh-day spend leaf,
+# reached through the module attribute so a test patch sees every call (no cycle:
+# the leaf imports this module only inside its refusal arm).
+from app.services import llm_spend_breaker as _llm_spend_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -976,14 +980,30 @@ async def guarded_llm_create(client, **kwargs):
     usage ledger on both branches (openai_pricing.record_openai_response: the
     requested model id, the token counts and the list price; a raising create
     records nothing, and the recorder never raises).
+
+    S81-04 (ENABLE_LLM_SPEND_BREAKER, read per call): flag ON, the call is
+    ADMITTED on the chokepoint lane BEFORE the W1-3 admission (so a spend refusal
+    never holds the half-open probe) from an upper bound built from the kwargs
+    (read through kwargs.get only); a refusal raises the existing
+    LLMUnavailableError before any dispatch. A SERVED response is recorded
+    non-awaited AFTER the usage ledger on both tails; a raising or cancelled
+    create records nothing. Flag OFF: no admit, no record, no Redis command.
     """
     kwargs["store"] = False
     eb = kwargs.get("extra_body")
     if isinstance(eb, collections.abc.Mapping) and "store" in eb:
         kwargs["extra_body"] = {**eb, "store": False}
+    spend_ticket = None
+    if _llm_spend_breaker.spend_breaker_enabled():
+        spend_ticket = await _llm_spend_breaker.admit_openai_dispatch(
+            kwargs.get("model"), kwargs.get("messages"), kwargs.get("max_tokens"),
+            kwargs.get("max_completion_tokens"), kwargs.get("response_format"), kwargs.get("tools"),
+        )
     if not llm_preflight_breaker_enabled():
         response = await client.chat.completions.create(**kwargs)
         record_openai_response(kwargs.get("model"), response)
+        if spend_ticket is not None:
+            _llm_spend_breaker.record_openai_response_soon(spend_ticket, kwargs.get("model"), response)
         return response
     admitted, outcome_matters, probe = _openai_dispatch_admission()
     if not admitted:
@@ -1030,6 +1050,8 @@ async def guarded_llm_create(client, **kwargs):
             openai_release_half_open_probe()
         raise
     record_openai_response(kwargs.get("model"), response)
+    if spend_ticket is not None:
+        _llm_spend_breaker.record_openai_response_soon(spend_ticket, kwargs.get("model"), response)
     if outcome_matters:
         openai_record_success()
     return response

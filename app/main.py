@@ -337,6 +337,15 @@ def brightdata_auth_health_snapshot() -> dict:
     return _module_snapshot("app.services.brightdata_service", "brightdata_auth_snapshot")
 
 
+def llm_spend_health_snapshot() -> dict:
+    """S81-04 (ENABLE_LLM_SPEND_BREAKER): `llm_spend` {lane: {exhausted, day}}, the
+    `llm_spend_fail_open` counter and the `llm_spend_late_records` counter (fix
+    round 1, F1-4a), present only once the spend breaker ran in
+    this process (a fail-open counts); no amounts (those live on the X-Admin-Key
+    admin costs view). A pure dict read: no Redis command, no thread."""
+    return _module_snapshot("app.services.llm_spend_breaker", "spend_snapshot")
+
+
 async def _loop_lag_heartbeat() -> None:
     """Sleep on the interval and record how far each wake-up overshot it.
 
@@ -627,6 +636,7 @@ async def health_check():
         **redis_offloop_pool_snapshot(),
         **adapter_executor_snapshot(),
         **brightdata_auth_health_snapshot(),
+        **llm_spend_health_snapshot(),
     }
 
 
