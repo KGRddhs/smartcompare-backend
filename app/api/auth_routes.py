@@ -417,6 +417,25 @@ def social_device_fingerprint_enabled() -> bool:
     )
 
 
+def legacy_fingerprint_reader_enabled() -> bool:
+    """True iff register and the W3-3 social apply also match the legacy device header.
+
+    S81-08b LEGACY-FINGERPRINT-READER (RULINGS_S81_08B; the backend half of S81-08 R-S08-4 /
+    R-S08-7). After the S81-08 OTA the primary device header carries the NEW SecureStore-id
+    hash, while every ``users.device_fingerprint_hash`` row written before the OTA holds the
+    build-3 composition; until the client runtime cutoff 2027-03-31T21:00Z the client also
+    sends that composition as ``X-Device-Fingerprint-Legacy`` at register and both social
+    sign-ins, so a re-signup on an existing device can still inherit its counter.
+
+    Default OFF. Read per call (the ``social_device_fingerprint_enabled`` idiom above), so
+    Railway flips it without a restart; OFF, no request header beyond today's is read.
+    S81-08c removes this flag and its reader after the cutoff.
+    """
+    return os.getenv("ENABLE_LEGACY_FINGERPRINT_READER", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _reject_or_anonymous(message: str):
     """B2 — the single decision point for a PRESENTED-but-rejected credential.
 
@@ -496,6 +515,30 @@ def _read_valid_device_fingerprint(request: Request) -> Optional[str]:
     return fp
 
 
+def _read_valid_legacy_fingerprint(request: Request, fp: Optional[str]) -> Optional[str]:
+    """The valid ``X-Device-Fingerprint-Legacy`` value, or None (S81-08b). Total; never logs.
+
+    The flag read is the FIRST statement, so with the flag OFF ``request`` is never touched.
+    Valid means a FULL match of the primary header's rule (``_DEVICE_FINGERPRINT_RE``, 64
+    lower-case hex): a trailing newline, upper case, 63 or 65 chars, non-hex or an empty value
+    is invalid and dropped SILENTLY (no log line, never a 400; R-S08B-6). A valid value equal
+    to ``fp`` adds no second key and reads as None, and so does a header mapping that raises.
+    Callers ask only once a valid primary value is in hand: without one nothing is matched or
+    stored, exactly as today.
+    """
+    if not legacy_fingerprint_reader_enabled():
+        return None
+    try:
+        raw = request.headers.get("X-Device-Fingerprint-Legacy")
+    except Exception:  # noqa: BLE001 - a broken header mapping must never fail a sign-up
+        return None
+    if not isinstance(raw, str) or _DEVICE_FINGERPRINT_RE.fullmatch(raw) is None:
+        return None
+    if raw == fp:
+        return None
+    return raw
+
+
 def _inherit_device_counter(
     admin_client, fp: str, user_id: str, *, floor: int = 0
 ) -> None:
@@ -537,6 +580,54 @@ def _inherit_device_counter(
     ).eq("id", user_id).execute()
 
 
+def _inherit_device_counter_with_legacy(
+    admin_client, fp: str, legacy: str, user_id: str, *, floor: int = 0, site: str
+) -> None:
+    """``_inherit_device_counter`` with a second match key (S81-08b). Never raises.
+
+    ONE device read accepts a stored hash equal to the primary value OR the legacy value
+    (``.in_`` over ``[fp, legacy]``, the highest counter first, one row). The write is the
+    base write: the caller's own row only, storing the PRIMARY value, never ``legacy`` (no
+    upgrade-on-match: no stored row is rewritten; R-S08B-4), with ``max(floor, matched)`` as
+    the counter, so a legacy-hash device carries its counter onto the new-hash row.
+
+    One INFO line per call with constants only: ``site`` (register | social) and ``top``
+    (legacy | new | none: which value the max-holding row stores, none = no row holds either;
+    on a tie the label is whichever row the read returned, a log label only). A failure is
+    ONE WARNING with the exception TYPE name, never ``str(exc)`` (a query echo could carry a
+    fingerprint), and nothing propagates, so the register except arm never sees it.
+    """
+    try:
+        prior = (
+            admin_client.table("users")
+            .select("lifetime_comparisons_used, device_fingerprint_hash")
+            .in_("device_fingerprint_hash", [fp, legacy])
+            .order("lifetime_comparisons_used", desc=True)
+            .limit(1)
+            .execute()
+        )
+        inherited = 0
+        top = "none"
+        if prior.data:
+            matched = prior.data[0]
+            inherited = matched.get("lifetime_comparisons_used", 0) or 0
+            stored = matched.get("device_fingerprint_hash")
+            if stored == legacy:
+                top = "legacy"
+            elif stored == fp:
+                top = "new"
+        inherited = max(floor, inherited)
+        admin_client.table("users").update(
+            {
+                "device_fingerprint_hash": fp,
+                "lifetime_comparisons_used": inherited,
+            }
+        ).eq("id", user_id).execute()
+        logger.info("[LEGACY-FP] site=%s top=%s", site, top)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[LEGACY-FP] site=%s inherit failed: %s", site, type(exc).__name__)
+
+
 def _apply_social_device_fingerprint(request: Request, user_id: Optional[str]) -> None:
     """Best-effort device binding for ``/social-login``. Never raises.
 
@@ -553,6 +644,10 @@ def _apply_social_device_fingerprint(request: Request, user_id: Optional[str]) -
     fp = _read_valid_device_fingerprint(request)
     if not fp or not user_id:
         return
+    # S81-08b: a valid legacy header adds a second match key (None with the flag OFF, where
+    # the request is not touched again). The first-device binding below is unchanged: an
+    # own row that already stores a hash returns before any match (no upgrade-on-match).
+    legacy = _read_valid_legacy_fingerprint(request, fp)
     try:
         admin = get_admin_supabase_client()
         own = (
@@ -565,12 +660,22 @@ def _apply_social_device_fingerprint(request: Request, user_id: Optional[str]) -
         row = (own.data or [{}])[0]
         if row.get("device_fingerprint_hash"):
             return
-        _inherit_device_counter(
-            admin,
-            fp,
-            user_id,
-            floor=int(row.get("lifetime_comparisons_used") or 0),
-        )
+        if legacy is None:
+            _inherit_device_counter(
+                admin,
+                fp,
+                user_id,
+                floor=int(row.get("lifetime_comparisons_used") or 0),
+            )
+        else:
+            _inherit_device_counter_with_legacy(
+                admin,
+                fp,
+                legacy,
+                user_id,
+                floor=int(row.get("lifetime_comparisons_used") or 0),
+                site="social",
+            )
     except Exception as exc:  # noqa: BLE001
         # Log the TYPE, never str(exc): an auth-path SDK exception can carry a
         # credential as its argument (memory rule; W1-4 scrub).
@@ -623,8 +728,16 @@ async def register(request: Request, body: RegisterRequest):
     # so signup never blocks on a misconfigured/tampered client.
     fp = _read_valid_device_fingerprint(request)
     if fp and new_user_id:
+        # S81-08b: under ENABLE_LEGACY_FINGERPRINT_READER a valid legacy header adds a second
+        # match key; None (flag OFF, absent, invalid or equal to fp) keeps the base call.
+        legacy = _read_valid_legacy_fingerprint(request, fp)
         try:
-            _inherit_device_counter(get_admin_supabase_client(), fp, new_user_id)
+            if legacy is None:
+                _inherit_device_counter(get_admin_supabase_client(), fp, new_user_id)
+            else:
+                _inherit_device_counter_with_legacy(
+                    get_admin_supabase_client(), fp, legacy, new_user_id, site="register"
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"device-fp inheritance failed (silent): {exc}")
 
