@@ -245,6 +245,13 @@ class ContentSafetyService:
         if _test_seeds_enabled() and _TEST_SENTINEL in text:
             return SafetyResult(allowed=False, reason=_SENTINEL_REASON, blocklist_match=_TEST_SENTINEL)
         try:
+            # S81-06 (2.9 / R-S06-6): the moderation role on Claude (dark until the
+            # S81-07 parity set) fails CLOSED; its flag is the first read, so every
+            # role flag OFF runs exactly the base call below.
+            from app.services import llm_router as _llm_router
+            if _llm_router.decide_moderation() == "anthropic":
+                allowed, reason = await _llm_router.moderate_with_claude(text)
+                return SafetyResult(allowed=True) if allowed else SafetyResult(allowed=False, reason=reason)
             # Inline import — keeps module importable without OPENAI_API_KEY at process boot.
             from app.services.model_config import moderation_model
             from app.services.openai_service import get_client

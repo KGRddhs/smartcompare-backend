@@ -21,6 +21,7 @@ from app.services.model_config import sampling_kwargs, standard_model, token_lim
 
 from app.services.extraction_service import canonicalize_category
 from app.services import api_budget_service as _llm_breaker
+from app.services import llm_router as _llm_router
 
 logger = logging.getLogger(__name__)
 
@@ -942,7 +943,7 @@ async def extract_with_ai(url: str, html: str, retailer: Dict,
             f"Page Title: {title_text}\n\nPage Content (truncated):\n{text_content}"
         )
         prompt = URL_EXTRACTION_PROMPT_V2 if url_mode_v2 else URL_EXTRACTION_PROMPT
-        response = await _llm_breaker.guarded_llm_create(client,
+        response = await _llm_router.route("url_extract", _llm_breaker.guarded_llm_create, client,
             model=_model,
             messages=[{
                 "role": "user",
@@ -966,6 +967,13 @@ async def extract_with_ai(url: str, html: str, retailer: Dict,
         return json.loads(result)
     
     except Exception as e:
+        # S81-06 (R-S06-3): under a role flag ON an LLMUnavailableError (a consent
+        # refusal, an Anthropic dispatch failure, a breaker or spend denial) is
+        # re-raised, logged at WARNING by type (GC-3), never swallowed into
+        # {'error': str(e)}; compare_from_urls maps it to LLM_UNAVAILABLE.
+        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("AI extraction error: %s", type(e).__name__)
+            raise
         # RULINGS_FIX4_B4 F4-5 (unflagged, log-only, R-A1 b): the exception TYPE
         # only, never its text (the U8d class); the return value is unchanged.
         logger.error("AI extraction error: %s", type(e).__name__)
@@ -1229,6 +1237,21 @@ def normalize_product_data(raw: Dict, retailer: Dict, url: str, url_mode_v2: boo
 # COMPARE FROM URLs
 # ============================================
 
+def _llm_unavailable_url_result(stage: str) -> Dict[str, Any]:
+    """S81-06: the coded LLM_UNAVAILABLE non-delivery of a URL compare under a
+    role flag ON (the R-METER W2-1c shape: the route refunds once and ships the
+    coded 503 through the text route's mapping). ``stage`` is a constant."""
+    from app.services.structured_comparison_service import (
+        LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+    )
+    logger.warning("[URL] LLM unavailable at %s; not delivering a comparison", stage)
+    return {
+        "success": False,
+        "code": "LLM_UNAVAILABLE",
+        "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+    }
+
+
 async def compare_from_urls(
     url1: str,
     url2: str,
@@ -1269,7 +1292,14 @@ async def compare_from_urls(
     else:
         extractions = (extract_from_url(url1), extract_from_url(url2))
     results = await asyncio.gather(*extractions, return_exceptions=True)
-    
+    # S81-06 (R-S06-3): under a role flag ON an extraction that raised an
+    # LLMUnavailableError is the coded LLM_UNAVAILABLE non-delivery (the route
+    # refunds and ships the coded 503), never the codeless 400. Flags OFF: site 15
+    # swallows it, so this branch cannot fire (and is never evaluated).
+    if _llm_router.any_role_enabled() and any(
+            isinstance(r, _llm_breaker.LLMUnavailableError) for r in results):
+        return _llm_unavailable_url_result("extraction")
+
     products = []
     errors = []
     coded = []  # B4: (index, code, reason) of each coded per-url failure (ON only)
@@ -1327,9 +1357,16 @@ async def compare_from_urls(
     # EVERY successful extraction — a successful URL comparison has never been
     # deliverable. UNFLAGGED (the M13-10 / M13-44 pure-defect class): gating the
     # unpack would leave the route 500ing whenever the flag was off.
-    comparison, _usage = await generate_comparison(
-        products[0], products[1], region, category=category_used
-    )
+    try:
+        comparison, _usage = await generate_comparison(
+            products[0], products[1], region, category=category_used
+        )
+    except _llm_breaker.LLMUnavailableError:
+        # S81-06 (R-S06-2): generate_comparison re-raises only under a role flag
+        # ON; that verdict non-delivery is the same coded result as below.
+        if not _llm_router.any_role_enabled():
+            raise
+        return _llm_unavailable_url_result("verdict")
 
     # R-METER (W2-1c), UNFLAGGED -- a live leak with no legitimate reader:
     # generate_comparison's except-branch returns

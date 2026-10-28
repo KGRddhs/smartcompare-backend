@@ -746,6 +746,21 @@ def init_sentry():
             integrations.append(OpenAIIntegration(include_prompts=False))
         except Exception:  # noqa: BLE001
             pass
+        # S81-06 (R-S06-11): the explicit AnthropicIntegration with prompts off
+        # (the SDK auto-enables one with include_prompts True the moment anthropic
+        # is importable), added ONLY when the anthropic SDK imports, so an explicit
+        # integration that cannot set up never disables Sentry; else omitted with
+        # ONE WARNING (type name only).
+        try:
+            import anthropic  # noqa: F401
+            from sentry_sdk.integrations.anthropic import AnthropicIntegration
+
+            integrations.append(AnthropicIntegration(include_prompts=False))
+        except Exception as _anthropic_exc:  # noqa: BLE001
+            logger.warning(
+                "[SENTRY] AnthropicIntegration not enabled (anthropic unavailable): %s",
+                type(_anthropic_exc).__name__,
+            )
         sentry_sdk.init(
             dsn=dsn,
             integrations=integrations,

@@ -256,6 +256,19 @@
       "category_en": "retailer websites",
       "category_ar": "مواقع المتاجر",
       "public_name": true
+    },
+    {
+      "id": "anthropic",
+      "name_en": "Anthropic",
+      "name_ar": "Anthropic",
+      "kind": "processor",
+      "personal_data": true,
+      "module": ["app/services/llm_router.py"],
+      "hosts": ["api.anthropic.com"],
+      "gate_flag": "ENABLE_ANTHROPIC_TEXT",
+      "category_en": "third-party AI service",
+      "category_ar": "\u062e\u062f\u0645\u0629 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064a \u062a\u0627\u0628\u0639\u0629 \u0644\u0637\u0631\u0641 \u062b\u0627\u0644\u062b",
+      "public_name": false
     }
   ]
 }

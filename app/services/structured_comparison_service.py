@@ -69,9 +69,7 @@ from app.services.api_budget_service import (
     has_budget, record_usage, record_failure, record_success,
     is_circuit_closed,
     # W1-3 — the OpenAI preflight breaker (ENABLE_LLM_PREFLIGHT_BREAKER).
-    # openai_preflight_allows_compare is the READ-ONLY half deliberately: the
-    # half-open probe budget belongs to the dispatch chokepoint, never here.
-    llm_preflight_breaker_enabled, openai_preflight_allows_compare,
+    llm_preflight_breaker_enabled,
 )
 # COST-METER (#66): the per-request OpenAI usage ledger (bound at each compare
 # entry, recorded at guarded_llm_create, summarised into metadata.openai).
@@ -80,6 +78,9 @@ from app.services import firecrawl_service, scrapedo_service
 # S81-04 SPEND-BREAKER (ENABLE_LLM_SPEND_BREAKER): the compare-entry lane check,
 # reached through the module attribute (a test patch sees every call).
 from app.services import llm_spend_breaker as _llm_spend_breaker
+# S81-06 ANTHROPIC-ROUTER: the consent gate at both entries, the request scope
+# bind, the active-provider preflight (module attribute: a test patch sees it).
+from app.services import llm_router as _llm_router
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
 from app.services.adapter_timeouts import adapter_inner_ceiling
@@ -1768,7 +1769,9 @@ def _llm_preflight_short_circuits() -> bool:
     PROCEEDS from here, so the probe is spent at a real dispatch inside
     api_budget_service.guarded_llm_create, which records success or failure.
     Flag OFF short-circuits the check itself, so nothing is read at all."""
-    return llm_preflight_breaker_enabled() and not openai_preflight_allows_compare()
+    # S81-06 (R-S06-4 / GC-1): every role flag OFF -> exactly the openai preflight;
+    # else the AND of the preflights of every provider an ON role decides.
+    return llm_preflight_breaker_enabled() and not _llm_router.active_provider_preflight_allows()
 
 
 def _fan_out_budget_seconds() -> float:
@@ -1840,7 +1843,11 @@ def _tail_reserve_seconds() -> float:
     """S78-TG (TG2): the post-Phase-1 tail the Tier-2/3 residual guard keeps free
     (default 6.5 s = the measured 6.1 s Phase-1 end -> moderation). Read per call;
     unset / blank / garbage / non-finite / <= 0 -> 6.5 (the S65d float-knob rule).
-    One knob for this guard and plan fix 5 (ruling TG-A7 / Q3)."""
+    One knob for this guard and plan fix 5 (ruling TG-A7 / Q3).
+    S81-06 (R-S06-9): ANTHROPIC_TAIL_RESERVE_SECONDS only when the verdict role
+    decides anthropic for this request; else the base read."""
+    if _llm_router.decide("verdict") == "anthropic":
+        return _llm_router.tail_reserve_seconds_for_request()
     return _float_knob("TAIL_RESERVE_SECONDS", 6.5)
 
 
@@ -4047,6 +4054,13 @@ class StructuredComparisonService:
         if (_llm_spend_breaker.spend_breaker_enabled()
                 and await _llm_spend_breaker.entry_refuses_async(_llm_spend_breaker.chokepoint_lane())):
             return self._llm_unavailable_envelope()
+        # S81-06 (2.6 / R-S06-5): a request an ON role would refuse (consent below
+        # 3 with ENABLE_OPENAI_PRE_V3 OFF, or anthropic with the key unset) gets the
+        # existing LLM_UNAVAILABLE envelope BEFORE any provider work. Every role
+        # flag OFF: four getenv reads, no consent read, no log.
+        if _llm_router.compare_refuses_for_consent():
+            logger.info("[ROUTER] consent update required at compare entry")
+            return self._llm_unavailable_envelope()
         _t0 = time.time()
         try:
             return await asyncio.wait_for(
@@ -4066,6 +4080,13 @@ class StructuredComparisonService:
                 ),
                 timeout=STREAM_HARD_CAP_SECONDS,
             )
+        except _llm_router._abs.LLMUnavailableError:
+            # S81-06 (R-S06-2): under ANY role flag ON an LLMUnavailableError out
+            # of the compare is the coded LLM_UNAVAILABLE non-delivery; flags OFF
+            # it propagates exactly as at base.
+            if _llm_router.any_role_enabled():
+                return self._llm_unavailable_envelope()
+            raise
         except asyncio.TimeoutError:
             elapsed = time.time() - _t0
             # WS1 (D1) — best-available partial if any product has data.
@@ -4162,6 +4183,9 @@ class StructuredComparisonService:
         # COST-METER (#66): a FRESH per-request ledger; every task this compare
         # spawns copies the context and appends into this same list.
         self._openai_ledger = start_openai_ledger()
+        # S81-06 (F1-9): the llm ledger + escalation scope in the PARENT task,
+        # before any tracked call; every role flag OFF binds nothing.
+        _llm_router.bind_request_scope()
 
         # I5.6 lever-2 — bound to None at the top so the outer exception handler
         # can always cancel it (an exception raised before the kickoff line would
@@ -4719,6 +4743,13 @@ class StructuredComparisonService:
             return result
 
         except Exception as e:
+            # S81-06 (R-S06-2): under ANY role flag ON an LLMUnavailableError (the
+            # verdict's non-delivery) is the coded LLM_UNAVAILABLE envelope, never
+            # INTERNAL_ERROR; flags OFF the base path below.
+            if _llm_router.any_role_enabled() and isinstance(e, _llm_router._abs.LLMUnavailableError):
+                logger.warning("Comparison error: %s", type(e).__name__)
+                await _cancel_profile_task(_profile_task)
+                return self._llm_unavailable_envelope()
             logger.error(f"Comparison error: {e}", exc_info=True)
             # I5.6 lever-2 — if the failure happened before the profile task was
             # awaited, cancel it so no orphaned coroutine is left pending.
@@ -4756,6 +4787,8 @@ class StructuredComparisonService:
         self._shopping_items_cache = {}
         # COST-METER (#66): the streaming entry binds its own fresh ledger.
         self._openai_ledger = start_openai_ledger()
+        # S81-06 (F1-9): the stream twin of the impl's scope bind.
+        _llm_router.bind_request_scope()
 
         # W1-3 (ENABLE_LLM_PREFLIGHT_BREAKER, default OFF) — the SAME preflight
         # the non-streaming entry runs, mirrored here because THIS is the entry
@@ -4784,6 +4817,11 @@ class StructuredComparisonService:
         # await, byte-identical.
         if (_llm_spend_breaker.spend_breaker_enabled()
                 and await _llm_spend_breaker.entry_refuses_async(_llm_spend_breaker.chokepoint_lane())):
+            yield ("error", self._llm_unavailable_envelope())
+            return
+        # S81-06 (2.6): the stream twin of the REST consent gate.
+        if _llm_router.compare_refuses_for_consent():
+            logger.info("[ROUTER] consent update required at compare entry")
             yield ("error", self._llm_unavailable_envelope())
             return
 
@@ -5591,6 +5629,14 @@ class StructuredComparisonService:
             yield ("complete", complete_response)
 
         except Exception as e:
+            # S81-06 (R-S06-2): under ANY role flag ON an LLMUnavailableError in
+            # the stream (the verdict call sits in this try) is the coded
+            # LLM_UNAVAILABLE terminal event; flags OFF: the base INTERNAL_ERROR.
+            if _llm_router.any_role_enabled() and isinstance(e, _llm_router._abs.LLMUnavailableError):
+                logger.warning("Streaming comparison error: %s", type(e).__name__)
+                await _cancel_profile_task(_profile_task)
+                yield ("error", self._llm_unavailable_envelope())
+                return
             logger.error(f"Streaming comparison error: {e}", exc_info=True)
             # I5.6 lever-2 — cancel the profile task if the failure happened
             # before it was awaited (mirror of the sync path).

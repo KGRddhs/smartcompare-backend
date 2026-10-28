@@ -28,6 +28,7 @@ from app.utils.prompt_sanitizer import (
 # RuntimeError fails this import (and the deploy) instead of being swallowed per call.
 from app.services import prompt_personalities as _pp
 from app.services import api_budget_service as _llm_breaker
+from app.services import llm_router as _llm_router
 # Session 70 OAI_OBS R3.3 / C1 — extract_specs / extract_price /
 # extract_price_from_training_data log a CONSTANT %-template with
 # exc_summary(e) (the type survives an empty str(e)). log_scrub is a leaf.
@@ -1382,7 +1383,7 @@ async def classify_category_llm(texts: list) -> str:
         user_content = sanitize_prompt_input(" | ".join(names), max_length=300)
         client = get_client()
         response = await asyncio.wait_for(
-            _llm_breaker.guarded_llm_create(client,
+            _llm_router.route("classify", _llm_breaker.guarded_llm_create, client,
                 model=(_model := standard_model()),
                 messages=[
                     {"role": "system", "content": _CLASSIFY_CATEGORY_LLM_PROMPT},
@@ -1391,7 +1392,7 @@ async def classify_category_llm(texts: list) -> str:
                 **token_limit_kwargs(_model, 10),
                 **sampling_kwargs(_model, 0.0),
             ),
-            timeout=_CLASSIFY_LLM_TIMEOUT,
+            timeout=_llm_router.classify_timeout(_CLASSIFY_LLM_TIMEOUT),
         )
         raw = (response.choices[0].message.content or "").strip()
         return canonicalize_category(raw)
@@ -1522,7 +1523,7 @@ async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int
         sanitized_query = sanitize_prompt_input(query, max_length=500)
         if check_injection_patterns(query):
             logger.warning(f"Injection pattern detected in query: {query[:100]}")
-        response = await _llm_breaker.guarded_llm_create(client,
+        response = await _llm_router.route("parse", _llm_breaker.guarded_llm_create, client,
             model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": PRODUCT_PARSER_PROMPT},
@@ -1549,7 +1550,12 @@ async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int
         return json.loads(result), usage
 
     except Exception as e:
-        logger.error(f"Product parsing error: {e}", exc_info=True)
+        # S81-06 (GC-3 / R-S06-12): under a role flag ON a dispatch-level refusal
+        # logs at WARNING by type (never an exc_info ERROR, the S81-04c class).
+        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("Product parsing error: %s", type(e).__name__)
+        else:
+            logger.error(f"Product parsing error: {e}", exc_info=True)
         return {"products": [], "error": PARSE_PRODUCT_QUERY_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -1580,7 +1586,7 @@ async def extract_specs(
             skip_fields=skip_fields,
         )
 
-        response = await _llm_breaker.guarded_llm_create(client,
+        response = await _llm_router.route("specs", _llm_breaker.guarded_llm_create, client,
             model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": prompt_parts["system"]},
@@ -1739,7 +1745,7 @@ Region: {region} ({region_info["currency"]})
 SEARCH CONTEXT:
 {_wrap_search_context(search_context[:2000])}"""
 
-        response = await _llm_breaker.guarded_llm_create(client,
+        response = await _llm_router.route("price", _llm_breaker.guarded_llm_create, client,
             model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": PRICE_EXTRACTION_SYSTEM},
@@ -1788,7 +1794,7 @@ Region: {region} ({region_info["currency"]})
         _decline = price_fallback_may_decline_enabled()
         _model = standard_model()
         _json_mode = {"response_format": {"type": "json_object"}} if _decline else {}
-        response = await _llm_breaker.guarded_llm_create(client,
+        response = await _llm_router.route("price_training", _llm_breaker.guarded_llm_create, client,
             model=_model,
             messages=[
                 {"role": "system", "content": PRICE_FALLBACK_SYSTEM_MAY_DECLINE if _decline else PRICE_FALLBACK_SYSTEM},
@@ -1844,7 +1850,7 @@ Category: {category}
 SEARCH CONTEXT:
 {_wrap_search_context(search_context[:2500])}"""
 
-        response = await _llm_breaker.guarded_llm_create(client,
+        response = await _llm_router.route("reviews", _llm_breaker.guarded_llm_create, client,
             model=(_model := standard_model()),
             messages=[
                 {"role": "system", "content": REVIEWS_EXTRACTION_SYSTEM},
@@ -2640,7 +2646,7 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
         # COMPARISON_SYSTEM already contains "Return ONLY valid JSON" so
         # OpenAI's prompt-validation contract is satisfied.
         try:
-            response = await _llm_breaker.guarded_llm_create(client,
+            response = await _llm_router.route("verdict", _llm_breaker.guarded_llm_create, client,
                 model=verdict_model,
                 messages=[
                     {"role": "system", "content": system_msg},
@@ -2682,7 +2688,7 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
                 # already-saturated mini TPM budget. Worst-case chain total is
                 # model_config.verdict_chain_max_attempts(), read per call.
                 from app.services.model_config import openai_fallback_max_retries
-                response = await _llm_breaker.guarded_llm_create(
+                response = await _llm_router.route("verdict_fallback", _llm_breaker.guarded_llm_create,
                     client.with_options(
                         max_retries=openai_fallback_max_retries()
                     ),
@@ -2701,7 +2707,10 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
         # Record usage (only 4o calls actually update the counter — mini is no-op).
         usage = getattr(response, "usage", None)
         tokens_used = getattr(usage, "total_tokens", 0) if usage else 0
-        await model_router.record_usage(verdict_model, tokens_used)
+        # S81-06 (2.5): a Claude-served verdict never consumes the gpt-4o daily
+        # counter (False for every OpenAI response object, so flag OFF is identical).
+        if getattr(response, "provider", None) != "anthropic":
+            await model_router.record_usage(verdict_model, tokens_used)
 
         result = response.choices[0].message.content.strip()
         if result.startswith("```"):
@@ -2769,6 +2778,13 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
         return parsed, usage
 
     except Exception as e:
+        # S81-06 (R-S06-2): under ANY role flag ON a verdict-site
+        # LLMUnavailableError is a NON-DELIVERY: re-raised (logged at WARNING by
+        # type, GC-3) so both compare entries map it to the coded 503
+        # LLM_UNAVAILABLE. Every role flag OFF: the base delivery below.
+        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("Comparison generation error: %s", type(e).__name__)
+            raise
         logger.error(f"Comparison generation error: {e}", exc_info=True)
         return {"winner_index": 0, "error": COMPARISON_GENERATION_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 

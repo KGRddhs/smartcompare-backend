@@ -104,6 +104,16 @@ def uses_completion_token_param(model: str) -> bool:
     return bool(_GPT5_FAMILY.match((model or "").strip()))
 
 
+# S81-06: a Claude id takes no temperature (a non-default value is a 400 on Haiku /
+# Sonnet 5.5 and the pinned SDK has no such parameter) and keeps ``max_tokens``.
+_CLAUDE_FAMILY = re.compile(r"^claude-", re.IGNORECASE)
+
+
+def is_claude_model(model: Any) -> bool:
+    """True for an Anthropic Claude id (``claude-*``, any case)."""
+    return isinstance(model, str) and bool(_CLAUDE_FAMILY.match(model.strip()))
+
+
 def sampling_kwargs(model: str, temperature: Optional[float]) -> Dict[str, Any]:
     """Return the sampling kwarg appropriate to ``model``.
 
@@ -118,7 +128,7 @@ def sampling_kwargs(model: str, temperature: Optional[float]) -> Dict[str, Any]:
     winner-variance bucket to it). Dropping it on a GPT-5 id is NOT free —
     re-run that A/B before trusting the output.
     """
-    if temperature is None or uses_completion_token_param(model):
+    if temperature is None or uses_completion_token_param(model) or is_claude_model(model):
         return {}
     return {"temperature": temperature}
 
@@ -203,3 +213,51 @@ def verdict_chain_max_attempts() -> int:
     429/rate/quota failure — (1 + fallback retries) on the standard model.
     Shipped default: (1+2)+(1+2) = 6. Runbook launch setting: (1+1)+(1+0) = 3."""
     return (1 + openai_max_retries()) + (1 + openai_fallback_max_retries())
+
+
+# ---------------------------------------------------------------------------
+# S81-06 ANTHROPIC-ROUTER: the Claude role models. Read per call
+# (``ANTHROPIC_MODEL_<ROLE>``, blank -> the default, the ``_resolve`` rule), used
+# only on the Claude branch of ``app.services.llm_router`` (every role flag OFF
+# reads none of these). Sonnet 5.5 is the ONE escalation model.
+# ---------------------------------------------------------------------------
+_ANTHROPIC_ROLE_DEFAULTS: Dict[str, str] = {
+    "text": "claude-haiku-5-5",
+    "vision": "claude-haiku-5-5",
+    "verdict": "claude-haiku-5-5",
+    "critic": "claude-haiku-5-5",
+    "moderation": "claude-haiku-5-5",
+}
+_ANTHROPIC_ESCALATION_DEFAULT = "claude-sonnet-5-5"
+
+
+def anthropic_model(role: str) -> str:
+    """The Claude id for ``role`` (``ANTHROPIC_MODEL_<ROLE>``; unset or blank ->
+    claude-haiku-5-5). A ``KeyError`` for an unknown role (a programming error)."""
+    default = _ANTHROPIC_ROLE_DEFAULTS[role]
+    raw = os.getenv(f"ANTHROPIC_MODEL_{role.upper()}")
+    if raw is None:
+        return default
+    return raw.strip() or default
+
+
+def anthropic_escalation_model() -> str:
+    """The escalation id (``ANTHROPIC_MODEL_ESCALATION``; unset or blank ->
+    claude-sonnet-5-5)."""
+    raw = os.getenv("ANTHROPIC_MODEL_ESCALATION")
+    if raw is None:
+        return _ANTHROPIC_ESCALATION_DEFAULT
+    return raw.strip() or _ANTHROPIC_ESCALATION_DEFAULT
+
+
+def anthropic_max_retries() -> int:
+    """SDK retry ceiling for the AsyncAnthropic client (``ANTHROPIC_MAX_RETRIES``,
+    default 2 = the SDK default; the ``_resolve_retries`` rule)."""
+    return _resolve_retries("ANTHROPIC_MAX_RETRIES", _SDK_DEFAULT_MAX_RETRIES)
+
+
+def resolved_anthropic_models() -> Dict[str, str]:
+    """Every Claude role resolved plus the escalation model (for diagnostics)."""
+    out = {role: anthropic_model(role) for role in sorted(_ANTHROPIC_ROLE_DEFAULTS)}
+    out["escalation"] = anthropic_escalation_model()
+    return out

@@ -442,6 +442,17 @@
       "hosts": [],
       "gate_flag": null,
       "personal_data": true
+    },
+    "anthropic": {
+      "kind": "processor",
+      "module": [
+        "app/services/llm_router.py"
+      ],
+      "hosts": [
+        "api.anthropic.com"
+      ],
+      "gate_flag": "ENABLE_ANTHROPIC_TEXT",
+      "personal_data": true
     }
   },
   "bahrain_towns_latin": [

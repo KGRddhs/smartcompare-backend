@@ -102,7 +102,11 @@ def _clean_env(monkeypatch):
             monkeypatch.delenv(k, raising=False)
     for k in ("ENABLE_LLM_PREFLIGHT_BREAKER", "ENABLE_PRICE_FALLBACK_MAY_DECLINE",
               "ENABLE_VERDICT_PROMPT_TRUTH", "ENABLE_SPECS_NO_FABRICATION",
-              "ENABLE_PRICE_PARSE_OFFLOAD", "ENABLE_VISION_IDENTITY_V2", "ENABLE_URL_MODE_V2"):
+              "ENABLE_PRICE_PARSE_OFFLOAD", "ENABLE_VISION_IDENTITY_V2", "ENABLE_URL_MODE_V2",
+              # S81-06 (E2): a developer .env must not route a site to Claude here.
+              "ENABLE_ANTHROPIC_TEXT", "ENABLE_ANTHROPIC_VISION", "ENABLE_ANTHROPIC_VERDICT",
+              "ENABLE_ANTHROPIC_CRITIC", "ENABLE_ANTHROPIC_MODERATION",
+              "ENABLE_SONNET_ESCALATION", "ENABLE_OPENAI_PRE_V3"):
         monkeypatch.delenv(k, raising=False)
     yield
 
@@ -123,7 +127,10 @@ def _chat_sites():
             if not isinstance(node, ast.Call):
                 continue
             callee = ast.unparse(node.func)
-            if not (callee.endswith("completions.create") or callee.endswith("guarded_llm_create")):
+            # S81-06 (E1): the 16 sites call `_llm_router.route(<key>, <dispatch>, ...)`;
+            # the router's internal `dispatch(client, **kwargs)` is not a site.
+            if not (callee.endswith("completions.create") or callee.endswith("guarded_llm_create")
+                    or callee.endswith("llm_router.route")):
                 continue
             if _is_wrapper_passthrough(path, node):
                 continue
@@ -133,11 +140,12 @@ def _chat_sites():
 
 def test_no_call_site_passes_raw_sampling_kwargs():
     """M1 RED: AST over app/**/*.py, callee ending `completions.create` OR `guarded_llm_create`
-    (minus the wrapper's two `**kwargs` pass-throughs): >= 15 sites (so a matcher that stops
-    matching cannot pass vacuously) and NO literal `temperature=` / `max_tokens=` keyword.
-    Base: 15 sites, 12 raw temperature, 6 raw max_tokens."""
+    OR `llm_router.route` (S81-06, E1; minus the wrapper's two `**kwargs` pass-throughs):
+    >= 16 sites (so a matcher that stops matching cannot pass vacuously) and NO literal
+    `temperature=` / `max_tokens=` keyword. Base: 15 sites, 12 raw temperature, 6 raw
+    max_tokens; since S81-06 the 16 `route` calls."""
     sites = _chat_sites()
-    assert len(sites) >= 15, f"only {len(sites)} chat-completion sites matched (matcher narrowed?)"
+    assert len(sites) >= 16, f"only {len(sites)} chat-completion sites matched (matcher narrowed?)"
     raw = [(where, kw.arg) for where, _c, node in sites for kw in node.keywords
            if kw.arg in ("temperature", "max_tokens")]
     assert not raw, f"{len(raw)} literal sampling/token kwargs bypass model_config: {raw}"

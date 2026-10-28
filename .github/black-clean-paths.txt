@@ -59,3 +59,5 @@ tests/test_registry_ounass_bh_l12.py
 tests/test_route_introspection.py
 tests/test_s81_d03_deny_and_guards.py
 tests/test_s81_s05_request_context.py
+app/services/llm_router.py
+tests/test_s81_s06_router_gate_rows.py

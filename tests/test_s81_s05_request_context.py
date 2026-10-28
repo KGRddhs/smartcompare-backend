@@ -1319,7 +1319,12 @@ _ALLOWED_CTX_FILES = {
     "app/middleware/request_context.py",
     "app/main.py",
     "app/api/auth_routes.py",
+    # S81-06 (E9 / R-S05-10 / R-S06-16): the first consumer; the import shape and
+    # the attribute uses are pinned below.
+    "app/services/llm_router.py",
 }
+# S81-06 (E9): the router's only reads of the leaf.
+_ROUTER_CTX_ATTRS = {"consent_version", "header_state"}
 
 
 def test_s05_p01_no_consumer_in_app():
@@ -1341,10 +1346,37 @@ def test_s05_p01_no_consumer_in_app():
                 assert rel in {
                     "app/utils/request_context.py",
                     "app/middleware/request_context.py",
+                    # S81-06 (E9): the consent_state log constant and the header name.
+                    *(
+                        ("app/services/llm_router.py",)
+                        if needle in ("header_state", "x-ai-consent-version")
+                        else ()
+                    ),
                 }, (rel, needle)
         if "request_context" not in text:
             continue
         tree = ast.parse(text)
+        if rel == "app/services/llm_router.py":
+            # S81-06 (E9): exactly `from app.utils import request_context as _request_context`
+            # and attribute uses limited to {consent_version, header_state}.
+            froms = [
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.ImportFrom)
+                and any(a.name == "request_context" for a in n.names)
+            ]
+            assert [
+                (n.module, [(a.name, a.asname) for a in n.names]) for n in froms
+            ] == [("app.utils", [("request_context", "_request_context")])], froms
+            used = {
+                n.attr
+                for n in ast.walk(tree)
+                if isinstance(n, ast.Attribute)
+                and isinstance(n.value, ast.Name)
+                and n.value.id == "_request_context"
+            }
+            assert used == _ROUTER_CTX_ATTRS, used
+            continue
         for n in ast.walk(tree):
             if isinstance(n, ast.ImportFrom) and n.module == LEAF_NAME:
                 got = {a.name for a in n.names}

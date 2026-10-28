@@ -179,6 +179,73 @@ def _docstring_ids(tree):
     return ids
 
 
+# S81-06 (E4): the Anthropic Messages-API dispatch surface (.create / .stream /
+# .parse / .count_tokens on .messages, .messages.batches or .beta.messages), allowed
+# only inside llm_router.guarded_anthropic_create.
+ANTHROPIC_CHOKEPOINT_FILE = APP / "services" / "llm_router.py"
+ANTHROPIC_DISPATCH_METHODS = frozenset({"create", "stream", "parse", "count_tokens"})
+ANTHROPIC_BYPASS_SHAPES = {
+    "messages_create": "await client.messages.create(model='m', max_tokens=1, messages=[])",
+    "batches_create": "await client.messages.batches.create(requests=[])",
+    "beta_messages_create": "await client.beta.messages.create(model='m', max_tokens=1, messages=[])",
+}
+ANTHROPIC_LEGIT_SHAPES = {
+    "list_append": "self.messages.append(x)",
+}
+# S81-06 fix round 1 (F1-13): two more arms OUTSIDE app/services/llm_router.py --
+# (a) an assignment binding a Messages object (an Attribute named `messages`, or
+# `batches` of it) to a name (the alias bypass), (b) the Messages REST path string.
+ANTHROPIC_ALIAS_REST_BYPASS_SHAPES = {
+    "alias_messages": "msgs = client.messages\nawait msgs.create(model='m', max_tokens=1, messages=[])",
+    "alias_batches": "b = client.messages.batches\nawait b.create(requests=[])",
+    "alias_annotated": "msgs: object = client.messages",
+    "alias_walrus": "(msgs := client.messages)",
+    "rest_path": "await http.post('https://api.anthropic.com/v1/messages', json={})",
+}
+ANTHROPIC_ALIAS_REST_LEGIT_SHAPES = {
+    "subscript_messages": "msgs = payload['messages']",
+    "attribute_store": "self.messages = []",
+    "other_path": "url = '/v1/models'",
+}
+
+
+def _anthropic_alias_rest_hits(tree):
+    hits = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign):
+            named = any(isinstance(t, ast.Name) for t in n.targets)
+        elif isinstance(n, (ast.AnnAssign, ast.NamedExpr)):
+            named = isinstance(n.target, ast.Name)
+        else:
+            named = False
+        if named and n.value is not None:
+            v = n.value
+            is_messages = isinstance(v, ast.Attribute) and v.attr == "messages"
+            is_batches = (isinstance(v, ast.Attribute) and v.attr == "batches"
+                          and isinstance(v.value, ast.Attribute) and v.value.attr == "messages")
+            if is_messages or is_batches:
+                hits.append("line %d a Messages object bound to a name" % getattr(n, "lineno", 0))
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and "/v1/messages" in n.value:
+            hits.append("line %d the Messages REST path" % getattr(n, "lineno", 0))
+    return hits
+
+
+def _anthropic_surface_hits(tree, allowed_ids=frozenset()):
+    hits = []
+    for n in ast.walk(tree):
+        if id(n) in allowed_ids:
+            continue
+        if not (isinstance(n, ast.Attribute) and n.attr in ANTHROPIC_DISPATCH_METHODS):
+            continue
+        v = n.value
+        on_messages = isinstance(v, ast.Attribute) and v.attr == "messages"
+        on_batches = (isinstance(v, ast.Attribute) and v.attr == "batches"
+                      and isinstance(v.value, ast.Attribute) and v.value.attr == "messages")
+        if on_messages or on_batches:
+            hits.append("line %d .%s on a Messages object" % (getattr(n, "lineno", 0), n.attr))
+    return hits
+
+
 def _is_chat_completions(node):
     return (isinstance(node, ast.Attribute) and node.attr == "completions"
             and isinstance(node.value, ast.Attribute) and node.value.attr == "chat")
@@ -328,6 +395,30 @@ def test_u3c_02_no_chat_dispatch_outside_the_chokepoint_under_app():
             allowed = frozenset(id(n) for n in ast.walk(_func(tree, "guarded_llm_create")))
         offenders += ["%s %s" % (path.relative_to(REPO).as_posix(), h) for h in _sdk_surface_hits(tree, allowed)]
     assert offenders == [], "OpenAI SDK surface outside guarded_llm_create: %s" % offenders
+    # S81-06 (E4): the Anthropic chokepoint beside the OpenAI one -- no Messages-API
+    # dispatch in app/ outside llm_router.guarded_anthropic_create (the ledger, the
+    # breaker and the spend admit cannot be bypassed).
+    for shape, src in ANTHROPIC_BYPASS_SHAPES.items():
+        assert _anthropic_surface_hits(ast.parse(src)), "harness: the rule misses the %s shape" % shape
+    for shape, src in ANTHROPIC_LEGIT_SHAPES.items():
+        assert _anthropic_surface_hits(ast.parse(src)) == [], "harness: the rule flags the legit %s shape" % shape
+    for shape, src in ANTHROPIC_ALIAS_REST_BYPASS_SHAPES.items():
+        assert _anthropic_alias_rest_hits(ast.parse(src)), "harness: the rule misses the %s shape" % shape
+    for shape, src in ANTHROPIC_ALIAS_REST_LEGIT_SHAPES.items():
+        assert _anthropic_alias_rest_hits(ast.parse(src)) == [], "harness: the rule flags the legit %s shape" % shape
+    anthropic_offenders = []
+    for path in _py_files(APP):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        allowed = frozenset()
+        if path == ANTHROPIC_CHOKEPOINT_FILE:
+            allowed = frozenset(id(n) for n in ast.walk(_func(tree, "guarded_anthropic_create")))
+        anthropic_offenders += ["%s %s" % (path.relative_to(REPO).as_posix(), h)
+                                for h in _anthropic_surface_hits(tree, allowed)]
+        if path != ANTHROPIC_CHOKEPOINT_FILE:  # F1-13: the alias + REST arms
+            anthropic_offenders += ["%s %s" % (path.relative_to(REPO).as_posix(), h)
+                                    for h in _anthropic_alias_rest_hits(tree)]
+    assert anthropic_offenders == [], (
+        "Anthropic Messages surface outside guarded_anthropic_create: %s" % anthropic_offenders)
 
 
 def test_u3c_03_call_sites_pass_no_store_or_extra_body():
@@ -340,7 +431,11 @@ def test_u3c_03_call_sites_pass_no_store_or_extra_body():
     sites, spreads, bad = 0, 0, []
     for path in _py_files(APP):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Call) and _dotted(node.func).endswith("guarded_llm_create"):
+            # S81-06 (E3): the 16 sites call `_llm_router.route(<key>, <x>.guarded_llm_create,
+            # client, ...)`; the denied-keyword and spread rules apply to those calls unchanged.
+            routed = (isinstance(node, ast.Call) and _dotted(node.func).endswith("llm_router.route")
+                      and len(node.args) >= 2 and _dotted(node.args[1]).endswith("guarded_llm_create"))
+            if routed or (isinstance(node, ast.Call) and _dotted(node.func).endswith("guarded_llm_create")):
                 sites += 1
                 where = "%s:%d" % (path.relative_to(REPO).as_posix(), node.lineno)
                 for kw in node.keywords:
@@ -356,8 +451,9 @@ def test_u3c_03_call_sites_pass_no_store_or_extra_body():
                         )
                         if not allowed:
                             bad.append("%s **%s is not an allowlisted spread" % (where, ast.unparse(v)))
-    assert sites >= 15, "harness: census floor is 15 call sites at dfbda511, saw %d" % sites
-    assert spreads >= 31, "harness: census floor is 31 spreads at dfbda511 (15 + 15 + 1), saw %d" % spreads
+    # S81-06 (E3): 16 routed sites (16 + 16 + 1 = 33 spreads; was 15 sites / 31 at dfbda511).
+    assert sites >= 16, "harness: census floor is 16 routed call sites since S81-06, saw %d" % sites
+    assert spreads >= 33, "harness: census floor is 33 spreads since S81-06 (16 + 16 + 1), saw %d" % spreads
     assert bad == [], bad
 
 

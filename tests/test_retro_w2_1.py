@@ -172,7 +172,11 @@ def _zero_network(monkeypatch):
 @pytest.fixture(autouse=True)
 def _clean_flags(monkeypatch):
     for name in (METER, ENVELOPE, ANON_GATE, "ENABLE_LLM_PREFLIGHT_BREAKER",
-                 "ENABLE_STRICT_OPTIONAL_AUTH", "ENABLE_URL_MODE_V2"):
+                 "ENABLE_STRICT_OPTIONAL_AUTH", "ENABLE_URL_MODE_V2",
+                 # S81-06 E10: the seven router flags.
+                 "ENABLE_ANTHROPIC_TEXT", "ENABLE_ANTHROPIC_VISION", "ENABLE_ANTHROPIC_VERDICT",
+                 "ENABLE_ANTHROPIC_CRITIC", "ENABLE_ANTHROPIC_MODERATION",
+                 "ENABLE_SONNET_ESCALATION", "ENABLE_OPENAI_PRE_V3"):
         monkeypatch.delenv(name, raising=False)
 
 

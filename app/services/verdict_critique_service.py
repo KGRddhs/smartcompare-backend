@@ -34,6 +34,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from app.services import api_budget_service as _llm_breaker
+from app.services import llm_router as _llm_router
 from app.services.database_service import get_admin_supabase_client
 from app.services.model_config import critic_model, sampling_kwargs, token_limit_kwargs
 from app.services.openai_service import get_client
@@ -171,7 +172,7 @@ async def critique_verdict(
         # bare create(). A denied admission raises LLMUnavailableError, which the
         # enclosing `except Exception` already turns into "serve the original
         # verdict" — the documented contract of this function.
-        response = await _llm_breaker.guarded_llm_create(
+        response = await _llm_router.route("critique", _llm_breaker.guarded_llm_create,
             client,
             model=_model,
             messages=[
