@@ -486,3 +486,5 @@ tests/test_youtube_cited_evidence.py
 tests/test_youtube_flag_and_cache.py
 tests/test_zyte_seed_variant.py
 tests/test_zyte_service.py
+tests/test_s81_kb_schema.py
+tests/test_migration_041_user_events_public_select_policy.py
