@@ -9,6 +9,7 @@ route harness); PIN halves run with the FULL unit configuration (ruling B1).
 
 import ast
 import asyncio
+import json
 import logging
 import pathlib
 
@@ -29,6 +30,7 @@ from tests.test_s81_s06_anthropic_router import (  # noqa: F401  (the autouse fi
     RateLimitError,
     _base_dispatch_kwargs,
     _capture,
+    _classify_case,
     _full_config,
     _knobs,
     _mod_setup,
@@ -776,11 +778,55 @@ def _routed_calls(tree):
     ]
 
 
+# RB6-5 (m-RV5; mutant RV15): the EXACT set of the 16 routed site keys (names, not
+# a floor): an aliased un-route, a new site or a renamed key changes the set.
+G13_SITE_KEYS = frozenset(
+    {
+        "classify",
+        "parse",
+        "specs",
+        "price",
+        "price_training",
+        "reviews",
+        "verdict",
+        "verdict_fallback",
+        "image_tier3",
+        "vision_v1",
+        "vision_v2",
+        "specs_targeted",
+        "specs_synthesized",
+        "disambiguate",
+        "url_extract",
+        "critique",
+    }
+)
+
+
+def _routed_site_keys(tree):
+    """The literal site key of every routed call (the _routed_calls predicate); a
+    non-literal key reads '<non-literal>', which no pinned name equals."""
+    keys = []
+    for n in ast.walk(tree):
+        if (
+            isinstance(n, ast.Call)
+            and _dotted_name(n.func).split(".")[-1] == "route"
+            and "llm_router" in _dotted_name(n.func)
+            and len(n.args) >= 2
+            and _dotted_name(n.args[1]).split(".")[-1] == "guarded_llm_create"
+        ):
+            first = n.args[0]
+            literal = isinstance(first, ast.Constant) and isinstance(first.value, str)
+            keys.append(first.value if literal else "<non-literal>")
+    return keys
+
+
 def test_g13_every_llm_site_dispatches_through_the_router():
     """F1-14: an AST census over app/ finds NO call to guarded_llm_create( outside
-    app/services/llm_router.py and app/services/api_budget_service.py, and at least
-    16 _llm_router.route(<site>, <x>.guarded_llm_create, ...) calls (the 16 sites);
-    self-checks: a direct call and a routed call are each recognised."""
+    app/services/llm_router.py and app/services/api_budget_service.py; RB6-5
+    (m-RV5, mutant RV15): the _llm_router.route(<site>, <x>.guarded_llm_create, ...)
+    calls carry EXACTLY the 16 pinned site keys (a frozenset of names, not a floor
+    >= 16), each routed once; self-checks: a direct call, a routed call and its
+    site key are each recognised."""
     direct_src = (
         "async def f(c):\n    await _llm_breaker.guarded_llm_create(c, model='m')\n"
     )
@@ -790,16 +836,146 @@ def test_g13_every_llm_site_dispatches_through_the_router():
     )
     assert _direct_guarded_calls(ast.parse(direct_src)), "harness: direct call missed"
     assert _routed_calls(ast.parse(routed_src)), "harness: routed call missed"
+    assert _routed_site_keys(ast.parse(routed_src)) == ["x"], "harness: key missed"
     assert (
         _direct_guarded_calls(ast.parse(routed_src)) == []
     ), "harness: routed != direct"
-    direct, routed = [], 0
+    direct, keys = [], []
     for path in sorted(APP_DIR.rglob("*.py")):
         if path in ROUTING_EXEMPT:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         rel = path.relative_to(APP_DIR.parent).as_posix()
         direct += ["%s:%d" % (rel, ln) for ln in _direct_guarded_calls(tree)]
-        routed += len(_routed_calls(tree))
+        keys += _routed_site_keys(tree)
     assert direct == [], "guarded_llm_create called outside the router: %s" % direct
-    assert routed >= 16, "harness: census floor is 16 routed sites, saw %d" % routed
+    assert len(G13_SITE_KEYS) == 16
+    assert frozenset(keys) == G13_SITE_KEYS, "routed site keys: missing %s, new %s" % (
+        sorted(G13_SITE_KEYS - set(keys)),
+        sorted(set(keys) - G13_SITE_KEYS),
+    )
+    assert len(keys) == len(G13_SITE_KEYS), "a site key routed twice: %s" % sorted(keys)
+
+
+# ===========================================================================
+# REBASE ROUND (RULINGS_REBASE_S81_06 RB6-2, RB6-3, RB6-4; RB6-5 is G13 above):
+# the pins the fix-1 re-verifier named (m-RV1, m-RV2, m-RV4)
+# ===========================================================================
+MOD_STEP_LINE = "[ROUTER] moderation step failed class=%s -- failing closed"
+
+
+# ---------------------------------------------------------------------------
+# G14 (RB6-2; m-RV1; mutant RV7): the moderation catch-all logs the TYPE only
+# ---------------------------------------------------------------------------
+def test_g14_moderation_catch_all_logs_the_type_only(monkeypatch, consent, caplog):
+    """RB6-2: MODERATION ON + consent 3, a failure of any other class inside the
+    classifier step -> SafetyResult(allowed=False, reason='unavailable') and ONE
+    WARNING carrying type(exc).__name__ only; the exception text reaches no log
+    record (message, args or traceback)."""
+    caplog.set_level(logging.DEBUG)
+    mods = _mod_setup(monkeypatch, consent)
+    text = "classifier step broke " + FACTORY_SENTINEL
+
+    async def _boom(**kw):
+        raise LookupError(text)
+
+    monkeypatch.setattr(_router(), "guarded_anthropic_create", _boom)
+    res = _run(
+        css.get_content_safety_service().moderate_output("a synthetic shopping text")
+    )
+    assert (res.allowed, res.reason) == (False, "unavailable"), res
+    assert mods == []
+    lines = [
+        r
+        for r in caplog.records
+        if r.getMessage().startswith("[ROUTER] moderation step failed")
+    ]
+    got = [r.getMessage() for r in lines]
+    assert got == [MOD_STEP_LINE % "LookupError"], got
+    assert [r.levelno for r in lines] == [logging.WARNING]
+    assert [r.exc_info for r in lines] == [None]
+    assert _no_sentinel_logged(caplog, FACTORY_SENTINEL) == []
+    assert FACTORY_SENTINEL not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# G15 (RB6-3; m-RV2; mutant RV9): a CLOSED breaker (no probe) answered by a
+# terminal 4xx records NO success and no failure, for every terminal class
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("seeded", [False, True], ids=["closed-empty", "closed-fails2"])
+@pytest.mark.parametrize("i", range(len(TERMINAL)))
+def test_g15_closed_breaker_terminal_4xx_records_no_success(
+    monkeypatch, consent, redis_fake, i, seeded
+):
+    """RB6-3: TEXT ON + consent 3, circuit:anthropic CLOSED (no state, or a CLOSED
+    state carrying 2 failures: no half-open probe either way), the call ends in a
+    terminal 4xx -> a terminal AnthropicDispatchError, record_success ZERO times
+    (succ == []), no record_failure and no breaker write: a terminal 4xx never
+    resets a CLOSED failure streak."""
+    key = abs_._circuit_key("anthropic")
+    if seeded:
+        redis_fake.data[key] = json.dumps(
+            {"state": abs_.CB_CLOSED, "failure_count": 2, "tripped_at": 0}
+        )
+    st, exc, fails, succ = _classify_case(monkeypatch, consent, TERMINAL[i], redis_fake)
+    disp = _sym("AnthropicDispatchError")
+    assert st == "raised" and isinstance(exc, disp), (st, exc)
+    assert exc.transient is False, exc
+    assert succ == [], succ
+    assert fails == [], fails
+    assert [k for k in redis_fake.sets if k == key] == []
+    if seeded:
+        assert json.loads(redis_fake.data[key])["failure_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# G16 (RB6-4; m-RV4; the ONE code hunk of the rebase round): a parseable answer
+# whose `flagged` is not a bool is MALFORMED and fails CLOSED
+# ---------------------------------------------------------------------------
+_MISSING = object()
+
+
+def _mod_answer(flagged):
+    body = {"category": "violence", "uncertain": False}
+    if flagged is not _MISSING:
+        body["flagged"] = flagged
+    return json.dumps(body)
+
+
+@pytest.mark.parametrize(
+    "flagged, want",
+    [
+        ("true", (False, "malformed")),
+        ("false", (False, "malformed")),
+        (1, (False, "malformed")),
+        (None, (False, "malformed")),
+        (_MISSING, (False, "malformed")),
+        (True, (False, "violence")),
+        (False, (True, None)),
+    ],
+    ids=[
+        "str-true",
+        "str-false",
+        "int-1",
+        "null",
+        "missing",
+        "bool-true",
+        "bool-false",
+    ],
+)
+def test_g16_moderation_non_bool_flagged_is_malformed(
+    monkeypatch, consent, flagged, want
+):
+    """RB6-4: MODERATION ON + consent 3, a parseable classifier answer whose
+    `flagged` is not a bool (the strings 'true' / 'false', an int, null, absent) ->
+    SafetyResult(allowed=False, reason='malformed'); a bool `flagged` keeps its R29
+    outcome (True -> blocked with the category, False -> allowed);
+    moderations.create is never called."""
+    mods = _mod_setup(monkeypatch, consent)
+    ANTH.default = c_msg(_mod_answer(flagged))
+    res = _run(
+        css.get_content_safety_service().moderate_output("a product description text")
+    )
+    assert ANTH.calls, "the Claude classifier was never called"
+    assert (res.allowed, res.reason) == want, res
+    assert mods == []

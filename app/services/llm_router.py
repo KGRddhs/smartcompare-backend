@@ -1214,6 +1214,10 @@ async def moderate_with_claude(text: str) -> Tuple[bool, Optional[str]]:
         )
         if out is None:
             return False, reason
+    if not isinstance(out.get("flagged"), bool):
+        # RB6-4 (m-RV4): a parseable answer whose ``flagged`` is not a bool breaks
+        # MODERATION_SCHEMA, so it is MALFORMED and fails CLOSED like bad JSON.
+        return False, "malformed"
     if out.get("flagged") is True:
         category = out.get("category")
         return False, (
