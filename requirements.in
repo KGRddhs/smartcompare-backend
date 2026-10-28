@@ -31,3 +31,7 @@ slowapi>=0.1.9
 sentry-sdk[fastapi]>=1.40.0
 # PYSEC-2026-4320 (2026-10-23): certifi 2026.7.22 is advised against; CI pip-audit --strict blocks below the fix. Transitive floor only.
 certifi>=2026.10.19
+# S81-06 lock commit (2026-10-28, the #367 pattern): dnspython 2.8.0 (via email-validator)
+# carries CVE-2026-114605; pip-audit --strict blocks CI until the lock holds >= 2.9.0
+# (released 2026-10-09). Floor only: the resolver picks the newest allowed release.
+dnspython>=2.9.0
