@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "watchPatterns": [
+      "scripts/cron_robots_registry.py",
+      "app/services/robots_registry.py",
+      "app/services/robots_eval.py",
+      "railway.robots.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -m scripts.cron_robots_registry",
+    "restartPolicyType": "NEVER"
+  }
+}

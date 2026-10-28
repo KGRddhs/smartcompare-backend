@@ -291,8 +291,10 @@ def _expected_currency_for(apex: str) -> str:
     if pinned:
         return pinned.upper()
     try:
-        from app.services.source_router import SOURCE_REGISTRY
-        for src in SOURCE_REGISTRY:
+        # S81-15: the LOOKUP registry (SOURCE_REGISTRY itself with
+        # ENABLE_MERCHANT_REGISTRY_DB off), so a blocked host keeps its currency.
+        from app.services.source_router import registry_lookup_rows
+        for src in registry_lookup_rows():
             domain = (getattr(src, "domain", "") or "").lower()
             if domain.startswith("www."):
                 domain = domain[4:]
