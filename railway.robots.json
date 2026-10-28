@@ -5,6 +5,8 @@
       "scripts/cron_robots_registry.py",
       "app/services/robots_registry.py",
       "app/services/robots_eval.py",
+      "app/services/merchant_registry.py",
+      "app/services/deny_hosts.py",
       "railway.robots.json"
     ]
   },

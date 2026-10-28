@@ -7,18 +7,25 @@ this unit (D14 LIVE-ROBOTS owns the per-fetch lookup of the persisted record).
 
 WHAT A RUN DOES. It reads every kb_merchants row, picks the due ones (never read
 first, then the oldest ``robots.next_reread``, then host; at most
-``ROBOTS_CRON_MAX_HOSTS``), and for each, strictly one request at a time:
+``ROBOTS_CRON_MAX_HOSTS``; a host is due when its ``next_reread``, the read time
++ 24 h (the RFC 9309 cache bound), is at or before the run start plus
+``ROBOTS_DUE_SLACK_SECONDS``, read once per run, so a daily run re-reads every
+host the previous daily run read), and for each, strictly one request at a time:
 
 * reads ``/robots.txt`` as the named robots agent (``robots_eval.QARENBOT_UA``,
   never a browser impersonation) from the probe ORIGIN: the origin of the row's
-  sample PDP when that URL lives on the row's own site (www and apex are
-  different origins), else the row's own ``https://<host>``, with the sample's
-  origin listed under ``robots.other_origins`` (D14 treats an origin without a
-  record as missing: skip and queue);
+  sample PDP when that URL lives on the row's own site (the host or a subdomain
+  of it; www and apex are different origins), else the row's own
+  ``https://<host>``, with the sample's origin listed under
+  ``robots.other_origins`` (a sample on a PARENT host, the salla.sa store pages,
+  included; D14 treats an origin without a record as missing: skip and queue);
 * follows redirects ITSELF (``allow_redirects=False`` on every fetch, at most 5
   hops, the SSRF validator on the first URL and on EVERY hop; a refused first URL
   is ``robots_unreadable`` with ``health.ssrf = "initial"``, a refused hop is
-  ``ssrf_redirect``); a redirected robots.txt governs the ORIGINAL origin;
+  ``ssrf_redirect``, and a host that does not resolve is ``robots_unreadable``
+  with ``health.dns = "unresolved"``, never an SSRF label); a redirected
+  robots.txt governs the ORIGINAL origin; every body is capped at
+  ``MAX_BODY_BYTES`` before it is decoded;
 * decides fail-closed (``decide_robots``): 404/410 allow-all; any other non-2xx,
   a timeout, a network error or a challenge page is unreadable; a challenge is
   ONLY a wall signature on an HTML-shaped body (``price_service.classify_capture``)
@@ -37,10 +44,13 @@ first, then the oldest ``robots.next_reread``, then host; at most
   allow AND ``tos.verdict == "allowed"`` AND one validated PDP with a priced
   extraction AND a known platform; a challenged host is parked
   (``challenge.parked_until``); rows blocked for deny / owner / tos, and every
-  deny_hosts host, are never fetched and never written;
+  deny_hosts host, are never fetched and never written (``probe_host`` and
+  ``classify_host`` refuse a deny_hosts host by name before any request, so the
+  seed's residential read and the classifier keep the same belt);
 * honours the 2026-08-31 ruling's Option C rider: a residential or operator
   record younger than 30 days is never replaced by a datacenter result, which is
-  kept under ``health.last_datacenter_result`` only;
+  kept under ``health.last_datacenter_result`` only (``robots.next_reread`` moves
+  to the day the protection lapses, so the row is not re-read every run);
 * writes each row with ONE conditional update (``eq('updated_at', <seen>)``); a
   lost race is logged by host and skipped until the next run.
 
@@ -60,10 +70,12 @@ import asyncio
 import hashlib
 import html as _html
 import inspect
+import ipaddress
 import logging
 import math
 import os
 import re
+import socket
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 from urllib.parse import urljoin, urlsplit
@@ -91,6 +103,20 @@ REREAD_HOURS = 24
 MAX_REDIRECT_HOPS = 5
 MAX_RULES_PER_AGENT = 200
 MAX_BODY_CHARS = 3_000_000
+#: The byte cap of every fetched body, applied BEFORE decoding (F1-11).
+MAX_BODY_BYTES = MAX_BODY_CHARS
+#: ``ROBOTS_DUE_SLACK_SECONDS`` (F1-3): a host is due when its ``next_reread`` is at or
+#: before the run start plus this slack (default 1 h, capped at 6 h).
+DUE_SLACK_DEFAULT_SECONDS = 3600.0
+DUE_SLACK_MAX_SECONDS = 21600.0
+#: ``default_validate``'s answers (F1-13): fetch / a refused name or address / no resolution.
+VALIDATE_OK = "ok"
+VALIDATE_SSRF = "ssrf"
+VALIDATE_DNS = "dns"
+#: The bound of the one extra resolve that tells a resolver failure from a refused address.
+DNS_CLASSIFY_TIMEOUT_SECONDS = 5.0
+#: The refusal every entry point gives a deny_hosts host before any request (F1-10).
+DENY_REFUSAL = "deny_hosts"
 #: Record sources the datacenter cron never downgrades while younger than the window (R-S15-4).
 TRUSTED_SOURCES: Tuple[str, ...] = ("residential", "operator")
 TRUSTED_RECORD_DAYS = 30
@@ -131,9 +157,9 @@ def _int_knob(name: str, default: int, low: int, high: int) -> int:
         value = float(str(raw).strip())
     except (TypeError, ValueError):
         return default
-    if not math.isfinite(value) or value < 1:
+    if not math.isfinite(value) or value <= 0:
         return default
-    return min(max(int(value), low), high)
+    return min(max(int(value), low), high)  # 0 < value < 1 clamps to low (spec 2.1, F1-23)
 
 
 def max_hosts_per_run() -> int:
@@ -144,6 +170,21 @@ def max_hosts_per_run() -> int:
 def challenge_park_days() -> int:
     """``ROBOTS_CHALLENGE_PARK_DAYS``: default 7, clamped 1..30."""
     return _int_knob("ROBOTS_CHALLENGE_PARK_DAYS", 7, 1, 30)
+
+
+def due_slack_seconds() -> float:
+    """``ROBOTS_DUE_SLACK_SECONDS``: default 3600; unset / garbage / inf / nan / < 0 -> 3600;
+    capped at 21600; 0 is allowed. Read ONCE per run by ``run_cron`` (F1-3)."""
+    raw = os.getenv("ROBOTS_DUE_SLACK_SECONDS")
+    if raw is None:
+        return DUE_SLACK_DEFAULT_SECONDS
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return DUE_SLACK_DEFAULT_SECONDS
+    if not math.isfinite(value) or value < 0:
+        return DUE_SLACK_DEFAULT_SECONDS
+    return min(value, DUE_SLACK_MAX_SECONDS)
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +391,8 @@ class RobotsVerdict(NamedTuple):
     """One robots read. ``state``: allow | disallow | unreadable (the most
     restrictive over ``probed``); ``challenge_vendor`` is set only when the
     response was a challenge; ``ssrf`` ("initial" | "hop") when the validator
-    refused the robots URL or a redirect hop."""
+    refused the robots URL or a redirect hop; ``dns`` ("unresolved") when the
+    host did not resolve (never an SSRF label, F1-13)."""
 
     state: str
     status: Optional[int]
@@ -361,6 +403,7 @@ class RobotsVerdict(NamedTuple):
     probed: Dict[str, str]
     rules_truncated: bool = False
     ssrf: Optional[str] = None
+    dns: Optional[str] = None
 
 
 def _rules_of(text: str) -> Tuple[Dict[str, List[List[str]]], bool]:
@@ -372,7 +415,7 @@ def _rules_of(text: str) -> Tuple[Dict[str, List[List[str]]], bool]:
     out: Dict[str, List[List[str]]] = {}
     truncated = False
     for key, agent in (("qarenbot", NAMED_AGENT), ("star", "*")):
-        rules = robots_eval._rules_for_agent(groups, agent) if groups else []
+        rules = robots_eval.rules_for_agent(groups, agent) if groups else []
         listed = [["allow" if is_allow else "disallow", pattern] for is_allow, pattern in rules if pattern]
         if len(listed) > MAX_RULES_PER_AGENT:
             listed = listed[:MAX_RULES_PER_AGENT]
@@ -468,9 +511,11 @@ def probe_plan(row: Dict[str, Any]) -> ProbePlan:
     """Where one row's robots record is read from (ruling R-S15-2, GATE GC-7).
 
     The probe origin is the origin of the row's first sample PDP when that URL
-    lives on the row's own site (the host, a subdomain of it, or its parent);
-    otherwise the row's own ``https://<host>``, and the sample's origin is listed
-    in ``other_origins`` (not fetched). The probed paths are ``/``, the sample
+    lives on the row's own site (the host or a subdomain of it); otherwise the
+    row's own ``https://<host>``, and the sample's origin is listed in
+    ``other_origins`` (not fetched). A sample on a PARENT host of the row is
+    another origin (F1-4: ``https://salla.sa/<store>/...`` is not the origin of
+    ``<store>.salla.sa``). The probed paths are ``/``, the sample
     path (same site only) and the adapter endpoint of the row's mechanism (when
     the adapter runs on that site)."""
     host = _row_host(row)
@@ -492,7 +537,7 @@ def probe_plan(row: Dict[str, Any]) -> ProbePlan:
     if sample:
         s_origin = _origin_of(sample)
         s_host = _host_of(sample)
-        if s_origin and s_host and (s_host == host or s_host.endswith("." + host) or host.endswith("." + s_host)):
+        if s_origin and s_host and (s_host == host or s_host.endswith("." + host)):
             origin = s_origin
             same_sample = sample
         elif s_origin:
@@ -526,6 +571,17 @@ def _cron_may_touch(row: Dict[str, Any]) -> bool:
     if status == "blocked":
         return reason in CRON_REASONS
     return status in ("live", "candidate")
+
+
+def entry_refusal(row: Any) -> Optional[str]:
+    """``DENY_REFUSAL`` for a row on a deny_hosts host, else None: the belt every
+    entry point applies BEFORE any request (the cron run through ``_cron_may_touch``,
+    the seed's residential read and the classifier through ``probe_host`` /
+    ``classify_host``; F1-10)."""
+    host = deny_hosts.normalize_host(_g(row, "host"))
+    if host and deny_hosts.is_denied_host(host):
+        return DENY_REFUSAL
+    return None
 
 
 def _young_trusted(stored: Any, now: datetime) -> bool:
@@ -566,7 +622,8 @@ def next_row_update(row: Dict[str, Any], verdict: Any, now: datetime, gates: Opt
     the promotion gates (``gates``; None = not evaluated: the robots record only).
     A challenge parks the host for ``ROBOTS_CHALLENGE_PARK_DAYS``. A residential or
     operator record younger than 30 days is never replaced by a datacenter read
-    (only ``health.last_datacenter_result`` changes, GATE GC-5)."""
+    (``health.last_datacenter_result`` records it, GATE GC-5, and
+    ``robots.next_reread`` moves to the day the protection lapses, F1-14)."""
     if not isinstance(row, dict) or not _cron_may_touch(row):
         return None
     status = row.get("status")
@@ -579,19 +636,29 @@ def next_row_update(row: Dict[str, Any], verdict: Any, now: datetime, gates: Opt
     state = _g(verdict, "state")
     vendor = _g(verdict, "challenge_vendor") or None
     ssrf = _g(verdict, "ssrf") or None
+    dns = _g(verdict, "dns") or None
     if source == "datacenter" and _young_trusted(row.get("robots"), now):
         last = {"state": state, "status": _g(verdict, "status"), "fetched_at": stamp}
         if vendor:
             last["challenge_vendor"] = vendor
         if ssrf:
             last["ssrf"] = ssrf
+        if dns:
+            last["dns"] = dns
         health["last_datacenter_result"] = last
-        return {"health": health, "updated_at": stamp}
+        # The stored verdict stands; the row is next due the day the protection lapses (F1-14).
+        kept = dict(row["robots"])
+        kept["next_reread"] = _iso(_parse_iso(kept.get("fetched_at")) + timedelta(days=TRUSTED_RECORD_DAYS))
+        return {"robots": kept, "health": health, "updated_at": stamp}
     health["last_status"] = _g(verdict, "status")
     if ssrf:
         health["ssrf"] = ssrf
     else:
         health.pop("ssrf", None)
+    if dns:
+        health["dns"] = dns
+    else:
+        health.pop("dns", None)
     failing = state != "allow" or vendor is not None
     park = None
     if vendor is not None:
@@ -667,22 +734,34 @@ class _Fetched(NamedTuple):
     refused: Optional[str]
 
 
+def _validation_reason(result: Any) -> str:
+    """A validator answer as a reason (F1-13): ``default_validate`` answers with a
+    reason string; an injected seam may answer with a bool (truthy = fetch). Any
+    other string is a refusal (fail closed)."""
+    if isinstance(result, str):
+        return result if result in (VALIDATE_OK, VALIDATE_DNS) else VALIDATE_SSRF
+    return VALIDATE_OK if result else VALIDATE_SSRF
+
+
 async def _fetch_following(url: str, fetch: Any, validate: Any, polite: Politeness, delay: Any, timeout: float,
                            may_fetch: Any = None) -> _Fetched:
     """GET ``url`` following redirects by hand: the SSRF validator on the first URL
     and on every hop, at most ``MAX_REDIRECT_HOPS`` hops, ``allow_redirects=False``
     on every request; the final status decides. ``refused`` = "initial" | "hop"
-    (the validator) | "robots" (``may_fetch`` refused a hop)."""
+    (the validator refused a name or an address) | "dns" (the host did not
+    resolve) | "robots" (``may_fetch`` refused a hop)."""
     current = url
     status: Optional[int] = None
     headers: Any = {}
     body = ""
     for hop in range(MAX_REDIRECT_HOPS + 1):
         try:
-            allowed = bool(await _maybe_await(validate(current)))
+            reason = _validation_reason(await _maybe_await(validate(current)))
         except Exception:  # noqa: BLE001 - a validator failure fails closed
-            allowed = False
-        if not allowed:
+            reason = VALIDATE_SSRF
+        if reason == VALIDATE_DNS:
+            return _Fetched(None, {}, "", current, "dns")
+        if reason != VALIDATE_OK:
             return _Fetched(None, {}, "", current, "initial" if hop == 0 else "hop")
         if may_fetch is not None and not may_fetch(current):
             return _Fetched(None, {}, "", current, "robots")
@@ -814,20 +893,28 @@ async def probe_host(row: Dict[str, Any], fetch: Any, sleep: Any, now: datetime,
                      polite: Optional[Politeness] = None, *, run_gates: bool = True) -> Dict[str, Any]:
     """Read one row's robots record and, for a candidate whose robots allow, run
     the promotion gates (``run_gates=False``: the robots read only, as the seed's
-    residential tool needs). Returns ``{"verdict", "gates", "plan"}``; never writes."""
+    residential tool needs). Returns ``{"verdict", "gates", "plan", "refused"}``;
+    never writes. A deny_hosts host is refused by name BEFORE any request
+    (``refused`` = ``DENY_REFUSAL``, ``verdict`` None; F1-10)."""
     polite = polite or Politeness(sleep)
     plan = probe_plan(row)
+    refusal = entry_refusal(row)
+    if refusal:
+        logger.info("[ROBOTS_REGISTRY] refused host=%s reason=%s", plan.host, refusal)
+        return {"verdict": None, "gates": None, "plan": plan, "refused": refusal}
     fetched = await _fetch_following(plan.robots_url, fetch, validate, polite, _stored_crawl_delay(row),
                                      ROBOTS_TIMEOUT_SECONDS)
     verdict = decide_robots(fetched.status, fetched.headers, fetched.body, plan.probe_urls)
     if fetched.refused in ("initial", "hop"):
         verdict = verdict._replace(ssrf=fetched.refused)
+    elif fetched.refused == "dns":
+        verdict = verdict._replace(dns="unresolved")
     gates = None
     if (run_gates and row.get("status") == "candidate" and verdict.state == "allow"
             and not verdict.challenge_vendor and not _young_trusted(row.get("robots"), now)):
         robots_body = fetched.body if fetched.status is not None and 200 <= fetched.status < 300 else ""
         gates = await _promotion_gates(row, plan, verdict, robots_body, fetch, validate, polite)
-    return {"verdict": verdict, "gates": gates, "plan": plan}
+    return {"verdict": verdict, "gates": gates, "plan": plan, "refused": None}
 
 
 async def classify_host(row: Dict[str, Any], fetch: Any, sleep: Any, validate: Any,
@@ -835,9 +922,14 @@ async def classify_host(row: Dict[str, Any], fetch: Any, sleep: Any, validate: A
     """The robots-gated platform probe for one LIVE row (ruling R-S15-13): read the
     robots record of the probe origin; when it allows, fetch the row's same-site
     sample URL once (robots allow on every hop) and run
-    ``platform_router.detect_platform`` over its bytes. A label, or None."""
+    ``platform_router.detect_platform`` over its bytes. A label, or None (a
+    deny_hosts host is refused by name before any request, F1-10)."""
     polite = polite or Politeness(sleep)
     plan = probe_plan(row)
+    refusal = entry_refusal(row)
+    if refusal:
+        logger.info("[ROBOTS_REGISTRY] refused host=%s reason=%s", plan.host, refusal)
+        return None
     fetched = await _fetch_following(plan.robots_url, fetch, validate, polite, _stored_crawl_delay(row),
                                      ROBOTS_TIMEOUT_SECONDS)
     verdict = decide_robots(fetched.status, fetched.headers, fetched.body, plan.probe_urls)
@@ -864,9 +956,12 @@ async def classify_host(row: Dict[str, Any], fetch: Any, sleep: Any, validate: A
 # the run
 # ---------------------------------------------------------------------------
 
-def due_rows(rows: Sequence[Any], now: datetime, limit: int) -> List[Dict[str, Any]]:
-    """The rows this run probes: touchable, not parked, due; never-read first (by
-    host), then the oldest ``robots.next_reread``, then host; at most ``limit``."""
+def due_rows(rows: Sequence[Any], now: datetime, limit: int, slack_seconds: float = 0.0) -> List[Dict[str, Any]]:
+    """The rows this run probes: touchable, not parked, due (``robots.next_reread``
+    at or before ``now`` + ``slack_seconds``; ``run_cron`` passes
+    ``ROBOTS_DUE_SLACK_SECONDS``, F1-3); never-read first (by host), then the
+    oldest ``robots.next_reread``, then host; at most ``limit``."""
+    horizon = now + timedelta(seconds=slack_seconds)
     keyed = []
     for row in rows:
         if not isinstance(row, dict) or not _cron_may_touch(row):
@@ -877,7 +972,7 @@ def due_rows(rows: Sequence[Any], now: datetime, limit: int) -> List[Dict[str, A
             continue
         stored = row.get("robots") if isinstance(row.get("robots"), dict) else {}
         nxt = _parse_iso(stored.get("next_reread"))
-        if nxt is not None and nxt > now:
+        if nxt is not None and nxt > horizon:
             continue
         keyed.append(((0 if nxt is None else 1), nxt or _EPOCH, _row_host(row), row))
     keyed.sort(key=lambda item: (item[0], item[1], item[2]))
@@ -931,7 +1026,8 @@ async def run_cron(client: Any, fetch: Any, sleep: Any, now_clock: Any, validate
         return counts
     counts["rows"] = len(rows)
     limit = max_hosts_per_run()
-    due = due_rows(rows, now_clock(), limit)
+    slack = due_slack_seconds()  # read ONCE per run (F1-3)
+    due = due_rows(rows, now_clock(), limit, slack)
     counts["due"] = len(due)
     logger.info("[ROBOTS_CRON] start rows=%d due=%d limit=%d", counts["rows"], counts["due"], limit)
     polite = Politeness(sleep)
@@ -945,6 +1041,8 @@ async def run_cron(client: Any, fetch: Any, sleep: Any, now_clock: Any, validate
         except Exception as exc:  # noqa: BLE001 - one host never ends the run
             counts["failed"] += 1
             logger.warning("[ROBOTS_CRON] probe failed reason=%s", type(exc).__name__)
+            continue
+        if verdict is None:  # refused by name (the deny belt): never fetched, never written
             continue
         label = "challenge" if verdict.challenge_vendor else verdict.state
         counts["probed"] += 1
@@ -986,8 +1084,10 @@ def utc_now() -> datetime:
 async def default_fetch(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = ROBOTS_TIMEOUT_SECONDS,
                         allow_redirects: bool = False) -> Tuple[int, Dict[str, str], str]:
     """One GET as the named agent (curl_cffi in a worker thread, NO browser
-    impersonation, redirects never followed by the library). Raises on a
-    network error (the caller maps it to unreadable)."""
+    impersonation, redirects never followed by the library). The body is capped
+    at ``MAX_BODY_BYTES`` BEFORE it is decoded (F1-11; the client still receives
+    the whole response). Raises on a network error (the caller maps it to
+    unreadable)."""
 
     def _get() -> Tuple[int, Dict[str, str], str]:
         from curl_cffi import requests as cffi_requests
@@ -995,27 +1095,69 @@ async def default_fetch(url: str, headers: Optional[Dict[str, str]] = None, time
         resp = cffi_requests.get(url, headers=dict(headers or _REQUEST_HEADERS), timeout=timeout,
                                  allow_redirects=bool(allow_redirects))
         response_headers = {str(k): str(v) for k, v in (resp.headers or {}).items()}
-        return int(resp.status_code), response_headers, (resp.text or "")[:MAX_BODY_CHARS]
+        capped = (resp.content or b"")[:MAX_BODY_BYTES]
+        return int(resp.status_code), response_headers, _decode_body(capped, getattr(resp, "encoding", None))
 
     return await asyncio.to_thread(_get)
 
 
-async def default_validate(url: str) -> bool:
-    """The SSRF check of every robots / PDP URL and redirect hop: an http(s) URL
-    whose host is not a local or internal name and resolves to no private,
-    loopback, link-local or reserved address (``url_validator``)."""
+def _decode_body(raw: bytes, encoding: Any) -> str:
+    """The capped body bytes as text: the response charset, else utf-8; an
+    undecodable byte is replaced and an unknown charset falls back to utf-8."""
     try:
-        host = (urlsplit(url).hostname or "").lower()
+        return raw.decode(encoding if isinstance(encoding, str) and encoding else "utf-8", errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
+
+
+async def default_validate(url: str) -> str:
+    """The SSRF check of every robots / PDP URL and redirect hop, answered as a
+    REASON (F1-13): ``VALIDATE_OK`` for an http(s) URL whose host is not a local or
+    internal name and resolves to no private, loopback, link-local or reserved
+    address (``url_validator``); ``VALIDATE_SSRF`` for a refused scheme, name or
+    address; ``VALIDATE_DNS`` when the refusal was the resolver's (NXDOMAIN, an
+    error, a timeout), which the cron records as ``health.dns``, never as an SSRF
+    label. Only a refused URL pays the one extra resolve that tells them apart."""
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
     except ValueError:
-        return False
-    if not host or host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
-        return False
+        return VALIDATE_SSRF
+    if (parts.scheme not in ("http", "https") or not host or host == "localhost"
+            or host.endswith((".localhost", ".local", ".internal"))):
+        return VALIDATE_SSRF
     from app.utils.url_validator import validate_external_url_async
 
     try:
-        return bool(await validate_external_url_async(url))
+        if await validate_external_url_async(url):
+            return VALIDATE_OK
     except Exception:  # noqa: BLE001 - a validator failure fails closed
+        pass
+    return await _refusal_reason(host)
+
+
+def _all_public(infos: Any) -> bool:
+    """True when every resolved address is public (none private, loopback,
+    link-local, reserved or multicast); False for an empty or odd answer."""
+    try:
+        addresses = [ipaddress.ip_address(str(info[4][0]).split("%", 1)[0]) for info in infos]
+    except Exception:  # noqa: BLE001 - an odd resolver answer reads as not public
         return False
+    return bool(addresses) and not any(
+        a.is_private or a.is_loopback or a.is_link_local or a.is_reserved or a.is_multicast for a in addresses)
+
+
+async def _refusal_reason(host: str) -> str:
+    """Why the validator refused ``host``: ``VALIDATE_DNS`` when it does not resolve
+    within ``DNS_CLASSIFY_TIMEOUT_SECONDS``, or resolves only to public addresses
+    (the refusal was the resolver's: a timeout or a transient error), else
+    ``VALIDATE_SSRF``. No fetch follows either answer."""
+    try:
+        infos = await asyncio.wait_for(asyncio.to_thread(socket.getaddrinfo, host, None),
+                                       DNS_CLASSIFY_TIMEOUT_SECONDS)
+    except Exception:  # noqa: BLE001 - gaierror, a timeout or an OS error: the name did not resolve
+        return VALIDATE_DNS
+    return VALIDATE_DNS if _all_public(infos) else VALIDATE_SSRF
 
 
 __all__ = [
@@ -1023,4 +1165,6 @@ __all__ = [
     "robots_registry_cron_enabled", "max_hosts_per_run", "challenge_park_days", "parse_crawl_delay",
     "challenge_vendor", "decide_robots", "robots_record", "probe_plan", "next_row_update", "probe_host",
     "classify_host", "due_rows", "write_update", "run_cron", "pdp_product_name", "utc_now", "default_fetch", "default_validate",
+    "MAX_BODY_BYTES", "VALIDATE_OK", "VALIDATE_SSRF", "VALIDATE_DNS", "DENY_REFUSAL", "due_slack_seconds",
+    "entry_refusal",
 ]

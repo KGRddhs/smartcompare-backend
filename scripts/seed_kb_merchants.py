@@ -27,18 +27,20 @@ run needs neither):
       existing row (the cron, the owner and D16 own those). Idempotent.
 
   python -m scripts.seed_kb_merchants --classify [N] [--apply]
-      The robots-gated platform probe (default N = 20) over LIVE rows whose
-      platform is NULL and whose registry entries carry no mechanism (literal
-      rows included), sorted by host: each row's robots record is read first and
-      its same-site sample URL is fetched once only when robots allow. Prints the
-      count per label. Dry run unless --apply, which writes platform +
-      platform_confidence 'probe' where platform is still NULL.
+      The robots-gated platform probe (default N = 20) over EVERY live row whose
+      platform is NULL, whatever its mechanism (literal rows included; GATE_S81_15
+      GC-8), sorted by host: each row's robots record is read first and its
+      same-site sample URL is fetched once only when robots allow; a deny_hosts
+      host is refused by name before any request. Prints the count per label.
+      Dry run unless --apply, which writes platform + platform_confidence 'probe'
+      where platform is still NULL.
 
   python -m scripts.seed_kb_merchants --source residential --hosts a.example,b.example [--apply]
       Records a robots read made from THIS machine (run it from a residential
       connection) as ``robots.source = 'residential'`` (ruling R-S15-4: the
       datacenter cron never downgrades such a record younger than 30 days).
       Dry run prints the states; --apply writes each row's update conditionally.
+      A deny_hosts host is refused by name and never fetched.
 """
 from __future__ import annotations
 
@@ -71,7 +73,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="seed_kb_merchants", description=__doc__.split("\n", 1)[0])
     parser.add_argument("--apply", action="store_true", help="write (default: dry run)")
     parser.add_argument("--classify", nargs="?", type=int, const=DEFAULT_CLASSIFY, default=None,
-                        help="robots-gated platform probe over N live blank-mechanism rows (default 20)")
+                        help="robots-gated platform probe over N live platform-NULL rows (default 20)")
     parser.add_argument("--source", choices=("residential",), default=None,
                         help="record a robots read made from this machine with this source")
     parser.add_argument("--hosts", default="", help="comma-separated hosts for --source")
@@ -138,13 +140,6 @@ def _seed(args: argparse.Namespace, client: Any) -> int:
     return 0
 
 
-def _blank_mechanism(row: Dict[str, Any]) -> bool:
-    registry = row.get("registry")
-    if not isinstance(registry, list) or not registry:
-        return False
-    return all(isinstance(e, dict) and not (e.get("mechanism") or "") for e in registry)
-
-
 def _default_probe() -> Any:
     from app.services import robots_registry as rr
 
@@ -162,11 +157,14 @@ def _classify(args: argparse.Namespace, client: Any, probe: Any) -> int:
     rows = _data(client.table(TABLE).select(CLASSIFY_COLUMNS).eq("status", "live").is_("platform", "null")
                  .order("host").range(0, 4999).execute())
     eligible = sorted(
-        (r for r in rows if r.get("status") == "live" and r.get("platform") is None and _blank_mechanism(r)),
+        (r for r in rows if r.get("status") == "live" and r.get("platform") is None),
         key=lambda r: str(r.get("host")),
     )
     picked = eligible[:limit]
     probe = probe if probe is not None else _default_probe()
+    from app.services import robots_registry as rr
+
+    refused = sum(1 for r in picked if rr.entry_refusal(r))
 
     async def _run_all() -> List[Any]:
         out = []
@@ -184,6 +182,8 @@ def _classify(args: argparse.Namespace, client: Any, probe: Any) -> int:
         labels[label or "unknown"] = labels.get(label or "unknown", 0) + 1
     print("classify eligible=%d probed=%d %s" % (
         len(eligible), len(picked), " ".join("%s=%d" % (k, labels[k]) for k in sorted(labels))))
+    if refused:
+        print("classify refused=%d (deny_hosts hosts: refused by name, never fetched)" % refused)
     if not args.apply:
         print("dry run: nothing written (pass --apply to write)")
         return 0
@@ -217,18 +217,24 @@ def _residential(args: argparse.Namespace, client: Any) -> int:
             now = rr.utc_now()
             result = await rr.probe_host(row, rr.default_fetch, asyncio.sleep, now, rr.default_validate, polite,
                                          run_gates=False)
+            if result.get("refused"):
+                out.append((row, None, None, result["refused"]))
+                continue
             out.append((row, result["verdict"], rr.next_row_update(row, result["verdict"], now, None,
-                                                                   source=args.source)))
+                                                                   source=args.source), None))
         return out
 
     results = asyncio.run(_read_all())
-    for row, verdict, _update in results:
-        print("%s host=%s state=%s" % (args.source, row.get("host"), verdict.state))
+    for row, verdict, _update, refused in results:
+        if refused:
+            print("%s host=%s refused=%s (never fetched)" % (args.source, row.get("host"), refused))
+        else:
+            print("%s host=%s state=%s" % (args.source, row.get("host"), verdict.state))
     if not args.apply:
         print("dry run: nothing written (pass --apply to write)")
         return 0
     written = 0
-    for row, _verdict, update in results:
+    for row, _verdict, update, _refused in results:
         if update and rr.write_update(client, row, update):
             written += 1
     print("applied robots=%d" % written)

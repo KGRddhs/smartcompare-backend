@@ -326,10 +326,31 @@ def _py_files(*tops: str) -> list[Path]:
     return out
 
 
+#: S81-15 deliberate changes E3 / E4 (RULINGS_FIX1_S81_15 F1-2): the ONE importer and the ONE relation
+#: literal the merchant registry needs, each keyed by its file AND its exact line text (never a whole file).
+P01_ALLOWED = {("app/services/merchant_registry.py", "from app.services import kb_service as _kb")}
+P02_ALLOWED = {("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"')}
+
+
+def _line(lines, lineno):
+    return lines[lineno - 1].strip() if 0 < lineno <= len(lines) else ""
+
+
 def test_s14_p01_no_importer_of_kb_service():
+    """S81-14 ships the leaf inert: nothing in app/ or scripts/ imports it. S81-15 E3: the one
+    function-local lazy import inside merchant_registry.build_seed_rows (the seed wraps
+    build_merchant_row, GATE_S81_15 GC-2) is allowed, keyed by its file and exact line text and
+    only inside that function; any other importer, a module-top one included, still fails."""
     offenders = []
     for path in _py_files("app", "scripts"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        rel = path.relative_to(ROOT).as_posix()
+        tree = ast.parse(text)
+        seed_builder = set()
+        for fn in ast.walk(tree):
+            if isinstance(fn, ast.FunctionDef) and fn.name == "build_seed_rows":
+                seed_builder.update(id(n) for n in ast.walk(fn))
         for node in ast.walk(tree):
             hit = False
             if isinstance(node, ast.Import):
@@ -341,17 +362,28 @@ def test_s14_p01_no_importer_of_kb_service():
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
                 hit = "kb_service" in node.value and ("app." in node.value or "/" in node.value)
             if hit:
-                offenders.append("%s:%d" % (path.relative_to(ROOT).as_posix(), getattr(node, "lineno", 0)))
+                lineno = getattr(node, "lineno", 0)
+                if (isinstance(node, ast.ImportFrom) and id(node) in seed_builder
+                        and (rel, _line(lines, lineno)) in P01_ALLOWED):
+                    continue
+                offenders.append("%s:%d" % (rel, lineno))
     assert offenders == [], "kb_service gained an importer (S81-14 ships inert): %s" % offenders
 
 
 def test_s14_p02_no_kb_relation_literal_outside_the_leaf():
+    """S81-14: no kb_* relation name outside kb_service.py. S81-15 E4: the one module-level
+    ``KB_MERCHANTS_TABLE = "kb_merchants"`` line of merchant_registry.py (the table name, defined
+    once) is allowed, keyed by its file and exact line text."""
     offenders = []
     for path in _py_files("app", "scripts"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines()
+        rel = path.relative_to(ROOT).as_posix()
+        for node in ast.walk(ast.parse(text)):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in KB_RELATION_NAMES:
-                offenders.append("%s:%d %r" % (path.relative_to(ROOT).as_posix(), node.lineno, node.value))
+                if (rel, _line(lines, node.lineno)) in P02_ALLOWED:
+                    continue
+                offenders.append("%s:%d %r" % (rel, node.lineno, node.value))
     assert offenders == [], "a kb_* relation is named outside kb_service.py: %s" % offenders
 
 

@@ -209,6 +209,11 @@ def _rules_for_agent(groups: Sequence[_Group], agent: str) -> List[Tuple[bool, s
     return rules
 
 
+#: S81-15 (RULINGS_FIX1_S81_15 F1-22): the public name of the merged rule selection
+#: ``can_fetch`` evaluates; the robots registry records its D14 ``rules`` through it.
+rules_for_agent = _rules_for_agent
+
+
 def can_fetch(robots_txt: object, agent: str, url: str) -> bool:
     """True iff ``agent`` may fetch ``url`` under ``robots_txt``.
 

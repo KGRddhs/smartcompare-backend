@@ -17,16 +17,21 @@ RAILWAY (the owner creates and schedules it; this script registers nothing):
   1. Create a NEW Railway service from this repo for the cron, never ``web`` or
      ``price-warmer``, with config file ``railway.robots.json`` (start command
      ``python -m scripts.cron_robots_registry``, restart policy NEVER, watch
-     patterns limited to this script, ``app/services/robots_registry.py``,
-     ``app/services/robots_eval.py`` and the config file, so an unrelated push
-     does not re-run it). Railway deprecates config-as-code for legacy services
-     on 2026-12-01: set the same start command and watch paths in the dashboard
-     if the file stops being honoured.
+     patterns limited to this script, the config file and the cron's direct
+     imports ``app/services/robots_registry.py``, ``robots_eval.py``,
+     ``merchant_registry.py`` and ``deny_hosts.py``, so an unrelated push does
+     not re-run it; a change deeper down (``url_validator``, the price stack the
+     PDP gate imports) does NOT redeploy it: run ``railway redeploy -s <cron
+     service>`` after such a change). Railway deprecates config-as-code for
+     legacy services on 2026-12-01: set the same start command and watch paths
+     in the dashboard if the file stops being honoured.
   2. Schedule it daily (for example ``30 2 * * *``).
   3. Variables on THAT service only (NAMES; values live only in Railway):
      SUPABASE_URL, SUPABASE_SERVICE_KEY, ENABLE_ROBOTS_REGISTRY_CRON=true, and
-     optionally ROBOTS_CRON_MAX_HOSTS (default 500 hosts per run) and
-     ROBOTS_CHALLENGE_PARK_DAYS (default 7).
+     optionally ROBOTS_CRON_MAX_HOSTS (default 500 hosts per run),
+     ROBOTS_CHALLENGE_PARK_DAYS (default 7) and ROBOTS_DUE_SLACK_SECONDS
+     (default 3600: a host whose next re-read falls within an hour after the
+     run start is due, so a daily run re-reads every host the previous run read).
   4. Migration 045 must be applied and the seed run first.
 
 Failures are swallowed and logged by type: a broken run never crash-loops the

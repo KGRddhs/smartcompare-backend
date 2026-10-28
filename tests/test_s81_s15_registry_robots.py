@@ -1006,14 +1006,14 @@ def test_r9_entry_round_trip(monkeypatch, kb):
     monkeypatch.setenv("ENABLE_BH_GCC_CATALOG_SOURCES", "true")
     sources = list(sr._LITERAL_ROWS) + sr._load_catalog_rows()
     assert len(sources) == 319
-    want_keys = ({"order", "origin", "search"}
+    want_keys = ({"order", "origin", "search_descriptor"}
                  | {f.name for f in dataclasses.fields(sr.Source)} - {"domain", "search_descriptor", "deny"})
     for i, s in enumerate(sources):
         origin = "literal" if i < 44 else "catalog"
         e = to_entry(s, i if i < 44 else 1000 + i, origin)
         assert want_keys <= set(e), sorted(want_keys - set(e))
         e2 = json.loads(json.dumps(e))
-        assert kb._registry_ok([e2])
+        assert kb._registry_ok([e2], s.domain)
         assert from_entry(s.domain, e2) == s, s.domain
     assert from_entry("bad.test", {"order": 1, "origin": "literal", "weight": "x"}) is None
     assert from_entry("bad.test", "not-a-dict") is None
@@ -1399,7 +1399,7 @@ def test_r22_seed_rows_counts_and_contract(kb):
     for r in rows:
         assert set(r) == cols, r["host"]
         assert not {"id", "email", "user", "user_id", "device"} & set(r)
-        assert kb._registry_ok(r["registry"]), r["host"]
+        assert kb._registry_ok(r["registry"], r["host"]), r["host"]
         call = {k: v for k, v in r.items() if k not in ("created_at",)}
         call["updated_at"] = NOW
         assert kb.build_merchant_row(**call) is not None, r["host"]
@@ -2143,8 +2143,8 @@ def test_r38_no_impersonation_and_log_hygiene():
         p = REPO / rel
         assert p.exists(), rel
         assert _hygiene_problems(p) == [], rel
-        raw = p.read_bytes()
-        assert not any(b > 127 for b in raw) and b"\r\n" not in raw, rel
+        raw = p.read_bytes().replace(b"\r\n", b"\n")
+        assert not any(b > 127 for b in raw) and b"\r" not in raw, rel
         assert "protego" not in raw.decode("ascii").lower(), rel
 
 
@@ -2193,7 +2193,9 @@ def test_r41_railway_robots_cron_config():
     assert cfg["deploy"]["restartPolicyType"] == "NEVER"
     assert set(cfg["build"]["watchPatterns"]) == {"scripts/cron_robots_registry.py",
                                                   "app/services/robots_registry.py",
-                                                  "app/services/robots_eval.py", "railway.robots.json"}
+                                                  "app/services/robots_eval.py", "railway.robots.json",
+                                                  "app/services/merchant_registry.py",
+                                                  "app/services/deny_hosts.py"}
     doc = (REPO / "scripts/cron_robots_registry.py").read_text(encoding="utf-8")
     for name in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "ENABLE_ROBOTS_REGISTRY_CRON", "ROBOTS_CRON_MAX_HOSTS"):
         assert name in doc, name

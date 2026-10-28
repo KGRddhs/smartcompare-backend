@@ -12,8 +12,10 @@ banned host never routes). Only ``source_router._routable_registry`` reads it:
 the category selectors, the fan-out selectors and ``score_source`` /
 ``source_usage`` / ``is_render_only_domain`` (a cron-blocked host scores as
 off-registry, which is the point of blocking it). ``registry_lookup_rows`` is the
-LOOKUP set: every loaded row, live AND blocked, banned hosts included (their
-``Source.status`` reads "blocked" and ``Source.deny`` is set). The tier,
+LOOKUP set: every loaded row, live AND blocked, banned hosts included
+(``Source.deny`` set; ``Source.status`` reads "blocked" for a row stored blocked,
+while a deny_hosts host stored live, which the seed never writes, keeps its
+stored status: the deny applies at decode). The tier,
 currency and host-evidence consumers read it (``_registry_row_for_host`` and so
 ``registry_tier`` / ``match_registry_apex`` / ``descriptor_for_host``, plus the
 three direct readers in price_service, cache_service and
@@ -44,13 +46,14 @@ identity), ``partner_for_host`` returns None; no read, no task, no log line.
 
 The off-clock seed builders (``source_to_entry``, ``build_seed_rows``,
 ``plan_seed``) live here so the seed script and the tests share one definition.
-``kb_service`` (it imports price_service) and ``source_router`` are imported
+The S81-14 KB leaf (it imports price_service) and ``source_router`` are imported
 lazily inside the functions that need them, so importing this module loads
 neither.
 """
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import copy
 import dataclasses
 import hashlib
@@ -201,7 +204,13 @@ def _usable(state: Dict[str, Any], now: float) -> bool:
 
 
 def _schedule_refresh() -> None:
-    """Create ONE refresh task on the running loop of this thread; never awaits."""
+    """Create ONE refresh task on the running loop of this thread; never awaits.
+
+    The task is created OUTSIDE ``_LOCK`` (an eager task factory runs the body at
+    once, and a failure there takes ``_LOCK`` in ``_record_failure``) and in a FRESH
+    ``contextvars.Context``, so the refresh never runs, or logs, in the triggering
+    request's context (F1-12). Single flight per loop holds: nothing between the
+    check and the hand-off yields to another task of this loop."""
     global _REFRESH
     try:
         loop = asyncio.get_running_loop()
@@ -211,12 +220,15 @@ def _schedule_refresh() -> None:
         current = _REFRESH
         if current is not None and current[0] is loop and not current[1].done():
             return
-        coro = refresh_merchant_registry()
-        try:
-            task = loop.create_task(coro)
-        except Exception:  # noqa: BLE001 - a closing loop: serve what we have
-            coro.close()
-            return
+    coro = refresh_merchant_registry()
+    try:
+        # The task copies the EMPTY context it is created in: the effect of
+        # create_task(coro, context=contextvars.Context()) on every loop implementation.
+        task = contextvars.Context().run(loop.create_task, coro)
+    except Exception:  # noqa: BLE001 - a closing loop: serve what we have
+        coro.close()
+        return
+    with _LOCK:
         _REFRESH = (loop, task)
 
 
