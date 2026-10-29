@@ -209,8 +209,8 @@ NEW_FORKS = {"free_limits": "terms", "referral_rewards": "terms", "usage_counter
 NEW_CLAUSES = {"COMPARE_RUNS_CLAUSE": "COMPARE_RUN_RETENTION", "AUTH_THROTTLE_CLAUSE": "AUTH_THROTTLE_RETENTION"}
 
 # Recorded base values (98d85433). Re-record ONLY with a ruling (see each row's docstring).
-BASE_I18N_KEY_COUNT = 1010
-BASE_I18N_NAMESET_SHA256 = "9ff8684f8b72ed2dc7a6d3c7e80c684696" "bb0d5f4952aed43fabc4a13cb14273"
+BASE_I18N_KEY_COUNT = 1013
+BASE_I18N_NAMESET_SHA256 = "3d786372b3ca325bc294b675e4e7c0cf3e" "c39140e4b919860483a3987ee4ab9f"
 BASE_S7_SHA256 = {
     "en": "b7563dae1cfba69a0fa5b9da7ee7cdd207b166ccc8d818537" "813f7751a9e303c",
     "ar": "96e3a8db7853e618147" "aae0c5cc112cc9ac14508cf967c2e771b7a39e2f35f0b",
