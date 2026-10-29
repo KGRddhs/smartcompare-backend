@@ -52,3 +52,5 @@ SAFE groups, in order (re-cut 15:40 by file cohesion: D09 and D11 are defined in
 Lanes: lane A runs the groups in order after S81-10; lane B runs S81-24 + MS4, the S81-12 rebase and the client focus units. The two-workflow cap stands.
 
 - 2026-10-29 15:46 S81-08 CLIENT-FIRST-OTA MERGED as PR #377 (main 6c14ac95); ships only in the first post-approval OTA after the dated item-32 line.
+
+- 2026-10-29 19:03 G1 PRICE-PIPELINE (D08 + S81-23): spec done + reviewed by the orchestrator (RULINGS_S81_G1); RED next. Dependencies recorded: D14 (G3) wires D08's ROBOTS_ENTRY_LOOKUP seam; S81-23b (delete the legacy SCRAPEDO_SUPER branch) after the owner's dated unset line AND approval; S81-10b (links gate) = a flip precondition of ENABLE_FRAGRANCE_ONLY_GATE and the next FOCUS unit after S81-10.
