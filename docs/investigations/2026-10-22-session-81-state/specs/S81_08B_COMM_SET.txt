@@ -107,8 +107,10 @@ tests/test_m13_25_compare_body_maxlength.py
 tests/test_m13_26_image_error_envelope.py
 tests/test_m13_28_referral_hardening.py
 tests/test_m13_29_feedback_uuid.py
+tests/test_m13_35_sse_disconnect_finally.py
 tests/test_m18_factcheck_honest.py
 tests/test_m18_offload_sweep_residual.py
+tests/test_m18_preverdict_disconnect_refund.py
 tests/test_m18_usage_symmetry.py
 tests/test_m21_brand_dedup_and_verdict_copy.py
 tests/test_migration_023.py
@@ -126,6 +128,7 @@ tests/test_no_luxury_gate_in_tier3.py
 tests/test_not_a_pdp_filter.py
 tests/test_occ_adapter.py
 tests/test_og_cascade_position.py
+tests/test_openai_breaker.py
 tests/test_openai_key_log_hygiene_s69.py
 tests/test_paid_route_metering.py
 tests/test_password_reset_deep_link.py
@@ -186,6 +189,10 @@ tests/test_s81_kb_schema.py
 tests/test_s81_s03_llm_ledger_v2.py
 tests/test_s81_s04_spend_breaker.py
 tests/test_s81_s05_request_context.py
+tests/test_s81_s06_anthropic_router.py
+tests/test_s81_s06_router_gate_rows.py
+tests/test_s81_s08b_gate_rows.py
+tests/test_s81_s08b_legacy_fingerprint.py
 tests/test_s81_st1_usage_path_offloop.py
 tests/test_scoring_calibration_bundle_c.py
 tests/test_scoring_v2_all_nine_categories.py
