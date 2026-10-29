@@ -7,10 +7,12 @@ this unit (D14 LIVE-ROBOTS owns the per-fetch lookup of the persisted record).
 
 WHAT A RUN DOES. It reads every kb_merchants row, picks the due ones (never read
 first, then the oldest ``robots.next_reread``, then host; at most
-``ROBOTS_CRON_MAX_HOSTS``; a host is due when its ``next_reread``, the read time
-+ 24 h (the RFC 9309 cache bound), is at or before the run start plus
-``ROBOTS_DUE_SLACK_SECONDS``, read once per run, so a daily run re-reads every
-host the previous daily run read), and for each, strictly one request at a time:
+``ROBOTS_CRON_MAX_HOSTS``; a host is due when its ``next_reread`` is at or before
+the run start plus ``ROBOTS_DUE_SLACK_SECONDS``, read once per run, the belt for
+cron-start jitter; ``next_reread`` is computed from the run start, + 24 h (the
+RFC 9309 cache bound), so a run of any length under 24 h re-reads every host the
+previous daily run read, and once the first pass is done no record is older than
+24 h + one run), and for each, strictly one request at a time:
 
 * reads ``/robots.txt`` as the named robots agent (``robots_eval.QARENBOT_UA``,
   never a browser impersonation) from the probe ORIGIN: the origin of the row's
@@ -106,7 +108,8 @@ MAX_BODY_CHARS = 3_000_000
 #: The byte cap of every fetched body, applied BEFORE decoding (F1-11).
 MAX_BODY_BYTES = MAX_BODY_CHARS
 #: ``ROBOTS_DUE_SLACK_SECONDS`` (F1-3): a host is due when its ``next_reread`` is at or
-#: before the run start plus this slack (default 1 h, capped at 6 h).
+#: before the run start plus this slack (default 1 h, capped at 6 h): the belt for
+#: cron-start jitter, since ``next_reread`` is computed from the run start (RB15-2).
 DUE_SLACK_DEFAULT_SECONDS = 3600.0
 DUE_SLACK_MAX_SECONDS = 21600.0
 #: ``default_validate``'s answers (F1-13): fetch / a refused name or address / no resolution.
@@ -466,19 +469,22 @@ def decide_robots(status: Any, headers: Any, body: Any, probe_urls: Sequence[str
     return RobotsVerdict("unreadable", st, None, None, vendor, _empty(), dict.fromkeys(paths, "unreadable"))
 
 
-def robots_record(verdict: Any, now: datetime, origin: str, source: str) -> Dict[str, Any]:
+def robots_record(verdict: Any, now: datetime, origin: str, source: str, *,
+                  reread_from: Optional[datetime] = None) -> Dict[str, Any]:
     """The persisted ``kb_merchants.robots`` record: the D14 / D09 / S81-16 input
     contract, frozen by ``tests/fixtures/s81_s15_robots_record.json``. Consumers
     answer per URL by evaluating ``rules`` with ``robots_eval.can_fetch``; a
     ``rules_truncated`` key appears only when a list was capped (a consumer must
-    then treat a URL the stored rules allow as unknown)."""
+    then treat a URL the stored rules allow as unknown). ``fetched_at`` is the
+    read time; ``next_reread`` is ``reread_from`` (the cron's run start, RB15-2)
+    + 24 h, or the read time + 24 h for every other caller."""
     rules = _g(verdict, "rules") or {}
     record = {
         "state": _g(verdict, "state"),
         "status": _g(verdict, "status"),
         "body_sha": _g(verdict, "body_sha"),
         "fetched_at": _iso(now),
-        "next_reread": _iso(now + timedelta(hours=REREAD_HOURS)),
+        "next_reread": _iso((reread_from if reread_from is not None else now) + timedelta(hours=REREAD_HOURS)),
         "crawl_delay": _g(verdict, "crawl_delay"),
         "origin": origin,
         "source": source,
@@ -612,7 +618,7 @@ def _first_failing_gate(gates: Dict[str, Any]) -> Optional[str]:
 
 
 def next_row_update(row: Dict[str, Any], verdict: Any, now: datetime, gates: Optional[Dict[str, Any]] = None,
-                    *, source: str = "datacenter") -> Optional[Dict[str, Any]]:
+                    *, source: str = "datacenter", reread_from: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
     """The ONE update a robots read makes to ``row`` (pure), or None (never touched).
 
     Transitions (ruling R-S15-11): live -> blocked on any failure, with
@@ -629,7 +635,7 @@ def next_row_update(row: Dict[str, Any], verdict: Any, now: datetime, gates: Opt
     status = row.get("status")
     stamp = _iso(now)
     plan = probe_plan(row)
-    record = robots_record(verdict, now, plan.origin, source)
+    record = robots_record(verdict, now, plan.origin, source, reread_from=reread_from)
     if plan.other_origins:
         record["other_origins"] = list(plan.other_origins)
     health = dict(row["health"]) if isinstance(row.get("health"), dict) else {}
@@ -1027,7 +1033,8 @@ async def run_cron(client: Any, fetch: Any, sleep: Any, now_clock: Any, validate
     counts["rows"] = len(rows)
     limit = max_hosts_per_run()
     slack = due_slack_seconds()  # read ONCE per run (F1-3)
-    due = due_rows(rows, now_clock(), limit, slack)
+    run_start = now_clock()  # ONCE: the due horizon and every record's next_reread (RB15-2)
+    due = due_rows(rows, run_start, limit, slack)
     counts["due"] = len(due)
     logger.info("[ROBOTS_CRON] start rows=%d due=%d limit=%d", counts["rows"], counts["due"], limit)
     polite = Politeness(sleep)
@@ -1037,7 +1044,7 @@ async def run_cron(client: Any, fetch: Any, sleep: Any, now_clock: Any, validate
             now = now_clock()
             result = await probe_host(row, fetch, sleep, now, validate, polite)
             verdict = result["verdict"]
-            update = next_row_update(row, verdict, now, result["gates"])
+            update = next_row_update(row, verdict, now, result["gates"], reread_from=run_start)
         except Exception as exc:  # noqa: BLE001 - one host never ends the run
             counts["failed"] += 1
             logger.warning("[ROBOTS_CRON] probe failed reason=%s", type(exc).__name__)

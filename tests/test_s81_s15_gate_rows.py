@@ -1,6 +1,6 @@
 """S81-15 REGISTRY-ROBOTS-DENY: the gate-named rows GATE_S81_15 asks GREEN to add.
 
-The RED file ``tests/test_s81_s15_registry_robots.py`` is frozen (sha256 5bb3bc4c...),
+The RED file ``tests/test_s81_s15_registry_robots.py`` is frozen (blob sha256 66ac6299...),
 so the rows the gate names live here: GC-1 (robots_disallow is cron-managed), GC-2
 (the seed wraps kb_service.build_merchant_row; created_at on INSERT only), GC-3
 (full Source-field presence against the REAL post-fix S81-14 validator, with the
@@ -17,7 +17,12 @@ every entry point (F1-10), the memo task outside the lock in a fresh context
 (F1-12), a resolver failure vs an SSRF refusal (F1-13), the young residential
 re-read date (F1-14), the cron read order (F1-16) and the integer knob clamp
 (F1-23); gc2, gc6 and gc7 read with .get() (F1-19), gc5 follows F1-14 and gc8 is
-widened to every live platform-NULL row (F1-15). Hermetic: an in-memory client,
+widened to every live platform-NULL row (F1-15). The rebase round
+(RULINGS_REBASE_S81_15) amends test_f1_3_a (next_reread from the run start,
+RB15-2), adds test_f1_3_c (a 200-min run still re-reads every host every day)
+and test_f1_3_d (the slack absorbs cron-start jitter), records the lock at TASK
+creation in test_f1_12 (RB15-3) and adds the non-http(s)
+schemes to test_f1_6b (RB15-4). Hermetic: an in-memory client,
 injected fetch / sleep / SSRF seams (or the production seams over a patched
 curl_cffi / socket), the netguard on; hosts are synthetic ``.test`` hosts or the
 public registry rows.
@@ -455,9 +460,65 @@ def test_f1_3_a_daily_cron_rereads_every_host_every_day():
                                          net.validate))
         seen.append((counts.get("due"), counts.get("written")))
     assert seen == [(40, 40), (40, 40), (40, 40)]
-    rec = client.row("day39.test").get("robots") or {}
-    assert rec.get("next_reread") and rec.get("fetched_at")
-    assert _parse(rec["next_reread"]) - _parse(rec["fetched_at"]) == timedelta(hours=24)
+    # RB15-2: next_reread is computed from the RUN START (the instant due_rows reads); fetched_at stays per read.
+    run_start = start + timedelta(days=2)
+    fetched = []
+    for h in hosts:
+        rec = client.row(h).get("robots") or {}
+        assert rec.get("next_reread") and rec.get("fetched_at"), h
+        assert _parse(rec["next_reread"]) == run_start + timedelta(hours=24), h
+        fetched.append(_parse(rec["fetched_at"]))
+    assert fetched == [run_start + timedelta(seconds=3 * (i + 1)) for i in range(len(hosts))]
+
+
+class _StepTicker:
+    """A fake clock that advances ``step`` seconds per read (the re-verifier's probe_cadence shape)."""
+
+    def __init__(self, start, step):
+        self.t, self.step = start, step
+
+    def __call__(self):
+        t = self.t
+        self.t = t + timedelta(seconds=self.step)
+        return t
+
+
+def test_f1_3_c_a_long_run_still_rereads_every_host_every_day():
+    """RB15-2: a 200-min run (40 hosts, the clock 300 s per read) at 02:30 on four days: every host is due and
+    written on every run, and at each run start no record is older than 24 h + the run length (a next_reread
+    taken from each read's own time read due 40 / 12 / 40 / 12, with records 46.9 h old at a run start)."""
+    hosts = ["day%02d.test" % i for i in range(40)]
+    step = 300
+    run_length = timedelta(seconds=step * len(hosts))
+    client = _Client([_row(h) for h in hosts])
+    net = _Net({"https://%s/robots.txt" % h: ALLOW for h in hosts})
+    start = datetime(2026, 10, 24, 2, 30, 0, tzinfo=timezone.utc)
+    seen, oldest = [], []
+    for day in range(4):
+        t0 = start + timedelta(days=day)
+        ages = [t0 - _parse((r.get("robots") or {})["fetched_at"]) for r in client.rows
+                if (r.get("robots") or {}).get("fetched_at")]
+        oldest.append(max(ages) if ages else None)
+        counts = asyncio.run(rr.run_cron(client, net.fetch, net.sleep, _StepTicker(t0, step), net.validate))
+        seen.append((counts.get("due"), counts.get("written")))
+    assert seen == [(40, 40), (40, 40), (40, 40), (40, 40)]
+    assert oldest[0] is None
+    assert all(age <= timedelta(hours=24) + run_length for age in oldest[1:]), oldest
+
+
+def test_f1_3_d_the_slack_absorbs_cron_start_jitter():
+    """RB15-2: next_reread is the previous run start + 24 h, so ROBOTS_DUE_SLACK_SECONDS is the belt for
+    cron-start jitter: daily runs that start 120 s and 240 s early still re-read every host (a slack of 0
+    reads due 0 on the second run; the fix round's SLACK and the re-verifier's S3a mutants)."""
+    hosts = ["jit%02d.test" % i for i in range(40)]
+    client = _Client([_row(h) for h in hosts])
+    net = _Net({"https://%s/robots.txt" % h: ALLOW for h in hosts})
+    start = datetime(2026, 10, 24, 2, 30, 0, tzinfo=timezone.utc)
+    seen = []
+    for t0 in (start, start + timedelta(days=1, seconds=-120), start + timedelta(days=2, seconds=-240)):
+        counts = asyncio.run(rr.run_cron(client, net.fetch, net.sleep, _Ticker(t0), net.validate))
+        seen.append((counts.get("due"), counts.get("written")))
+    assert seen == [(40, 40), (40, 40), (40, 40)]
 
 
 @pytest.mark.parametrize("raw,want", [
@@ -596,8 +657,10 @@ def test_f1_6b_default_validate_refuses_internal_targets_and_accepts_a_public_ad
     ok, ssrf = getattr(rr, "VALIDATE_OK", None), getattr(rr, "VALIDATE_SSRF", None)
     assert ok is not None and ssrf is not None, "the default_validate reasons are missing (F1-13)"
     table = {"pub.test": "93.184.215.14", "ten.test": "10.0.0.1", "meta.test": "169.254.169.254"}
+    resolved = []
 
     def _gai(host, *a, **k):
+        resolved.append(host)
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (table.get(host, host), 0))]
 
     monkeypatch.setattr(socket, "getaddrinfo", _gai)
@@ -606,6 +669,11 @@ def test_f1_6b_default_validate_refuses_internal_targets_and_accepts_a_public_ad
                 "https://ten.test/robots.txt", "https://meta.test/robots.txt"):
         assert asyncio.run(rr.default_validate(url)) == ssrf, url
     assert asyncio.run(rr.default_validate("https://pub.test/robots.txt")) == ok
+    # RB15-4: a non-http(s) scheme is refused up front, with ZERO resolver calls (mutant S13e).
+    for url in ("ftp://pub.test/robots.txt", "file:///etc/robots.txt"):
+        before = len(resolved)
+        assert asyncio.run(rr.default_validate(url)) == ssrf, url
+        assert resolved[before:] == [], url
 
 
 def test_f1_6c_cron_entry_wires_the_production_seams(monkeypatch):
@@ -711,23 +779,32 @@ class _RecordingLock:
 
 
 def test_f1_12_refresh_task_is_created_outside_the_lock_in_a_fresh_context(monkeypatch):
+    """RB15-3: the lock state is recorded when the TASK is created, by a task factory on the loop (the
+    re-verifier's probe_task.py form), and when the coroutine is created; the task body records the
+    request-id context var."""
     from app.utils import request_context as rc
 
     lock = _RecordingLock()
     monkeypatch.setattr(mr, "_LOCK", lock)
-    created, inside = [], []
+    held_at_coro, held_at_create, ctx_in_body = [], [], []
 
     async def _body():
-        inside.append(rc._COMPARE_REQUEST_ID.get())
+        ctx_in_body.append(rc._COMPARE_REQUEST_ID.get())
 
     def _refresh():
-        created.append(lock.held)
+        held_at_coro.append(lock.held)
         return _body()
+
+    def _factory(loop, coro, context=None):
+        held_at_create.append(lock.held)
+        return asyncio.Task(coro, loop=loop, context=context)
 
     monkeypatch.setattr(mr, "refresh_merchant_registry", _refresh)
     monkeypatch.setenv("ENABLE_MERCHANT_REGISTRY_DB", "true")
 
     async def _request():
+        loop = asyncio.get_running_loop()
+        loop.set_task_factory(_factory)
         token = rc._COMPARE_REQUEST_ID.set("req-" + "a" * 8)
         try:
             sr.registry_rows()
@@ -736,10 +813,12 @@ def test_f1_12_refresh_task_is_created_outside_the_lock_in_a_fresh_context(monke
             await handle[1]
         finally:
             rc._COMPARE_REQUEST_ID.reset(token)
+            loop.set_task_factory(None)
 
     asyncio.run(_request())
-    assert created == [False]
-    assert inside == [None]
+    assert held_at_create == [False]
+    assert ctx_in_body == [None]
+    assert held_at_coro == [False]
 
 
 # ---------------------------------------------------------------------------
