@@ -59,6 +59,42 @@ def kill_tree(pid):
         print("[pyt] taskkill failed: %s" % exc, flush=True)
 
 
+def _pid_alive(pid):
+    """Windows-safe liveness check (never os.kill: on Windows a 0 signal terminates the target)."""
+    try:
+        out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True, text=True, timeout=30).stdout
+        return str(pid) in out.split()
+    except Exception:
+        return False
+
+
+def _acquire_tag_lock(tag):
+    """Refuse a second live run of the same --tag (2026-10-29: two agents launched the same chunk driver
+    twice, 3 s apart: double load, interleaved logs). Writes <HERE>/locks/<tag>.lock or exits 125."""
+    import atexit, re
+    lock_dir = os.path.join(HERE, "locks")
+    os.makedirs(lock_dir, exist_ok=True)
+    lock = os.path.join(lock_dir, re.sub(r"[^A-Za-z0-9_.-]", "_", tag) + ".lock")
+    if os.path.exists(lock):
+        try:
+            old = int((open(lock, encoding="utf-8").read().split() or ["0"])[0])
+        except Exception:
+            old = 0
+        if old and old != os.getpid() and _pid_alive(old):
+            print("[pyt] tag=%s status=DUPLICATE rc=125 (a run with this tag is live: pid %d; this run was NOT started; wait for it or use a new tag)" % (tag, old), flush=True)
+            sys.exit(125)
+    with open(lock, "w", encoding="utf-8") as fh:
+        fh.write("%d %s" % (os.getpid(), time.strftime("%Y-%m-%d %H:%M:%S")) + chr(10))
+    def _release():
+        try:
+            if os.path.exists(lock) and (open(lock, encoding="utf-8").read().split() or ["0"])[0] == str(os.getpid()):
+                os.remove(lock)
+        except Exception:
+            pass
+    atexit.register(_release)
+    return lock
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("--bound", type=int, required=True, help="hard wall-clock bound in seconds (ceiling 1800)")
@@ -106,6 +142,7 @@ def main():
 
     log_path = os.path.abspath(a.log)
     os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+    _acquire_tag_lock(a.tag)
     start_ts = time.time()
     start = now()
     status, rc = "OK", None
