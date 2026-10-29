@@ -3,9 +3,9 @@
  *
  * The one-time AI-processing disclosure shown before the first compare (text,
  * link or camera) and before the camera / photo-picker permission request.
- * It names what MYEZ sends to OpenAI and what it does not; it promises no
- * opt-out (the organisation shares data with OpenAI, decision D3 = C; there
- * is no per-user opt-out).
+ * It names what MYEZ sends to its AI providers (Anthropic and, until the move
+ * is complete, OpenAI) and what it does not; it promises no opt-out (there is
+ * no per-user opt-out; S81-12 consent v3).
  *
  * State and the decision live in `useAiConsentGate` (services/aiConsent.ts);
  * this component only renders. Three actions:

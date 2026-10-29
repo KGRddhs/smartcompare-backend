@@ -126,6 +126,9 @@ COMPLETE_VALUES = {
     "CONTROLLER_COUNTRY": "Bahrain",
     "RETENTION_CLEANUP_LIVE": "false",
     "REFERRAL_PUSH_DISPLAY_NAME_ONLY": "true",
+    # S81-12 (gate GC-8): the synthetic switch date the v3 texts carry (privacy s4 / s5).
+    "AI_SWITCH_DATE": "November 2, 2026",
+    "AI_SWITCH_DATE_AR": "2 \u0646\u0648\u0641\u0645\u0628\u0631 2026",
 }
 AR_DPO_VALUE = "\u062c\u064a\u0646 \u062f\u0648\u060c dpo@example.com"
 AR_COUNSEL_VALUE = "- **\u0639\u0642\u062f:** \u062d\u0633\u0627\u0628\u0643."
@@ -270,12 +273,18 @@ def test_polish_f5_pictures_may_come_from_a_search_engine():
 
 
 def test_polish_a16_d3_b_names_openai_terms_for_shared_data():
-    """A16: the d3 = B variant says shared data follows OpenAI's terms, not the 30-day limit."""
-    fork = json.loads(_read(VARIANTS))["forks"]["d3_training"]
-    assert "Data you share this way is governed by OpenAI's terms rather than the 30-day limit below." in fork["en"]["B"]
-    assert fork["ar"]["B"].endswith(" " + AR["A16_SENTENCE"]), _esc(fork["ar"]["B"])
-    assert "30-day" not in fork["en"]["A"] and AR["A16_LIMIT"] not in fork["ar"]["A"]
-
+    """A16, amended S81-12 (R-S12-4; node name kept): the d3 forks are retired (OpenAI's data-sharing programme ended on
+    the AI switch date), so the d3 = B sentence (shared data follows OpenAI's terms rather than the 30-day limit below)
+    and its AR twin are in no variant, snapshot or legal source; no fork reads d3 or openai_store_pinned."""
+    variants = json.loads(_read(VARIANTS))
+    assert "d3_training" not in variants["forks"] and "openai_retention" not in variants["forks"]
+    assert not [n for n, f in variants["forks"].items() if f.get("answer") in ("d3", "openai_store_pinned")]
+    dumped = json.dumps(variants, ensure_ascii=False)
+    b_en = "Data you share this way is governed by OpenAI's terms rather than the 30-day limit below."
+    assert b_en not in dumped and AR["A16_SENTENCE"] not in dumped
+    for rel in SOURCES:
+        for text in (_read(rel), _read(_prefill(rel))):
+            assert b_en not in text and AR["A16_SENTENCE"] not in text and AR["A16_LIMIT"] not in text, rel
 
 def test_polish_a17_support_region_carries_the_identity_fork():
     """A17: the support sources (before the fill-in) carry the d5 identity variant, so d5 = B reaches the
@@ -472,7 +481,8 @@ class Copy:
 def test_polish_b4_fill_in_end_to_end(tmp_path, capsys):
     """B4: all-null rc 2 and nothing written; complete synthetic answers rc 0, no placeholder anywhere,
     the effective-date lines unchanged, and a second run changes nothing; markup rc 3; a d3 flip
-    re-selects the fork; a value changed after the fill rc 3."""
+    re-selects the fork (S81-12: the territories fork; the d3 forks are retired); a value changed after the fill
+    rc 3."""
     c = Copy(tmp_path)
     start = c.snapshot()
     assert c.run(capsys)[0] == 2 and c.snapshot() == start
@@ -489,8 +499,9 @@ def test_polish_b4_fill_in_end_to_end(tmp_path, capsys):
     bad = Copy(tmp_path / "markup").complete(SUPPORT_EMAIL="support@qaren.app <b>")
     bad_start = bad.snapshot()
     assert bad.run(capsys)[0] == 3 and bad.snapshot() == bad_start
-    b_text = json.loads(_read(VARIANTS))["forks"]["d3_training"]["en"]["B"]
-    c.data["d3"] = "B"
+    # S81-12 (E21): the d3 forks are retired, so the flip re-selects a fork that still exists (territories).
+    b_text = json.loads(_read(VARIANTS))["forks"]["territories_complaints"]["en"]["bahrain"]
+    c.data["territories"] = "bahrain"
     assert c.run(capsys)[0] == 0 and b_text in c.text(PRIVACY_EN)
     flipped = c.snapshot()
     c.data["placeholders"]["WITHDRAW_PATH"] = "Profile, then Settings"

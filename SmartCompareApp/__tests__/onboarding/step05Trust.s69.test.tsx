@@ -147,6 +147,7 @@ describe('S69 U3 T2 — the reworded data-use claim is present and true', () => 
   it('T2.6 EN privacy_anon_body names OpenAI and MYEZ, and drops "get smarter" / "strip … first"', () => {
     const s = EN['onboarding.s5.privacy_anon_body'] ?? '';
     expect(s).toMatch(/OpenAI/);
+    expect(s).toMatch(/Anthropic/); // S81-12 (E7)
     expect(s).toMatch(/\bMYEZ\b/);
     expect(s).toMatch(/product name/i);
     expect(s).toMatch(/\bname\b/i);
@@ -160,6 +161,7 @@ describe('S69 U3 T2 — the reworded data-use claim is present and true', () => 
   it('T2.7 AR privacy_anon_body names OpenAI and ميّز, and drops «ننزع» (we strip) / «التحسّن» (get smarter)', () => {
     const s = AR['onboarding.s5.privacy_anon_body'] ?? '';
     expect(s).toMatch(/OpenAI/);
+    expect(s).toMatch(/Anthropic/); // S81-12 (E7)
     expect(s).toContain(BRAND_AR);
     expect(s).not.toContain('ننزع'); // ننزع
     expect(s).not.toContain('التحس'); // التحس…
@@ -168,6 +170,7 @@ describe('S69 U3 T2 — the reworded data-use claim is present and true', () => 
   it('T2.8 the rendered fallback copy (defaultValues) carries the reworded claim and no budget promise', () => {
     const d = renderRows('default');
     expect(d.anon).toMatch(/OpenAI/);
+    expect(d.anon).toMatch(/Anthropic/); // S81-12 (E7)
     expect(d.anon).not.toMatch(/smarter/i);
     expect(d.never).not.toMatch(/budget/i);
     expect(d.all).not.toMatch(/\bThree\b/);
@@ -200,8 +203,9 @@ describe('S69 U3 T2 — the reworded data-use claim is present and true', () => 
 // Item 4 (the two SOUND adversaries): the body under this heading now states
 // what reaches OpenAI, so the old heading "What's anonymized" (AR «ما يُجهَّل»,
 // with diacritics) no longer described it.
-const HEAD_EN = 'What reaches OpenAI';
-const HEAD_AR = 'ما يصل إلى OpenAI';
+// S81-12 (E7): the heading names the AI providers (Anthropic and OpenAI).
+const HEAD_EN = 'What reaches our AI providers';
+const HEAD_AR = '\u0645\u0627 \u064a\u0635\u0644 \u0625\u0644\u0649 \u0645\u0632\u0648\u062f\u064a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a';
 // «يجهل» — the root of «يُجهَّل» (anonymized), compared with diacritics removed
 const AR_ANONYMIZED = 'يجهل';
 const stripDiacritics = (s: string) => s.replace(/[ً-ْٰ]/g, '');

@@ -18,7 +18,7 @@ import '@testing-library/jest-native/extend-expect';
 jest.mock('../src/services/aiConsent', () => {
   const mockConsent: Record<string, any> = {
     __esModule: true,
-    AI_CONSENT_VERSION: 2,
+    AI_CONSENT_VERSION: 3,
     AI_CONSENT_KEY_PREFIX: '@qaren_ai_consent_',
     aiConsentStorageKey: (userId: string) => `@qaren_ai_consent_${userId}`,
     readAiConsent: jest.fn(async () => null),

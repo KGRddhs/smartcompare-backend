@@ -1,5 +1,5 @@
 {
-  "_comment": "S78-LEGAL RED fixture (tests/test_legal_s78.py). Arabic markers and the retired Arabic sentences live here so the test file stays ASCII. No personal value: home_town_sha256 holds only the sha256 of the normalised Latin town token of the pre-S78 postal value (ruling M6: Latin only), never the token. Every [AR-NEW] Arabic marker below follows the spec section 3 texts as amended by the spec-review rulings (LT1-LT11); the LT5 privacy s15 / ToS s14 sentence, the LT9 precedence sentence and the LT10 carve-out phrase in Arabic are RED drafts (no AR text was ruled) and go on the native-review list.",
+  "_comment": "S78-LEGAL RED fixture (tests/test_legal_s78.py). Arabic markers and the retired Arabic sentences live here so the test file stays ASCII. No personal value: home_town_sha256 holds only the sha256 of the normalised Latin town token of the pre-S78 postal value (ruling M6: Latin only), never the token. Every [AR-NEW] Arabic marker below follows the spec section 3 texts as amended by the spec-review rulings (LT1-LT11); the LT5 privacy s15 / ToS s14 sentence, the LT9 precedence sentence and the LT10 carve-out phrase in Arabic are RED drafts (no AR text was ruled) and go on the native-review list. S81-12 (LEGAL-V3, 2026-10-29, deliberate re-records): privacy_headings_en / _ar s4 names Anthropic and OpenAI (R-S12-5, R24); tos_s8_openai_ar is the AR dual-provider sentence + the list sentence (R25); s5_carveout_ar carries a {date} slot that R11 fills with the fill-in data's AI_SWITCH_DATE_AR (R-S12-4).",
   "activity_ar": "مطوّر تطبيقات يعمل بصفة فردية في مملكة البحرين",
   "trade_clause_ar": "، ويعمل باسم ",
   "postal_ar_markers": [
@@ -9,7 +9,7 @@
   "postal_address_ar_interim": "مملكة البحرين (عنواننا البريدي متاح عند الطلب عبر privacy@getmyez.com)",
   "on_request_ar": "وسنخبرك بأسماء مزوّدي الخدمات لدينا عند الطلب عبر privacy@getmyez.com.",
   "on_request_ar_template": "وسنخبرك بأسماء مزوّدي الخدمات لدينا عند الطلب عبر <PLACEHOLDER:PRIVACY_EMAIL>.",
-  "s5_carveout_ar": "باستثناء ما يوضّحه القسم 4 بشأن OpenAI وما يوضّحه هذا القسم بشأن مزوّد صندوق بريدنا، يعالج",
+  "s5_carveout_ar": "باستثناء ما يوضّحه القسم 4 بشأن البيانات التي شوركت مع OpenAI قبل {date} وما يوضّحه هذا القسم بشأن مزوّد صندوق بريدنا، يعالج",
   "categories_s5_ar": [
     "مزوّد قاعدة البيانات وتسجيل الدخول لدينا",
     "مزوّد الاستضافة لدينا",
@@ -149,7 +149,7 @@
       "قبل سريانه"
     ]
   },
-  "tos_s8_openai_ar": "ومزوّد الذكاء الاصطناعي لدينا هو OpenAI؛ ويبيّن القسم 4 من سياسة الخصوصية ما نرسله إليها، ويطلب التطبيق إذنك قبل مقارنتك الأولى أو أول عملية مسح.",
+  "tos_s8_openai_ar": "يستخدم ميّز مزوّدي ذكاء اصطناعي لمعالجة طلباتك: Anthropic, PBC وOpenAI, L.L.C. وننقل هذه المعالجة إلى Anthropic؛ وإلى أن يكتمل الانتقال، تعالج OpenAI بعض الطلبات أو جميعها، بما فيها الصور. ويبيّن القسم 4 من سياسة الخصوصية ما نرسله إليهما، ويطلب التطبيق إذنك قبل مقارنتك الأولى أو أول عملية مسح.",
   "tos_s13_deletion_ar": "ويوضّح القسم 9 من سياسة الخصوصية ما يزيله حذف حسابك والسجلات التي نحتفظ بها.",
   "before_effect_ar": "قبل سريانه",
   "internals_ar": [
@@ -175,7 +175,7 @@
     "1. Who we are",
     "2. Summary",
     "3. What we collect and why",
-    "4. Comparisons made with AI (OpenAI)",
+    "4. Comparisons made with AI (Anthropic and OpenAI)",
     "5. Who receives your data",
     "6. Retailer websites",
     "7. Transfers outside Bahrain",
@@ -193,7 +193,7 @@
     "1. من نحن",
     "2. ملخص",
     "3. ما نجمعه ولماذا",
-    "4. المقارنات المُعدّة بالذكاء الاصطناعي (OpenAI)",
+    "4. المقارنات المُعدّة بالذكاء الاصطناعي (Anthropic وOpenAI)",
     "5. من يتلقى بياناتك",
     "6. مواقع المتاجر",
     "7. نقل البيانات إلى خارج البحرين",

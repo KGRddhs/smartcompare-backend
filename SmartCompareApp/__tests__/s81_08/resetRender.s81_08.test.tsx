@@ -427,7 +427,7 @@ describe('S81-08 G - the hook and the Home pill', () => {
       });
       expect(lower['x-compare-request-id']).toBe(id);
       expect(lower['x-device-fingerprint']).toBe(NEW);
-      expect(lower['x-ai-consent-version']).toBe('2');
+      expect(lower['x-ai-consent-version']).toBe(String(require('../../src/services/aiConsent').AI_CONSENT_VERSION));
     } finally {
       alertSpy.mockRestore();
     }

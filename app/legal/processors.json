@@ -1,5 +1,5 @@
 {
-  "_comment": "U8 processor manifest (rulings UL14, UG5-UG7, S78 LR3; schema in tests/test_legal_docs_u8.py). Internal: no route or page serves it (LR3); it answers a request for the names of our service providers. Every recipient of user data the code reaches. category_en must appear in app/legal/privacy_policy.md and category_ar in app/legal/privacy_policy_ar.md (T7a); name_en / name_ar must appear there only when public_name is true (OpenAI, Apple, Google sign-in, retailer websites: LR3) and must not appear in any legal document otherwise; a row with gate_flag is checked only while the fill-in data records that flag 'on'. hosts lists the hosts a row covers (exact or parent domain) and, for client rows, the package or API identifier a grep finds in its SmartCompareApp/ files (T7c). Exactly one row has kind 'retailer': every retailer host is one class (spec P15) and its modules skip the T7b host check. The retailer row also lists one App module, SmartCompareApp/src/components/primitives/ProductImage.tsx: the App loads product pictures directly from the website that published them, so that website receives the device's IP address (policy section 6, adversary A2). Modules that send no personal data are the NOT_PERSONAL allowlist of the test (Frankfurter, Zyte off-clock seed).",
+  "_comment": "U8 processor manifest (rulings UL14, UG5-UG7, S78 LR3; schema in tests/test_legal_docs_u8.py). Internal: no route or page serves it (LR3); it answers a request for the names of our service providers. Every recipient of user data the code reaches. category_en must appear in app/legal/privacy_policy.md and category_ar in app/legal/privacy_policy_ar.md (T7a); name_en / name_ar must appear there only when public_name is true (OpenAI, Anthropic, Apple, Google sign-in, retailer websites: LR3; Anthropic since S81-12, whose texts name it as an AI provider beside OpenAI, R-S12-11) and must not appear in any legal document otherwise; a row with gate_flag is checked only while the fill-in data records that flag 'on'. hosts lists the hosts a row covers (exact or parent domain) and, for client rows, the package or API identifier a grep finds in its SmartCompareApp/ files (T7c). Exactly one row has kind 'retailer': every retailer host is one class (spec P15) and its modules skip the T7b host check. The retailer row also lists one App module, SmartCompareApp/src/components/primitives/ProductImage.tsx: the App loads product pictures directly from the website that published them, so that website receives the device's IP address (policy section 6, adversary A2). Modules that send no personal data are the NOT_PERSONAL allowlist of the test (Frankfurter, Zyte off-clock seed).",
   "rows": [
     {
       "id": "supabase",
@@ -268,7 +268,7 @@
       "gate_flag": "ENABLE_ANTHROPIC_TEXT",
       "category_en": "third-party AI service",
       "category_ar": "\u062e\u062f\u0645\u0629 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064a \u062a\u0627\u0628\u0639\u0629 \u0644\u0637\u0631\u0641 \u062b\u0627\u0644\u062b",
-      "public_name": false
+      "public_name": true
     }
   ]
 }
