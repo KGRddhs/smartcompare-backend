@@ -2441,7 +2441,9 @@ def test_r35_credentials_unset_names():
 def test_r36_manifest_row():
     """R36 RED (R-S06-14 / R-S12-11): the anthropic row is APPENDED at the end, gated by
     ENABLE_ANTHROPIC_TEXT, public_name false, category 'third-party AI service' (the AR twin from
-    privacy_policy_ar.md), module = llm_router, host api.anthropic.com."""
+    privacy_policy_ar.md), module = llm_router, host api.anthropic.com. S81-12 (R-S12-11, a deliberate
+    pin change): LEGAL-V3 names Anthropic in the documents, so the row is public now (public_name true;
+    PUBLIC_NAME_IDS of tests/test_legal_docs_u8.py and tests/test_legal_s78.py name it too)."""
     rows = json.loads((ROOT / "app/legal/processors.json").read_text(encoding="utf-8"))
     rows = rows["rows"] if isinstance(rows, dict) else rows
     ids = [r.get("id") for r in rows]
@@ -2449,7 +2451,7 @@ def test_r36_manifest_row():
     assert ids[-1] == "anthropic", "the anthropic row must be appended at the end (D7 order)"
     row = rows[-1]
     assert row.get("gate_flag") == "ENABLE_ANTHROPIC_TEXT"
-    assert row.get("public_name") is False and row.get("personal_data") is True
+    assert row.get("public_name") is True and row.get("personal_data") is True  # S81-12 (R-S12-11)
     assert row.get("kind") == "processor" and row.get("name_en") == "Anthropic"
     assert row.get("module") == ["app/services/llm_router.py"]
     assert row.get("hosts") == ["api.anthropic.com"]

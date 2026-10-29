@@ -63,6 +63,14 @@ AI quality / Data Sharing Program"): privacy section 4 matches every pattern of
 T8_C_REQUIRED_EN (case-insensitive) and none of T8_C_FORBIDDEN_EN; the AR half lives in the
 fixture (t8_c_ar). Each rule node first proves the rule rejects the A and B texts.
 
+S81-12 LEGAL-V3 (2026-10-29; rulings R-S12-1 / R-S12-4, deliberate pin changes, node names kept): OpenAI's
+data-sharing programme ended on the AI switch date. d3 is recorded 'A', the forks d3_training and
+openai_retention are retired (their C texts live on in the fixture's retired_d3_c as the controls of (a) and
+(e)); (a)-(e) pin the retirement (d3 'C' stays a valid answer that selects nothing), (i) / (j) pin the bare
+not-sold promise and the past-tense history sentences, (j) pins that the s3.6 programme purpose line is gone,
+and (n) pins the dated carve-out (data shared with OpenAI before AI_SWITCH_DATE). The synthetic data gains
+AI_SWITCH_DATE / _AR (gate GC-8: the temp-copy rows get the new keys, never deletions).
+
 Pure ASCII: Arabic lives in tests/fixtures/legal_d3c_u8.json (the GREEN additions use escapes); failure
 messages escape it.
 Hermetic: temp copies only; the dry-run writes nothing and never touches the checkout.
@@ -149,6 +157,7 @@ COMPLETE_VALUES_EN = {
     "CONTROLLER_COUNTRY": "Bahrain",
     "RETENTION_CLEANUP_LIVE": "false",
     "REFERRAL_PUSH_DISPLAY_NAME_ONLY": "true",
+    "AI_SWITCH_DATE": "November 2, 2026",  # S81-12: synthetic switch date (the AR twin is in the fixture)
 }
 
 
@@ -179,20 +188,10 @@ def _fixture():
     return _json(D3C_FIXTURE)
 
 
-def _d3_fork():
-    return _json(VARIANTS)["forks"]["d3_training"]
-
-
-def _c_text(lang):
-    """The C variant text of the d3 fork, or pytest.fail naming the missing fork value."""
-    table = _d3_fork().get(lang) or {}
-    text = table.get("C")
-    if not (isinstance(text, str) and text.strip()):
-        pytest.fail(
-            f"{VARIANTS}: forks.d3_training.{lang} has no non-empty 'C' variant "
-            f"(keys {sorted(table)}); decision D3 = C / ruling OA2 needs the third fork value"
-        )
-    return text
+def _retired_c(lang):
+    """The retired d3 = C paragraph (S81-12: the d3_training fork is retired; its C text is kept in the fixture as the
+    control text of (a) and (e))."""
+    return _fixture()["retired_d3_c"][lang]
 
 
 def _section(text, number):
@@ -227,43 +226,44 @@ def _complete_data():
 
 
 def test_d3c_a_variants_carry_en_and_ar_c():
-    """(a) forks.d3_training carries a non-empty en.C and ar.C next to A and B (OA2)."""
-    fork = _d3_fork()
-    assert fork.get("answer") == "d3" and "privacy" in fork.get("docs", ()), fork.get("docs")
-    assert {"A", "B"} <= set(fork["en"]) and {"A", "B"} <= set(fork["ar"])
-    missing = [lang for lang in ("en", "ar") if not (isinstance(fork[lang].get("C"), str) and fork[lang]["C"].strip())]
-    assert not missing, f"{VARIANTS}: forks.d3_training has no non-empty 'C' variant for {missing} (D3 = C, OA2)"
+    """(a), amended S81-12 (R-S12-4): the forks d3_training and openai_retention are retired from the variants file,
+    no fork reads d3 or openai_store_pinned any more, the fill-in data records d3 'A', and the retired C paragraph
+    lives on in the fixture (retired_d3_c, EN and AR) as the control of (a) and (e)."""
+    forks = _json(VARIANTS)["forks"]
+    assert "d3_training" not in forks and "openai_retention" not in forks, sorted(forks)
+    readers = sorted(n for n, f in forks.items() if f.get("answer") in ("d3", "openai_store_pinned"))
+    assert not readers, f"forks still read d3 / openai_store_pinned: {readers}"
+    assert _json(FILL_IN)["d3"] == "A"
+    assert all(isinstance(_retired_c(lang), str) and _retired_c(lang).strip() for lang in ("en", "ar"))
 
 
 def test_d3c_a_c_text_restates_the_consent_sheet_sentence():
-    """(a) The C paragraph restates the consent-sheet purpose clause verbatim, EN and AR (OA2: the
-    policy must match the sheet the user agreed to, AI_CONSENT_VERSION 2)."""
+    """(a), amended S81-12: consent v3 (AI_CONSENT_VERSION 3) no longer carries the OA2 training clause (EN, and the
+    AR clause located by the fixture anchors), and no legal source restates the retired C clause: the sheet and the
+    policy agree that the programme ended. Control: the retired C paragraph does restate the clause."""
     en_body = json.loads(_read(EN_CATALOG))["aiConsent.body"]
     ar_body = json.loads(_read(AR_CATALOG))["aiConsent.body"]
-    en_tail = CONSENT_TAIL_EN.search(en_body)
-    assert en_tail, "aiConsent.body (en) no longer carries the OA2 sentence 'the outputs ... of its models'"
+    assert not CONSENT_TAIL_EN.search(en_body), "aiConsent.body (en) still carries the OA2 clause"
     tail = _fixture()["consent_tail_ar"]
     start = ar_body.find(tail["start"])
-    end = ar_body.find(tail["end"], start)
-    assert start >= 0 and end >= 0, "aiConsent.body (ar) no longer carries the OA2 clause (fixture anchors)"
-    ar_tail = ar_body[start:end + len(tail["end"])]
-    en_c, ar_c = _c_text("en"), _c_text("ar")
-    assert en_tail.group(0) in en_c, f"en.C does not restate {en_tail.group(0)!r}"
-    assert ar_tail in ar_c, f"ar.C does not restate {_esc(ar_tail)}"
+    assert start < 0 or ar_body.find(tail["end"], start) < 0, "aiConsent.body (ar) still carries the OA2 clause"
+    clause = CONSENT_TAIL_EN.search(_retired_c("en"))
+    assert clause, "control: the retired C paragraph restates the OA2 clause"
+    hits = [rel for rel in SOURCES if clause.group(0) in _read(rel)]
+    assert not hits, f"the retired OA2 clause is restated in {hits}"
 
 
 def test_d3c_a_c_text_is_locatable_by_the_fork_machinery():
-    """(a) fill_in_legal locates a fork by its variant text (exactly once): C may not contain, or be
-    contained in, the A or B text or either openai_retention text."""
-    variants = _json(VARIANTS)
+    """(a), amended S81-12: fill_in_legal locates a fork by its variant text (exactly once), so no non-empty variant
+    of any fork may contain another variant of the same fork (EN and AR; the dormant forks free_limits,
+    referral_rewards and usage_counters included)."""
     problems = []
-    for lang in ("en", "ar"):
-        c_text = _c_text(lang)
-        others = {f"d3 {k}": variants["forks"]["d3_training"][lang][k] for k in ("A", "B")}
-        others.update({f"retention {k}": t for k, t in variants["forks"]["openai_retention"][lang].items()})
-        problems += [f"{lang}: C collides with {name}" for name, text in others.items() if text in c_text or c_text in text]
+    for name, fork in sorted(_json(VARIANTS)["forks"].items()):
+        for lang in ("en", "ar"):
+            texts = {k: v for k, v in (fork.get(lang) or {}).items() if isinstance(v, str) and v}
+            problems += [f"{name} {lang}: {k1} is inside {k2}" for k1, v1 in texts.items() for k2, v2 in texts.items()
+                         if k1 != k2 and v1 in v2]
     assert not problems, problems
-
 
 # ---------------------------------------------------------------------------
 # (b) the fill-in script accepts d3 = "C"
@@ -303,7 +303,7 @@ def test_d3c_c_existing_t8_routes_c_to_its_own_rule():
     assert not uncaught, f"D3_FORBIDDEN_EN['C'] does not catch {uncaught}"
     name = _fixture()["ar_programme_name"]
     assert not [p for p in u8.D3_FORBIDDEN_AR["C"] if p in name or name in p], "D3_FORBIDDEN_AR['C'] forbids the programme name"
-    assert not [p for p in u8.D3_FORBIDDEN_EN["C"] if re.search(p, _c_text("en"), re.I)]
+    assert not [p for p in u8.D3_FORBIDDEN_EN["C"] if re.search(p, _retired_c("en"), re.I)]  # S81-12: retired C text
 
 
 # ---------------------------------------------------------------------------
@@ -332,10 +332,10 @@ def _dry_run(fill, root, data_path, data, capsys):
 
 
 def test_d3c_d_dry_run_selects_the_c_paragraph(tmp_path, capsys):
-    """(d) --dry-run on a temp copy with complete synthetic answers and d3 'C': rc 0, nothing written,
-    privacy section 4 (EN and AR, markdown and rendered) carries the C paragraph instead of A, and no
-    forbidden opt-out phrase. Control first: the same data with d3 'A' dry-runs rc 0, so only the C
-    value can fail this node."""
+    """(d), amended S81-12 (R-S12-4): d3 'C' stays a valid answer, but no fork reads it: on a temp copy with complete
+    synthetic answers, --dry-run with d3 'C' exits 0 and writes nothing, and the plan equals the d3 'A' plan byte for
+    byte; privacy s4 (EN and AR, markdown and rendered) carries the dated past-tense history sentence, none of the
+    retired C paragraph and no forbidden opt-out phrase. Control: the d3 'A' dry run exits 0 and would write."""
     fill = _load(FILL_SCRIPT, "_u8_d3c_fill_in_d")
     root = tmp_path / "repo"
     _copy_tree(root)
@@ -349,31 +349,28 @@ def test_d3c_d_dry_run_selects_the_c_paragraph(tmp_path, capsys):
     assert rc == 0, f"dry-run with d3 'C' exits {rc}: {err.strip()}"
     assert _snapshot(root) == start, "the dry-run wrote to the temp copy"
     missing, outputs = fill.plan(root, data, _json(VARIANTS))
-    assert missing == []
+    missing_a, outputs_a = fill.plan(root, control, _json(VARIANTS))
+    assert missing == [] and missing_a == []
+    assert {r: o[0] for r, o in outputs.items()} == {r: o[0] for r, o in outputs_a.items()}, "d3 still selects text"
     renderer = _load(RENDERER, "_u8_d3c_renderer_d")
-    a_texts = {lang: _d3_fork()[lang]["A"] for lang in ("en", "ar")}
-    ar_required, ar_forbidden = _ar_rule()
+    _ar_required, ar_forbidden = _ar_rule()
+    dates = {"en": COMPLETE_VALUES_EN["AI_SWITCH_DATE"], "ar": _fixture()["ar_values"]["AI_SWITCH_DATE_AR"]}
     problems = []
-    for lang, rel, required, forbidden, flags in (
-        ("en", PRIVACY_EN, T8_C_REQUIRED_EN, T8_C_FORBIDDEN_EN, re.I),
-        ("ar", PRIVACY_AR, ar_required, ar_forbidden, 0),
+    for lang, rel, forbidden, flags in (
+        ("en", PRIVACY_EN, T8_C_FORBIDDEN_EN, re.I),
+        ("ar", PRIVACY_AR, ar_forbidden, 0),
     ):
         text = outputs[rel][0].decode("utf-8").replace("\r\n", "\n")
         section = _section(text, 4) or ""
         rendered = html.unescape(renderer.render_markdown(text))
         match = RENDERED_SECTION_4.search(rendered)
         rendered_s4 = match.group(1) if match else ""
-        c_text = _c_text(lang)
-        if c_text not in section:
-            problems.append(f"{rel} s4: the C paragraph is not selected")
-        if a_texts[lang] in text:
-            problems.append(f"{rel}: the A sentence is still present")
-        if c_text not in rendered_s4:
-            problems.append(f"{rel}: the rendered section 4 lacks the C paragraph")
-        problems += [f"{rel} s4 {p}" for p in _rule_problems(section, required, forbidden, flags)]
+        if _retired_c(lang) in text:
+            problems.append(f"{rel}: the retired C paragraph is selected")
+        if dates[lang] not in section or dates[lang] not in rendered_s4:
+            problems.append(f"{rel} s4: the history sentence does not carry the AI switch date")
+        problems += [f"{rel} s4 {p}" for p in _rule_problems(section, {}, forbidden, flags)]
         problems += [f"{rel} rendered s4 {p}" for p in _rule_problems(rendered_s4, {}, forbidden, flags)]
-        # The opt-out families (not the turn on / turn off words, which the notification
-        # sentences of section 11 may use) are absent from the whole rendered document.
         whole = {k: p for k, p in forbidden.items() if not k.startswith("turn")}
         problems += [f"{rel} rendered document {p}" for p in _rule_problems(rendered, {}, whole, flags)]
     assert not problems, [_esc(p) for p in problems]
@@ -383,27 +380,33 @@ def test_d3c_d_dry_run_selects_the_c_paragraph(tmp_path, capsys):
 # (e) the T8 keyword rule for d3 = C
 # ---------------------------------------------------------------------------
 
+# S81-12: the claims only the retired C paragraph made (present tense); the v3 section 4 makes none of them.
+C_ONLY_EN = ("usage patterns", "model quality", "evaluation and training", "not the 30-day abuse-monitoring limit")
+C_ONLY_AR = ("usage patterns", "model quality")
+
 
 def test_d3c_e_t8_rule_en():
-    """(e) EN: the C rule rejects the A and B texts (control), then the C text satisfies it."""
-    fork = _d3_fork()["en"]
-    assert _rule_problems(fork["A"], T8_C_REQUIRED_EN, T8_C_FORBIDDEN_EN, re.I), "rule accepts the A text"
-    b_problems = _rule_problems(fork["B"], T8_C_REQUIRED_EN, T8_C_FORBIDDEN_EN, re.I)
-    assert any(p.startswith("contains") for p in b_problems), "rule does not catch the B opt-out promise"
-    problems = _rule_problems(_c_text("en"), T8_C_REQUIRED_EN, T8_C_FORBIDDEN_EN, re.I)
-    assert not problems, problems
+    """(e), amended S81-12: the C rule still recognises the retired C paragraph (control) and catches an added opt-out;
+    the live EN privacy s4 makes none of the C-only present-tense claims (usage patterns, model quality, inform the
+    evaluation and training, the 30-day exception) and no forbidden phrase: the programme is told in the past only."""
+    retired = _retired_c("en")
+    assert not _rule_problems(retired, T8_C_REQUIRED_EN, T8_C_FORBIDDEN_EN, re.I), "control: the retired C text"
+    assert _rule_problems(retired + " You can opt out.", {}, T8_C_FORBIDDEN_EN, re.I), "control: an opt-out is caught"
+    s4 = _section(_read(PRIVACY_EN), 4) or ""
+    hits = [k for k in C_ONLY_EN if re.search(T8_C_REQUIRED_EN[k], s4, re.I)]
+    assert not hits, f"privacy s4 still makes the C-only claims {hits}"
+    assert not _rule_problems(s4, {}, T8_C_FORBIDDEN_EN, re.I)
 
 
 def test_d3c_e_t8_rule_ar():
-    """(e) AR: the C rule rejects the A and B texts (control), then the C text satisfies it."""
+    """(e), amended S81-12: AR, the same as EN with the fixture rule (t8_c_ar): the retired AR C paragraph satisfies it
+    (control); the live AR privacy s4 makes none of the C-only claims and carries no forbidden phrase."""
     required, forbidden = _ar_rule()
-    fork = _d3_fork()["ar"]
-    assert _rule_problems(fork["A"], required, forbidden, 0), "rule accepts the AR A text"
-    b_problems = _rule_problems(fork["B"], required, forbidden, 0)
-    assert any(p.startswith("contains") for p in b_problems), "rule does not catch the AR B opt-out promise"
-    problems = _rule_problems(_c_text("ar"), required, forbidden, 0)
-    assert not problems, problems
-
+    assert not _rule_problems(_retired_c("ar"), required, forbidden, 0), "control: the retired AR C text"
+    s4 = _section(_read(PRIVACY_AR), 4) or ""
+    hits = [k for k in C_ONLY_AR if re.search(required[k], s4)]
+    assert not hits, f"AR privacy s4 still makes the C-only claims {hits}"
+    assert not _rule_problems(s4, {}, forbidden, 0)
 
 # ---------------------------------------------------------------------------
 # GREEN additions (session 76): (f) UG5 store-pin guard, (g) UG2 withdrawal
@@ -558,11 +561,9 @@ TERMS_DERIVED_EN = (
     "the prices gathered and de-identified search queries) and the preference and usage statistics we derive from "
     "it in aggregated or anonymised form. We may use this data to operate and improve MYEZ, and we may share, "
     "license or sell aggregated or anonymised statistics derived from it (for example price trends or category "
-    "popularity) to third parties; none of it identifies you. Apart from OpenAI's data-sharing programme described "
-    "below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it "
-    "with data brokers or advertisers. We take part in OpenAI's data-sharing programme, as section 4 of our "
-    "Privacy Policy describes: OpenAI may use the inputs we send it and the outputs it generates from them to "
-    "evaluate and train its models, and in return OpenAI gives us some free use of its service."
+    "popularity) to third parties; none of it identifies you. We do not sell or otherwise exchange your personal "
+    "data for anything of value, and we do not share it with data brokers or advertisers. We took part in OpenAI's "
+    "data-sharing programme, as section 4 of our Privacy Policy describes; our part in it has ended."
 )
 # Retired wording (FIX round 2 UF6 b, d; FIX round 4 UF14: the comparison and preference data itself is no longer
 # the sale object); none may come back.
@@ -571,15 +572,18 @@ TERMS_RETIRED_EN = (
     "stripped of anything that identifies you",
     "license or sell that comparison and preference data",
     "your personal data is never sold",
+    # S81-12 (R-S12-4): the S77 programme qualifier and the present-tense programme sentence.
+    "Apart from OpenAI's data-sharing programme described below",
+    "We take part in OpenAI's data-sharing programme",
 )
 # Privacy section 2 (UF7: the "not sold" statement points at section 4 for OpenAI), 3.6 (UF6 c) and 9 (UF6 e).
-PRIVACY_NOT_SOLD_EN = "we do not sell or otherwise exchange your personal data for anything of value"
+# S81-12 (R-S12-4): the promise is bare now, so it opens its sentence.
+PRIVACY_NOT_SOLD_EN = "We do not sell or otherwise exchange your personal data for anything of value"
 PRIVACY_S2_EN = (
-    "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your "
-    "personal data for anything of value, and we do not share it with data brokers or advertisers. We take part in "
-    "OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs it "
-    "generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its "
-    "service."
+    "We do not sell or otherwise exchange your personal data for anything of value, and we do not share it with "
+    "data brokers or advertisers. We took part in OpenAI's data-sharing programme, under which OpenAI could use the "
+    "inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some "
+    "free use of its service; our part in it has ended (section 4)."
 )
 PRIVACY_AGG_EN = (
     "We may share or sell aggregated or anonymised comparison and preference statistics (for example price "
@@ -901,8 +905,8 @@ def test_d3c_j_privacy_keeps_not_sold_and_adds_the_aggregated_sentence():
             problems.append(f"{rel} s2: the aggregated sentence precedes the 'not sold' statement")
         if text.count(purpose) != 1 or purpose not in _subsection(text, "3.6"):
             problems.append(f"{rel} s3.6: the de-identified statistics purpose line is not there once")
-        if text.count(openai) != 1 or openai not in _subsection(text, "3.6"):
-            problems.append(f"{rel} s3.6: the OpenAI data-sharing programme purpose line (UF11) is not there once")
+        if openai in text:  # S81-12 (R-S12-4): the programme ended, so its purpose line is retired
+            problems.append(f"{rel} s3.6: the OpenAI data-sharing programme purpose line (UF11) is back")
         if text.count(s9) != 1 or s9 not in (_section(text, 9) or ""):
             problems.append(f"{rel} s9: the de-identified statistics sentence is not there once")
     assert not problems, problems
@@ -972,11 +976,14 @@ TEMPORARY_STORAGE_EN = re.compile(r"(?i)temporary[- ]storage")
 S5_CORE_EN = "only to provide its service"
 # S78 (LT10, P12): the carve-out also names our mailbox provider (it is listed among the s5 recipients now and acts
 # under its own terms), and the own-terms sentence names it without a vendor name (LR3).
+# S81-12 (R-S12-4, a deliberate pin change): the carve-out head names the data shared with OpenAI before the AI
+# switch date, so the pinned sentence is its date-free tail (it holds for the committed and the synthetic dates; the
+# AR twin is the fixture's fix2_ar.s5_carveout) and (n) checks the dated head separately (S5_CARVEOUT_HEAD_EN).
 S5_CARVEOUT_EN = (
-    "Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each of our "
-    "service providers processes data only to provide its service to us, and we require each of them to protect it "
-    "at least as well as this policy does."
+    "and as this section describes for our mailbox provider, each of our service providers processes data only to "
+    "provide its service to us, and we require each of them to protect it at least as well as this policy does."
 )
+S5_CARVEOUT_HEAD_EN = "Except as section 4 describes for data shared with OpenAI before {date} and as this section describes"
 # S78 fix F3 (legal A3): the own-terms sentence also names the web-font service the website uses (s5).
 S5_OWN_TERMS_EN = (
     "Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font "
@@ -1116,7 +1123,8 @@ def _rendered_carveout_problems(rel, rendered, core, carveout, flags):
 
 @pytest.mark.parametrize("d3", ("C", "A"))
 def test_d3c_n_providers_sentence_carves_out_openai(tmp_path, d3):
-    """(n) UF4 + UF10: after a synthetic complete fill-in, privacy s5 says each of our service providers processes
+    """(n) UF4 + UF10, amended S81-12 (R-S12-4: the carve-out is dated, d3 no longer selects text): after a synthetic
+    complete fill-in, privacy s5 says each of our service providers processes
     data only to provide its service "except as section 4 describes for OpenAI" (EN and AR, markdown and
     rendered), every "only to provide its service" claim in s5 is that sentence, and the next sentence says
     retailer websites (section 6) and the sign-in providers Apple and Google act under their own terms (once,
@@ -1146,9 +1154,13 @@ def test_d3c_n_providers_sentence_carves_out_openai(tmp_path, d3):
         if own_terms[lang] not in rendered_s5:
             problems.append(f"{rel}: the rendered s5 lacks the own-terms sentence (UF10)")
         problems += _rendered_carveout_problems(rel, rendered, core, carveout, flags)
-        own = _d3_fork()[lang][d3]
-        if own not in (_section(text, 4) or ""):
-            problems.append(f"{rel} s4: the d3 {d3} paragraph is not selected")
+        # S81-12: no fork reads d3; s5 carries the dated carve-out head and s4 the dated history sentence.
+        date = COMPLETE_VALUES_EN["AI_SWITCH_DATE"] if lang == "en" else _fixture()["ar_values"]["AI_SWITCH_DATE_AR"]
+        head = (S5_CARVEOUT_HEAD_EN if lang == "en" else fx["s5_carveout_head"]).format(date=date)
+        if head not in section:
+            problems.append(f"{rel} s5: the carve-out head does not name the data shared with OpenAI before the date")
+        if date not in (_section(text, 4) or ""):
+            problems.append(f"{rel} s4: the history sentence (d3 {d3}) does not carry the AI switch date")
         # UF22 positive control (X3): the unqualified claim appended to s6 is caught, markdown and rendered.
         s6 = _section(text, 6) or ""
         if not s6 or text.count(s6) != 1:

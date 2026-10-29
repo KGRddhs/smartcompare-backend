@@ -2,7 +2,7 @@
 
 **MYEZ**
 
-*Effective date: October 14, 2026*
+*Effective date: October 29, 2026*
 
 ## 1. Who we are
 
@@ -12,7 +12,7 @@ This policy explains what data we collect, why, who receives it, how long we kee
 
 ## 2. Summary
 
-MYEZ compares two products for you. To do that we process the products you enter or photograph, your account details and the preferences you choose to give us. We use OpenAI to identify products and write comparisons, and we search retailer websites for prices. Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers. We take part in OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service. We do not show third-party ads and we do not track you across other companies' apps. We may share or sell aggregated or anonymised comparison and preference statistics (for example price trends or category popularity) that cannot identify you.
+MYEZ compares two products for you. To do that we process the products you enter or photograph, your account details and the preferences you choose to give us. MYEZ uses AI providers to process your requests: Anthropic, PBC and OpenAI, L.L.C. We are moving this processing to Anthropic; until the move is complete, some or all requests, including photos, are processed by OpenAI. We use AI to identify products and write comparisons (section 4), and we search retailer websites for prices. We do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers. We took part in OpenAI's data-sharing programme, under which OpenAI could use the inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some free use of its service; our part in it has ended (section 4). We do not show third-party ads and we do not track you across other companies' apps. We may share or sell aggregated or anonymised comparison and preference statistics (for example price trends or category popularity) that cannot identify you.
 
 ## 3. What we collect and why
 
@@ -25,7 +25,7 @@ MYEZ compares two products for you. To do that we process the products you enter
 
 ### 3.2 Your comparisons
 
-- **What you compare:** the product names you type, the links you paste (and the text of those web pages), and the photos you take or pick. We do not store photos; section 4 explains what is sent to OpenAI.
+- **What you compare:** the product names you type, the links you paste (and the text of those web pages), and the photos you take or pick. We do not store photos; section 4 explains what is sent to our AI providers.
 - **Comparison results:** each comparison and its result, saved to your history until you delete it.
 - **Search records:** what you searched for, whether the search worked, how long it took and what it cost us, linked to your account when you are signed in.
 - **Feedback and messages:** the feedback you give on a comparison, the messages you send us through Contact Us and the email you send to our addresses.
@@ -35,7 +35,7 @@ MYEZ compares two products for you. To do that we process the products you enter
 - **Preferences:** the priorities, budget level, lifestyle tags and brand attitude you choose, and your notification settings. We keep a history of changes to your preferences.
 - **Optional profile answers:** your age group, gender and area, if you choose to give them, and your language and country, which you choose during onboarding or which we may set from your device's language and your network location.
 - **How you heard about us:** your answer, if you give one.
-- **Behaviour profile:** a summary we derive from how you use comparisons (for example which sections you read and for how long). We use it to adjust how comparisons are scored for you; we do not send it to OpenAI.
+- **Behaviour profile:** a summary we derive from how you use comparisons (for example which sections you read and for how long). We use it to adjust how comparisons are scored for you; we do not send it to our AI providers.
 
 ### 3.4 Your device and use of the App
 
@@ -52,30 +52,38 @@ MYEZ compares two products for you. To do that we process the products you enter
 
 ### 3.6 Why we use your data
 
-- **To provide the App under our agreement with you (the Terms of Service):** your account, your comparisons (including sending them to OpenAI to produce the result), your history and the security of the App.
+- **To provide the App under our agreement with you (the Terms of Service):** your account, your comparisons (including sending them to our AI providers to produce the result), your history and the security of the App.
 - **With your consent:** your optional profile answers, notifications and your answer about how you heard about us. You can withdraw your consent at any time (section 10).
 - **The permission the App asks for before your first comparison** is the permission Apple requires before an app shares data with a third-party AI service (section 4).
-- Letting OpenAI use the inputs and outputs of your comparisons under its data-sharing programme, as section 4 describes (legal basis: the permission you give before your first comparison; withdrawal as section 10 describes).
 - **In our legitimate interest in improving and funding the service:** producing de-identified statistics about comparisons and preferences.
 
 Your email address and a password are required to create an account; without them you cannot create one. Everything else in section 3.3, and notifications, are optional; without them comparisons are less personalised.
 
-## 4. Comparisons made with AI (OpenAI)
+## 4. Comparisons made with AI (Anthropic and OpenAI)
 
-To identify products and write your comparison, we send OpenAI the product names you type, the links you paste together with the text of those web pages, and the photos you take or pick. We may also send the preferences on your profile, such as your priorities, budget level, lifestyle tags and brand attitude; your country, language and area; and general patterns from people whose survey answers are similar to yours (we never send your age group or gender themselves). We do not send your name, email address or account identifiers.
+MYEZ uses AI providers to process your requests: Anthropic, PBC and OpenAI, L.L.C. We are moving this processing to Anthropic; until the move is complete, some or all requests, including photos, are processed by OpenAI.
 
-Before your first comparison or scan, the App asks your permission to send this information to OpenAI. This is the permission Apple requires before an app shares data with a third-party AI service. You can withdraw it at any time <PLACEHOLDER:WITHDRAW_PATH>, or by emailing <PLACEHOLDER:PRIVACY_EMAIL> and asking us to delete your account; without it the App cannot run comparisons.
+To identify products and write your comparison, we send our AI providers the product names you type, the links you paste together with the text of those web pages, and the photos you take or pick. We may also send the preferences on your profile, such as your priorities, budget level, lifestyle tags and brand attitude; your country, language and area; and general patterns from people whose survey answers are similar to yours (we never send your age group or gender themselves). We do not send your name, email address or account identifiers.
 
-OpenAI does not use data sent to its API to train its models unless the developer opts in, and we have not opted in. OpenAI may keep data sent to its API in abuse-monitoring logs for up to 30 days.
+Before your first comparison or scan, the App asks your permission to send this information to our AI providers. This is the permission Apple requires before an app shares data with a third-party AI service. You can withdraw it at any time <PLACEHOLDER:WITHDRAW_PATH>, or by emailing <PLACEHOLDER:PRIVACY_EMAIL> and asking us to delete your account; without it the App cannot run comparisons.
+
+Anthropic, PBC processes the information we send it to provide its service to us under its commercial terms, and it does not use that information to train its models. Anthropic keeps the information it receives for up to 30 days, and requests we send in batches, with their results, for up to 29 days, unless it must keep them longer to enforce its usage policies or to comply with the law.
+
+If we use Anthropic's web search to look up product information, Anthropic's search provider receives the search terms, such as product names, and never your identity.
+
+Until the move to Anthropic is complete, OpenAI processes some or all requests, including photos, and receives the same kinds of information described above. We took part in OpenAI's data-sharing programme, which let OpenAI use the inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some free use of its service; our part in the programme ended on <PLACEHOLDER:AI_SWITCH_DATE>. Since then, OpenAI does not use the data we send it to train its models, and it may keep that data in abuse-monitoring logs for up to 30 days. Data shared with OpenAI under the programme before that date remains governed by OpenAI's terms.
+
+Please photograph products only, and do not include people, documents, payment cards or other personal or health details in your photos or searches.
 
 Comparisons are generated by AI and can be wrong; see our Terms of Service.
 
 ## 5. Who receives your data
 
-- **OpenAI:** identifies products and writes comparisons (section 4).
+- **Anthropic:** processes the requests we send it to identify products and write comparisons (section 4).
+- **OpenAI:** processes some or all requests, including photos, until our move to Anthropic is complete (section 4).
 - **Apple:** only if you use Sign in with Apple. Apple shares your email address, or a private relay address, with us. Apple also delivers notifications to iPhones.
 - **Google:** if you use Google Sign-In, Google shares your name, email address and profile picture with us through its sign-in token.
-- **Our database and sign-in provider:** stores your account and the records described in section 3, and sends sign-in emails such as password resets.
+- **Our database and sign-in provider:** stores your account and the records described in section 3, and sends sign-in emails such as password resets, directly or through an email-delivery provider.
 - **Our hosting provider:** runs our servers. Its logs can record each request to our servers, including the IP address it came from and the web address requested, which for a comparison can include the product names.
 - **Our temporary-storage provider:** holds usage counters, sign-in security checks and short-lived copies of data that make the App faster.
 - **Our error-reporting provider:** receives error and performance reports from our servers and from the App (section 13).
@@ -84,7 +92,7 @@ Comparisons are generated by AI and can be wrong; see our Terms of Service.
 - **Our email providers:** an email-routing service receives the email you send to our addresses and forwards it to our mailbox provider, which stores it under its own terms.
 - **The retailer websites and store search services we query:** see section 6.
 
-Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at <PLACEHOLDER:PRIVACY_EMAIL>. We may also disclose data where the law requires it.
+Except as section 4 describes for data shared with OpenAI before <PLACEHOLDER:AI_SWITCH_DATE> and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at <PLACEHOLDER:PRIVACY_EMAIL>. We may also disclose data where the law requires it.
 
 People you send a comparison or invite link to can see that comparison, without the parts personalised for you. People who open an invite link you share can also see your display name. If you joined through a friend's invite, the notification we send that friend can show your display name.
 
@@ -94,20 +102,24 @@ When you visit our website, our hosting provider can log your request, including
 
 To find prices we search public retailer websites and their search services for the products in your comparison. Those requests come from our servers and contain only product search terms; they do not include your identity. For comparisons by link, our servers open the page addresses you paste. Product pictures in the App are loaded directly from the retailer or image website that published them, or from a search engine's image server, so the website that serves each picture receives your device's IP address and the standard details your device sends with any web request.
 
+We may also keep our own catalogue of product information (product names, sizes and prices, and the web addresses of product pictures and of the pages they came from) so that later comparisons are faster and more complete. Our catalogue crawler, identified by the user-agent string published at https://getmyez.com/bot/, reads merchant pages whose robots.txt permits it. We may also add product details that our team enters by hand from pages it visits in the usual way, product feeds and data that partners license to us, and product details we find during comparisons. The catalogue holds product information only, never who compared a product.
+
+Stores may pay to show a link to their website or shop next to a product; such a link is marked "Sponsored". Payment never changes how products are compared, scored or ranked. A tap on a store link may be recorded with your other in-App activity (section 3.4).
+
 ## 7. Transfers outside Bahrain
 
 Our providers process data outside Bahrain, including in the United States and Germany (European Union)<PLACEHOLDER:HOSTING_REGIONS_CLAUSE>. <PLACEHOLDER:TRANSFER_BASIS>
 
 ## 8. How long we keep data
 
-- **Your account, profile, preferences, optional answers, comparisons, history, feedback, messages and activity records linked to your account:** until you delete them or your account; section 9 describes what deleting your account removes.
+- **Your account, profile, preferences, optional answers, comparisons, history, feedback, messages and activity records linked to your account:** until you delete them or your account; section 9 describes what deleting your account removes.<PLACEHOLDER:COMPARE_RUNS_CLAUSE><PLACEHOLDER:KB_FEEDBACK_CLAUSE>
 - **Usage counters:** daily and monthly counters in temporary storage expire within about 32 days. Your total number of comparisons stays with your account; section 9 describes what deleting your account removes.
 - **Sign-in security records linked to your account, which can include IP addresses:** as long as your account exists; section 9 explains what happens to them when you delete it.
 - **Records of failed sign-ins and lockouts, which are not linked to an account and include IP addresses:** <PLACEHOLDER:SECURITY_LOG_RETENTION>.
 - **Searches and activity records that are not linked to an account:** <PLACEHOLDER:ANON_LOG_RETENTION>.
 - **Email you send to our addresses:** kept in our mailbox until we delete it; no fixed period.
-- **Photos:** we do not store them; section 4 explains what OpenAI keeps.
-- **Short-lived security checks and copies in temporary storage:** expire within 6 hours.
+- **Photos:** we do not store them; section 4 explains what our AI providers keep.
+- **Short-lived security checks and copies in temporary storage:** expire within 6 hours.<PLACEHOLDER:AUTH_THROTTLE_CLAUSE>
 - **Backups and service logs:** copies in our providers' backups and logs are deleted on their schedules.
 
 ## 9. Deleting your account
@@ -132,7 +144,7 @@ If you allow notifications, we may send you referral updates (for example when a
 
 ## 12. Children and young people
 
-The App is for people aged 13 and over. We do not knowingly collect data from children under 13; if you believe a child has given us data, contact us and we will delete it.<PLACEHOLDER:MINORS_CLAUSE>
+The App is for people aged 13 and over. We do not knowingly collect data from children under 13; if you believe a child has given us data, contact us and we will delete it.<PLACEHOLDER:MINORS_CLAUSE> The App tells you that comparisons are written by AI and asks your permission before your first comparison, and we check requests and results for unsafe content.
 
 ## 13. Security
 
@@ -144,7 +156,7 @@ If a breach puts your data at risk, we will notify you and the competent authori
 
 ## 14. Data kept on your device
 
-The App keeps sign-in tokens and two random device identifiers in your iPhone's secure storage (Keychain), and your profile summary, recent searches, onboarding answers not yet sent, your AI permission record, language settings and a cached copy of this policy in app storage. Signing out removes the sign-in tokens and the profile summary; deleting your account also removes the AI permission record. Items in the Keychain can remain on the iPhone after the App is deleted.
+The App keeps your sign-in tokens and a random install identifier stored securely in your iPhone's Keychain, and your profile summary, recent searches, onboarding answers not yet sent, your AI permission record, language settings and a cached copy of this policy in app storage. During a transition, the App may also send our servers an older identifier derived from device properties, only at sign-up, social sign-in and sharing. Signing out removes the sign-in tokens and the profile summary; deleting your account also removes the AI permission record. Items in the Keychain can remain on the iPhone after the App is deleted.
 
 ## 15. Changes to this policy
 

@@ -512,17 +512,25 @@ def test_s78_r10_no_infrastructure_vendor_name_in_legal_surfaces():
 
 ON_REQUEST_EN = "We will tell you the names of our service providers on request at privacy@getmyez.com."
 ON_REQUEST_EN_TEMPLATE = "We will tell you the names of our service providers on request at <PLACEHOLDER:PRIVACY_EMAIL>."
-CARVEOUT_EN = "Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each"
+# S81-12 (R-S12-4, a deliberate pin change of R11): the carve-out names the data shared with OpenAI before the AI
+# switch date (the fill-in data's AI_SWITCH_DATE / _AR), so R11 formats the committed date into it (EN here, AR in
+# the fixture's s5_carveout_ar); the mailbox-provider clause it pins (LT10) is unchanged.
+CARVEOUT_EN = (
+    "Except as section 4 describes for data shared with OpenAI before {date} and as this section describes for our "
+    "mailbox provider, each"
+)
 
 
 def test_s78_r11_providers_on_request_sentence():
     """R11 (LR3; LT10): filled privacy s5 carries the on-request sentence exactly once (EN verbatim, AR fixture); the
     snapshot carries the token form; the s5 carve-out sentence names the mailbox provider (LT10). RED at base:
     absent."""
-    fx = _fx()
+    fx, ph = _fx(), _data()["placeholders"]
     problems = []
-    for lang, sentence, template, carve in (("en", ON_REQUEST_EN, ON_REQUEST_EN_TEMPLATE, CARVEOUT_EN),
-                                            ("ar", fx["on_request_ar"], fx["on_request_ar_template"], fx["s5_carveout_ar"])):
+    carve_en = CARVEOUT_EN.format(date=ph.get("AI_SWITCH_DATE"))
+    carve_ar = fx["s5_carveout_ar"].format(date=ph.get("AI_SWITCH_DATE_AR"))
+    for lang, sentence, template, carve in (("en", ON_REQUEST_EN, ON_REQUEST_EN_TEMPLATE, carve_en),
+                                            ("ar", fx["on_request_ar"], fx["on_request_ar_template"], carve_ar)):
         s5 = _section(_read(MD[(lang, "privacy")]), 5)
         if s5.count(sentence) != 1:
             problems.append(f"{lang} privacy s5: the on-request sentence occurs {s5.count(sentence)} times")
@@ -894,7 +902,8 @@ def test_s78_r21_privacy_has_no_security_internals():
     assert not problems, _report("R21:", problems)
 
 
-PUBLIC_NAME_IDS = {"openai", "apple", "google_sign_in", "retailers"}
+# S81-12 (R-S12-11, a deliberate pin change): the anthropic row is public (the policy names Anthropic).
+PUBLIC_NAME_IDS = {"openai", "anthropic", "apple", "google_sign_in", "retailers"}
 
 
 def test_s78_r22_manifest_categories():
@@ -988,9 +997,13 @@ def test_s78_r24_privacy_keeps_the_required_elements():
 # R25-R26: the existing scans and the retired sentences
 # ---------------------------------------------------------------------------
 
+# S81-12 (R-S12-1, a deliberate pin change of R25): Terms s8 names both AI providers (the dual-provider
+# sentence), then lists what we send them; the AR twin is the fixture's tos_s8_openai_ar.
 TOS_S8_OPENAI_EN = (
-    "Our AI provider is OpenAI; section 4 of our Privacy Policy lists what we send it, and the App asks your "
-    "permission before your first comparison or scan."
+    "MYEZ uses AI providers to process your requests: Anthropic, PBC and OpenAI, L.L.C. We are moving this "
+    "processing to Anthropic; until the move is complete, some or all requests, including photos, are processed "
+    "by OpenAI. Section 4 of our Privacy Policy lists what we send them, and the App asks your permission before "
+    "your first comparison or scan."
 )
 TOS_S13_DELETION_EN = "Section 9 of our Privacy Policy describes what deleting your account removes and the records we keep."
 

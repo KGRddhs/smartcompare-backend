@@ -2,7 +2,8 @@
  * S69 U3 — one-time AI-processing consent (App Review guideline 5.1.2(i)).
  *
  * Before the first byte of a compare leaves the device, the user is told that
- * MYEZ sends what they enter to OpenAI and agrees to it once. Spec:
+ * MYEZ sends what they enter to its AI providers (Anthropic, and OpenAI until the move to
+ * Anthropic is complete) and agrees to it once. Spec:
  * docs/investigations/2026-09-29-session-69-state/U3_AI_CONSENT_SPEC.md R1/R2,
  * R3 as ruled by its spec review:
  *
@@ -37,10 +38,13 @@
  * clashes with the sheet's own dismissal.
  *
  * The sheet copy must stay true of what the code sends — see the aiConsent.*
- * keys and the evidence in the U3 PR. It must NOT promise an opt-out: under
- * decision D3 = C (S75 U3b) the organisation shares the compare inputs and
- * outputs with OpenAI, the body discloses that in one sentence, and there is
- * no per-user AI-sharing control (the Profile toggle is gone).
+ * keys and the evidence in the U3 PR. It must NOT promise an opt-out: there is
+ * no per-user AI-sharing control (the Profile toggle is gone). S81-12 (consent
+ * v3): the body names both AI providers, Anthropic and OpenAI, and says that
+ * until the move to Anthropic is complete some or all requests, including
+ * photos, are processed by OpenAI; OpenAI's data-sharing programme (decision
+ * D3 = C, S75 U3b) ended on the AI switch date, so the v2 training sentence is
+ * gone. The version moved 2 -> 3, so every user is asked once more.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -49,7 +53,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSavedUser } from './authService';
 
 /** Bump to re-ask every user once (e.g. when the disclosure changes). */
-export const AI_CONSENT_VERSION = 2;
+export const AI_CONSENT_VERSION = 3;
 
 export const AI_CONSENT_KEY_PREFIX = '@qaren_ai_consent_';
 
