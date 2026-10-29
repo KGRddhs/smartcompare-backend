@@ -4,7 +4,8 @@
  * Mirrors the backend scrubbing patterns in `app/services/sentry_service.py`
  * so JWTs, OpenAI / Firecrawl API keys, generic long-hex tokens, and
  * Bearer headers are redacted before events leave the device. Sensitive
- * request headers (authorization, x-admin-key, cookie) are also redacted
+ * request headers (authorization, x-admin-key, cookie and, since S81-08,
+ * x-device-fingerprint and x-device-fingerprint-legacy) are also redacted
  * wholesale. Exception values are blanked (the backend's R1) except three
  * axios-generated shapes (S74 CLIENT-TRUTH, UP1).
  *
@@ -46,7 +47,15 @@ const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
   [/Bearer\s+[A-Za-z0-9_.-]+/g, 'Bearer [REDACTED]'],
 ];
 
-const SENSITIVE_HEADERS = new Set(['authorization', 'x-admin-key', 'cookie']);
+// S81-08 (R-S08-12): the two device-fingerprint request headers are redacted
+// by name as well (their 64-hex values are also caught by the pattern above).
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'x-admin-key',
+  'cookie',
+  'x-device-fingerprint',
+  'x-device-fingerprint-legacy',
+]);
 
 // Dict key fragments (case-insensitive) — when a key matches, the whole
 // value is replaced regardless of pattern match. Catches provider tokens

@@ -53,7 +53,34 @@ function getCrypto() {
   return Crypto;
 }
 import api, { API_BASE_URL, getInFlightRefresh, getOrStartRefresh } from './api';
-import { getDeviceFingerprint } from './deviceFingerprint';
+import {
+  getDeviceFingerprint,
+  legacyDeviceFingerprintHash,
+  legacyFingerprintHeaderActive,
+} from './deviceFingerprint';
+
+/**
+ * S81-08 (RULINGS_S81_08 R-S08-4 as amended by R-S08B-1 / R-S08B-5, R-S08-9):
+ * the build-3 device value rides `X-Device-Fingerprint-Legacy` ONLY at
+ * register and the two social sign-ins, only beside a resolved
+ * `X-Device-Fingerprint` and only before the dated cutoff (after it the
+ * legacy composition is never read). The S81-08b reader matches stored rows
+ * on it there. Every call to a new deviceFingerprint export sits inside this
+ * try, so a failure, or a module that offers only getDeviceFingerprint, means
+ * no legacy header and never a blocked sign-in.
+ */
+async function legacyFingerprintHeader(fingerprint: string | null): Promise<Record<string, string>> {
+  if (!fingerprint) return {};
+  try {
+    if (!legacyFingerprintHeaderActive()) return {};
+    const legacy = await legacyDeviceFingerprintHash();
+    return typeof legacy === 'string' && /^[a-f0-9]{64}$/.test(legacy)
+      ? { 'X-Device-Fingerprint-Legacy': legacy }
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * A8 — i18n key rendered when a social sign-in POST exceeds its deadline.
@@ -139,6 +166,8 @@ export async function register(
   } catch (e) {
     if (__DEV__) console.warn('[AUTH] device fingerprint unavailable:', e);
   }
+  // S81-08: the build-3 value beside it while the transition window is open.
+  const legacyHeader = await legacyFingerprintHeader(fingerprint);
 
   try {
     const response = await api.post(
@@ -151,7 +180,7 @@ export async function register(
         ...(options.inviteCode ? { invite_code: options.inviteCode } : {}),
         ...(options.consent ?? {}),
       },
-      fingerprint ? { headers: { 'X-Device-Fingerprint': fingerprint } } : undefined,
+      fingerprint ? { headers: { 'X-Device-Fingerprint': fingerprint, ...legacyHeader } } : undefined,
     );
 
     if (response.data.user) {
@@ -335,6 +364,17 @@ export async function logout(): Promise<void> {
     logoutHandoffs.delete(handoff);
     // Always clear local storage
     await clearSession();
+    // S81-08 fix round 1 (RULINGS_FIX1_S81_08 F1-1): drop the request-path
+    // consent memo (R-S08-3) beside its per-account key, so the next session's
+    // metered requests read their own account's record. Lazy and synchronous
+    // (aiConsent imports this module); never lets logout fail.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const consent = require('./aiConsent');
+      if (typeof consent.forgetRequestConsent === 'function') consent.forgetRequestConsent();
+    } catch {
+      // never let the memo drop break logout
+    }
     // M18 MB-flows-04 — a user-initiated logout is the account-switch
     // path: drop any pending onboarding completion draft so it can never
     // be replayed into a DIFFERENT account that signs in next on this
@@ -980,6 +1020,8 @@ export async function signInWithGoogle(consent?: ConsentPayload): Promise<AuthRe
     } catch (e) {
       if (__DEV__) console.warn('[AUTH] device fingerprint unavailable:', e);
     }
+    // S81-08: the build-3 value beside it (read after the sheet, like the new one).
+    const legacyHeader = await legacyFingerprintHeader(fingerprint);
 
     let response: Response;
     try {
@@ -996,6 +1038,7 @@ export async function signInWithGoogle(consent?: ConsentPayload): Promise<AuthRe
           headers: {
             'Content-Type': 'application/json',
             ...(fingerprint ? { 'X-Device-Fingerprint': fingerprint } : {}),
+            ...legacyHeader,
           },
           body: JSON.stringify(body),
         },
@@ -1143,6 +1186,8 @@ export async function signInWithApple(consent?: ConsentPayload): Promise<AuthRes
     } catch (e) {
       if (__DEV__) console.warn('[AUTH] device fingerprint unavailable:', e);
     }
+    // S81-08: the build-3 value beside it (read after the sheet, like the new one).
+    const legacyHeader = await legacyFingerprintHeader(fingerprint);
 
     // Send to our backend.
     // A8: same unbounded-fetch defect as the Google path — RN applies no
@@ -1158,6 +1203,7 @@ export async function signInWithApple(consent?: ConsentPayload): Promise<AuthRes
           headers: {
             'Content-Type': 'application/json',
             ...(fingerprint ? { 'X-Device-Fingerprint': fingerprint } : {}),
+            ...legacyHeader,
           },
           body: JSON.stringify({
             provider: 'apple',

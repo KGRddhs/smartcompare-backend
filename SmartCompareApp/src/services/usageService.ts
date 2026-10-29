@@ -4,13 +4,22 @@
  */
 
 import api from './api';
+import { withRequestContext } from './requestContext';
+
+/**
+ * S81-08 (RULINGS_S81_08 R-S08-2): the axis a reset time applies to, as the
+ * server (S81-09) names it; the client shows a reset time only for 'daily' /
+ * 'device_daily'.
+ */
+export type UsageScope = 'daily' | 'device_daily' | 'monthly' | 'lifetime';
 
 export interface UsageStatus {
   tier: 'free' | 'premium';
   used: {
     daily: number;
     monthly: number;
-    lifetime: number;
+    // R-S08-13: optional, so a status without the lifetime counter is still read.
+    lifetime?: number;
   };
   limits: {
     daily: number;
@@ -26,7 +35,13 @@ export interface UsageStatus {
     daily: number;
     monthly: number;
     lifetime_free?: number;
+    // RULINGS_FIX1_S81_08 F1-8: optional, sent by S81-09 with counted_scope
+    // 'device_daily'; the Home pill then counts this axis.
+    device_daily?: number;
   };
+  // S81-08 (R-S08-2): optional, sent by S81-09; absent on today's server.
+  resets_at?: string;
+  counted_scope?: UsageScope;
 }
 
 export interface UsageLimitError {
@@ -38,11 +53,17 @@ export interface UsageLimitError {
     monthly: number;
     lifetime_free: number;
   };
+  // S81-08 (R-S08-2 / R-S08-14): optional reset fields of the 429 (S81-09).
+  resets_at?: string;
+  retry_after_seconds?: number;
+  retry_after?: number;
+  scope?: UsageScope;
 }
 
 export async function getUsageStatus(): Promise<UsageStatus | null> {
   try {
-    const response = await api.get('/api/v1/usage/status');
+    // S81-08 (R-S08-5): a metered read, so it carries the device and consent headers.
+    const response = await api.get('/api/v1/usage/status', withRequestContext());
     return response.data;
   } catch {
     return null;
