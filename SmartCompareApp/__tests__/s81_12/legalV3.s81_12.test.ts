@@ -93,22 +93,24 @@ describe('S81-12 C1 - consent version 3 and the re-pinned fence', () => {
 });
 
 describe('S81-12 C2 - a stored v2 record no longer counts', () => {
+  // S81-12 F1-11 (RULINGS_FIX1_S81_12, E-row ECF1): consent is per account (R-S08-3), so the record
+  // API takes the synthetic user id explicitly; the API itself is unchanged.
   it('v2 record -> not current; after Agree the stored record is version 3', async () => {
     const userId = 's81-12-c2-user-a';
     mockGetSavedUser.mockResolvedValue({ id: userId });
     STORE[aiConsent.aiConsentStorageKey(userId)] = JSON.stringify({ version: 2, at: '2026-10-01T00:00:00.000Z' });
-    expect(await aiConsent.hasCurrentAiConsent()).toBe(false);
-    await aiConsent.recordAiConsent();
+    expect(await aiConsent.hasCurrentAiConsent(userId)).toBe(false);
+    await aiConsent.recordAiConsent(userId);
     const stored = JSON.parse(STORE[aiConsent.aiConsentStorageKey(userId)] || '{}');
     expect(stored.version).toBe(3);
-    expect(await aiConsent.hasCurrentAiConsent()).toBe(true);
+    expect(await aiConsent.hasCurrentAiConsent(userId)).toBe(true);
   });
 
   it('a v3 record (another user) counts', async () => {
     const userId = 's81-12-c2-user-b';
     mockGetSavedUser.mockResolvedValue({ id: userId });
     STORE[aiConsent.aiConsentStorageKey(userId)] = JSON.stringify({ version: 3, at: '2026-10-24T00:00:00.000Z' });
-    expect(await aiConsent.hasCurrentAiConsent()).toBe(true);
+    expect(await aiConsent.hasCurrentAiConsent(userId)).toBe(true);
   });
 });
 

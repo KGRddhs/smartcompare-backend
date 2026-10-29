@@ -547,10 +547,11 @@ def test_d3c_h_no_per_user_sharing_setting_is_claimed():
 TERMS_HISTORY_EN = (
     "Your account's comparison history is yours to view, share and delete, and is handled under our Privacy Policy."
 )
+# S81-12 fix round 1 (RULINGS_FIX1_S81_12 F1-6, a deliberate pin change, E-row EF6a): the Terms s8 licence names 'our AI providers'.
 TERMS_LICENCE_EN = (
     "You grant us a worldwide, royalty-free licence to use the content you submit to MYEZ (your queries, "
     "photos, links, feedback and preferences) to operate, secure and improve the service, to create "
-    "de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our "
+    "de-identified comparison and preference datasets, and to obtain comparisons from our AI providers as our "
     "Privacy Policy describes."
 )
 # FIX round 4 (UF14; the owner: "comparison data and preference data, never personal"): ownership attaches to the

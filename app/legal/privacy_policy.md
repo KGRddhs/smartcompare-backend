@@ -4,6 +4,8 @@
 
 *Effective date: October 29, 2026*
 
+**Changes on October 29, 2026:** we added Anthropic as one of our AI providers (section 4), our part in OpenAI's data-sharing programme ended on that date (section 4), and the App will ask again for your permission to send your requests to our AI providers.
+
 ## 1. Who we are
 
 MYEZ (the "App") is provided by Husain Aseeri, an individual app developer in the Kingdom of Bahrain, trading as MYEZ ("we", "us"). Postal address: Kingdom of Bahrain (our postal address is available on request at privacy@getmyez.com). We decide how and why your personal data is processed in the App. Contact: privacy@getmyez.com.
@@ -102,7 +104,7 @@ When you visit our website, our hosting provider can log your request, including
 
 To find prices we search public retailer websites and their search services for the products in your comparison. Those requests come from our servers and contain only product search terms; they do not include your identity. For comparisons by link, our servers open the page addresses you paste. Product pictures in the App are loaded directly from the retailer or image website that published them, or from a search engine's image server, so the website that serves each picture receives your device's IP address and the standard details your device sends with any web request.
 
-We may also keep our own catalogue of product information (product names, sizes and prices, and the web addresses of product pictures and of the pages they came from) so that later comparisons are faster and more complete. Our catalogue crawler, identified by the user-agent string published at https://getmyez.com/bot/, reads merchant pages whose robots.txt permits it. We may also add product details that our team enters by hand from pages it visits in the usual way, product feeds and data that partners license to us, and product details we find during comparisons. The catalogue holds product information only, never who compared a product.
+We may also keep our own catalogue of product information (product names, sizes and prices, and the web addresses of product pictures and of the pages they came from) so that later comparisons are faster and more complete. When we run it, our catalogue crawler, identified by the user-agent string published at https://getmyez.com/bot/, reads merchant pages whose robots.txt permits it. We may also add product details that our team enters by hand from pages it visits in the usual way, product feeds and data that partners license to us, and product details we find during comparisons. The catalogue holds product information only, never who compared a product.
 
 Stores may pay to show a link to their website or shop next to a product; such a link is marked "Sponsored". Payment never changes how products are compared, scored or ranked. A tap on a store link may be recorded with your other in-App activity (section 3.4).
 
@@ -156,7 +158,7 @@ If a breach puts your data at risk, we will notify you and the competent authori
 
 ## 14. Data kept on your device
 
-The App keeps your sign-in tokens and a random install identifier stored securely in your iPhone's Keychain, and your profile summary, recent searches, onboarding answers not yet sent, your AI permission record, language settings and a cached copy of this policy in app storage. During a transition, the App may also send our servers an older identifier derived from device properties, only at sign-up, social sign-in and sharing. Signing out removes the sign-in tokens and the profile summary; deleting your account also removes the AI permission record. Items in the Keychain can remain on the iPhone after the App is deleted.
+The App keeps your sign-in tokens, a random install identifier (used with your account for the free-comparison limits) and a second random identifier the App uses to choose which new features you see, all stored securely in your iPhone's Keychain, and your profile summary, recent searches, onboarding answers not yet sent, your AI permission record, language settings and a cached copy of this policy in app storage. Until 31 March 2027 the App also sends an older form of the install identifier, which combined that random identifier with your device's software version, so your free-comparison history carries over; after that date only the random install identifier is used. Signing out removes the sign-in tokens and the profile summary; deleting your account also removes the AI permission record. Items in the Keychain can remain on the iPhone after the App is deleted.
 
 ## 15. Changes to this policy
 

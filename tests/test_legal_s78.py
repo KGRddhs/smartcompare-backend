@@ -661,10 +661,11 @@ def test_s78_r15_minors_guardian_sentence():
     assert not problems, _report("R15:", problems)
 
 
+# S81-12 fix round 1 (RULINGS_FIX1_S81_12 F1-6, a deliberate pin change, E-row EF6b): the Terms s8 heading names 'our AI providers'.
 TOS_HEADINGS_EN = (
     "1. Agreement and who we are", "2. The service", "3. Eligibility and your account", "4. Free use and limits",
     "5. Acceptable use", "6. AI-generated content and accuracy", "7. Retailers, brands and links",
-    "8. Intellectual property, your content and our AI provider", "9. Smart Decision Referrals", "10. Notifications",
+    "8. Intellectual property, your content and our AI providers", "9. Smart Decision Referrals", "10. Notifications",
     "11. Disclaimer of warranties", "12. Limitation of liability", "13. Suspension, termination and deletion",
     "14. Changes to these Terms", "15. Governing law and disputes", "16. Apple",
     "17. Your responsibility for unlawful use", "18. General", "19. Contact",
