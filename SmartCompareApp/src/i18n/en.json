@@ -380,6 +380,7 @@
   "paywall.limit.resets_daily": "Your free comparisons refresh every day.",
   "paywall.limit.resets_monthly": "Your free comparisons refresh at the start of each month.",
   "paywall.limit.resets_unknown": "Free comparisons refresh every day and every month.",
+  "paywall.limit.resets_at": "Your free comparisons refresh at {{time}}.",
 
   "common.cancel": "Cancel",
   "common.save": "Save",
@@ -709,6 +710,8 @@
   "home.hero": "Compare anything.",
   "home.headerCounter.free": "free",
   "home.headerCounter.a11y": "{{free}} of {{total}} free comparisons, plus {{bonus}} bonus",
+  "home.headerCounter.resets": "resets {{time}}",
+  "home.headerCounter.a11yResets": "{{free}} of {{total}} free comparisons, plus {{bonus}} bonus. Free comparisons refresh at {{time}}",
   "home.mode.scan": "Scan",
   "home.mode.link": "Link",
   "home.mode.type": "Type",

@@ -46,7 +46,15 @@ const SENSITIVE_PATTERNS: Array<[RegExp, string]> = [
   [/Bearer\s+[A-Za-z0-9_.-]+/g, 'Bearer [REDACTED]'],
 ];
 
-const SENSITIVE_HEADERS = new Set(['authorization', 'x-admin-key', 'cookie']);
+// S81-08 (R-S08-12): the two device-fingerprint request headers are redacted
+// by name as well (their 64-hex values are also caught by the pattern above).
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'x-admin-key',
+  'cookie',
+  'x-device-fingerprint',
+  'x-device-fingerprint-legacy',
+]);
 
 // Dict key fragments (case-insensitive) — when a key matches, the whole
 // value is replaced regardless of pattern match. Catches provider tokens

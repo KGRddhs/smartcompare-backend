@@ -19,6 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { X, Clock } from 'lucide-react-native';
 import { arabicLineHeightMultiplier, colors, radii, spacing } from '../theme';
 import { getUsageStatus, type UsageStatus } from '../services/usageService';
+import { sheetResetClock } from '../utils/resetTime';
 import type { RootStackParamList } from '../types/types';
 
 type PaywallRouteProp = RouteProp<RootStackParamList, 'Paywall'>;
@@ -77,14 +78,14 @@ export default function PaywallScreen() {
   const initialUsage = route.params?.initialUsage;
   const isAR = !!i18n?.language?.startsWith('ar');
 
-  const [fetched, setFetched] = useState<LimitState | null>(null);
+  const [fetched, setFetched] = useState<UsageStatus | null>(null);
 
   useEffect(() => {
     let alive = true;
     Promise.resolve()
       .then(() => getUsageStatus())
       .then((status) => {
-        if (alive) setFetched(stateFromStatus(status));
+        if (alive) setFetched(status);
       })
       .catch(() => {
         // A failed read degrades to the initialUsage fallback; never an alert.
@@ -94,9 +95,9 @@ export default function PaywallScreen() {
     };
   }, []);
 
-  const state: LimitState = fetched ?? stateFromInitial(initialUsage);
+  const state: LimitState = stateFromStatus(fetched) ?? stateFromInitial(initialUsage);
   const onDismiss = () => navigation.goBack();
-
+  const resetClock = sheetResetClock(state.kind, fetched, initialUsage, Date.now());
   let title: string;
   let counts: string | null = null;
   let resets: string | null;
@@ -106,7 +107,7 @@ export default function PaywallScreen() {
       if (isNum(state.used) && isNum(state.limit)) {
         counts = t('paywall.limit.today', { used: state.used, limit: state.limit });
       }
-      resets = t('paywall.limit.resets_daily');
+      resets = resetClock ? t('paywall.limit.resets_at', { time: resetClock }) : t('paywall.limit.resets_daily');
       break;
     case 'monthly':
       title = t('paywall.monthlyLimit');
@@ -118,11 +119,11 @@ export default function PaywallScreen() {
     case 'open':
       title = t('paywall.limit.title');
       counts = t('paywall.limit.remaining', { remaining: state.remaining });
-      resets = null;
+      resets = resetClock ? t('paywall.limit.resets_at', { time: resetClock }) : null;
       break;
     default:
       title = t('paywall.limit.title');
-      resets = t('paywall.limit.resets_unknown');
+      resets = resetClock ? t('paywall.limit.resets_at', { time: resetClock }) : t('paywall.limit.resets_unknown');
   }
 
   const arLine = (base: number) => (isAR ? { lineHeight: base * arabicLineHeightMultiplier } : null);

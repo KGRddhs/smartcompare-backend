@@ -14,6 +14,14 @@ import { addSseFallbackBreadcrumb } from './sentry';
 // downgrades to the Auth stack; emitted here at the non-UI session-death
 // sites so a cleared session never leaves MainTabs mounted token-less.
 import { emitSessionInvalid } from './sessionEvents';
+// S81-08 CLIENT-FIRST-OTA: the request-context headers (see requestContext.ts).
+import {
+  buildContextHeaders,
+  isContextRequest,
+  mergeContextHeaders,
+  newCompareRequestId,
+  withRequestContext,
+} from './requestContext';
 
 // IMPORTANT: Change this to your computer's local IP
 // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -56,6 +64,12 @@ api.interceptors.request.use(
   async (config) => {
     // Import here to avoid circular dependency
     const { getToken } = require('./authService');
+    // S81-08 (RULINGS_S81_08 R-S08-5 / R-S08-9): a request its call site marked
+    // with withRequestContext() (the metered allowlist) also gets the device and
+    // consent headers. The build starts before the token read so the two run
+    // concurrently; it never rejects, the device-id read inside it is bounded,
+    // and an unmarked request takes exactly the path it took before.
+    const context = isContextRequest(config) ? buildContextHeaders() : null;
     const token = await getToken();
     if (token) {
       config.headers = config.headers || {};
@@ -63,6 +77,7 @@ api.interceptors.request.use(
     } else if (config.url?.includes('/preferences')) {
       if (__DEV__) console.warn('[API] No token available for preferences request!');
     }
+    if (context) mergeContextHeaders(config, await context);
     return config;
   },
   (error) => Promise.reject(error)
@@ -250,13 +265,20 @@ api.interceptors.response.use(
 );
 
 /**
+ * S81-08 (R-S08-15, GATE GC-3): the identify result plus the compare id its
+ * requests carried, for SF1 / CL3 to send with feedback and events. Additive:
+ * the field is absent when no id could be minted.
+ */
+export type IdentifyResultWithRequestId = ImageIdentifyResult & { compareRequestId?: string };
+
+/**
  * Identify products from images via GPT-4o-mini vision, then auto-compare if 2+.
  * Uses the new /api/v1/image/identify endpoint.
  */
 export async function identifyFromImages(
   imageUris: string[],
   region: string = 'bahrain'
-): Promise<ImageIdentifyResult> {
+): Promise<IdentifyResultWithRequestId> {
   if (__DEV__) console.log('=== IDENTIFY FROM IMAGES ===');
   if (__DEV__) console.log(`${imageUris.length} image(s), region=${region}`);
 
@@ -282,11 +304,19 @@ export async function identifyFromImages(
   // Attach auth token if available (fetch doesn't use axios interceptor)
   // Use require() to avoid circular import (authService imports api)
   const { getToken } = require('./authService');
+  // S81-08 (R-S08-1 / R-S08-9 / R-S08-15): ONE compare id per identify call,
+  // sent on both attempts and exposed on the result; the device and consent
+  // headers are built concurrently with the token read, and a failing builder
+  // only omits its header (the upload and the U13c retry always go out).
+  const compareRequestId = newCompareRequestId();
+  const context = buildContextHeaders({ compareRequestId });
   const token = await getToken();
   const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const contextHeaders = await context;
+  Object.assign(headers, contextHeaders);
 
   // Use fetch instead of Axios — Axios has known multipart issues on Android.
   // M18 MB-perf-03: this raw fetch previously had NO timeout and no
@@ -322,7 +352,8 @@ export async function identifyFromImages(
       response = await fetch(identifyUrl, {
         method: 'POST',
         body: formData,
-        headers: { Authorization: `Bearer ${refreshedToken}` },
+        // S81-08: the same context headers and compare id as attempt 1.
+        headers: { Authorization: `Bearer ${refreshedToken}`, ...contextHeaders },
         signal: controller.signal,
       });
     } else {
@@ -380,8 +411,10 @@ export async function identifyFromImages(
     });
   }
 
-  const data: ImageIdentifyResult = await response.json();
+  const data: IdentifyResultWithRequestId = await response.json();
   if (__DEV__) console.log('Identify response action:', (data as any).action);
+  // S81-08 (R-S08-15 / GC-3): additive, and only when an id was sent.
+  if (compareRequestId && data && typeof data === 'object') data.compareRequestId = compareRequestId;
   return data;
   } catch (err: any) {
     if (err?.name === 'AbortError') {
@@ -649,8 +682,14 @@ export function streamComparison(
 ): {
   subscribe: (callbacks: StreamCallbacks) => void;
   abort: () => void;
+  /** S81-08 (R-S08-1): this attempt's X-Compare-Request-Id, or null when none was minted. */
+  compareRequestId: string | null;
 } {
   const controller = new AbortController();
+  // S81-08 (R-S08-1 / R-S08-14): ONE lower-case uuid4 per compare attempt, sent
+  // on the SSE request and on its single REST compare (the default transport or
+  // the fallback) and exposed to the caller; no header when none can be minted.
+  const compareRequestId = newCompareRequestId();
 
   const subscribe = (callbacks: StreamCallbacks) => {
     // #118 — exactly ONE backend comparison per user compare.
@@ -706,6 +745,10 @@ export function streamComparison(
           // M18 MB-perf-03 — server hard cap is 30s; don't hold the
           // loader 120s for an outcome that can no longer arrive.
           timeout: COMPARE_TIMEOUT_MS,
+          // S81-08: on the metered allowlist (the interceptor adds the device
+          // and consent headers) with this attempt's compare id; without an
+          // id the config gains no `headers` key.
+          ...withRequestContext(compareRequestId),
         });
         if (response.data.success) {
           // success:true covers both fully-complete and the D1 best-available
@@ -819,6 +862,10 @@ export function streamComparison(
       };
       try {
         const { getToken } = require('./authService');
+        // S81-08 (R-S08-9): the context headers are built concurrently with
+        // the token read; the build never rejects, so a failing builder only
+        // omits its header and can never trigger the REST fallback.
+        const context = buildContextHeaders({ compareRequestId });
         const token = await getToken();
 
         const params = new URLSearchParams({ region: 'bahrain' });
@@ -835,6 +882,7 @@ export function streamComparison(
 
         const headers: Record<string, string> = { Accept: 'text/event-stream' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
+        Object.assign(headers, await context);
 
         // #118 Option A — expo/fetch is the streaming-capable fetch of this
         // SDK (winter runtime): real `response.body` ReadableStream, honors
@@ -945,7 +993,7 @@ export function streamComparison(
     })();
   };
 
-  return { subscribe, abort: () => controller.abort() };
+  return { subscribe, abort: () => controller.abort(), compareRequestId };
 }
 
 /**
@@ -973,7 +1021,8 @@ export async function compareTextPair(
       ...(opts.nocache && { nocache: true }),
     },
     // M18 MB-perf-03 — compare-class per-call deadline.
-    { timeout: COMPARE_TIMEOUT_MS }
+    // S81-08 (R-S08-5): a metered compare: the context headers and its own id.
+    { timeout: COMPARE_TIMEOUT_MS, ...withRequestContext(newCompareRequestId()) }
   );
   return response.data;
 }

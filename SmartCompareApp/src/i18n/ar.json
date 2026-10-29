@@ -377,6 +377,7 @@
   "paywall.limit.resets_daily": "تتجدد مقارناتك المجانية كل يوم.",
   "paywall.limit.resets_monthly": "تتجدد مقارناتك المجانية في بداية كل شهر.",
   "paywall.limit.resets_unknown": "تتجدد المقارنات المجانية كل يوم وكل شهر.",
+  "paywall.limit.resets_at": "تتجدد مقارناتك المجانية الساعة {{time}}.",
 
   "common.cancel": "إلغاء",
   "common.save": "حفظ",
@@ -706,6 +707,8 @@
   "home.hero": "قارن أي شيء.",
   "home.headerCounter.free": "مجاناً",
   "home.headerCounter.a11y": "{{free}} من {{total}} مقارنات مجانية، بالإضافة إلى {{bonus}} إضافية",
+  "home.headerCounter.resets": "تتجدد {{time}}",
+  "home.headerCounter.a11yResets": "{{free}} من {{total}} مقارنات مجانية، بالإضافة إلى {{bonus}} إضافية، وتتجدد المقارنات المجانية الساعة {{time}}",
   "home.mode.scan": "مسح",
   "home.mode.link": "رابط",
   "home.mode.type": "كتابة",

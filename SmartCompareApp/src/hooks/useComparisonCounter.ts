@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getUsageStatus, UsageStatus } from '../services/usageService';
+import { isDailyScope } from '../utils/resetTime';
 
 const COUNTER_KEY = '@qaren_free_comparisons_used';
 const FREE_LIMIT = 3;
@@ -19,13 +20,25 @@ export function useComparisonCounter() {
     (async () => {
       try {
         const fetched = await getUsageStatus();
-        if (fetched && typeof fetched.used?.lifetime === 'number') {
+        const lifetime = fetched?.used?.lifetime;
+        if (fetched && typeof lifetime === 'number') {
           if (!cancelled) {
             setStatus(fetched);
-            setUsed(fetched.used.lifetime);
-            AsyncStorage.setItem(COUNTER_KEY, String(fetched.used.lifetime));
+            setUsed(lifetime);
+            AsyncStorage.setItem(COUNTER_KEY, String(lifetime));
           }
           return;
+        }
+        // S81-08 (RULINGS_S81_08 R-S08-13): a status without the lifetime
+        // counter (S81-09 may retire it) still drives the gate when it carries
+        // the daily and monthly axes; `used` then keeps the local cache below.
+        if (
+          fetched &&
+          typeof fetched.remaining?.daily === 'number' &&
+          typeof fetched.remaining?.monthly === 'number' &&
+          !cancelled
+        ) {
+          setStatus(fetched);
         }
       } catch {
         // offline / error → fall back to the local cache below
@@ -88,5 +101,12 @@ export function useComparisonCounter() {
   // pill never shows a "0/0" (premium's lifetime_free is 0 by design).
   const total = isPremium ? FREE_LIMIT : lifetimeFree;
 
-  return { used, total, canCompare, shouldShowPaywall, increment };
+  // S81-08 (R-S08-2 / GATE GC-5): the reset time reaches the pill only when the
+  // server names a DAILY counted axis, so it never sits beside a count that does
+  // not reset (the lifetime counter, the monthly bonus). Null otherwise.
+  const statusResetsAt = status?.resets_at;
+  const resetsAt =
+    typeof statusResetsAt === 'string' && isDailyScope(status?.counted_scope) ? statusResetsAt : null;
+
+  return { used, total, canCompare, shouldShowPaywall, increment, resetsAt };
 }

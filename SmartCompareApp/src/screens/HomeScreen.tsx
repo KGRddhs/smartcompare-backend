@@ -81,6 +81,10 @@ import PaywallBanner from '../components/PaywallBanner';
 import HomeEditorialSections from '../components/HomeEditorialSections';
 import { LoadingScreenVariants } from './LoadingScreenVariants';
 import { useComparisonCounter } from '../hooks/useComparisonCounter';
+// S81-08 CLIENT-FIRST-OTA: the call-site compare id + metered marker (Link
+// mode) and the pill's reset time.
+import { newCompareRequestId, withRequestContext } from '../services/requestContext';
+import { formatResetClock, resolveResetAt } from '../utils/resetTime';
 import { getReferralStatus } from '../services/referralService';
 // S69 U3 — one-time AI-processing consent (App Review 5.1.2(i)). Every path
 // that sends the user's input to OpenAI (text, link, camera) and the camera /
@@ -134,8 +138,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // abort loses the race — so this guard, not the abort, is what actually
   // makes cancel stick on both paths.
   const compareRunRef = useRef(0);
+  // S81-08 (R-S08-15): the compare id the latest Link-mode request carried, kept
+  // for SF1 / CL3 to send with feedback and events (no reader yet).
+  const urlCompareRequestIdRef = useRef<string | null>(null);
 
-  const { used, total, canCompare, increment } = useComparisonCounter();
+  const { used, total, canCompare, increment, resetsAt } = useComparisonCounter();
 
   // S69 U3 — the consent gate. The Privacy link closes the sheet first (the
   // pending action is dropped) and only then opens the Legal modal route, so
@@ -556,6 +563,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     const runId = ++compareRunRef.current;
     const controller = new AbortController();
     abortRef.current = () => controller.abort();
+    // S81-08 (R-S08-1 / R-S08-5 / R-S08-15): one compare id per Link-mode
+    // compare, minted here and kept for SF1 / CL3; the marker puts the request
+    // on the metered allowlist (the interceptor adds the device and consent
+    // headers and never overwrites the id).
+    const urlCompareRequestId = newCompareRequestId();
+    urlCompareRequestIdRef.current = urlCompareRequestId;
     try {
       const response = await api.post(
         '/api/v1/url/compare',
@@ -568,7 +581,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         },
         // M18 MB-perf-03 — compare-class per-call deadline (was the global
         // 120s, 4x the backend's 30s hard cap).
-        { timeout: COMPARE_TIMEOUT_MS, signal: controller.signal }
+        {
+          timeout: COMPARE_TIMEOUT_MS,
+          signal: controller.signal,
+          ...withRequestContext(urlCompareRequestId),
+        }
       );
       // A4 — cancelled/superseded run: drop the response on the floor. The
       // abort above races the resolution, so this guard is the real fence.
@@ -937,6 +954,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const baseFreeRemaining = Math.max(0, total - used);
   const isLastFree = baseFreeRemaining === 1;
+  // S81-08 (R-S08-2 / GATE GC-5): the hook exposes resetsAt only for a DAILY
+  // counted axis; a missing, past or out-of-window value keeps today's pill.
+  const pillResetAt = resolveResetAt({ resets_at: resetsAt }, Date.now());
+  const pillResetClock = pillResetAt ? formatResetClock(pillResetAt) : null;
   const handleHeaderCounterPress = () => {
     trackEvent('compare_entry_paywall_banner_tap', { mode: inputMode });
     navigation.navigate('Paywall');
@@ -959,11 +980,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           testID="home-header-counter"
           onPress={handleHeaderCounterPress}
           accessibilityRole="button"
-          accessibilityLabel={t('home.headerCounter.a11y', {
-            free: baseFreeRemaining,
-            total,
-            bonus: bonusInfo.bonusRemaining,
-          })}
+          accessibilityLabel={
+            pillResetClock
+              ? t('home.headerCounter.a11yResets', {
+                  free: baseFreeRemaining,
+                  total,
+                  bonus: bonusInfo.bonusRemaining,
+                  time: pillResetClock,
+                })
+              : t('home.headerCounter.a11y', {
+                  free: baseFreeRemaining,
+                  total,
+                  bonus: bonusInfo.bonusRemaining,
+                })
+          }
           style={[
             styles.headerCounter,
             isLastFree && styles.headerCounterLast,
@@ -999,6 +1029,29 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               </Text>
             </>
           )}
+          {pillResetClock ? (
+            <>
+              <Text
+                style={[
+                  styles.headerCounterDot,
+                  isLastFree && styles.headerCounterTextLast,
+                ]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
+                {' \u00b7 '}
+              </Text>
+              <Text
+                testID="home-header-counter-resets"
+                style={[
+                  styles.headerCounterText,
+                  isLastFree && styles.headerCounterTextLast,
+                ]}
+              >
+                {t('home.headerCounter.resets', { time: pillResetClock })}
+              </Text>
+            </>
+          ) : null}
         </TouchableOpacity>
       </View>
 

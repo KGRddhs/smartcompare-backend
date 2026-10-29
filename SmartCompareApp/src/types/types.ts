@@ -621,6 +621,12 @@ export type RootStackParamList = {
       error?: string;
       code?: string;
       remaining?: { daily: number; monthly: number; lifetime_free: number };
+      // S81-08 (R-S08-2 / R-S08-14): the optional reset fields of the 429
+      // (S81-09); absent today, and then the sheet renders today's copy.
+      resets_at?: string;
+      retry_after_seconds?: number;
+      retry_after?: number;
+      scope?: string;
     };
   } | undefined;
   // Legacy screen names for backward compatibility with screen components

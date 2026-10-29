@@ -38,7 +38,11 @@ jest.mock('expo-secure-store', () => ({
 
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import { getDeviceFingerprint, _resetCacheForTests } from '../src/services/deviceFingerprint';
+import {
+  getDeviceFingerprint,
+  legacyDeviceFingerprintHash,
+  _resetCacheForTests,
+} from '../src/services/deviceFingerprint';
 
 describe('deviceFingerprint', () => {
   beforeEach(() => {
@@ -77,16 +81,25 @@ describe('deviceFingerprint', () => {
     expect(Crypto.digestStringAsync).toHaveBeenCalledTimes(1);
   });
 
+  // S81-08 deliberate re-pin E1 (spec 4.1, RULINGS_S81_08 R-S08-7): the
+  // X-Device-Fingerprint value now hashes the lower-cased nonce alone (no
+  // osBuildId); the build-3 composition below moved verbatim onto
+  // legacyDeviceFingerprintHash(), which feeds X-Device-Fingerprint-Legacy.
   it('hashes applicationId|osBuildId|nonce in that order via SHA-256', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValue('persisted-nonce');
 
     const hash = await getDeviceFingerprint();
 
+    expect(Crypto.digestStringAsync).toHaveBeenCalledWith('SHA256', 'persisted-nonce');
+    expect(hash).toBe('hash(persisted-nonce)');
+
+    const legacy = await legacyDeviceFingerprintHash();
+
     expect(Crypto.digestStringAsync).toHaveBeenCalledWith(
       'SHA256',
       'app.qaren.test|iPhone15,2/21D|persisted-nonce',
     );
-    expect(hash).toBe('hash(app.qaren.test|iPhone15,2/21D|persisted-nonce)');
+    expect(legacy).toBe('hash(app.qaren.test|iPhone15,2/21D|persisted-nonce)');
   });
 
   it('coalesces concurrent calls into a single SecureStore read', async () => {
@@ -123,10 +136,11 @@ describe('deviceFingerprint', () => {
       .mockRejectedValueOnce(err)
       .mockResolvedValue('nonce-ok');
 
+    // S81-08 deliberate re-pin E2 (spec 4.1, R-S08-10): this suite's
+    // expo-application mock offers no IDFV, so the first call still rejects
+    // with the ORIGINAL SecureStore error; the retry resolves the NEW value.
     await expect(getDeviceFingerprint()).rejects.toBe(err);
-    await expect(getDeviceFingerprint()).resolves.toBe(
-      'hash(app.qaren.test|iPhone15,2/21D|nonce-ok)',
-    );
+    await expect(getDeviceFingerprint()).resolves.toBe('hash(nonce-ok)');
 
     expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();

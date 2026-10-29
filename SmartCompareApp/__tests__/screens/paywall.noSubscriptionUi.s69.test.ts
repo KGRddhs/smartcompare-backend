@@ -47,6 +47,9 @@ const PAYWALL_ALLOW = [
   'paywall.limit.resets_daily',
   'paywall.limit.resets_monthly',
   'paywall.limit.resets_unknown',
+  // S81-08 deliberate re-pin E4 (spec 4.1): the exact local reset time line;
+  // the honesty checks below (T2-e1 / T2-e2) now cover it too.
+  'paywall.limit.resets_at',
 ].sort();
 
 /** R6 + spec-review item 11: families that must be gone from BOTH catalogs. */

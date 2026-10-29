@@ -18,6 +18,12 @@
  *     lasts only as long as the screen that asked.
  *   - Bumping AI_CONSENT_VERSION re-asks everyone once (a stored record of any
  *     other version does not count).
+ *   - S81-08 (RULINGS_S81_08 R-S08-3): consent stays PER ACCOUNT. Metered
+ *     requests carry `X-AI-Consent-Version` only when the saved account's
+ *     record is current (`hasCurrentAiConsentForRequest`, an in-memory memo
+ *     of that check dropped by recordAiConsent / clearAiConsent and by a
+ *     signed-out request). There is no device-level copy, and no device id is
+ *     ever written here.
  *
  * The gate: `ensureAiConsent(ask)` is the single decision point — stored
  * consent of the current version passes at once; otherwise `ask()` shows the
@@ -56,15 +62,23 @@ export function aiConsentStorageKey(userId: string): string {
   return `${AI_CONSENT_KEY_PREFIX}${userId}`;
 }
 
+/** A stored record's `{version, at}`, or null when absent or unreadable. */
+function parseAiConsentRecord(raw: string | null): AiConsentRecord | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.at !== 'string') return null;
+    return { version: parsed.version, at: parsed.at };
+  } catch {
+    return null;
+  }
+}
+
 /** The stored record for this account, or null (none, unreadable, no user). */
 export async function readAiConsent(userId: string | null): Promise<AiConsentRecord | null> {
   if (!userId) return null;
   try {
-    const raw = await AsyncStorage.getItem(aiConsentStorageKey(userId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.at !== 'string') return null;
-    return { version: parsed.version, at: parsed.at };
+    return parseAiConsentRecord(await AsyncStorage.getItem(aiConsentStorageKey(userId)));
   } catch {
     return null;
   }
@@ -76,6 +90,44 @@ export async function hasCurrentAiConsent(userId: string | null): Promise<boolea
   return record !== null && record.version === AI_CONSENT_VERSION;
 }
 
+// S81-08 (R-S08-3): the request path's memo of hasCurrentAiConsent, one entry
+// keyed by the account. Every change to a record (recordAiConsent,
+// clearAiConsent) and a signed-out request drop it AFTER the change, and the
+// generation discards an answer that was read while one of them ran.
+let requestConsentMemo: { userId: string; current: boolean } | null = null;
+let requestConsentGeneration = 0;
+
+function forgetRequestConsent(): void {
+  requestConsentMemo = null;
+  requestConsentGeneration += 1;
+}
+
+/**
+ * hasCurrentAiConsent for the X-AI-Consent-Version header (S81-08, R-S08-3):
+ * the same per-account answer, memoised. A null user (signed out) drops the
+ * memo and reads false; a storage failure reads false and is not remembered,
+ * so the next request reads the record again.
+ */
+export async function hasCurrentAiConsentForRequest(userId: string | null): Promise<boolean> {
+  if (!userId) {
+    forgetRequestConsent();
+    return false;
+  }
+  const memo = requestConsentMemo;
+  if (memo !== null && memo.userId === userId) return memo.current;
+  const generation = requestConsentGeneration;
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(aiConsentStorageKey(userId));
+  } catch {
+    return false;
+  }
+  const record = parseAiConsentRecord(raw);
+  const current = record !== null && record.version === AI_CONSENT_VERSION;
+  if (generation === requestConsentGeneration) requestConsentMemo = { userId, current };
+  return current;
+}
+
 /** Persist an Agree. A null user id persists nothing (ruling R3). */
 export async function recordAiConsent(userId: string | null, now: Date = new Date()): Promise<void> {
   if (!userId) return;
@@ -84,6 +136,8 @@ export async function recordAiConsent(userId: string | null, now: Date = new Dat
     await AsyncStorage.setItem(aiConsentStorageKey(userId), JSON.stringify(record));
   } catch {
     // The user agreed; a storage hiccup only means they are asked again later.
+  } finally {
+    forgetRequestConsent();
   }
 }
 
@@ -94,6 +148,8 @@ export async function clearAiConsent(userId: string | null): Promise<void> {
     await AsyncStorage.removeItem(aiConsentStorageKey(userId));
   } catch {
     /* nothing to clean up */
+  } finally {
+    forgetRequestConsent();
   }
 }
 
