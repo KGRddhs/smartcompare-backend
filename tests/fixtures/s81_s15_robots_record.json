@@ -1,0 +1,55 @@
+{
+ "_doc": "S81-15 R-S15-3: the persisted kb_merchants.robots record, the input contract of D14 / D09 / S81-16. Consumers answer per URL by evaluating rules.qarenbot and rules.star with robots_eval.can_fetch; state is the most restrictive verdict over probed. A renamed or dropped key reddens tests/test_s81_s15_registry_robots.py::test_r29_robots_record_is_the_frozen_d14_contract.",
+ "input": {
+  "body": "User-agent: *\nDisallow: /cart\nDisallow: /checkout\nAllow: /\n\nUser-agent: QarenBot\nDisallow: /admin\nCrawl-delay: 5\n",
+  "headers": {
+   "Content-Type": "text/plain"
+  },
+  "now": "2026-10-24T00:00:00Z",
+  "origin": "https://shop.test",
+  "probe_urls": [
+   "https://shop.test/",
+   "https://shop.test/products/x",
+   "https://shop.test/products.json"
+  ],
+  "source": "datacenter",
+  "status": 200
+ },
+ "record": {
+  "body_sha": "3dc591e249a79c627a501a36326e010dfd7d50ef3deb3dfd80fd45e1a0a20c70",
+  "crawl_delay": 5.0,
+  "fetched_at": "2026-10-24T00:00:00Z",
+  "next_reread": "2026-10-25T00:00:00Z",
+  "origin": "https://shop.test",
+  "probed": {
+   "/": "allow",
+   "/products.json": "allow",
+   "/products/x": "allow"
+  },
+  "rules": {
+   "qarenbot": [
+    [
+     "disallow",
+     "/admin"
+    ]
+   ],
+   "star": [
+    [
+     "disallow",
+     "/cart"
+    ],
+    [
+     "disallow",
+     "/checkout"
+    ],
+    [
+     "allow",
+     "/"
+    ]
+   ]
+  },
+  "source": "datacenter",
+  "state": "allow",
+  "status": 200
+ }
+}

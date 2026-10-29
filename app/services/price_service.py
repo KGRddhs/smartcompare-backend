@@ -14876,13 +14876,17 @@ def _extract_rsc_flight_price(
 def _curl_timeout_for_url(url: str) -> int:
     """Per-fetch curl timeout: bahrain-tier registry domains get the longer
     cold-tolerant BH_REGISTRY_CURL_TIMEOUT; everything else stays at
-    PAGE_SCRAPE_TIMEOUT (WRINKLE 1 — keep non-BH scrapes fast)."""
+    PAGE_SCRAPE_TIMEOUT (WRINKLE 1 — keep non-BH scrapes fast).
+
+    S81-15: reads the LOOKUP registry (``registry_lookup_rows``, which IS
+    SOURCE_REGISTRY with ENABLE_MERCHANT_REGISTRY_DB off), so a blocked bahrain
+    host keeps its timeout."""
     try:
-        from app.services.source_router import SOURCE_REGISTRY
+        from app.services.source_router import registry_lookup_rows
         host = urlparse(url).netloc.replace("www.", "").lower()
         if not host:
             return PAGE_SCRAPE_TIMEOUT
-        for s in SOURCE_REGISTRY:
+        for s in registry_lookup_rows():
             if s.tier != "bahrain":
                 continue
             d = s.domain.replace("www.", "").lower()

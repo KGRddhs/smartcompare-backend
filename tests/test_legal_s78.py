@@ -68,7 +68,7 @@ U8_TESTS = "tests/test_legal_docs_u8.py"
 D3C_TESTS = "tests/test_legal_docs_u8_d3c.py"
 S77_TESTS = "tests/test_legal_disclosure_s77.py"
 UA_FILES = (
-    ("app/services/sitemap_discovery_service.py", "_ROBOTS_UA"),
+    ("app/services/robots_eval.py", "QARENBOT_UA"),  # S81-15 R-S15-6: the ONE live UA definition moved here
     ("scripts/resolve_search_descriptors.py", "USER_AGENT"),
 )
 LANGS = ("en", "ar")

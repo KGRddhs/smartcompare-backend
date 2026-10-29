@@ -63,6 +63,7 @@ from urllib.parse import urlparse
 
 __all__ = [
     "NAMED_AGENT",
+    "QARENBOT_UA",
     "MAX_ROBOTS_CHARS",
     "can_fetch",
     "parse_groups",
@@ -72,6 +73,13 @@ __all__ = [
 #: The product token we identify as. B8 probed its whole panel under it, and
 #: the klinq.com finding above is the reason it is a NAME and not a browser UA.
 NAMED_AGENT = "QarenBot"
+
+#: The full User-Agent every live robots / crawl read sends: the named token,
+#: the /bot info page and the first-party contact (S81-15 ruling R-S15-6: the
+#: ONE definition lives in this stdlib leaf so a sender imports it without
+#: loading the price stack; ``sitemap_discovery_service._ROBOTS_UA`` re-exports
+#: this object).
+QARENBOT_UA = "%s/1.0 (+https://getmyez.com/bot; contact: support@getmyez.com)" % NAMED_AGENT
 
 #: The largest robots body considered. The biggest on B8's panel was 22,664
 #: bytes (h3jssz.zid.store); 512 KB is ~23x headroom and bounds a hostile file.
@@ -199,6 +207,11 @@ def _rules_for_agent(groups: Sequence[_Group], agent: str) -> List[Tuple[bool, s
         elif "*" in tokens:
             rules.extend(group_rules)
     return rules
+
+
+#: S81-15 (RULINGS_FIX1_S81_15 F1-22): the public name of the merged rule selection
+#: ``can_fetch`` evaluates; the robots registry records its D14 ``rules`` through it.
+rules_for_agent = _rules_for_agent
 
 
 def can_fetch(robots_txt: object, agent: str, url: str) -> bool:

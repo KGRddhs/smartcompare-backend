@@ -384,9 +384,10 @@ def _slug_from_pdp(url: str) -> str:
 #: klinq measurement (see ``robots_eval``): a browser-shaped UA falls into a
 #: ``User-agent: Mozilla / Disallow: /`` group, so impersonating makes us LESS
 #: entitled to the bytes, not more. Mirrors the off-clock resolver's UA.
-_ROBOTS_UA = "%s/1.0 (+https://getmyez.com/bot; contact: support@getmyez.com)" % (
-    robots_eval.NAMED_AGENT
-)
+#: S81-15 (R-S15-6, RULINGS_FIX1_S81_15 F1-8): the ONE definition is
+#: ``robots_eval.QARENBOT_UA`` and this name is bound to THAT object (one UA for
+#: every robots sender; ``tests/test_domain_s76.py::test_t4`` reads it there).
+_ROBOTS_UA = robots_eval.QARENBOT_UA
 _ROBOTS_TIMEOUT = 20
 
 #: The robots fetch contract: ``(status, body)``. Status-aware on purpose —

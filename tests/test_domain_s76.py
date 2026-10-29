@@ -103,8 +103,14 @@ def _ua_literal(rel: str, name: str) -> str:
 
 
 def test_t4_robots_user_agents_point_at_getmyez_and_mirror_each_other():
-    live = _ua_literal("app/services/sitemap_discovery_service.py", "_ROBOTS_UA")
-    offclock = _ua_literal("scripts/resolve_search_descriptors.py", "USER_AGENT")
+    """S81-15 E5 (RULINGS_FIX1_S81_15 F1-8): the live robots UA is read through its single source
+    of truth, ``robots_eval.QARENBOT_UA`` (``sitemap_discovery_service._ROBOTS_UA`` is bound to that
+    object and its dead mirror literal is deleted); the off-clock resolver's literal must render to
+    the same bytes."""
+    from app.services import robots_eval
+
+    live = robots_eval.QARENBOT_UA
+    offclock = _ua_literal("scripts/resolve_search_descriptors.py", "USER_AGENT") % (robots_eval.NAMED_AGENT,)
     assert live == offclock
     assert "(+" + WEB + "/bot;" in live, live
     assert not RETIRED.search(live)

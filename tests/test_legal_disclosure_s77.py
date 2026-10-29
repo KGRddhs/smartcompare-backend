@@ -212,6 +212,7 @@ QARENBOT_FILES = {
     "app/services/search_descriptor_service.py",
     "app/services/sitemap_discovery_service.py",
     "scripts/resolve_search_descriptors.py",
+    "app/services/robots_registry.py",  # S81-15 R-S15-5: the robots registry cron (evaluates with can_fetch)
 }
 PRICE_LOOKUP_FILES = (
     "app/services/price_service.py",

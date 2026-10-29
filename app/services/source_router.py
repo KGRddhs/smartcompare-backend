@@ -25,6 +25,9 @@ from app.services.search_descriptor_service import (
 )
 # D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
 from app.services.deny_hosts import data_guards_v2_enabled, is_denied_host
+# S81-15 (ENABLE_MERCHANT_REGISTRY_DB): the kb_merchants-backed registry memo. A
+# stdlib leaf that imports this module only lazily, so the import cannot cycle.
+from app.services import merchant_registry as _merchant_registry
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,11 @@ class Source:
     # /search/suggest.json). Default None -> every literal row byte-unchanged,
     # and a row without one behaves exactly as it does today.
     search_descriptor: Optional["SearchDescriptor"] = None
+    # S81-15 (R-S15-1) -- True only on a LOOKUP row decoded from a kb_merchants
+    # row the owner's blocked list denies (``deny`` true or a deny_hosts host).
+    # Default False -> every code-registry row byte-unchanged; never read by
+    # selection or scoring (a denied row never reaches the SELECTION set).
+    deny: bool = False
 
 
 _LITERAL_ROWS: List[Source] = [
@@ -472,6 +480,75 @@ def _row_to_source(row: dict) -> Optional[Source]:
         return None
 
 
+# S81-15 (ENABLE_MERCHANT_REGISTRY_DB) -- the typed fields of a kb_merchants
+# registry entry (the inverse of merchant_registry.source_to_entry).
+_ENTRY_TIERS = ("bahrain", "gcc", "global")
+_ENTRY_STR_FIELDS = ("usage", "currency", "mechanism", "pdp_url_pattern", "sample_url", "status")
+_ENTRY_BOOL_FIELDS = ("is_shopify", "is_render_only", "is_algolia", "requires_super")
+_ENTRY_TUPLE_FIELDS = ("locale_paths", "subdomain_patterns", "discovery_query_templates")
+
+
+def _source_from_entry(host: object, entry: object) -> Optional[Source]:
+    """Rebuild one Source from a ``kb_merchants.registry`` entry, or None (S81-15).
+
+    ``domain`` is the row's host (lower-cased; a present entry ``domain`` must
+    equal it). Required: a known ``tier``, a ``categories`` list of strings and a
+    finite numeric ``weight``. Every other field is optional (absent -> the
+    dataclass default) but typed when present (a wrong type refuses the entry);
+    lists become tuples and ``search_descriptor`` goes through
+    ``parse_search_descriptor`` exactly as ``_row_to_source`` reads ``search``
+    (malformed -> None, never the loss of the source). ``deny`` is a ROW column
+    and is never read from an entry. Never raises."""
+    try:
+        if not isinstance(entry, dict) or not isinstance(host, str):
+            return None
+        domain = host.strip().lower()
+        if not domain:
+            return None
+        if "domain" in entry and (
+            not isinstance(entry["domain"], str) or entry["domain"].strip().lower() != domain
+        ):
+            return None
+        tier = entry.get("tier")
+        if tier not in _ENTRY_TIERS:
+            return None
+        cats = entry.get("categories")
+        if not isinstance(cats, list) or not all(isinstance(c, str) for c in cats):
+            return None
+        weight = entry.get("weight")
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+            return None
+        weight = float(weight)
+        if weight != weight or weight in (float("inf"), float("-inf")):
+            return None
+        kwargs: dict = {}
+        for name in _ENTRY_STR_FIELDS:
+            if name in entry:
+                if not isinstance(entry[name], str):
+                    return None
+                kwargs[name] = entry[name]
+        for name in _ENTRY_BOOL_FIELDS:
+            if name in entry:
+                if not isinstance(entry[name], bool):
+                    return None
+                kwargs[name] = entry[name]
+        for name in _ENTRY_TUPLE_FIELDS:
+            if name in entry:
+                value = entry[name]
+                if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+                    return None
+                kwargs[name] = tuple(value)
+        if "priority_rank" in entry:
+            rank = entry["priority_rank"]
+            if isinstance(rank, bool) or not isinstance(rank, int):
+                return None
+            kwargs["priority_rank"] = rank
+        kwargs["search_descriptor"] = parse_search_descriptor(entry.get("search_descriptor"))
+        return Source(domain, tier, tuple(cats), weight, **kwargs)
+    except Exception:  # noqa: BLE001 - one bad entry must never brick a refresh
+        return None
+
+
 def _catalog_sources_enabled() -> bool:
     """The BH/GCC catalog rows load ONLY when ENABLE_BH_GCC_CATALOG_SOURCES is on
     (fail-CLOSED, default OFF — same posture as the price-warmer / sitemap-index
@@ -545,16 +622,58 @@ SOURCE_REGISTRY: List[Source] = _LITERAL_ROWS + _load_catalog_rows()
 _ROUTABLE_MEMO: Optional[Tuple[List[Source], List[Source]]] = None
 
 
+def registry_rows() -> List[Source]:
+    """S81-15 (ENABLE_MERCHANT_REGISTRY_DB) -- the SELECTION registry (ruling R-S15-1).
+
+    Flag OFF: ``SOURCE_REGISTRY`` itself (the module global read at call time, so a
+    test that patches it keeps working); nothing else is read. Flag ON: the
+    memoised kb_merchants list of LIVE, not-denied rows (the code registry until
+    the first refresh lands or after a failure). Read only by
+    ``_routable_registry``."""
+    return _merchant_registry.registry_rows(SOURCE_REGISTRY)
+
+
+def registry_lookup_rows() -> List[Source]:
+    """S81-15 -- the LOOKUP registry (ruling R-S15-1): every loaded row, live AND
+    blocked, denied rows included, so a host that leaves SELECTION keeps its tier,
+    currency and global-tier refusals. Flag OFF: ``SOURCE_REGISTRY`` itself. Read
+    by ``_lookup_registry`` (so ``_registry_row_for_host`` and everything built on
+    it) and by the three direct readers (``price_service._curl_timeout_for_url``,
+    ``cache_service._registry_domains``,
+    ``magento_graphql_service._expected_currency_for``)."""
+    return _merchant_registry.registry_lookup_rows(SOURCE_REGISTRY)
+
+
 def _routable_registry() -> List[Source]:
     global _ROUTABLE_MEMO
+    reg = registry_rows()
     if not data_guards_v2_enabled():
-        return SOURCE_REGISTRY
-    reg = SOURCE_REGISTRY
+        return reg
     memo = _ROUTABLE_MEMO
     if memo is not None and memo[0] is reg:
         return memo[1]
     filtered = [s for s in reg if not is_denied_host(getattr(s, "domain", ""))]
     _ROUTABLE_MEMO = (reg, filtered)
+    return filtered
+
+
+# S81-15 (R-S15-1): the D03-filtered LOOKUP view, memoised exactly like
+# ``_ROUTABLE_MEMO`` (a strong reference to the list it filtered; a hit needs
+# ``memo[0] is reg``). Flag OFF it filters SOURCE_REGISTRY, the same rows
+# ``_routable_registry`` returns, so every lookup answer is byte-identical.
+_LOOKUP_MEMO: Optional[Tuple[List[Source], List[Source]]] = None
+
+
+def _lookup_registry() -> List[Source]:
+    global _LOOKUP_MEMO
+    reg = registry_lookup_rows()
+    if not data_guards_v2_enabled():
+        return reg
+    memo = _LOOKUP_MEMO
+    if memo is not None and memo[0] is reg:
+        return memo[1]
+    filtered = [s for s in reg if not is_denied_host(getattr(s, "domain", ""))]
+    _LOOKUP_MEMO = (reg, filtered)
     return filtered
 
 
@@ -599,9 +718,12 @@ def _registry_row_for_host(
     subdomains. ``where`` filters candidate rows (the currency lookup skips
     currency-less rows; the descriptor lookup skips descriptor-less rows) so each
     caller keeps its own "first match WITH the field" semantic on both paths.
-    ``registry`` overrides SOURCE_REGISTRY for unit tests.
+    ``registry`` overrides SOURCE_REGISTRY for unit tests. S81-15 (R-S15-1): the
+    default is the LOOKUP view (blocked rows included), so ``registry_tier``,
+    ``match_registry_apex``, ``descriptor_for_host`` and the host-evidence
+    refusals keep answering for a host the robots cron took out of SELECTION.
     """
-    reg = _routable_registry() if registry is None else registry
+    reg = _lookup_registry() if registry is None else registry
     domain = _normalize_domain(str(host or ""))
     if not domain:
         return None

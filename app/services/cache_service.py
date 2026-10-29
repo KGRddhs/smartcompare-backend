@@ -521,12 +521,14 @@ def get_cache_observability(days: int = 7) -> Dict[str, Any]:
 def _registry_domains() -> List[str]:
     """Domains to probe for per-domain source-hit aggregation. Defaults to the
     Bahrain-first source registry so the dashboard works without a
-    hand-maintained list. Best-effort import — empty list if unavailable."""
+    hand-maintained list. Best-effort import — empty list if unavailable.
+    S81-15: the LOOKUP registry (SOURCE_REGISTRY itself with
+    ENABLE_MERCHANT_REGISTRY_DB off), so a blocked host stays on the dashboard."""
     try:
-        from app.services.source_router import SOURCE_REGISTRY
+        from app.services.source_router import registry_lookup_rows
         # De-dup while preserving registry order (Bahrain-first).
         seen: Dict[str, None] = {}
-        for s in SOURCE_REGISTRY:
+        for s in registry_lookup_rows():
             seen.setdefault(s.domain.lower(), None)
         return list(seen.keys())
     except Exception as e:  # noqa: BLE001 — registry import is best-effort
