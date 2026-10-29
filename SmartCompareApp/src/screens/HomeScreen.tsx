@@ -955,7 +955,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const baseFreeRemaining = Math.max(0, total - used);
   const isLastFree = baseFreeRemaining === 1;
   // S81-08 (R-S08-2 / GATE GC-5): the hook exposes resetsAt only for a DAILY
-  // counted axis; a missing, past or out-of-window value keeps today's pill.
+  // counted axis; a missing, past or out-of-window value keeps today's pill. The
+  // resets node follows the free count, never the bonus (RULINGS_FIX1_S81_08 F1-9).
   const pillResetAt = resolveResetAt({ resets_at: resetsAt }, Date.now());
   const pillResetClock = pillResetAt ? formatResetClock(pillResetAt) : null;
   const handleHeaderCounterPress = () => {
@@ -1007,28 +1008,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           >
             {baseFreeRemaining}/{total} {t('home.headerCounter.free')}
           </Text>
-          {bonusInfo.bonusRemaining > 0 && (
-            <>
-              <Text
-                style={[
-                  styles.headerCounterDot,
-                  isLastFree && styles.headerCounterTextLast,
-                ]}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-              >
-                {' · '}
-              </Text>
-              <Text
-                style={[
-                  styles.headerCounterText,
-                  isLastFree && styles.headerCounterTextLast,
-                ]}
-              >
-                +{bonusInfo.bonusRemaining}
-              </Text>
-            </>
-          )}
           {pillResetClock ? (
             <>
               <Text
@@ -1052,6 +1031,28 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               </Text>
             </>
           ) : null}
+          {bonusInfo.bonusRemaining > 0 && (
+            <>
+              <Text
+                style={[
+                  styles.headerCounterDot,
+                  isLastFree && styles.headerCounterTextLast,
+                ]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
+                {' · '}
+              </Text>
+              <Text
+                style={[
+                  styles.headerCounterText,
+                  isLastFree && styles.headerCounterTextLast,
+                ]}
+              >
+                +{bonusInfo.bonusRemaining}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 

@@ -35,6 +35,9 @@ export interface UsageStatus {
     daily: number;
     monthly: number;
     lifetime_free?: number;
+    // RULINGS_FIX1_S81_08 F1-8: optional, sent by S81-09 with counted_scope
+    // 'device_daily'; the Home pill then counts this axis.
+    device_daily?: number;
   };
   // S81-08 (R-S08-2): optional, sent by S81-09; absent on today's server.
   resets_at?: string;

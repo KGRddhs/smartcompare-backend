@@ -364,6 +364,17 @@ export async function logout(): Promise<void> {
     logoutHandoffs.delete(handoff);
     // Always clear local storage
     await clearSession();
+    // S81-08 fix round 1 (RULINGS_FIX1_S81_08 F1-1): drop the request-path
+    // consent memo (R-S08-3) beside its per-account key, so the next session's
+    // metered requests read their own account's record. Lazy and synchronous
+    // (aiConsent imports this module); never lets logout fail.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const consent = require('./aiConsent');
+      if (typeof consent.forgetRequestConsent === 'function') consent.forgetRequestConsent();
+    } catch {
+      // never let the memo drop break logout
+    }
     // M18 MB-flows-04 — a user-initiated logout is the account-switch
     // path: drop any pending onboarding completion draft so it can never
     // be replayed into a DIFFERENT account that signs in next on this

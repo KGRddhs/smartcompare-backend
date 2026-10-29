@@ -15,7 +15,11 @@
  *   daily state shows a resolved time always; the open and unknown states only
  *   when the status names a daily axis (`counted_scope` on /usage/status,
  *   `scope` on the 429 detail); the monthly state never. The fetched
- *   /usage/status decides first, like the sheet's state.
+ *   /usage/status decides first, like the sheet's state. A relative reset of
+ *   the 429 detail is counted from the FIRST time that detail object is
+ *   resolved (RULINGS_FIX1_S81_08 F1-4), so a re-render (the /usage/status
+ *   fetch landing) never shifts the shown minute; this per-object anchor is
+ *   the module's only state.
  */
 
 const MAX_AHEAD_MS = 48 * 60 * 60 * 1000;
@@ -66,6 +70,18 @@ export function formatResetClock(at: Date, offsetMinutes?: number): string {
   return `${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`;
 }
 
+// F1-4: the first nowMs a 429 detail object was resolved at (weakly keyed, so
+// a new 429 gets a new anchor and nothing is kept alive).
+const initialAnchors = new WeakMap<object, number>();
+
+function anchoredNow(src: unknown, nowMs: number): number {
+  if (!src || typeof src !== 'object' || !Number.isFinite(nowMs)) return nowMs;
+  const seen = initialAnchors.get(src);
+  if (seen !== undefined) return seen;
+  initialAnchors.set(src, nowMs);
+  return nowMs;
+}
+
 /** True for a scope that names a daily axis. */
 export function isDailyScope(scope: unknown): boolean {
   return typeof scope === 'string' && DAILY_SCOPES.includes(scope);
@@ -84,7 +100,7 @@ export function sheetResetClock(
 ): string | null {
   if (kind === 'monthly') return null;
   const fromFetched = resolveResetAt(fetched, nowMs);
-  const at = fromFetched ?? resolveResetAt(initial, nowMs);
+  const at = fromFetched ?? resolveResetAt(initial, anchoredNow(initial, nowMs));
   if (at === null) return null;
   if (kind !== 'daily') {
     const scope = fromFetched ? fetched?.counted_scope : initial?.scope;

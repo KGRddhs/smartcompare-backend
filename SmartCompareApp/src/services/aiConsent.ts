@@ -21,9 +21,9 @@
  *   - S81-08 (RULINGS_S81_08 R-S08-3): consent stays PER ACCOUNT. Metered
  *     requests carry `X-AI-Consent-Version` only when the saved account's
  *     record is current (`hasCurrentAiConsentForRequest`, an in-memory memo
- *     of that check dropped by recordAiConsent / clearAiConsent and by a
- *     signed-out request). There is no device-level copy, and no device id is
- *     ever written here.
+ *     of that check keyed by the account and dropped by recordAiConsent /
+ *     clearAiConsent, by a signed-out request and by logout()). There is no
+ *     device-level copy, and no device id is ever written here.
  *
  * The gate: `ensureAiConsent(ask)` is the single decision point — stored
  * consent of the current version passes at once; otherwise `ask()` shows the
@@ -92,12 +92,17 @@ export async function hasCurrentAiConsent(userId: string | null): Promise<boolea
 
 // S81-08 (R-S08-3): the request path's memo of hasCurrentAiConsent, one entry
 // keyed by the account. Every change to a record (recordAiConsent,
-// clearAiConsent) and a signed-out request drop it AFTER the change, and the
-// generation discards an answer that was read while one of them ran.
+// clearAiConsent), a signed-out request and logout() drop it AFTER the change,
+// and the generation discards an answer that was read while one of them ran.
 let requestConsentMemo: { userId: string; current: boolean } | null = null;
 let requestConsentGeneration = 0;
 
-function forgetRequestConsent(): void {
+/**
+ * Drops the request-path consent memo. authService.logout() calls it too
+ * (RULINGS_FIX1_S81_08 F1-1: defence in depth beside the per-account key), so
+ * the next session's metered requests read their account's record again.
+ */
+export function forgetRequestConsent(): void {
   requestConsentMemo = null;
   requestConsentGeneration += 1;
 }

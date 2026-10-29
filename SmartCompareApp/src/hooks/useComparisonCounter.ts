@@ -102,11 +102,29 @@ export function useComparisonCounter() {
   const total = isPremium ? FREE_LIMIT : lifetimeFree;
 
   // S81-08 (R-S08-2 / GATE GC-5): the reset time reaches the pill only when the
-  // server names a DAILY counted axis, so it never sits beside a count that does
-  // not reset (the lifetime counter, the monthly bonus). Null otherwise.
+  // server names a DAILY counted axis. The count beside it is then that axis
+  // (below, RULINGS_FIX1_S81_08 F1-8) and HomeScreen renders the resets node
+  // right after the count, before the monthly bonus (F1-9). Null otherwise.
   const statusResetsAt = status?.resets_at;
   const resetsAt =
     typeof statusResetsAt === 'string' && isDailyScope(status?.counted_scope) ? statusResetsAt : null;
 
-  return { used, total, canCompare, shouldShowPaywall, increment, resetsAt };
+  // RULINGS_FIX1_S81_08 F1-8 (the S81-09 contract, its brief Q8): a status
+  // whose counted_scope names a daily axis ('daily' / 'device_daily') and that
+  // carries THAT axis's remaining drives the pill: `total` = the daily cap,
+  // `used` = total minus the axis's remaining (less the compares consumed here
+  // since hydration), never lifetime_free - used.lifetime. A status without a
+  // named daily axis (build-3 backends) keeps the lifetime math above.
+  const countedScope = status?.counted_scope;
+  const axisRemaining =
+    countedScope === 'daily' || countedScope === 'device_daily' ? remaining?.[countedScope] : undefined;
+  let pillUsed = used;
+  let pillTotal = total;
+  if (typeof axisRemaining === 'number') {
+    const dailyCap = status?.limits?.daily;
+    pillTotal = typeof dailyCap === 'number' ? dailyCap : FREE_LIMIT;
+    pillUsed = Math.max(0, pillTotal - Math.max(0, axisRemaining - sessionConsumed));
+  }
+
+  return { used: pillUsed, total: pillTotal, canCompare, shouldShowPaywall, increment, resetsAt };
 }

@@ -118,14 +118,10 @@ async function consentHeaderValue(): Promise<string | null> {
     const user = await getSavedUser();
     const userId = user && typeof user.id === 'string' && user.id ? user.id : null;
     const consent = require('./aiConsent');
-    let current: boolean;
-    if (typeof consent.hasCurrentAiConsentForRequest === 'function') {
-      // The per-account memo (R-S08-3); a null id drops it and reads false.
-      current = (await consent.hasCurrentAiConsentForRequest(userId)) === true;
-    } else {
-      if (!userId) return null;
-      current = (await consent.hasCurrentAiConsent(userId)) === true;
-    }
+    // The per-account memo (R-S08-3); a null id drops it and reads false. No
+    // other read: a consent module without it omits the header
+    // (RULINGS_FIX1_S81_08 F1-3; the jest global mock exports it).
+    const current = (await consent.hasCurrentAiConsentForRequest(userId)) === true;
     if (!current || !userId) return null;
     const version = String(consent.AI_CONSENT_VERSION);
     return CONSENT_VERSION.test(version) ? version : null;
