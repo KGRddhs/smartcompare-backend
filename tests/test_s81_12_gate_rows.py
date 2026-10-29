@@ -1,4 +1,4 @@
-"""S81-12 LEGAL-V3: the gate rows of fix round 1 (RULINGS_FIX1_S81_12 F1-3 (a)-(h)), kept in their own
+"""S81-12 LEGAL-V3: the gate rows of fix rounds 1 and 2 (RULINGS_FIX1_S81_12 F1-3, F2-2), kept in their own
 file so the frozen RED file (tests/test_s81_12_legal_v3.py) keeps its sha256 (the S81-06 gate-rows
 pattern). They reuse the RED file's hermetic helpers and read the RENDERED app/legal sources (EN + AR);
 row (b) and row (h) also read the landing regions.
@@ -9,19 +9,26 @@ publication notice of F1-5:
 
   (a) privacy s4: OpenAI's no-training sentence since the switch, EN verbatim + its AR twin   (X1, L10m)
   (b) no 'OpenAI may use ... to train' (EN, AR) in the sources or the landing regions outside the ONE
-      dated history sentence of privacy s4                                                        (X10)
+      dated history sentence of privacy s4; EN also 'may train' and '... its models' (F2-2(b))   (X10, S3)
   (c) privacy s4: the pre-switch carve-out sentence, EN verbatim + its AR twin                    (X4)
-  (d) privacy s4: the Anthropic no-training sentence UNQUALIFIED (EN) and its AR twin        (X12, X9)
+  (d) privacy s4: the Anthropic no-training sentence UNQUALIFIED (EN) and its AR twin, and since
+      F2-2(a) the whole sentence verbatim as rendered, EN + AR                          (X12, X9, S4)
   (e) privacy s4: 'up to 30 days' inside the Anthropic retention sentence, EN + AR               (X8)
   (f) privacy s2: the dual-provider sentence carries 'including photos', EN + AR                 (X2)
   (g) Terms s7: the 'such a link is marked "Sponsored".' clause, EN + AR                        (M6s)
   (h) the dated 'Changes on <AI_SWITCH_DATE>' notice at the top of the privacy policy and of the
       Terms (F1-5), EN verbatim + AR by its elements, dated from the fill-in data (the window commit's
       re-date moves it with AI_SWITCH_DATE / _AR), present in the landing regions too
+  (i) privacy s14: the F1-2 identifier wording, EN + AR: both random identifiers, the older form of
+      the install identifier until 31 March 2027 and only the random one after that date; no
+      'device properties' (F2-2(c))                                                                (S2)
+  (j) privacy s6: the F1-7 crawler hedge 'When we run it, our catalogue crawler', EN + AR (F2-2(d)) (S1)
 
 Each row fails on its mutant (applied through the U8 machinery on byte copies: snapshot edit ->
-restore -> scripts/fill_in_legal.py) with an AssertionError; the mutation table is in the fix-round
-report. Every row reports a missing file, section or value as a problem, never an exception.
+restore -> scripts/fill_in_legal.py) with an AssertionError; the mutation tables are in the fix-round
+reports (the fix-round-2 mutants MS1-MS4 edit byte copies of the rendered policies under the mutation
+lock, restored and sha-verified). Every row reports a missing file, section or value as a problem,
+never an exception.
 Pure ASCII: every Arabic string is a unicode escape (the AR literals are the texts the machinery
 renders; the drafts are [NATIVE READ]).
 """
@@ -34,6 +41,7 @@ import pytest
 from tests.test_legal_docs_u8 import D3_HISTORY_AR, D3_HISTORY_EN
 from tests.test_s81_12_legal_v3 import (
     AR_LETTER,
+    BOT_URL,
     PAGE_OF,
     PRIVACY_AR,
     PRIVACY_EN,
@@ -60,10 +68,11 @@ SINCE_AR = (
 # --- (b) a present or future permission to use the data for training ------------------------------
 TRAIN_EN = re.compile(r"(?i)\btrain")
 PERMIT_EN = re.compile(
-    r"(?i)\b(?:may|can|might|will|shall|could\s+now)\s+(?:also\s+|still\s+|now\s+)?use\b"
-    r"|\bOpenAI\s+(?:also\s+|still\s+|now\s+)?uses\b"
-    r"|\b(?:is|are)\s+(?:allowed|permitted|free)\s+to\s+use\b"
-)
+    r"(?i)\b(?:may|can|might|will|shall|could\s+now)\s+(?:also\s+|still\s+|now\s+)?(?:use|train)\b"
+    r"|\bOpenAI\s+(?:also\s+|still\s+|now\s+)?(?:uses|trains)\b"
+    r"|\b(?:is|are)\s+(?:allowed|permitted|free)\s+to\s+(?:use|train)\b"
+)  # F2-2(b): 'may use' and 'may train' (S3: 'OpenAI may train its models on ...')
+MODELS_EN = re.compile(r"(?i)\bits\s+models\b")  # F2-2(b): '... its models' counts like '... to train'
 TRAIN_AR = "\u062a\u062f\u0631\u064a\u0628"  # training (in li-tadrib, wa-tadribiha)
 USE_AR = "\u062a\u0633\u062a\u062e\u062f\u0645"  # (she) uses
 USE_NEGATIONS_AR = ("\u0644\u0627 ", "\u0644\u0645 ")  # la, lam + space: does not / did not use
@@ -92,6 +101,21 @@ QUALIFIERS_AR = re.compile(
     "(?<!" + AR_LETTER + ")(?:\u0645\u0627 \u0644\u0645|\u0625\u0644\u0627|\u0628\u0627\u0633\u062a\u062b\u0646\u0627\u0621"
     "|\u0634\u0631\u064a\u0637\u0629|\u0628\u0634\u0631\u0637|\u0639\u062f\u0627|\u0645\u0627 \u0639\u062f\u0627)(?!" + AR_LETTER + ")"
 )  # unless, except, except for, provided that, on condition, apart from
+ANTH_SENTENCE_EN = (
+    "Anthropic, PBC processes the information we send it to provide its service to us under its "
+    "commercial terms, and it does not use that information to train its models."
+)  # F2-2(a): verbatim as rendered (S4)
+ANTH_SENTENCE_AR = (
+    "\u062a\u0639\u0627\u0644\u062c Anthropic, PBC "
+    "\u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062a \u0627\u0644\u062a\u064a "
+    "\u0646\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u064a\u0647\u0627 "
+    "\u0644\u062a\u0642\u062f\u064a\u0645 \u062e\u062f\u0645\u062a\u0647\u0627 \u0644\u0646\u0627 "
+    "\u0648\u0641\u0642 \u0634\u0631\u0648\u0637\u0647\u0627 "
+    "\u0627\u0644\u062a\u062c\u0627\u0631\u064a\u0629\u060c \u0648\u0644\u0627 "
+    "\u062a\u0633\u062a\u062e\u062f\u0645 \u0647\u0630\u0647 "
+    "\u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062a \u0644\u062a\u062f\u0631\u064a\u0628 "
+    "\u0646\u0645\u0627\u0630\u062c\u0647\u0627."
+)  # F2-2(a): the AR twin verbatim as rendered (S4)
 # --- (e) the Anthropic retention sentence (privacy s4) ----------------------------------------------
 KEEPS_EN = re.compile(r"(?i)\bkeeps?\b|\bretains?\b")
 KEEPS_AR = "\u062a\u062d\u062a\u0641\u0638"  # (she) keeps
@@ -130,6 +154,48 @@ NOTICE_ELEMENTS_AR = {
     "on that date": "\u0641\u064a \u0630\u0644\u0643 \u0627\u0644\u062a\u0627\u0631\u064a\u062e",
     "your permission again": "\u0625\u0630\u0646\u0643 \u0645\u0631\u0629 \u0623\u062e\u0631\u0649",
 }
+
+# --- (i) the F1-2 identifier wording (privacy s14; F2-2(c), S2) -------------------------------------
+S14_PRESENT_EN = {
+    "a random install identifier": "a random install identifier",
+    "the second random identifier": "a second random identifier the App uses to choose which new features you see",
+    "the cutoff date": "Until 31 March 2027",
+    "the older form": "older form of the install identifier",
+    "the after-that-date clause": "after that date only the random install identifier is used",
+}
+S14_PRESENT_AR = {
+    "a random install identifier": (
+        "\u0648\u0628\u0645\u0639\u0631\u0651\u0641 \u062a\u062b\u0628\u064a\u062a "
+        "\u0639\u0634\u0648\u0627\u0626\u064a"
+    ),
+    "the second random identifier": (
+        "\u0648\u0628\u0645\u0639\u0631\u0651\u0641 \u0639\u0634\u0648\u0627\u0626\u064a "
+        "\u0622\u062e\u0631 \u064a\u0633\u062a\u062e\u062f\u0645\u0647 "
+        "\u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0644\u0627\u062e\u062a\u064a\u0627\u0631 "
+        "\u0627\u0644\u0645\u064a\u0632\u0627\u062a \u0627\u0644\u062c\u062f\u064a\u062f\u0629 "
+        "\u0627\u0644\u062a\u064a \u062a\u0638\u0647\u0631 \u0644\u0643"
+    ),
+    "the cutoff date": "\u0648\u062d\u062a\u0649 31 \u0645\u0627\u0631\u0633 2027",
+    "the older form": (
+        "\u0635\u064a\u063a\u0629 \u0623\u0642\u062f\u0645 \u0645\u0646 \u0645\u0639\u0631\u0651\u0641 "
+        "\u0627\u0644\u062a\u062b\u0628\u064a\u062a"
+    ),
+    "the after-that-date clause": (
+        "\u0648\u0628\u0639\u062f \u0630\u0644\u0643 \u0627\u0644\u062a\u0627\u0631\u064a\u062e "
+        "\u0644\u0627 \u064a\u064f\u0633\u062a\u062e\u062f\u0645 \u0625\u0644\u0627 "
+        "\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u062a\u062b\u0628\u064a\u062a "
+        "\u0627\u0644\u0639\u0634\u0648\u0627\u0626\u064a"
+    ),
+}
+S14_DEVICE_PROPERTIES_EN = re.compile(r"(?i)\bdevice properties\b")
+S14_DEVICE_PROPERTIES_AR = "\u062e\u0635\u0627\u0626\u0635 \u0627\u0644\u062c\u0647\u0627\u0632"  # khasa'is al-jihaz: device properties (the fix-round-1 AR)
+# --- (j) the F1-7 crawler hedge (privacy s6; F2-2(d), S1) --------------------------------------------
+CRAWLER_HEDGE_EN = "When we run it, our catalogue crawler"
+CRAWLER_HEDGE_AR = (
+    "\u0648\u064a\u0642\u0631\u0623 \u0632\u0627\u062d\u0641 "
+    "\u0627\u0644\u0643\u062a\u0627\u0644\u0648\u062c \u0644\u062f\u064a\u0646\u0627\u060c "
+    "\u0639\u0646\u062f\u0645\u0627 \u0646\u0634\u063a\u0651\u0644\u0647\u060c"
+)  # our catalogue crawler reads, when we run it,
 
 
 def _docs(lang):
@@ -209,7 +275,9 @@ def test_g_b_no_openai_training_permission_outside_the_history_sentence(lang):
     """PIN: no sentence of the privacy policy or the Terms (sources and landing regions) that names OpenAI
     and training grants OpenAI a present or future use of the data ('OpenAI may use ... to train', EN; the
     AR 'qad tastakhdim' / an un-negated 'tastakhdim' / a permission verb), except the ONE dated history
-    sentence of privacy s4 (allow-listed by its exact text, dated from the fill-in data)."""
+    sentence of privacy s4 (allow-listed by its exact text, dated from the fill-in data). Fix round 2
+    (F2-2(b), S3): the EN permission verbs cover 'may train' as well as 'may use', and a sentence naming
+    'its models' counts like one naming training ('OpenAI may train its models on ...' is refused)."""
     history = _history_sentence(lang)
     problems = [] if history else ["AI_SWITCH_DATE(_AR) is not recorded in the fill-in data"]
     for rel in _docs(lang):
@@ -221,7 +289,7 @@ def test_g_b_no_openai_training_permission_outside_the_history_sentence(lang):
                 s = " ".join(sentence.split())
                 if "OpenAI" not in s or (history and s == " ".join(history.split())):
                     continue
-                if lang == "en" and TRAIN_EN.search(s) and PERMIT_EN.search(s):
+                if lang == "en" and (TRAIN_EN.search(s) or MODELS_EN.search(s)) and PERMIT_EN.search(s):
                     problems.append(f"{where}: OpenAI may use the data to train: {s[:120]!r}")
                 if lang == "ar" and TRAIN_AR in s and _ar_affirmative_use(s):
                     problems.append(f"{where}: an AR sentence lets OpenAI use the data for training: {s[:120]!r}")
@@ -254,7 +322,9 @@ def test_g_c_pre_switch_carve_out_sentence(lang):
 def test_g_d_anthropic_no_training_sentence_unqualified(lang):
     """PIN: privacy s4 has exactly one sentence naming Anthropic and training; it says Anthropic does not use
     that information to train its models (EN; the AR twin verbatim) and carries no qualifier (EN 'unless',
-    'except', 'other than', 'provided that' ...; AR 'ma lam', 'illa', 'bi-stithna', 'sharitat' ...)."""
+    'except', 'other than', 'provided that' ...; AR 'ma lam', 'illa', 'bi-stithna', 'sharitat' ...). Fix
+    round 2 (F2-2(a), S4): the sentence is also pinned VERBATIM as rendered (the G-a pattern), EN and AR,
+    so a qualifier outside the list ('... without our permission') cannot pass."""
     s4 = _s4(lang)
     problems = []
     if s4 is None:
@@ -274,6 +344,9 @@ def test_g_d_anthropic_no_training_sentence_unqualified(lang):
         found = qualifiers.search(sentence)
         if found:
             problems.append(f"the Anthropic no-training sentence is qualified by {found.group(0)!r}")
+    want = ANTH_SENTENCE_EN if lang == "en" else ANTH_SENTENCE_AR
+    if s4.count(want) != 1:
+        problems.append(f"privacy s4 carries the Anthropic no-training sentence verbatim {s4.count(want)} times (want 1)")
     assert not problems, _report(f"G-d ({lang}): Anthropic's no-training sentence:", problems)
 
 
@@ -389,3 +462,61 @@ def test_g_h_dated_change_notice_at_the_top(lang):
             if region is None or head.replace("**", "") not in region:
                 problems.append(f"{PAGE_OF[rel]}: the landing region does not carry the dated AR notice")
     assert not problems, _report(f"G-h ({lang}): the dated change notice:", problems)
+
+
+# =============================================================================================
+# (i) -- privacy s14: both random identifiers and the older form's cutoff (F1-2; S2)
+# =============================================================================================
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_g_i_s14_two_random_identifiers_and_the_older_form_cutoff(lang):
+    """PIN (F2-2(c), kills S2): privacy s14 names both random Keychain identifiers (a random install
+    identifier and a second random identifier the App uses to choose which new features you see), and the
+    ONE sentence that names the older form of the install identifier carries the 31 March 2027 cutoff and
+    'after that date only the random install identifier is used'; 'device properties' (a fingerprinting
+    description) appears nowhere in s14 (EN; the AR twins as the machinery renders them)."""
+    s14 = _section(_read(PRIVACY_EN if lang == "en" else PRIVACY_AR), "14")
+    problems = []
+    if s14 is None:
+        problems.append("privacy s14 missing")
+        s14 = ""
+    present = S14_PRESENT_EN if lang == "en" else S14_PRESENT_AR
+    for label, needle in present.items():
+        if needle not in s14:
+            problems.append(f"privacy s14 lacks {label}: {needle[:90]!r}")
+    if S14_DEVICE_PROPERTIES_EN.search(s14) if lang == "en" else S14_DEVICE_PROPERTIES_AR in s14:
+        problems.append("privacy s14 describes device properties (a fingerprinting description)")
+    older = [s for s in _sentences(s14) if present["the older form"] in s]
+    if len(older) != 1:
+        problems.append(f"privacy s14 has {len(older)} sentences naming the older form (want 1)")
+    for sentence in older:
+        for label in ("the cutoff date", "the after-that-date clause"):
+            if present[label] not in sentence:
+                problems.append(f"the older-form sentence lacks {label}: {sentence[:120]!r}")
+    assert not problems, _report(f"G-i ({lang}): privacy s14 identifiers:", problems)
+
+
+# =============================================================================================
+# (j) -- privacy s6: the crawler sentence is hedged (F1-7; S1)
+# =============================================================================================
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_g_j_crawler_sentence_hedged(lang):
+    """PIN (F2-2(d), kills S1): privacy s6 has exactly one sentence naming the published user-agent page
+    (https://getmyez.com/bot/), and that sentence opens with the F1-7 hedge (EN 'When we run it, our
+    catalogue crawler'; AR the hedged opening as the machinery renders it); the hedge appears once in s6."""
+    s6 = _section(_read(PRIVACY_EN if lang == "en" else PRIVACY_AR), "6")
+    hedge = CRAWLER_HEDGE_EN if lang == "en" else CRAWLER_HEDGE_AR
+    problems = []
+    if s6 is None:
+        problems.append("privacy s6 missing")
+        s6 = ""
+    hits = [s for s in _sentences(s6) if BOT_URL in s]
+    if len(hits) != 1:
+        problems.append(f"privacy s6 has {len(hits)} sentences naming {BOT_URL} (want 1)")
+    for sentence in hits:
+        if not sentence.startswith(hedge):
+            problems.append(f"the crawler sentence is not hedged: {sentence[:120]!r}")
+    if s6.count(hedge) != 1:
+        problems.append(f"privacy s6 carries the crawler hedge {s6.count(hedge)} times (want 1)")
+    assert not problems, _report(f"G-j ({lang}): the crawler hedge:", problems)

@@ -134,11 +134,13 @@ S14_EN_REQUIRED = {
     "AI permission record removed with the account": r"(?i)\bdeleting your account (?:also )?removes the AI permission record\b",
     "random install identifier": r"(?i)\brandom install identifier\b",
     "stored securely on the device": r"(?i)\bstored securely\b",
-    "older identifier derived from device properties": r"(?i)\bolder identifier derived from device properties\b",
+    "a second random identifier (F1-2)": r"(?i)\bsecond random identifier\b",
+    "the older form of the install identifier (F1-2)": r"(?i)\bolder form of the install identifier\b",
 }
 S14_EN_FORBIDDEN = {
     "device-level copy (R-S08-3: no device consent mirror)": r"(?i)\bdevice-level copy\b",
     "two random device identifiers (base text)": r"(?i)\btwo random device identifiers\b",
+    "device properties (a fingerprinting description, F1-2)": r"(?i)\bdevice properties\b",
 }
 
 # --- base literals (measured at 98d85433; used only for absence / presence checks) --------
@@ -1112,9 +1114,11 @@ def test_r16_openai_census(lang):
 @pytest.mark.parametrize("lang", ["en", "ar"])
 def test_r17_privacy_s14_ai_permission_and_device_identifiers(lang):
     """RED: privacy s14 keeps 'deleting your account removes the AI permission record', has NO
-    device-level consent copy (R-S08-3), and describes the device identifiers: a random install identifier
-    stored securely on the device and, during a transition, an older identifier derived from device
-    properties, sent only at sign-up, social sign-in and sharing."""
+    device-level consent copy (R-S08-3), and describes the device identifiers as re-ruled on 2026-10-29
+    (RULINGS_FIX1_S81_12 F1-2; this row amended as EK2 in fix round 2, F2-1): two random identifiers
+    stored securely (a random install identifier and a second random identifier), and the older form of
+    the install identifier sent only until 31 March 2027, after which only the random install identifier
+    is used; 'device properties' (a fingerprinting description) is forbidden."""
     s14 = _section(_read(PRIVACY_EN if lang == "en" else PRIVACY_AR), "14") or ""
     problems = []
     if lang == "en":
@@ -1124,9 +1128,10 @@ def test_r17_privacy_s14_ai_permission_and_device_identifiers(lang):
         for label, pattern in S14_EN_FORBIDDEN.items():
             if re.search(pattern, s14):
                 problems.append(f"s14 carries {label}")
-        older = [s for s in _sentences(s14) if re.search(r"(?i)older identifier", s)]
-        if not older or not all(re.search(p, older[0], re.I) for p in (r"\bsign-up\b", r"\bsocial sign-in\b", r"\bsharing\b")):
-            problems.append("the older-identifier sentence does not limit it to sign-up, social sign-in and sharing")
+        older = [s for s in _sentences(s14) if re.search(r"(?i)older form of the install identifier", s)]
+        if not older or not all(re.search(p, older[0]) for p in (r"\bUntil 31 March 2027\b",
+                                                                 r"\bafter that date only the random install identifier is used\b")):
+            problems.append("the older-form sentence does not end with the 31 March 2027 cutoff (F1-2; R-S08-4)")
     else:
         if S14_TWO_IDS_AR in s14:
             problems.append("AR s14 still says two random device identifiers")
