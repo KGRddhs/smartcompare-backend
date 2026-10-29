@@ -1,7 +1,8 @@
-"""S81-12 LEGAL-V3: the gate rows of fix rounds 1 and 2 (RULINGS_FIX1_S81_12 F1-3, F2-2), kept in their own
-file so the frozen RED file (tests/test_s81_12_legal_v3.py) keeps its sha256 (the S81-06 gate-rows
-pattern). They reuse the RED file's hermetic helpers and read the RENDERED app/legal sources (EN + AR);
-row (b) and row (h) also read the landing regions.
+"""S81-12 LEGAL-V3: the gate rows of fix rounds 1 and 2 (RULINGS_FIX1_S81_12 F1-3, F2-2) and of the rebase
+round (RULINGS_REBASE_S81_12 RB12-6), kept in their own file so the frozen RED file
+(tests/test_s81_12_legal_v3.py) keeps its sha256 (the S81-06 gate-rows pattern). They reuse the RED
+file's hermetic helpers and read the RENDERED app/legal sources (EN + AR); rows (b), (h) and (i2) also
+read the landing regions.
 
 They pin the facts both adversaries showed unpinned (S81_12_ADV1_correctness M-2, m4, m5, m6 and
 S81_12_ADV1_legal MAJ-L4; the surviving mutants X1 X2 X4 X8 X9 X10 X12, M6s, L10m) and the dated
@@ -22,6 +23,10 @@ publication notice of F1-5:
   (i) privacy s14: the F1-2 identifier wording, EN + AR: both random identifiers, the older form of
       the install identifier until 31 March 2027 and only the random one after that date; no
       'device properties' (F2-2(c))                                                                (S2)
+  (i2) privacy s14: the ONE Keychain / Keystore fallback clause (the identifier Apple or Google provides
+      to app developers for that device: the vendor identifier on iPhone, the Android ID on Android; for
+      the free-comparison limits only), EN verbatim + the AR twin, once in s14 and in the landing privacy
+      pages (RULINGS_REBASE_S81_12 RB12-6, RULINGS_FIX1_S81_12 F2-7; the S81-08 appreview m6)
   (j) privacy s6: the F1-7 crawler hedge 'When we run it, our catalogue crawler', EN + AR (F2-2(d)) (S1)
 
 Each row fails on its mutant (applied through the U8 machinery on byte copies: snapshot edit ->
@@ -189,6 +194,25 @@ S14_PRESENT_AR = {
 }
 S14_DEVICE_PROPERTIES_EN = re.compile(r"(?i)\bdevice properties\b")
 S14_DEVICE_PROPERTIES_AR = "\u062e\u0635\u0627\u0626\u0635 \u0627\u0644\u062c\u0647\u0627\u0632"  # khasa'is al-jihaz: device properties (the fix-round-1 AR)
+# --- (i2) the Keychain / Keystore fallback identifier (privacy s14; RB12-6, F2-7) ---------------------
+S14_FALLBACK_EN = (
+    "When the Keychain (the Keystore on Android) cannot be read, the App uses the identifier Apple or "
+    "Google provides to app developers for that device instead (the vendor identifier on iPhone, the "
+    "Android ID on Android), for the free-comparison limits only."
+)
+S14_FALLBACK_AR = (
+    "\u0648\u0639\u0646\u062f\u0645\u0627 \u0644\u0627 \u064a\u0645\u0643\u0646 \u0642\u0631\u0627\u0621\u0629 "
+    "Keychain (\u0623\u0648 Keystore \u0639\u0644\u0649 \u0623\u062c\u0647\u0632\u0629 Android)\u060c "
+    "\u064a\u0633\u062a\u062e\u062f\u0645 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0628\u062f\u0644\u064b\u0627 "
+    "\u0645\u0646 \u0630\u0644\u0643 \u0627\u0644\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0630\u064a "
+    "\u062a\u0648\u0641\u0651\u0631\u0647 Apple \u0623\u0648 Google \u0644\u0645\u0637\u0648\u0651\u0631\u064a "
+    "\u0627\u0644\u062a\u0637\u0628\u064a\u0642\u0627\u062a \u0644\u0630\u0644\u0643 \u0627\u0644\u062c\u0647\u0627\u0632"
+    " (\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u0645\u0648\u0631\u0651\u062f \u0639\u0644\u0649 iPhone\u060c "
+    "\u0648\u0645\u0639\u0631\u0651\u0641 Android ID \u0639\u0644\u0649 \u0623\u062c\u0647\u0632\u0629 "
+    "Android)\u060c \u0648\u0630\u0644\u0643 \u0644\u062a\u0637\u0628\u064a\u0642 \u062d\u062f\u0648\u062f "
+    "\u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0627\u062a \u0627\u0644\u0645\u062c\u0627\u0646\u064a\u0629 "
+    "\u0641\u0642\u0637."
+)  # the AR twin as the machinery renders it [NATIVE READ]
 # --- (j) the F1-7 crawler hedge (privacy s6; F2-2(d), S1) --------------------------------------------
 CRAWLER_HEDGE_EN = "When we run it, our catalogue crawler"
 CRAWLER_HEDGE_AR = (
@@ -494,6 +518,43 @@ def test_g_i_s14_two_random_identifiers_and_the_older_form_cutoff(lang):
             if present[label] not in sentence:
                 problems.append(f"the older-form sentence lacks {label}: {sentence[:120]!r}")
     assert not problems, _report(f"G-i ({lang}): privacy s14 identifiers:", problems)
+
+
+# =============================================================================================
+# (i2) -- privacy s14: the Keychain / Keystore fallback identifier (RB12-6, F2-7)
+# =============================================================================================
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_g_i2_s14_keychain_fallback_identifier_clause(lang):
+    """PIN (RULINGS_REBASE_S81_12 RB12-6, RULINGS_FIX1_S81_12 F2-7; the S81-08 appreview m6): privacy s14
+    carries the ONE clause on the identifier the App uses when the Keychain / Keystore cannot be read (the
+    identifier Apple or Google provides to app developers for that device: the vendor identifier on iPhone,
+    the Android ID on Android), for the free-comparison limits only: EN verbatim, AR the twin as the
+    machinery renders it, exactly once in the policy and inside s14; the rendered landing privacy page
+    carries it too. A mutant that drops the clause from one language (through the machinery) reddens that
+    language's node."""
+    rel = PRIVACY_EN if lang == "en" else PRIVACY_AR
+    clause = S14_FALLBACK_EN if lang == "en" else S14_FALLBACK_AR
+    text = _read(rel)
+    problems = []
+    if text is None:
+        problems.append(f"{rel} missing")
+        text = ""
+    s14 = _section(text, "14")
+    if s14 is None:
+        problems.append(f"{rel}: privacy s14 missing")
+        s14 = ""
+    if text.count(clause) != 1:
+        problems.append(f"{rel}: the policy carries the Keychain fallback clause {text.count(clause)} times (want 1)")
+    if s14.count(clause) != 1:
+        problems.append(f"{rel}: privacy s14 does not carry the Keychain fallback clause once: {clause[:90]!r}")
+    page = PAGE_OF[rel]
+    region = _region(_read(page))
+    if region is None:
+        problems.append(f"{page}: the landing region is missing")
+    elif " ".join(clause.split()) not in " ".join(region.split()):
+        problems.append(f"{page}: the landing region does not carry the Keychain fallback clause")
+    assert not problems, _report(f"G-i2 ({lang}): privacy s14 Keychain fallback identifier:", problems)
 
 
 # =============================================================================================
