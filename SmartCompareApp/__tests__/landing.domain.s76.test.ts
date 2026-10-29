@@ -296,9 +296,11 @@ describe('S76 DOMAIN-MYEZ -- nginx: www.getmyez.com redirect (DG3) and the /bot 
     const page = bytes.toString('utf8');
 
     // The live robots User-Agent names this page, and the page names the UA's product token.
-    const ua = fs.readFileSync(path.join(REPO, 'app', 'services', 'sitemap_discovery_service.py'), 'utf8');
-    expect(ua).toContain(`(+${WEB}/bot;`);
+    // S81-15: the one UA definition is robots_eval.QARENBOT_UA; sitemap_discovery_service._ROBOTS_UA is bound to it.
     const robotsEval = fs.readFileSync(path.join(REPO, 'app', 'services', 'robots_eval.py'), 'utf8');
+    expect(robotsEval).toContain(`(+${WEB}/bot;`);
+    const sitemapSvc = fs.readFileSync(path.join(REPO, 'app', 'services', 'sitemap_discovery_service.py'), 'utf8');
+    expect(sitemapSvc).toMatch(/^_ROBOTS_UA = robots_eval\.QARENBOT_UA$/m);
     const agent = (/^NAMED_AGENT = "([^"]+)"/m.exec(robotsEval) ?? [])[1] ?? '';
     expect(agent).not.toBe('');
 
