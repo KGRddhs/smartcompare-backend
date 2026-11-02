@@ -21,6 +21,8 @@ from app.services.text_sanitize import has_score_internals, strip_score_internal
 from app.services.result_gate import STATUS_SUPPORTED, assess_result, result_status_metadata_enabled
 # S81-03 (ENABLE_LLM_LEDGER_V2): the leaf by module attribute (ruling BL4); the flag is read per call.
 from app.services import llm_pricing as _llm_pricing
+# D08 (ENABLE_JSONLD_RATING): the stdlib leaf by module attribute; the flag is read per call.
+from app.services import jsonld_widen as _jsonld_widen
 
 logger = logging.getLogger(__name__)
 
@@ -1590,13 +1592,20 @@ def build_comparison_response(
         for tag in user_preferences.get("lifestyle", []):
             personalization_factors.append(f"lifestyle_{tag}")
 
+    # D08 (ENABLE_JSONLD_RATING): read ONCE per build. ON, no rating is derived
+    # from the scores (an unknown rating stays unknown) and the reviews products
+    # gain the additive `jsonld_rating` (the post-pass before the return). OFF:
+    # the derive loop below runs exactly as before.
+    _d08_rating_on = _jsonld_widen.jsonld_rating_enabled()
+
     # Derive ratings for products with no real ratings
-    for i, pd_item in enumerate(product_data):
-        if pd_item.get("rating") is None:
-            key = f"product_{i}"
-            overall = scoring_result.get("scores", {}).get(key, {}).get("overall", MISSING_SCORE)
-            pd_item["rating"] = derive_rating_from_scores(overall)
-            pd_item["rating_derived"] = True
+    if not _d08_rating_on:
+        for i, pd_item in enumerate(product_data):
+            if pd_item.get("rating") is None:
+                key = f"product_{i}"
+                overall = scoring_result.get("scores", {}).get(key, {}).get("overall", MISSING_SCORE)
+                pd_item["rating"] = derive_rating_from_scores(overall)
+                pd_item["rating_derived"] = True
 
     # Bundle D Task 2.B.2 (A.7.2) — defense-in-depth: strip the `note`
     # field from price objects whose source_method is "estimated".
@@ -2315,6 +2324,18 @@ def build_comparison_response(
                 _b1_md["winner_index"] = None
         except Exception as _b1_exc:  # noqa: BLE001 -- the stamp never breaks a body
             logger.warning("[RESULT_STATUS] assess failed: %s", type(_b1_exc).__name__)
+
+    # D08 (ENABLE_JSONLD_RATING, the one read above): the additive channel-1
+    # rating on reviews.products[i], only for a product that carries one; a
+    # post-pass over the built list, so OFF the list is byte-identical.
+    if _d08_rating_on:
+        _d08_reviews = (result.get("reviews") or {}).get("products")
+        if isinstance(_d08_reviews, list):
+            for _d08_i, _d08_pd in enumerate(product_data):
+                _d08_ch1 = _d08_pd.get("jsonld_rating") if isinstance(_d08_pd, dict) else None
+                if (isinstance(_d08_ch1, dict) and _d08_ch1 and _d08_i < len(_d08_reviews)
+                        and isinstance(_d08_reviews[_d08_i], dict)):
+                    _d08_reviews[_d08_i]["jsonld_rating"] = dict(_d08_ch1)
 
     # M18 CD-ci-truth-11 — final serialization walk: the internal
     # fabrication-provenance marker (inference_source="model_knowledge",

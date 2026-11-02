@@ -276,9 +276,15 @@ class TestPriceAndReviewSystemPromptsDeclareRegionUntrusted:
         assert _search_guard_sentence(PRICE_EXTRACTION_SYSTEM)
 
     def test_reviews_extraction_system(self):
-        from app.services.extraction_service import REVIEWS_EXTRACTION_SYSTEM
+        # S81-G1 D08 (E2): the ENABLE_JSONLD_RATING twin is a consuming system
+        # prompt too, so it joins the guard check beside the base constant.
+        from app.services.extraction_service import (
+            REVIEWS_EXTRACTION_SYSTEM,
+            REVIEWS_EXTRACTION_SYSTEM_NO_RATING,
+        )
 
-        assert _search_guard_sentence(REVIEWS_EXTRACTION_SYSTEM)
+        for prompt in (REVIEWS_EXTRACTION_SYSTEM, REVIEWS_EXTRACTION_SYSTEM_NO_RATING):
+            assert _search_guard_sentence(prompt)
 
 
 # --- async prompt capture (no network: fake OpenAI client) -----------------
