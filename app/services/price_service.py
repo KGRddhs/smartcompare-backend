@@ -40,6 +40,10 @@ from app.services import firecrawl_service, scrapedo_service
 from app.services.platform_router import detect_platform
 # D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
 from app.services.deny_hosts import data_guards_v2_enabled, is_denied_source, is_denied_url
+# D08 (ENABLE_IMAGE_PIPELINE_V2 / ENABLE_JSONLD_RATING): the stdlib leaf, reached
+# by MODULE ATTRIBUTE so the flag readers run per call and a patch of the leaf
+# takes effect here.
+from app.services import jsonld_widen
 
 ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
@@ -11061,6 +11065,14 @@ def _jsonld_product_rating(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if count > 0:
             rating["review_count"] = count
             break
+    # D08 (ENABLE_JSONLD_RATING, read per call): carry the DECLARED scale so the
+    # channel-1 fact can rescale to 5 (bestRating 10, value 8 -> 4.0). Only a
+    # finite declared bestRating > 0 that is not the schema.org default 5 is
+    # carried; flag OFF the rating dict is byte-identical.
+    if jsonld_widen.jsonld_rating_enabled():
+        if (best_rating is not None and best_rating > 0
+                and best_rating != _WIDE_CANDIDATE_DEFAULT_BEST_RATING):
+            rating["best_rating"] = best_rating
     return rating
 
 
@@ -11124,6 +11136,16 @@ def _widen_jsonld_candidate(cand: Dict[str, Any], product: Dict[str, Any]) -> No
     reviews = _jsonld_review_bodies(product.get("review"))
     if reviews:
         cand["reviews"] = reviews
+
+    # D08 (ENABLE_IMAGE_PIPELINE_V2, read per call): the node's OWN schema.org
+    # `size` (a Text or a QuantitativeValue) as a short text for the KB facts.
+    # It is never written into the reduced result's `size` (the listing size
+    # stamped from the name / title), so the pair fairness is untouched. Flag
+    # OFF the candidate dict is byte-identical.
+    if jsonld_widen.image_pipeline_v2_enabled():
+        node_size = jsonld_widen.size_text(product.get("size"))
+        if node_size:
+            cand["size"] = node_size
 
 
 # ============================================================================
@@ -14140,6 +14162,13 @@ def extract_price_from_html(
                 # (extract_jsonld_price stamps it when the gate is on).
                 if price_data.get("brand"):
                     result["brand"] = price_data.get("brand")
+            # D08 (ENABLE_IMAGE_PIPELINE_V2 / ENABLE_JSONLD_RATING, read per
+            # call): the matched node's allowed image as `image_url` and its
+            # identifiers / rating as the internal `_jsonld_facts`, only for a
+            # hit whose currency label resolved (inside `_label_ok`). Both flags
+            # OFF: two env reads, no call, the result byte-identical.
+            if jsonld_widen.image_pipeline_v2_enabled() or jsonld_widen.jsonld_rating_enabled():
+                jsonld_widen.stamp_jsonld_facts(result, price_data, url, OFFICIAL_BRAND_DOMAINS)
             return _finish(result)
 
     # CORRECTNESS — the JSON-LD path gates identity per-Product; the OG / microdata
@@ -16958,7 +16987,7 @@ async def _try_pharmacy_urls(
                     if not get_content_safety_service().is_text_safe(_surface):
                         logger.info("[content_safety] L2 dropped pharmacy candidate for %s", retailer_name)
                         continue
-                    return {
+                    _pharmacy_price = {
                         "amount": price_data["amount"],
                         "original_currency": currency,
                         "currency": currency,
@@ -16972,6 +17001,14 @@ async def _try_pharmacy_urls(
                         "estimated": False,
                         "source_method": "local_bhd",
                     }
+                    # D08 (read per call): the same JSON-LD facts stamp as the
+                    # extract_price_from_html JSON-LD branch; both flags OFF: no
+                    # call, the dict byte-identical.
+                    if jsonld_widen.image_pipeline_v2_enabled() or jsonld_widen.jsonld_rating_enabled():
+                        jsonld_widen.stamp_jsonld_facts(
+                            _pharmacy_price, price_data, url, OFFICIAL_BRAND_DOMAINS,
+                        )
+                    return _pharmacy_price
             except Exception as e:
                 logger.warning(f"[PRICE] Pharmacy {retailer_name} fetch failed: {e}")
                 continue

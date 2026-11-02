@@ -1552,6 +1552,10 @@ from app.services.image_service import get_product_image_url
 # image_service._is_valid_image_url takes effect here (fix-round ruling F1-6).
 from app.services import image_service
 from app.services.deny_hosts import data_guards_v2_enabled
+# D08 (ENABLE_IMAGE_PIPELINE_V2 / ENABLE_JSONLD_RATING): the stdlib leaf, by
+# MODULE ATTRIBUTE so the per-call flag readers, the robots seam and the clock
+# seam are read at call time (a patch of the leaf takes effect here).
+from app.services import jsonld_widen
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
 # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
 # `site:` discovery query runs FIRST, and every candidate is gated registry-
@@ -6197,7 +6201,19 @@ class StructuredComparisonService:
             # image_service._is_valid_image_url, so a page image on a banned
             # host (fimgs.net) never replaces the cascade result. Flag OFF:
             # the base inline test below, unchanged.
-            if data_guards_v2_enabled():
+            # D08 (ENABLE_IMAGE_PIPELINE_V2, read per call, checked FIRST): the
+            # page image replaces the cascade result only under the D08 image
+            # policy (https, a public host, raster, never a DENY_HOSTS host,
+            # first-party / a platform CDN / a brand domain), whichever producer
+            # wrote it (the JSON-LD stamp or a cached Zyte seed); otherwise the
+            # eager cascade image stands. Flag OFF: the two base branches below.
+            if jsonld_widen.image_pipeline_v2_enabled():
+                _d08_page_img = jsonld_widen.allowed_image_url(
+                    page_img, result["price"].get("url"), OFFICIAL_BRAND_DOMAINS,
+                )
+                if _d08_page_img:
+                    result["image_url"] = _d08_page_img
+            elif data_guards_v2_enabled():
                 if image_service._is_valid_image_url(page_img):
                     result["image_url"] = page_img.strip()
             elif page_img and isinstance(page_img, str) and (
@@ -6479,10 +6495,33 @@ class StructuredComparisonService:
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
 
-        # Fallback: use GPT-extracted average_rating (flagged rating_derived +
-        # count nulled at source). Extracted to a module helper so the provenance
-        # contract is unit-testable against the real code.
-        _apply_gpt_review_aggregate_fallback(result)
+        # D08 (ENABLE_JSONLD_RATING, read per call, checked FIRST): rating
+        # channel 1 = the Product node's own JSON-LD aggregateRating (stamped on
+        # the price as _jsonld_facts.rating), only from a host whose persisted
+        # robots record allows the page (jsonld_widen.rating_host_allowed via the
+        # ROBOTS_ENTRY_LOOKUP seam, which answers nothing until D14). It is
+        # always reported additively as `jsonld_rating` and fills ONLY an EMPTY
+        # slot: a provider rating (the Serper tiers / consensus) is never
+        # replaced (RULINGS_S81_G1 R-G1-2). The GPT review-aggregate estimate is
+        # NOT promoted under the flag (an unknown rating stays unknown). Flag
+        # OFF: the base fallback below, unchanged.
+        if jsonld_widen.jsonld_rating_enabled():
+            _d08_now = jsonld_widen._now()
+            _d08_ch1 = jsonld_widen.channel1_rating(result.get("price"), _d08_now)
+            if _d08_ch1:
+                result["jsonld_rating"] = _d08_ch1
+                if result.get("rating") is None:
+                    result["rating"] = _d08_ch1["value"]
+                    result["review_count"] = _d08_ch1["count"]
+                    result["rating_verified"] = False
+                    result["rating_source"] = jsonld_widen.channel1_rating_source(
+                        _d08_ch1, _d08_now,
+                    )
+        else:
+            # Fallback: use GPT-extracted average_rating (flagged rating_derived +
+            # count nulled at source). Extracted to a module helper so the provenance
+            # contract is unit-testable against the real code.
+            _apply_gpt_review_aggregate_fallback(result)
 
         # Inject verified rating into reviews
         if result.get("reviews") and isinstance(result["reviews"], dict) and rating_data.get("rating"):
