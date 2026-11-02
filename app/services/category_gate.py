@@ -28,10 +28,11 @@ POST ``/api/v1/image/identify``) compare fragrances only:
   fragrance on the explicit-pair and vision paths (R-S10-5) and the pair is then
   compared as fragrances (GC-1).
 
-The S81-09 dependency sits behind two seams (R-S10-11): ``reset_window`` (S81-09's
-``usage_service._usage_window`` when it exists, else the UTC-midnight fallback) and
-``budget_exempt_async`` (the allow-list with S81-09's parsing, else the premium tier).
-The rebase onto the S81-09 merge collapses both to the real helpers.
+The S81-09 dependency sat behind two seams (R-S10-11), collapsed at the rebase onto
+the S81-09 merge (RULINGS_REBASE_S81_10 RB10-6): ``reset_window`` delegates to
+S81-09's ONE usage calendar (``usage_service._usage_window`` with
+``riyadh_reset_enabled`` and ``RIYADH_UTC_OFFSET_HOURS``) and ``budget_exempt_async``
+to S81-09's allow-list (``usage_service._device_quota_exempt``), else the premium tier.
 
 Module level is stdlib only; every app import is function-local, so a flag-OFF path
 imports nothing new. Log lines carry constants, canonical category keys, route labels
@@ -43,7 +44,6 @@ import json
 import logging
 import math
 import os
-import re
 import threading
 import unicodedata
 from dataclasses import dataclass, field, replace
@@ -56,9 +56,6 @@ logger = logging.getLogger(__name__)
 FLAG_ENV = "ENABLE_FRAGRANCE_ONLY_GATE"
 BUDGET_ENV = "REFUSAL_DAILY_BUDGET"
 LEXICON_ENV = "FRAGRANCE_LEXICON_PATH"
-# R-S10-7: the S81-09 allow-list name (account ids, names only; never logged). The
-# rebase onto S81-09 replaces this local reader with its helper.
-EXEMPT_ENV = "DEVICE_QUOTA_EXEMPT_USER_IDS"
 
 CODE = "CATEGORY_NOT_LIVE"
 CATEGORIES_LIVE = ("fragrances",)
@@ -75,9 +72,6 @@ MAX_BUDGET = 100
 # The key outlives its day by one hour (the S81-04 / S81-09 grace).
 KEY_GRACE_SECONDS = 3600
 MAX_RETRY_AFTER_SECONDS = 86400
-_RIYADH_OFFSET_HOURS = 3
-_EXEMPT_MAX_IDS = 50
-_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 # ONE EVAL increments every budget key of the subject with the same EXPIREAT, so a
 # key can never exist without its expiry (an INCR then EXPIREAT pair of calls could
@@ -450,19 +444,15 @@ def budget_keys(subject: Optional[BudgetSubject], day: date) -> List[str]:
 
 
 def reset_window(now: datetime) -> Tuple[date, datetime, int]:
-    """The S81-09 seam: ``(day, next_reset, utc_offset_hours)``. S81-09's
-    ``usage_service._usage_window`` (+ its Riyadh offset) when it exists, else the UTC
-    day and the next UTC midnight (offset 0)."""
+    """The S81-09 seam, collapsed (RB10-6): ``(day, next_reset, utc_offset_hours)`` =
+    S81-09's ONE usage calendar, ``usage_service._usage_window(now)``, and its offset
+    (``RIYADH_UTC_OFFSET_HOURS`` under ``riyadh_reset_enabled()``, else 0), so the
+    refusal budget and the usage quota never disagree on the day or the reset."""
     from app.services import usage_service as _usage_service
 
-    helper = getattr(_usage_service, "_usage_window", None)
-    if callable(helper):
-        day, next_reset = helper(now)
-        riyadh = getattr(_usage_service, "riyadh_reset_enabled", None)
-        return day, next_reset, (_RIYADH_OFFSET_HOURS if callable(riyadh) and riyadh() else 0)
-    utc_now = now.astimezone(timezone.utc)
-    next_reset = datetime(utc_now.year, utc_now.month, utc_now.day, tzinfo=timezone.utc) + timedelta(days=1)
-    return utc_now.date(), next_reset, 0
+    day, next_reset = _usage_service._usage_window(now)
+    offset = _usage_service.RIYADH_UTC_OFFSET_HOURS if _usage_service.riyadh_reset_enabled() else 0
+    return day, next_reset, offset
 
 
 def retry_fields(now: datetime, next_reset: datetime, offset_hours: int) -> Tuple[int, str]:
@@ -475,29 +465,17 @@ def retry_fields(now: datetime, next_reset: datetime, offset_hours: int) -> Tupl
     return retry_after, next_reset.astimezone(zone).isoformat(timespec="seconds")
 
 
-def _exempt_ids() -> frozenset:
-    """The S81-09 parsing of the allow-list: split on commas and whitespace, lower-case,
-    uuid-shaped tokens only, at most the first 50."""
-    found: List[str] = []
-    for token in re.split(r"[,\s]+", os.getenv(EXEMPT_ENV) or ""):
-        token = token.strip().lower()
-        if _UUID_RE.match(token):
-            found.append(token)
-            if len(found) >= _EXEMPT_MAX_IDS:
-                break
-    return frozenset(found)
-
-
 async def budget_exempt_async(user_id: Optional[str]) -> bool:
-    """The S81-09 exemption seam (R-S10-7): an allow-listed account or the premium tier
-    is exempt from the refusal BUDGET (never from the rules). Read only when a budget
-    is spent; never raises (a failed read is not exempt)."""
+    """The S81-09 exemption seam (R-S10-7), collapsed (RB10-6): an account in S81-09's
+    allow-list (``usage_service._device_quota_exempt``: DEVICE_QUOTA_EXEMPT_USER_IDS, its
+    parsing) or of the premium tier is exempt from the refusal BUDGET (never from the
+    rules). Read only when a budget is spent; never raises (a failed read is not exempt)."""
     if not isinstance(user_id, str) or not user_id:
         return False
-    if user_id.lower() in _exempt_ids():
-        return True
     from app.services import usage_service as _usage_service
 
+    if _usage_service._device_quota_exempt(user_id):
+        return True
     try:
         info = await _usage_service._get_user_tier_info(user_id)
     except Exception:  # noqa: BLE001 - not exempt; the budget applies

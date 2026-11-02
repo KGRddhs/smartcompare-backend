@@ -1,7 +1,7 @@
 """S81-10 FRAGRANCE-ONLY-GATE: the GREEN-owned gate rows (GATE_S81_10 GC-1, GC-5, GC-6), kept
-in their own file so the frozen RED file (tests/test_s81_s10_fragrance_gate.py, sha256
-d988882a08ac3c57624b8d1ef89492b5a8d0d7ed203a73fa9cfb76fbadad12ac) and its golden keep their
-bytes.
+in their own file so the frozen RED file (tests/test_s81_s10_fragrance_gate.py, blob sha256
+fe2032237c2a09564f23c8595378939b339afb69ba0e84eb0d269961637ff28e since the one sanctioned
+amendment EK1 of fix round 1; d988882a... before it) and its golden keep their bytes.
 
 Every row reuses the RED file's hermetic harness (the autouse `_s10_clean`, the route-level
 `Harness`, the service-level `SvcHarness`, the run-time test lexicon and the synthetic
@@ -40,17 +40,27 @@ adversary's end-to-end probe, names kept):
   test_qb03_  F1-11  the admin-key bypass on GET and the stream (under the auth flag only)
   test_qb04_  F1-11  the camera budget exit gives the anon-gate debit back (metering ON); with
                      metering OFF the base W2-1d debit stands (a stated limit)
+
+Rebase round onto a513ea3b (RULINGS_REBASE_S81_10 RB10-11 a):
+  test_rb10_a1_  F1-15  with ENABLE_DEVICE_DAILY_QUOTA on and the device axis bound, a
+                        post-resolve refusal (POST and stream) gives back S81-09's device
+                        debit as well as the account credit; counted once, never metered
+  test_rb10_a2_  rv-m3  a house-only partner keeps its 'other' stub when the form override
+                        fires (product_categories [fragrances, other], coherent)
+  test_rb10_a3_  RB10-6 the collapsed reset seam follows S81-09's usage window (day,
+                        next_reset, offset; the 429's resets_at) under ENABLE_RIYADH_RESET
 """
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+import math
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
 from starlette.requests import Request as _StarletteRequest
 
 from app.api import image_routes, text_routes
-from app.services import result_gate, usage_service
+from app.services import cache_service, result_gate, usage_service
 from app.services import structured_comparison_service as scs
 from tests.test_s81_s10_fragrance_gate import (  # noqa: F401  (the autouse fixture + helpers)
     ADMIN_VALUE,
@@ -58,11 +68,13 @@ from tests.test_s81_s10_fragrance_gate import (  # noqa: F401  (the autouse fixt
     AR_SHAMPOO,
     CODE,
     DAY_TXT,
+    FP,
     LEXICON_FILE,
     LEXP,
     UID,
     UID2,
     USER,
+    FakeRedis,
     Harness,
     SvcHarness,
     _REDIS,
@@ -78,6 +90,7 @@ from tests.test_s81_s10_fragrance_gate import (  # noqa: F401  (the autouse fixt
     _join,
     _parsed,
     _s10_clean,
+    _subject,
     _test_lexicon,
     _vision,
     _write_lexicon,
@@ -645,3 +658,234 @@ def test_qb04_camera_budget_anon_metering_off_keeps_the_debit(monkeypatch, tmp_p
     assert body.get("scope") == "refusal_daily", body
     tags = h.tags()
     assert tags.count("anon_consume") == 1 and tags.count("refund_anon") == 0, h.rec
+
+
+# ===========================================================================
+# RB10-11 (the rebase round onto a513ea3b, RULINGS_REBASE_S81_10): a1 the S81-09 device debit
+# given back on a post-resolve refusal, a2 a house-only partner keeps its 'other' stub,
+# a3 the collapsed reset seam follows S81-09's usage window
+# ===========================================================================
+class _QuotaRedis(FakeRedis):
+    """The RED's FakeRedis (the refusal budget's MGET and REFUSAL_INCR_SCRIPT, recorded as
+    'redis.eval') plus S81-09's two quota scripts, emulated in Python and keyed on
+    usage_service's own script constants (there is no Lua runtime on the box, R-S09-10),
+    recorded as 'quota.eval' with the keys and the reply."""
+
+    def _emulate(self, shape, script, keys, argv):
+        if script == usage_service.DEVICE_CONSUME_SCRIPT:
+            account = int(self.store.get(keys[0]) or 0)
+            device = 0
+            reply = None
+            if len(keys) > 1:
+                device = int(self.store.get(keys[1]) or 0)
+                if device >= int(argv[1]):
+                    reply = [2, account, device]
+            if reply is None and account >= int(argv[0]):
+                reply = [1, account, device]
+            if reply is None:
+                if len(keys) > 1:
+                    device += 1
+                    self.store[keys[1]] = device
+                    self.expireat[keys[1]] = int(argv[2])
+                account += 1
+                self.store[keys[0]] = account
+                self.expireat[keys[0]] = int(argv[2])
+                reply = [0, account, device]
+            self.rec.append(("quota.eval", "consume", tuple(keys), tuple(reply)))
+            return reply
+        if script == usage_service.DEVICE_REFUND_SCRIPT:
+            reply = []
+            for key in keys:
+                value = int(self.store.get(key) or 0)
+                if value > 0:
+                    self.store[key] = value - 1
+                    reply.append(value - 1)
+                else:
+                    reply.append(-1)
+            self.rec.append(("quota.eval", "refund", tuple(keys), tuple(reply)))
+            return reply
+        return super()._emulate(shape, script, keys, argv)
+
+
+def _a1_device_quota(monkeypatch, tmp_path):
+    """The QB02 end-to-end harness with S81-09's REAL consume and refund behind the REAL text
+    routes: ENABLE_DEVICE_DAILY_QUOTA on, the device axis bound (the X-Device-Fingerprint
+    header through the S81-05 middleware with DEVICE_KEY_PEPPER set, both by the RED's full
+    configuration), one Redis fake shared by usage_service and the refusal budget. The
+    route's refund coroutine runs to completion inside the request (the RED's fire-and-forget
+    fake would close it unrun); every other fire-and-forget coroutine is closed as there."""
+    h, sh = _e2e(monkeypatch, tmp_path, parsed=_parsed("electronics", "electronics"))
+    monkeypatch.setenv("ENABLE_DEVICE_DAILY_QUOTA", "true")
+    fake = _QuotaRedis(h.rec, store=dict(h.redis.store))
+    h.redis = fake
+    monkeypatch.setattr(cache_service, "redis_client", fake)
+    monkeypatch.setattr(usage_service, "redis_client", fake)
+    monkeypatch.setattr(usage_service, "_get_active_referral_bonus", lambda uid: _coro(0))
+    rec = h.rec
+    real_consume = usage_service.consume_comparison_credit
+    real_refund = usage_service.refund_comparison_credit
+
+    async def _consume(uid, access_token="", **kw):
+        rec.append(("consume", uid, tuple(sorted(kw))))
+        return await real_consume(uid, access_token, **kw)
+
+    async def _refund(uid, consumed_keys=None):
+        rec.append(("refund", uid))
+        await real_refund(uid, consumed_keys)
+
+    def _ff(coro, label=None, **kw):
+        rec.append(("ff", label))
+        if isinstance(label, str) and label.startswith("usage_refund"):
+            try:
+                coro.send(None)
+            except StopIteration:
+                return
+            coro.close()
+            raise AssertionError("the refund suspended: " + label)
+        close = getattr(coro, "close", None)
+        if callable(close):
+            close()
+
+    monkeypatch.setattr(text_routes, "consume_comparison_credit", _consume)
+    monkeypatch.setattr(text_routes, "refund_comparison_credit", _refund)
+    monkeypatch.setattr(text_routes, "fire_and_forget", _ff)
+    return h, sh, fake
+
+
+@pytest.mark.parametrize("route", ["post", "stream"])
+def test_rb10_a1_device_debit_refunded_on_post_resolve_refusal(monkeypatch, tmp_path, route):
+    """RB10-11 (a1) = F1-15 / RB10-7 b2, a MEASUREMENT across the S81-09 merge: with
+    ENABLE_FRAGRANCE_ONLY_GATE and ENABLE_DEVICE_DAILY_QUOTA both on and the device axis bound,
+    a post-resolve refusal on the sync POST route and on the stream route gives back the
+    DEVICE debit as well as the account credit: S81-09's ONE consume EVAL debits both usage
+    keys, its ONE refund EVAL gives both back (the request-scoped stash; no route edit), the
+    refusal is counted ONCE on both budget keys and never metered as a delivery (the QB02
+    shape)."""
+    h, sh, fake = _a1_device_quota(monkeypatch, tmp_path)
+    query = "khamrah vs hawas"
+    if route == "post":
+        resp = h.post({"query": query})
+        assert resp.status_code == 400, (resp.status_code, resp.text[:300])
+        body = _body(resp)
+    else:
+        resp = h.stream({"q": query})
+        assert resp.status_code == 200, resp.text[:300]
+        frames = [f for f in resp.text.split("\n\n") if f.strip()]
+        errors = [f for f in frames if f.startswith("event: error\n")]
+        assert len(errors) == 1, frames
+        assert not [f for f in frames if f.startswith("event: complete") or f.startswith("event: settle_complete")]
+        body = json.loads(errors[0].split("data: ", 1)[1])
+    assert body["code"] == CODE and body["category"] == "electronics", body
+    quota = [e for e in h.rec if e[0] == "quota.eval"]
+    assert [e[1] for e in quota] == ["consume", "refund"], quota
+    consume_keys, refund_keys = quota[0][2], quota[1][2]
+    assert len(consume_keys) == 2, consume_keys
+    assert consume_keys[0].startswith(f"usage:daily:{UID}:"), consume_keys
+    assert consume_keys[1].startswith(f"usage:device:{_dk()}:"), consume_keys
+    assert quota[0][3] == (0, 1, 1), quota[0]  # a debit on both axes
+    assert refund_keys == consume_keys and quota[1][3] == (0, 0), quota[1]
+    assert fake.store[consume_keys[0]] == 0 and fake.store[consume_keys[1]] == 0, fake.store
+    tags = h.tags()
+    assert tags.count("consume") == 1 and tags.count("refund") == 1, h.rec
+    assert ("consume", UID, ("device_fp",)) in h.rec, h.rec  # the S81-09 device axis was bound
+    assert not [t for t in tags if t in ("record_lifetime", "save", "capture_result_status")], h.rec
+    evals = _evals(h.rec)
+    assert len(evals) == 1 and sorted(evals[0][2]) == sorted(_expected_keys(dk=_dk())), evals
+    assert sh.count("fetch") == 0 and sh.count("profile") == 0, sh.rec
+    label = "usage_refund.text.post" if route == "post" else "usage_refund.text_stream"
+    assert ("ff", label) in h.rec, h.rec
+
+
+F12_HOUSE = ("Kerastase Genesis Hair Mist", "Dior Homme")  # the partner: a house, no form word
+
+
+@pytest.mark.parametrize("entry", ["sync", "stream"])
+def test_rb10_a2_house_only_partner_keeps_its_other_stub(monkeypatch, tmp_path, entry):
+    """RB10-11 (a2) = rv-m3: on the explicit path a house-only partner ('Dior Homme' beside
+    'Kerastase Genesis Hair Mist') keeps its 'other' stub when the form override fires: B1's
+    per-product categories are [fragrances, other] (either order), category_used fragrances,
+    coherent (no category_conflict). Kills the mutant that widens apply_form_override_stubs'
+    per-product test from scan().fragrance_type to scan().evidence (the house is evidence)."""
+    monkeypatch.setenv("ENABLE_RESULT_STATUS_METADATA", "true")
+    for pair, expected in ((F12_HOUSE, ["fragrances", "other"]), (F12_HOUSE[::-1], ["other", "fragrances"])):
+        sh = SvcHarness(monkeypatch, tmp_path, a2b="haircare")
+        gate = _gate_or_fail()
+        partner = gate.scan(["Dior Homme"])
+        assert partner.evidence and not partner.fragrance_type, partner  # the premise
+        query = " vs ".join(pair)
+        decision = sh.decision([query])
+        assert decision.outcome == "proceed", decision
+        res, ctx = _f12_compare(entry, query, explicit_pair=pair, fragrance_gate=decision)
+        assert res.get("code") == "INSUFFICIENT_DATA", res
+        assert ctx["category_used"] == "fragrances", ctx
+        assert ctx["product_categories"] == expected, (pair, ctx)
+        assert result_gate.identity_coherence(ctx["product_categories"], ctx["category_used"]) is True
+        assert not _evals(sh.rec), sh.rec
+
+
+_A3_INSTANTS = (
+    datetime(2026, 11, 2, 22, 15, 30, tzinfo=timezone.utc),  # 21:00-24:00 UTC: Riyadh is already on the next day
+    datetime(2026, 11, 2, 10, 15, 30, tzinfo=timezone.utc),  # 00:00-21:00 UTC: the same day in both zones
+)
+
+
+class _FrozenDT(datetime):
+    current = None
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls.current if tz is None else cls.current.astimezone(tz)
+
+
+def test_rb10_a3_reset_seam_follows_the_usage_window(monkeypatch, tmp_path):
+    """RB10-11 (a3) = RB10-6: with ENABLE_RIYADH_RESET on, category_gate.reset_window(now),
+    retry_fields and budget_keys agree with S81-09's usage window for the same instant (the
+    same day, the same next_reset, the same offset; the refusal 429's resets_at is S81-09's
+    own reset text) at a UTC instant between 21:00 and 24:00 and at one between 00:00 and
+    21:00, and budget_state_async (the clock frozen at that instant) answers from that
+    window. S81-09's offset constant moved to 5 moves the gate with it: kills the mutant
+    that pins a local 3-hour offset (or a local window) instead of delegating."""
+    gate = _gate_or_fail()
+    _full_config(monkeypatch, tmp_path, budget="10")
+    monkeypatch.setenv("ENABLE_RIYADH_RESET", "true")
+    rec = []
+    fake = FakeRedis(rec)
+    monkeypatch.setattr(cache_service, "redis_client", fake)
+
+    def _tier(uid, *a, **kw):
+        rec.append(("tier_read", uid))
+        return _coro({"subscription_tier": "free"})
+
+    monkeypatch.setattr(usage_service, "_get_user_tier_info", _tier)
+    monkeypatch.setattr(_FrozenDT, "current", _A3_INSTANTS[0])
+    monkeypatch.setattr(gate, "datetime", _FrozenDT)
+    subject = _subject(gate, header=True)
+    assert subject is not None and subject.device_key, subject
+    sanity = {
+        _A3_INSTANTS[0]: (date(2026, 11, 3), datetime(2026, 11, 3, 21, 0, tzinfo=timezone.utc)),
+        _A3_INSTANTS[1]: (date(2026, 11, 2), datetime(2026, 11, 2, 21, 0, tzinfo=timezone.utc)),
+    }
+    for patched in (None, 5):
+        if patched is not None:
+            monkeypatch.setattr(usage_service, "RIYADH_UTC_OFFSET_HOURS", patched)
+        expected_offset = usage_service.RIYADH_UTC_OFFSET_HOURS
+        zone = timezone(timedelta(hours=expected_offset))
+        for now in _A3_INSTANTS:
+            u_day, u_next = usage_service._usage_window(now)
+            if patched is None:
+                assert (u_day, u_next) == sanity[now], (now, u_day, u_next)
+            day, nxt, offset = gate.reset_window(now)
+            assert (day, nxt, offset) == (u_day, u_next, expected_offset), (patched, now, day, nxt, offset)
+            retry_after, resets_at = gate.retry_fields(now, nxt, offset)
+            assert retry_after == math.ceil((u_next - now).total_seconds()), (now, retry_after)
+            assert resets_at == u_next.astimezone(zone).isoformat(timespec="seconds"), resets_at
+            if patched is None:
+                assert resets_at == usage_service._reset_instant_text(u_next, True), resets_at
+            day_txt = u_day.strftime("%Y-%m-%d")
+            keys = gate.budget_keys(subject, day)
+            assert len(keys) == 2 and all(k.endswith(":" + day_txt) for k in keys), keys
+            fake.store = {keys[0]: 10}
+            _FrozenDT.current = now
+            del rec[:]
+            assert _run(gate.budget_state_async(subject)) == (retry_after, resets_at), (patched, now)
+            assert [e for e in rec if e[0] == "redis.mget"] == [("redis.mget", tuple(keys))], rec
