@@ -1325,6 +1325,9 @@ _ALLOWED_CTX_FILES = {
     # S81-09 (E3 / GATE_S81_09 GC-13): the device-quota consumer; the import shape
     # and the attribute uses are pinned below.
     "app/services/usage_service.py",
+    # S81-10 (R-S10-2, the S81-06 E9 form): the refusal-budget subject; the import
+    # shape and the attribute uses are pinned below; no needle string in the file.
+    "app/services/category_gate.py",
 }
 # S81-06 (E9): the router's only reads of the leaf.
 _ROUTER_CTX_ATTRS = {"consent_version", "header_state"}
@@ -1337,9 +1340,12 @@ _USAGE_CTX_ATTRS = {
     "header_state",
     "HEADER_DEVICE_FINGERPRINT",
 }
+# S81-10 (R-S10-2): the fragrance gate's only reads of the leaf.
+_GATE_CTX_ATTRS = {"device_fingerprint", "device_key"}
 _CTX_CONSUMER_ATTRS = {
     "app/services/llm_router.py": _ROUTER_CTX_ATTRS,
     "app/services/usage_service.py": _USAGE_CTX_ATTRS,
+    "app/services/category_gate.py": _GATE_CTX_ATTRS,
 }
 
 
