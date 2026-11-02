@@ -29,3 +29,5 @@ The session-80 defect ledger (../2026-10-19-session-80-state/DEFECT_LEDGER.md) s
 - 2026-10-29 15:46 S81-08 CLIENT-FIRST-OTA MERGED as PR #377 (main 6c14ac95); ships only in the first post-approval OTA after the dated item-32 line.
 
 - 2026-10-29 20:55 S81-12 LEGAL-V3: rebased onto 6c14ac95 (e8c8c1dc); DRAFT PR #378 [HELD for the flip window]; merged only in the owner's flip window, FIRST in it.
+
+- 2026-11-02 13:07 S81-09 DEVICE-QUOTA-RIYADH MERGED as PR #379 (main eaccd550); both flags OFF; flips the owner's after the v3 Terms, the header OTA and the referral-copy OTA.

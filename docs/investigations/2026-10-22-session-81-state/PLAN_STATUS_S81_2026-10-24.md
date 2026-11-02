@@ -56,3 +56,5 @@ Lanes: lane A runs the groups in order after S81-10; lane B runs S81-24 + MS4, t
 - 2026-10-29 19:03 G1 PRICE-PIPELINE (D08 + S81-23): spec done + reviewed by the orchestrator (RULINGS_S81_G1); RED next. Dependencies recorded: D14 (G3) wires D08's ROBOTS_ENTRY_LOOKUP seam; S81-23b (delete the legacy SCRAPEDO_SUPER branch) after the owner's dated unset line AND approval; S81-10b (links gate) = a flip precondition of ENABLE_FRAGRANCE_ONLY_GATE and the next FOCUS unit after S81-10.
 
 - 2026-10-29 20:55 S81-12 LEGAL-V3: DRAFT PR #378 open, HELD for the flip window (first in it); S81-09 GREEN done, adversaries running; S81-10 RED running; G1 RED queued.
+
+- 2026-11-02 13:07 FINISHED: S81-09 DEVICE-QUOTA-RIYADH merged as PR #379 (main eaccd550). In flight: S81-10 GREEN done, adversaries running; G1 RED running; S81-12 draft PR #378 HELD (needs a rebase onto eaccd550 in the flip window).
