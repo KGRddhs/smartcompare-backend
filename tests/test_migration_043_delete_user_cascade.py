@@ -178,6 +178,10 @@ KEPT_USER_CACHE_KEY_TEMPLATES: dict[str, str] = {
         "legacy integer daily usage counter (cache_service.py:812-824), TTL 24 h; "
         "holds no content (spec R4.3)"
     ),
+    "refusal:daily:acct:{user_id}:{*}": (
+        "integer per-account refusal counter (category_gate), EXPIREAT the next reset + 1 h "
+        "(<= 25 h); holds no content (S81-10)"
+    ),
 }
 
 EXPECTED_PURGED_TEMPLATES = frozenset(

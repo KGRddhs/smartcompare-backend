@@ -81,6 +81,9 @@ from app.services import llm_spend_breaker as _llm_spend_breaker
 # S81-06 ANTHROPIC-ROUTER: the consent gate at both entries, the request scope
 # bind, the active-provider preflight (module attribute: a test patch sees it).
 from app.services import llm_router as _llm_router
+# S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the post-resolve decision,
+# run only when a route passed its pre-consume decision (a stdlib-only module).
+from app.services import category_gate as _category_gate
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
 from app.services.adapter_timeouts import adapter_inner_ceiling
@@ -4017,6 +4020,7 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
+        fragrance_gate: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
@@ -4081,6 +4085,9 @@ class StructuredComparisonService:
                     user_id=user_id,
                     explicit_pair=explicit_pair,
                     **({"output_lang": output_lang} if output_lang else {}),
+                    # S81-10: forwarded only when a route passed it (the output_lang
+                    # pattern), so every other caller makes the identical impl call.
+                    **({"fragrance_gate": fragrance_gate} if fragrance_gate is not None else {}),
                 ),
                 timeout=STREAM_HARD_CAP_SECONDS,
             )
@@ -4172,6 +4179,7 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
+        fragrance_gate: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Main entry point for text-based comparisons (post-L2.7 inner impl).
 
@@ -4348,6 +4356,30 @@ class StructuredComparisonService:
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
+            # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE): the chip-free post-resolve decision,
+            # only when the route passed its pre-consume decision (never with the flag
+            # OFF, never from /text/quick, the price warmer or the URL path). A refusal
+            # returns before the write-back, the profile task and any fetch; the route's
+            # existing failure arm refunds it.
+            if fragrance_gate is not None:
+                _gate_verdict = await _category_gate.post_resolve_refusal(
+                    fragrance_gate, products, parser_path=_parser_path,
+                    selected_category=selected_category, category_used=category_used,
+                    classify=classify_category_llm,
+                )
+                if _gate_verdict.refused is not None:
+                    await _category_gate.record_refusal_async(fragrance_gate.subject)
+                    _category_gate.log_refused("post_resolve", _gate_verdict.refused)
+                    return {
+                        **_category_gate.refusal_result(_gate_verdict.refused),
+                        "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                        "total_cost": self.total_cost,
+                        "api_calls": self.api_calls,
+                    }
+                if _gate_verdict.form_override and category_used != "fragrances":
+                    category_used, category_switched, original_category = (
+                        _category_gate.form_override_category(selected_category)
+                    )
 
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
@@ -4781,6 +4813,7 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
+        fragrance_gate: Optional[Any] = None,
     ):
         """Async generator version of compare_from_text that yields partial results."""
         start_time = datetime.now()
@@ -5008,6 +5041,29 @@ class StructuredComparisonService:
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
+            # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE): the mirror of the sync post-resolve
+            # decision; a refusal is the terminal `error` event (the route's had_error
+            # arm refunds it), before the write-back, the profile task and any fetch.
+            if fragrance_gate is not None:
+                _gate_verdict = await _category_gate.post_resolve_refusal(
+                    fragrance_gate, products, parser_path=_parser_path,
+                    selected_category=selected_category, category_used=category_used,
+                    classify=classify_category_llm,
+                )
+                if _gate_verdict.refused is not None:
+                    await _category_gate.record_refusal_async(fragrance_gate.subject)
+                    _category_gate.log_refused("post_resolve", _gate_verdict.refused)
+                    yield ("error", {
+                        **_category_gate.refusal_result(_gate_verdict.refused),
+                        "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                        "total_cost": self.total_cost,
+                        "api_calls": self.api_calls,
+                    })
+                    return
+                if _gate_verdict.form_override and category_used != "fragrances":
+                    category_used, category_switched, original_category = (
+                        _category_gate.form_override_category(selected_category)
+                    )
             # B1 (S80): the per-product categories captured BEFORE the pair write-back
             # (read only under ENABLE_RESULT_STATUS_METADATA; unused with the flag OFF).
             product_categories = [canonicalize_category(_p.get("category")) for _p in products]

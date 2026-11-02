@@ -73,6 +73,9 @@ from app.api.text_routes import (
     _search_log_synthetic_kwargs,
 )
 from app.utils.async_utils import fire_and_forget
+# S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the camera's budget read and
+# the rules on the identified names (a stdlib-only module, module attribute access).
+from app.services import category_gate as _category_gate
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +325,21 @@ async def identify_and_compare(
             refund_anon_comparison_credit(device_fp, anon_consumed_keys), label=label
         )
 
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first; the admin-key path is never
+    # gated): the refusal budget BEFORE the consume and the paid vision call, whatever
+    # the metering state; a spent budget is the review-safe action "error" body, never
+    # billed. The subject is computed once here for the post-vision rules below.
+    _gate_on = (_category_gate.fragrance_only_gate_enabled()
+                and not getattr(request.state, "paid_route_admin", False))
+    _gate_subject = None
+    if _gate_on:
+        _gate_subject = _category_gate.budget_subject(user)
+        _gate_spent = await _category_gate.budget_state_async(_gate_subject)
+        if _gate_spent is not None:
+            _category_gate.log_budget_spent("image")
+            _refund_anon_credit("usage_refund.image.anon.refusal_budget")
+            return _category_gate.camera_budget_body(*_gate_spent)
+
     if paid_route_metering_enabled() and usage_user_id:
         usage_check = await consume_comparison_credit(
             usage_user_id, user.get("access_token", ""), **device_quota_kwargs()
@@ -478,6 +496,17 @@ async def identify_and_compare(
     # --- 1 product ---
     if len(products) == 1:
         product = products[0]
+        # S81-10 (R-S10-13): under the flag a rule-1 product answers CATEGORY_NOT_LIVE
+        # (refunded; the paid vision call is counted on the budget), never the
+        # take-another-photo invitation.
+        if _gate_on:
+            _single = _category_gate.evaluate(_category_gate.vision_texts(products), subject=_gate_subject)
+            if _single.outcome == "refuse":
+                _refund_reserved_credit("usage_refund.image.category_not_live")
+                _refund_anon_credit("usage_refund.image.anon.category_not_live")
+                await _category_gate.record_refusal_async(_gate_subject)
+                _category_gate.log_refused("post_vision", _single.category, "image")
+                return _category_gate.camera_refusal_body(_single.category, vision_cost)
         # Non-delivery exit 5 of 6 -- and the one an ordinary user hits most
         # often, so the refund here is what keeps a single-bottle photo free.
         _refund_reserved_credit("usage_refund.image.need_second_product")
@@ -495,6 +524,17 @@ async def identify_and_compare(
     p1 = products[0]
     p2 = products[1]
     query = f"{p1['brand']} {p1['name']} vs {p2['brand']} {p2['name']}"
+    # S81-10: the rules on the two identified names BEFORE any compare work (and before
+    # the VISION_IDENTITY_V2 preferences read); a rule-1 pair is refunded and counted.
+    _gate_decision = None
+    if _gate_on:
+        _gate_decision = _category_gate.evaluate(_category_gate.vision_texts(products), subject=_gate_subject)
+        if _gate_decision.outcome == "refuse":
+            _refund_reserved_credit("usage_refund.image.category_not_live")
+            _refund_anon_credit("usage_refund.image.anon.category_not_live")
+            await _category_gate.record_refusal_async(_gate_subject)
+            _category_gate.log_refused("post_vision", _gate_decision.category, "image")
+            return _category_gate.camera_refusal_body(_gate_decision.category, vision_cost)
     query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
     logger.info(f"[IMAGE] Auto-comparing: query_hash={query_hash} length={len(query)}")
 
@@ -518,9 +558,18 @@ async def identify_and_compare(
                     _compare_extra["user_preferences"] = _scan_prefs
         _t_compare = time.perf_counter()
         result = await service.compare_from_text(
-            query, region=region, vision_products=products, nocache=nocache, **_compare_extra
+            query, region=region, vision_products=products, nocache=nocache, **_compare_extra,
+            **({"fragrance_gate": _gate_decision} if _gate_decision is not None else {}),
         )
         compare_ms = int((time.perf_counter() - _t_compare) * 1000)
+        # S81-10: the orchestrator's post-resolve refusal (already counted there) is
+        # the review-safe action "error" body with both refunds, BEFORE the
+        # unsuccessful-result handling, so ENABLE_CAMERA_FAILURE_ENVELOPE never turns
+        # it into comparison_failed (no lifetime bump, no history row, no search log).
+        if _gate_decision is not None and result.get("code") == _category_gate.CODE:
+            _refund_reserved_credit("usage_refund.image.category_not_live")
+            _refund_anon_credit("usage_refund.image.anon.category_not_live")
+            return _category_gate.camera_refusal_body(result.get("category"), vision_cost)
 
         # R-METER (W2-1b): compare_from_text mostly RETURNS its failures
         # (`success: False` + TIMEOUT / INSUFFICIENT_DATA / LLM_UNAVAILABLE /

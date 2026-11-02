@@ -49,6 +49,9 @@ from app.utils.async_utils import fire_and_forget
 from app.services.extraction_service import normalize_output_lang
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit.
 from app.services.sentry_service import capture_result_status
+# S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the pre-consume gate of the
+# three compare routes, reached through the module attribute (a stdlib-only module).
+from app.services import category_gate as _category_gate
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +333,9 @@ async def require_paid_route_user(
     if user:
         return user
     if _admin_credential_passes(request):
+        # S81-10 (R-S10-8, GC-6): the admin-key harness path is marked so the
+        # fragrance gate bypasses it; set ONLY here (no log, no body change).
+        request.state.paid_route_admin = True
         return None
     if request.headers.get("authorization"):
         _refuse_paid_route(request, _PAID_AUTH_BEARER_REJECTED)
@@ -548,6 +554,11 @@ def _surface_comparison_failure(result: Dict):
     # INSUFFICIENT_DATA + parser-failure + anything unrecognized → 400. Keep
     # the structured code where present so the FE can branch (e.g. show the
     # "choose different products" copy for INSUFFICIENT_DATA).
+    if code == _category_gate.CODE:
+        # S81-10: the post-resolve refusal keeps its additive category keys (a code
+        # only the fragrance gate produces; the error handler passes them under the
+        # flag). url_routes never produces it.
+        raise HTTPException(status_code=400, detail=_category_gate.http_detail(result))
     if code:
         raise HTTPException(
             status_code=400,
@@ -599,6 +610,12 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 
     service = get_comparison_service()
     start_time = time.time()
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first): rule 1 and the refusal budget
+    # BEFORE the preferences read and the consume; the admin-key path is never gated.
+    _gate = None
+    if (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(request.state, "paid_route_admin", False)):
+        _gate = await _category_gate.text_gate([body.query], user, route="text.post")
 
     # Fetch user preferences if authenticated
     user_prefs = None
@@ -651,6 +668,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         user_id=user.get("id") if user else None,
         explicit_pair=explicit_pair,
         **({"output_lang": _ol} if (_ol := normalize_output_lang(body.lang)) else {}),
+        **({"fragrance_gate": _gate} if _gate is not None else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -820,6 +838,12 @@ async def text_compare_get(
 
     service = get_comparison_service()
     start_time = time.time()
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first): rule 1 and the refusal budget
+    # BEFORE the preferences read and the consume; the admin-key path is never gated.
+    _gate = None
+    if (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(request.state, "paid_route_admin", False)):
+        _gate = await _category_gate.text_gate([q], user, route="text.get")
 
     # Fetch user preferences if authenticated
     user_prefs = None
@@ -866,6 +890,7 @@ async def text_compare_get(
         user_id=user.get("id") if user else None,
         explicit_pair=explicit_pair,
         **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
+        **({"fragrance_gate": _gate} if _gate is not None else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -1009,6 +1034,13 @@ async def text_compare_stream(
 
     service = get_comparison_service()
     start_time = time.time()
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first): rule 1 and the refusal budget
+    # BEFORE the preferences read and the consume, and before StreamingResponse, so a
+    # refusal is a plain JSON 400 / 429; the admin-key path is never gated.
+    _gate = None
+    if (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(request.state, "paid_route_admin", False)):
+        _gate = await _category_gate.text_gate([q], user, route="text.stream")
 
     # Fetch user preferences if authenticated
     user_prefs = None
@@ -1121,6 +1153,7 @@ async def text_compare_stream(
             user_id=user.get("id") if user else None,
             explicit_pair=explicit_pair,
             **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
+            **({"fragrance_gate": _gate} if _gate is not None else {}),
         )
         try:
             async for event_type, data in _stream:
