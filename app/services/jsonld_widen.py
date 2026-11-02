@@ -343,7 +343,7 @@ def rules_allow(rules: Any, url: Any) -> bool:
     """True iff the persisted robots ``rules`` list ([[allow|disallow, pattern],
     ...], one agent's merged rules) allows the path + query of ``url``.
 
-    Mirrors ``robots_eval.can_fetch``'s evaluation (the longest matching
+    Unlike ``robots_eval.can_fetch``, a ';' path param is kept (D14 picks one normalisation); same rule order (the longest matching
     pattern wins by ``robots_eval._match_len``, allow wins a tie, an empty list
     allows) but FAIL-CLOSED: a non-list, a malformed rule (wrong arity, an
     unknown action, a non-str pattern), a non-str URL or any error is False."""
