@@ -1,0 +1,70 @@
+{
+ "unit": "S81-10b LINKS-GATE (ENABLE_FRAGRANCE_ONLY_GATE, shared with S81-10; FOCUS unit, quota / refund surface)",
+ "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s10b/.qa-s80/S81-10b_UNIT_SPEC.md",
+ "spec_sha256": "4fe2048cfa656666c2d95ea23c9aa5bd2a94ad23e52926607935d64191637fb5",
+ "summary": "I wrote the spec at base c6fb6533 in the detached worktree sc-s81-s10b. It is 76,218 B, pure ASCII, LF, and sits in the gitignored .qa-s80/. I assembled it through the shell from spec_part1-3.txt in my scratchpad. git status --short was empty before and after, and HEAD is unchanged.\n\nMeasured findings that change the brief:\n\n1. compare_from_urls makes no specs, price or reviews fetches after the resolve. The only paid call after the decision point is generate_comparison (:1361). The gate therefore goes between _resolve_pair_category (:1343-1345) and the pair write-back (:1346-1347). It must come before the write-back, or a mixed pair loses its per-product categories.\n2. The structured extractors never set a category. The extraction LLM runs only when the title or the price is missing (:1075, :1158). So a JSON-LD product page normalizes to category 'other'.\n   - The URL resolver uses parser_path=True and never calls A2b.\n   - As merged, post_resolve_refusal therefore lets every no-chip JSON-LD link pair through without classifying it. A probe with dotenv stubbed (no .env read, no network) confirmed this: no chip or the chip 'other' gives 0 classify calls and the pair proceeds; a real chip gives 1 call and the pair is refused.\n   - The spec adds a keyword-only resolver_classified=False to post_resolve_refusal (default True, so S81-10 callers are byte-identical). It sends a blind pair to the evidence-or-one-A2b arm whatever the chip.\n3. log_budget_spent maps an unknown route label to 'image'. _ROUTE_LABELS gains url.post and url.get.\n4. The URL failure arm already maps a CATEGORY_NOT_LIVE result to the 400 with the category keys: url_routes:299-302, then text_routes:557-561, then error_handler:214-227. No mapping edit is needed. The comment at text_routes:558-560 ('url_routes never produces it') goes stale (Q4).\n5. S81-10 P02's URL clause is a source needle scan at tests/test_s81_s10_fragrance_gate.py:2291-2294, not an HTTP row. EK1 deletes those 4 lines.\n6. Design:\n   - The handler reads the flag once, through category_gate.fragrance_only_gate_enabled, then checks the admin mark.\n   - When the gate is on it passes gate_route to _compare_urls_metered, whose first statement is the budget check: one MGET, a 429 never billed. That check sits after the SSRF and B4 pre-gate 400s and before the S81-06 consent 503 and the reserve.\n   - compare_from_urls(*, fragrance_gate) runs rule 1 on the extracted '<brand> <name>' texts (the camera precedent, Q1), then post_resolve_refusal per product (form override, GC-2, GC-1 rewrite).\n   - A refusal is counted with one EVAL, logged as 'refused stage=post_extract', returned as refusal_result, and refunded once by the base failure arm.\n7. Rows: 18 RED (about 29 nodes) and 6 PIN (about 31 nodes). P01 is a new golden of 18 scenarios \u00d7 5 OFF spellings with raising recorders.\n8. Mutants M01-M28 each have named killing rows. Two are declared equivalent: M-EQ1 (an added apply_form_override_stubs call) and M-EQ2 (reading request.state before the flag).\n9. Comm set: 96 runnable files with the Q4 comment edit, 75 without (lists and classes in scratchpad S81_10B_COMM_*). No base record exists yet at c6fb6533.\n10. Base: 4 bounded runs over 31 pin files, 3,321 passed. There is 1 environmental failure, test_r06_production_lexicon_content: the fresh worktree checks out data/fragrance_lexicon.json with CRLF under core.autocrlf=true.\n\nNot done: no RED file, golden, prototype or mutant run; no base record; no client fences.",
+ "change_list": [
+  "3.0 Branch feature/s81-s10b-links-gate from detached c6fb6533; the RED files tests/test_s81_s10b_links_gate.py and tests/fixtures/s81_s10b_flag_off_golden.json stay frozen",
+  "3.1 app/services/category_gate.py:\n- _ROUTE_LABELS += ('url.post', 'url.get')\n- post_resolve_refusal gains keyword-only resolver_classified: bool = True; the branch becomes 'if resolver_classified and (not chip or chip == \"other\")'\n- the module docstring names the URL path (no request_context substring, no needle, no key literal)",
+  "3.2 app/api/url_routes.py:\n- module import of category_gate\n- _url_fragrance_gate_kwargs(request, route): reads the flag first, then the admin mark; returns {} or {'gate_route': route}\n- async _url_refusal_budget(user, route): budget_subject, budget_state_async, log_budget_spent plus a 429 budget_detail, else GateDecision('proceed', None, False, subject)\n- _compare_with_deadline(..., fragrance_gate=None) forwards the kwarg only when set\n- _compare_urls_metered(..., gate_route=None): the budget is its FIRST statement (before the S81-06 consent gate and the reserve); the fragrance_gate kwarg is passed conditionally on both compare paths\n- POST and GET handlers: _gate_kw after v2 = url_mode_v2_enabled(), splatted into all four _compare_urls_metered calls\n- no route docstring or signature change (T23)",
+  "3.3 app/services/url_extraction_service.py:\n- compare_from_urls(*, fragrance_gate=None)\n- a gated block between the resolve (:1345) and the write-back (:1346) calling the new _url_fragrance_decision\n- _url_fragrance_decision: evaluate(vision_texts(products)) for rule 1 and the evidence, then post_resolve_refusal(parser_path=False, resolver_classified=False), the GC-1 rewrite of category_used, and on refusal record_refusal_async + log_refused('post_extract') + refusal_result\n- function-local import; no router call",
+  "3.4 app/api/text_routes.py (Q4, default on): comment-only rewrite of :558-560 ('url_routes never produces it')",
+  "3.5 tests/test_s81_s10_fragrance_gate.py EK1: delete P02's URL needle loop :2291-2294 (LF blob sha256 fe2032237c2a... moves)",
+  "3.6 CLAUDE.md: the S81-10 block :543-545 edited in place (route list, the link sentence, the second golden, the precondition and owner step '(3) S81-10b merged' removed, the link canary, the link stated limits)",
+  "No other file: no migration, lock, client, data, error_handler or structured_comparison_service edit; no new env name"
+ ],
+ "red_rows": 18,
+ "pin_rows": 6,
+ "mutants": 28,
+ "comm_set_size": 96,
+ "open_questions": [
+  "Q1 Should rule 1 run on the extracted '<brand> <name>' texts? Default yes. The camera does the same after its paid vision call (R-S10-13), it saves the A2b call on obvious titles, and it keeps them refused during a classifier outage. Alternative: post_resolve only (the brief's literal step 2); drop R12 and M10.",
+  "Q2 The blind arm: keyword-only resolver_classified=False on post_resolve_refusal (default True, S81-10 callers unchanged). The probe shows the hole without it. Alternative with no category_gate edit: pass CATEGORIES_LIVE[0] as the chip argument on the URL call (same behaviour, opaque call site).",
+  "Q3 Widen _ROUTE_LABELS with url.post and url.get? Default yes; otherwise the link budget line logs route=image. Alternative: a url_routes-local log line.",
+  "Q4 Rewrite the stale text_routes.py:558-560 comment in place? Default yes (comment only; the comm set grows from 75 to 96 files). Alternative: leave it as stated limit L16.",
+  "Q5 Read the budget before the S81-06 consent 503? Default yes, matching the text and camera order; this only changes which code a consent-refused client with a spent budget sees.",
+  "Q6 L4 on links: a blind page beside a fragrance page proceeds as a fragrance. This is more frequent on links because JSON-LD pages are blind. Default: inherited stated limit and the first canary read (S81-10c). Alternative: one per-product A2b in this unit.",
+  "Q7 EK1 timing: GREEN applies E1 in its commit; the RED gate measures P02 red on the prototype without E1 and green with it.",
+  "Q8 Confirm the ruling wording: the brief calls P02's URL clause an HTTP row, but it is a source needle scan (:2291-2294).",
+  "Q9 The brief's 'specs / price / reviews fetches after the resolution' do not exist; the only paid call after the decision is generate_comparison. Confirm L1's wording.",
+  "Q10 The new RED reuses the S81-10 RED module's harness by import (the gate-rows precedent) rather than a self-contained copy. Confirm."
+ ],
+ "base_measurements": [
+  "url_routes.py (569 lines, CRLF):\n- reserve :73-105\n- _compare_with_deadline :155-168\n- metered :202-330: consent :233-238, reserve :240, exception arm :261-270, failure arm :272-306 (refund :276-280, B4 codes :294-298, _surface_comparison_failure :299-302, codeless :303-306)\n- POST :443-491, GET :494-526, both on Depends(require_paid_route_user)\n- extract :384-440, detect :533-569 (admin), retailers :362-381",
+  "url_extraction_service.py (1463 lines, CRLF):\n- compare_from_urls :1255-1407\n- resolve :1342-1345 (parser_path=True), write-back :1346-1347, generate_comparison :1360-1369 (the only paid call after the resolve)\n- normalize category :1216\n- extraction LLM only when title or price is missing: :1075 (v2), :1158 (v1)\n- the extractors at :610, :675, :710, :758 set no category",
+  "Probe (probe_blind.txt; dotenv stubbed, no network):\n- a JSON-LD page with name and price needs no extraction LLM (v1 and v2) and normalizes to category 'other'\n- post_resolve_refusal: no chip or 'other' chip gives 0 classify calls and the pair proceeds; a real chip gives 1 classify call and a refusal\n- log_budget_spent('url.post') logs route=image",
+  "category_gate.py :1-732: _ROUTE_LABELS :94, post_resolve_refusal chip branch :679-690, log_budget_spent :620-623",
+  "The coded path to the 400 exists today: text_routes :557-561, then error_handler :214-227 (code-scoped)",
+  "S81-10 P02 URL clause = source scan at tests/test_s81_s10_fragrance_gate.py:2291-2294; RED LF blob sha256 fe2032237c2a09564f23c8595378939b339afb69ba0e84eb0d269961637ff28e",
+  "Guards the new code must not trip: D03 P14, S15 P5, S06 R39, W4-13 log_search duration_ms, S05 p01 (no 'request_context' in the URL files), S10 R55 (none in text_routes), T23 OpenAPI, U8d",
+  "Comm set: 96 runnable files with Q4 (sha256 7bae4082f2a7266b50ae99101003e840ad71c96003fdf3fb3883c697969e5a04), 75 without (sha256 ebdf07444bcd08be18c07bbfb6fa9c43b3801d9afdba9356fae40b20a0598b86); no base record at c6fb6533",
+  "Base: 31 pin files, 3,322 nodes = 3,321 passed + 1 environmental failure (R06: CRLF checkout of data/fragrance_lexicon.json under autocrlf)"
+ ],
+ "deliberate_pin_changes": [
+  "E1 (= EK1): tests/test_s81_s10_fragrance_gate.py::test_p02_non_target_callers_ungated loses its URL needle loop :2291-2294; the /text/quick and price-warmer clauses stay. Applied by GREEN in the same commit; ruled at the gate."
+ ],
+ "pyt_lines": [
+  "[pyt] tag=s10b-base-a start=2026-11-02 18:44:04 end=2026-11-02 18:44:14 elapsed=11s bound=1200s status=FAIL rc=1 (245 passed, 1 failed: test_s81_s10_fragrance_gate.py::test_r06_production_lexicon_content, environmental CRLF; [hermeticity] sentinel checked 246 test(s); [netguard] blocked 1 attempt(s) from 1 node(s))",
+  "[pyt] tag=s10b-base-b start=2026-11-02 18:44:32 end=2026-11-02 18:44:52 elapsed=20s bound=1200s status=OK rc=0 (959 passed; [hermeticity] sentinel checked 959 test(s); [netguard] blocked 2 attempt(s) from 2 node(s))",
+  "[pyt] tag=s10b-base-c start=2026-11-02 18:45:01 end=2026-11-02 18:45:43 elapsed=42s bound=1200s status=OK rc=0 (1419 passed; [hermeticity] sentinel checked 1419 test(s); [netguard] blocked 0 attempt(s) from 0 node(s))",
+  "[pyt] tag=s10b-base-d start=2026-11-02 18:47:32 end=2026-11-02 18:48:16 elapsed=44s bound=1200s status=OK rc=0 (699 passed; [hermeticity] sentinel checked 699 test(s); [netguard] blocked 24 attempt(s) from 2 node(s))"
+ ],
+ "stated_limits": [
+  "L1 The paid extraction (two page fetches, plus the extraction LLM only when title or price is missing) precedes the decision; refunded to the user, bounded by the budget and the limiter; the verdict never runs on a refusal",
+  "L2 No slug scan; the only pre-consume exit for a link pair is the budget 429",
+  "L3 Blind JSON-LD pairs cost one A2b unless the lexicon finds evidence; an A2b failure proceeds uncounted",
+  "L4 (inherited) A blind page beside a fragrance page proceeds as a fragrance (S81-10c)",
+  "L5 GC-2 on links: a blind pair with house evidence proceeds without a classifier",
+  "L6 A proceeding blind pair keeps the resolver's category_used (the client chip when no extraction LLM ran)",
+  "L7 Under B4 the decision runs inside the 25 s deadline; an expiry there is a TIMEOUT and the refusal is not counted",
+  "L8 Build 3 shows the generic copy; the 429 never opens the Paywall; the flip waits for the S81-11 OTA",
+  "L9 The budget fails open; one more Upstash round trip and up to 3 lexicon os.stat calls per gated link compare",
+  "L10 The admin bypass holds only while ENABLE_COMPARE_AUTH_REQUIRED is ON",
+  "L11 A refusal writes the base W4-13 failure row with the refusal copy; no history row, no lifetime bump, no capture_result_status",
+  "L12 The extraction LLM's category is trusted when it ran",
+  "L13 /url/extract and /url/detect stay ungated",
+  "L14 The A2b and the form override read the product name only; the evidence reads '<brand> <name>'",
+  "L15 The post-extract refusal line carries no route label",
+  "L16 (only if Q4 is ruled out) the text_routes comment stays stale"
+ ]
+}

@@ -1,0 +1,104 @@
+{
+ "group": "S81-G2 KB-SEED",
+ "units_covered": [
+  "S81-16 KB-SEED-BATCH (ENABLE_KB_SEED)",
+  "D09 FEED-WALKER (ENABLE_FEED_WALKER)",
+  "D11 PDP-DISCOVERY (ENABLE_PDP_DISCOVERY + sub-flag ENABLE_CC_CDX)"
+ ],
+ "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g2/.qa-s80/S81-G2_UNIT_SPEC.md",
+ "spec_sha256": "210c06802f2cf9f4177757b2560dd4c27740a8eb64da52f2609f31190f480629",
+ "summary": "The group spec is written, measured at c6fb6533: 120,152 bytes, pure ASCII, LF, written by the shell with cat. The worktree stays clean (`git status --short` is empty; `.qa-s80/` is gitignored).\n\nDesign: every G2 file goes under `scripts/` and no `app/` file is edited, so the flag-OFF state is byte-identical by construction. This is forced by measured guards: u3c_02 forbids any Anthropic Batches call under `app/`; T7b would need `processors.json` rows (legal text) for a new URL in `app/services`; S81-15 p5 and r43 forbid `app/` naming `robots_registry` or the scripts; the claude- literal pin covers `app/services`; the D9 `/bot` pin forbids the words QarenBot and NAMED_AGENT in any new `.py` text.\n\nShared module `scripts/kb_seed_common.py` holds:\n- the mode reader, the same for the three units: unset/false means OFF; true/1/yes/on means DRY RUN; `apply` means write;\n- the paged `kb_merchants` read;\n- the fail-closed URL gate: `jsonld_widen.rating_host_allowed` plus a check that the record's origin is the URL's own origin, plus an optional ToS check;\n- the polite named-UA fetch: `robots_registry` Politeness, `_fetch_following`, `default_fetch` and `default_validate`;\n- the KbWriter: rows only from the S81-14 builders; insert-ignore; offers follow the R-S14-1 observation contract with one shared timestamp.\n\nPer unit:\n- **S81-16:** ONE Haiku 5.5 Message Batch per run over held corpus pages that pass the robots gate (`thinking` disabled, `output_config` JSON schema, `max_tokens` 2048, usage logged for the first 20 rows, the batch deleted after the writes). Writes kb_products, kb_variants and cited kb_specs; the provenance of each field is its `source_url`. No offers (the corpus has no capture time) and no images. Spend runs through the S81-04 offclock reserve/settle, the 050 ledger row and an in-script bound `KB_SEED_MAX_USD` <= 10; the S81-06 router is not used. The Wikidata brand import writes kb_merchants CANDIDATE rows only.\n- **D09:** Shopify and Woo Store API readers cover 19 of the 24 feed hosts; 5 are `no_reader`. A host needs `tos.verdict` allowed and a known registry currency. Shopify offers carry the registry currency with rung `expected_missing`, and a per-handle `price_currency` probe guards each host.\n- **D11:** reads the robots-declared sitemaps of the 71 JSON-LD hosts through the existing `_collect_slugs_for_index` (no Redis write). The Common Crawl CDX leg is inert without `ENABLE_CC_CDX` and `KB_CC_INDEX`. Only URLs that match a ranked juice become `queued` kb_gaps rows.\n\nFindings:\n- The DEFECT_LEDGER has no S81-16, D09 or D11 rows.\n- Of the held corpora, only 47 Gulf and 3 global juices have a registry row with a robots record on their own origin, so the 500 / 2,000 targets must come from D09 and D11.\n- 045 has no column for brand labels.\n- No SDK pin change is needed: anthropic 1.12.1 is in the locks and installed.\n\nTotals: 63 RED rows, 14 PIN rows, 45 mutants. The comm set is 68 files at base and 71 at head.",
+ "base_measurements": [
+  "Q1: anthropic==1.12.1 (requirements.in:16, requirements.txt:7, installed in .venv-qaren); client.messages.batches = Batches with create(*, requests, user_profile_id, workspace_id) -> MessageBatch, retrieve/cancel/delete(message_batch_id), results(message_batch_id) -> JSONLDecoder[MessageBatchIndividualResponse]; params keys include thinking ({type: disabled}), output_config ({effort?, format: {type: json_schema, schema}}), max_tokens, model (Literal incl. claude-haiku-5-5); NO temperature; MessageBatch.processing_status in_progress|canceling|ended; Usage input/output/cache_read/cache_creation tokens",
+  "Q2: _proof standard layout = 414 records with HTML (gulf 92 via sweep2_curl_cffi.jsonl + html/, global 322 via global/corpus.json + global/html + global/_dach_html), 6 skipped; html files 92 / 429 / 67; parse_page candidates gulf 47 pages/47 juices/47 hosts, global 148/138/66, dach 25/24/11; build_candidates(html+global/html)=184 from 195 pages; 1 gulf page carries a deny-host URL; manifests carry no capture timestamp",
+  "Q2b: vs the 410 S81-15 seed rows: gulf 47/47 on live rows (44 on the probe origin, 3 other origin), global 4 on live rows (3 same origin), 144 no registry row; dach 0",
+  "Q3: 24 feed hosts (woo 10, shopify 9, magento_graphql 2, salla_api 2, algolia 1; tier bahrain 15, country BH 14), identical over bh_gcc_sources.json and the seed rows; 71 JSON-LD hosts = catalog-origin, mechanism '', live, fragrance rows (16 literal empty-mechanism rows excluded); Source has no genuine_method field",
+  "Q4: 045 provenance per field = kb_specs.source_url (+ extractor, model, cited; cited requires source_url :248), kb_images.provenance_host+source, kb_offers merchant_id+canonical_url+evidence_rung+observed_currency; last_seen only on kb_offers (:181-183) and kb_gaps (:278-279)",
+  "Q5: T7b scans app/services URL literals only; u3c_02 forbids Anthropic Messages/Batches surfaces in app/ (scripts not scanned); test_model_config forbids claude- literals in app/services; netguard has no allowlist; ANTHROPIC_API_KEY/AUTH_TOKEN/BASE_URL already in CREDENTIALS_UNSET -> no egress E-row, processors.json untouched when G2 lives in scripts/",
+  "Q6: llm_spend_breaker docstring item 4 binds S81-16 to reserve(offclock)/settle/record; DEFAULT_CAPS_USD offclock 2.0; llm_pricing.spend_ledger_row(mode=batch) -> llm_spend_ledger (050 unapplied); BATCH_TOKEN_MULTIPLIER 0.5; router guarded_anthropic_create is request-path (consent, live lanes, messages.create)",
+  "Guards: test_s81_kb_schema p01 (:340) / p02 (:373) scan app/ AND scripts/ for kb_service importers and kb_* literals (E1/E2 needed); test_legal_disclosure_s77 D9 (:715) pins the exact set of files containing QarenBot/NAMED_AGENT; test_s81_s15 p5 (:775) / r43 (:2207) forbid app/ naming robots_registry or the scripts",
+  "Currency: shopify_pdp_service :620-666 (bulk products.json currency-blind; per-handle .json price_currency 32/32 = registry); robots_registry._row_currency :829-837 falls back to BHD (not reused); ToS-ok = kb_merchants.tos.verdict == allowed (robots_registry :849-860); the seed never writes tos",
+  "Sitemap channel: _collect_slugs_for_index :478-555 fail-closed per index/child, same-site guard, {slug: url}; _default_fetch uses curl_fetch_html_same_site which impersonates chrome (price_service.py:15024) -> D11 injects its own named-UA fetch; PDP shapes follow ENABLE_SITEMAP_PDP_MARKERS_V2",
+  "postgrest/supabase 2.31.0: upsert(json, ignore_duplicates, on_conflict) available (insert-ignore returns inserted rows only)",
+  "Base pins: 1256 passed (16 files) + 1209 passed (10 files); comm set at base 68 files (sha256 prefix 74b84ef90fca0a48)",
+  "Ledger 2026-11-02 18:24: none of the G2 flags named; every S81 flag OFF; 045 not applied; robots cron service not created; ENABLE_SITEMAP_INDEX/MARKERS_V2/MATCH_V2 UNKNOWN"
+ ],
+ "change_list": [
+  "NEW scripts/kb_seed_common.py (shared: run_mode, knobs, read_merchant_rows, merchant_for_host, row_currency, url_gate, PoliteFetcher, KbWriter, kb_leaf() the one kb_service importer, five KB_*_TABLE constants, LLM_SPEND_LEDGER_TABLE)",
+  "NEW scripts/seed_kb_batch.py (S81-16 batch seeder)",
+  "NEW scripts/seed_kb_brands_wikidata.py (S81-16 Wikidata CC0 brand import, kb_merchants candidates only)",
+  "NEW scripts/cron_feed_walker.py (D09)",
+  "NEW scripts/cron_pdp_discovery.py (D11)",
+  "NEW railway.kbseed.json, railway.feedwalker.json, railway.pdpdiscovery.json (one Railway service per job; startCommand python -m scripts.<entry>, restartPolicyType NEVER, watchPatterns on the entry + kb_seed_common.py + the config)",
+  "NEW tests/test_s81_s16_kb_seed.py + tests/fixtures/s81_s16_batch_request_golden.json",
+  "NEW tests/test_s81_d09_feed_walker.py + tests/fixtures/s81_d09_feeds.json",
+  "NEW tests/test_s81_d11_pdp_discovery.py + tests/fixtures/s81_d11_sitemaps.json",
+  "EDIT tests/test_s81_kb_schema.py (E1 P01_ALLOWED + a per-file function map; E2 P02_ALLOWED + five table-constant lines)",
+  "EDIT CLAUDE.md (one column-0 block after :545 with the three rows and one owner-steps bullet)",
+  "No app/, migrations/, requirements*, .github/, .githooks/, app/legal/, landing/ or SmartCompareApp/ file"
+ ],
+ "red_files": [
+  "tests/test_s81_s16_kb_seed.py",
+  "tests/test_s81_d09_feed_walker.py",
+  "tests/test_s81_d11_pdp_discovery.py"
+ ],
+ "red_rows": 63,
+ "pin_rows": 14,
+ "mutants": 45,
+ "comm_set_size": 71,
+ "deliberate_pin_changes": [
+  "E1 tests/test_s81_kb_schema.py::test_s14_p01_no_importer_of_kb_service (:340): P01_ALLOWED gains (scripts/kb_seed_common.py, 'from app.services import kb_service as _kb'); the in-function condition becomes a per-file map {merchant_registry.py: build_seed_rows, kb_seed_common.py: kb_leaf}",
+  "E2 tests/test_s81_kb_schema.py::test_s14_p02_no_kb_relation_literal_outside_the_leaf (:373): P02_ALLOWED gains the five exact lines KB_PRODUCTS_TABLE / KB_VARIANTS_TABLE / KB_OFFERS_TABLE / KB_SPECS_TABLE / KB_GAPS_TABLE = \"kb_...\" of scripts/kb_seed_common.py (kb_merchants reuses merchant_registry.KB_MERCHANTS_TABLE)"
+ ],
+ "stated_limits": [
+  "S16-L1 the held corpora seed at most 47 Gulf + 3 global juices under the registry rule; the 500 / 2,000 targets rest on D09 / D11 / S81-19",
+  "S16-L2 captured_at / updated_at of seeded rows = the run time (the manifests carry no capture time)",
+  "S16-L3 no offers and no images from the corpus",
+  "S16-L4 concentration from the title only; the model never sets identity",
+  "S16-L5 a resumed batch leaves its original reserve charged for its Riyadh day",
+  "S16-L6 the upper bound uses sync rates (2x the batch price)",
+  "S16-L7 the Wikidata ids (P1056 / Q131746 / P856) are unverified offline; brand labels are not stored",
+  "S16-L8 brand candidates join the robots cron set; above ROBOTS_CRON_MAX_HOSTS (500) some hosts are read every other day",
+  "S16-L9 the page-wide deny-link rule also skips pages whose deny link is unrelated",
+  "S16-L10 Arabic lang by script detection",
+  "D09-L1 5 of 24 hosts no_reader (Magento GraphQL x2, Salla x2, Algolia x1) -> D09b",
+  "D09-L2 Woo products without a brands field are skipped",
+  "D09-L3 Shopify bulk offers rest on the registry currency (rung expected_missing); at most 3 per-handle probes per host",
+  "D09-L4 challenged hosts are not parked by D09 (the robots cron owns challenge)",
+  "D09-L5 one UPDATE per re-observed offer",
+  "D09-L6 no images from feeds (no kb_images.source value)",
+  "D09-L7 FEED_WALKER_MAX_PAGES bounds a host per run",
+  "D11-L1 discovery hints only; PDP fetching is S81-19",
+  "D11-L2 .xml.gz sitemaps and children over 3,000,000 bytes are not parsed",
+  "D11-L3 slug-keyed collection keeps the last URL per slug; the shipped matcher",
+  "D11-L4 the robots.txt of index.commoncrawl.org is not read (Terms sign-off is the gate)",
+  "D11-L5 an empty KB matches nothing (APPLY after D09 APPLY)",
+  "D11-L6 ranking by offers only until S81-17 demand rows exist",
+  "D11-L7 the CDX request shape is untested against the network"
+ ],
+ "focus_surfaces_found": [
+  "S81-16 secrets or key handling (borderline, consumption only): the seeder reads the EXISTING ANTHROPIC_API_KEY once at import (the seed_spec_spine :69 snapshot pattern) and passes it to anthropic.Anthropic; never logged or stored; no new credential name. Proposed SAFE; ruling asked as Q-S16-4",
+  "S81-16 Redis / Lua (consumption only, no code touched): calls the existing llm_spend_breaker.reserve / settle / record (S81-04 Upstash Lua EVALs) on the offclock lane only when ENABLE_LLM_SPEND_BREAKER is ON on the kbseed service. Proposed SAFE",
+  "D09 and D11: no FOCUS surface touched (no auth, quota, legal / privacy text, consent, security middleware, migration, Redis, App-Review client surface or key); the SSRF validator and robots machinery are consumed unchanged"
+ ],
+ "open_questions": [
+  "Q-S16-1 / Q-G2-1 the shared mode idiom: env value true = DRY RUN, apply = write (recommended) vs a CLI --apply",
+  "Q-S16-2 the seeder writes no offers and no images from the held corpora although the brief lists build_offer_row / build_image_row (recommended: yes, no capture time; image recheck belongs to S81-19)",
+  "Q-S16-3 Wikidata target: kb_merchants CANDIDATE rows for official brand hosts (045 has no brand-label column) vs DRY RUN only until a brands table exists (a migration = FOCUS); recommended candidate rows, cap 300",
+  "Q-S16-4 is reading the existing ANTHROPIC_API_KEY in a script the FOCUS surface 'secrets or key handling'? recommended: no",
+  "Q-S16-5 page-wide deny-link skip vs a proximity rule (recommended page-wide)",
+  "Q-D09-1 accept 19 of 24 feed hosts now and open D09b for Magento GraphQL / Salla / Algolia (recommended yes)",
+  "Q-D09-2 keep the per-handle Shopify currency probe as a host-level guard beyond the brief (recommended keep)",
+  "Q-D09-3 Woo products without a brands field: skip (recommended) vs title-prefix matching",
+  "Q-D11-1 discovery sink = kb_gaps keyed (kb_product_id, pdp_<sha256(host)[:16]>), state queued, source_hint the canonical URL (recommended)",
+  "Q-D11-2 D11 requires robots only, no ToS verdict (recommended yes); D09 requires both",
+  "Q-D11-3 PDP URL shapes follow ENABLE_SITEMAP_PDP_MARKERS_V2 (one recogniser; the owner sets it on the D11 service if the dry run shows the gain)",
+  "Q-G2-2 the /bot landing page names the agent as the site-discovery crawler; no legal-text change in G2 (recommended), the owner may ask later",
+  "Q-G2-3 three Railway services (one per job, recommended) vs one",
+  "Housekeeping: the DEFECT_LEDGER has no S81-16 / D09 / D11 rows; the orchestrator adds them when filing this spec"
+ ],
+ "pyt_lines": [
+  "[pyt] tag=g2spec-base-pins start=2026-11-02 18:46:02 end=2026-11-02 18:46:34 elapsed=31s bound=1200s status=OK rc=0 (1256 passed; [hermeticity] sentinel checked 1256 test(s); [netguard] blocked 0 attempt(s) from 0 node(s))",
+  "[pyt] tag=g2spec-base-pins2 start=2026-11-02 18:46:45 end=2026-11-02 18:47:29 elapsed=44s bound=1200s status=OK rc=0 (1209 passed; [hermeticity] sentinel checked 1209 test(s); [netguard] blocked 24 attempt(s) from 2 node(s): the pre-existing S81-04 sentinel nodes test_r42_on_with_headroom_accounts_every_create and test_p08_on_with_headroom_changes_no_response_field)"
+ ]
+}
