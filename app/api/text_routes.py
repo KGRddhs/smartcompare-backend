@@ -42,6 +42,8 @@ from app.services.usage_service import (
     valid_device_fingerprint,
     check_anon_usage_allowed,
     record_anon_comparison,
+    device_quota_kwargs,  # S81-09: {} with ENABLE_DEVICE_DAILY_QUOTA OFF
+    usage_limit_extras,  # S81-09: {} for every base consume result
 )
 from app.utils.async_utils import fire_and_forget
 from app.services.extraction_service import normalize_output_lang
@@ -616,7 +618,9 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
     # after, so N parallel requests all read the same value and all passed).
     usage_consumed = False
     if user and user.get("id"):
-        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(
+            user["id"], user.get("access_token", ""), **device_quota_kwargs()
+        )
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -625,6 +629,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 }
             )
         usage_consumed = usage_check.get("consumed", False)
@@ -833,7 +838,9 @@ async def text_compare_get(
     # (same TOCTOU fix as POST /compare).
     usage_consumed = False
     if user and user.get("id"):
-        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(
+            user["id"], user.get("access_token", ""), **device_quota_kwargs()
+        )
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -842,6 +849,7 @@ async def text_compare_get(
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 }
             )
         usage_consumed = usage_check.get("consumed", False)
@@ -1020,7 +1028,9 @@ async def text_compare_stream(
     # event_generator closure so it can refund on a streaming error.
     usage_consumed = False
     if user and user.get("id"):
-        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(
+            user["id"], user.get("access_token", ""), **device_quota_kwargs()
+        )
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -1029,6 +1039,7 @@ async def text_compare_stream(
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 }
             )
         usage_consumed = usage_check.get("consumed", False)

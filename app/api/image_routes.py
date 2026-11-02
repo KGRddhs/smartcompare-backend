@@ -58,6 +58,8 @@ from app.services.usage_service import (
     refund_comparison_credit,
     refund_anon_comparison_credit,
     record_lifetime_comparison,
+    device_quota_kwargs,  # S81-09: {} with ENABLE_DEVICE_DAILY_QUOTA OFF
+    usage_limit_extras,  # S81-09: {} for every base consume result
 )
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
 # docstring). image_routes/url_routes deliberately do not re-parse the env.
@@ -322,7 +324,7 @@ async def identify_and_compare(
 
     if paid_route_metering_enabled() and usage_user_id:
         usage_check = await consume_comparison_credit(
-            usage_user_id, user.get("access_token", "")
+            usage_user_id, user.get("access_token", ""), **device_quota_kwargs()
         )
         if not usage_check["allowed"]:
             raise HTTPException(
@@ -332,6 +334,7 @@ async def identify_and_compare(
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 },
             )
         usage_consumed = usage_check.get("consumed", False)

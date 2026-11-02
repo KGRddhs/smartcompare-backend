@@ -50,6 +50,21 @@ def _url_mode_v2_keys_enabled() -> bool:
     )
 
 
+# S81-09 DEVICE-QUOTA-RIYADH: the USAGE_LIMIT `scope` values the client renders
+# (R-S08-2). A tuple, not a set: `in` must not hash an arbitrary value.
+_USAGE_LIMIT_SCOPES = ("daily", "device_daily", "monthly", "lifetime")
+
+
+def _device_quota_keys_enabled() -> bool:
+    """ENABLE_DEVICE_DAILY_QUOTA (S81-09, default OFF), read PER CALL. A local
+    one-liner (the _url_mode_v2_keys_enabled precedent: the middleware never
+    imports a service); it reads the SAME name as
+    usage_service.device_daily_quota_enabled."""
+    return os.getenv("ENABLE_DEVICE_DAILY_QUOTA", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _get_request_id(request: Request) -> str:
     """Extract request ID from request state."""
     return getattr(request.state, "request_id", "unknown")
@@ -161,6 +176,20 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             value = detail.get(key)
             if isinstance(value, str):
                 content[key] = value
+    # S81-09 (flag read FIRST, so OFF reads nothing more of the detail): a
+    # USAGE_LIMIT 429 keeps its additive `resets_at` (a str) and `scope` (one of
+    # _USAGE_LIMIT_SCOPES); its int `retry_after` reaches the wire through the
+    # W1-9 lines below. Every other code and status keeps the base key set.
+    if (_device_quota_keys_enabled() and exc.status_code == 429
+            and _is_structured_detail(detail)
+            and isinstance(detail.get("code"), str)
+            and detail["code"] == "USAGE_LIMIT"):
+        resets_at = detail.get("resets_at")
+        if isinstance(resets_at, str):
+            content["resets_at"] = resets_at
+        scope = detail.get("scope")
+        if isinstance(scope, str) and scope in _USAGE_LIMIT_SCOPES:
+            content["scope"] = scope
     headers = None
     if retry_after is not None:
         content["retry_after_seconds"] = retry_after
