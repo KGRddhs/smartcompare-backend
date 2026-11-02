@@ -4380,6 +4380,8 @@ class StructuredComparisonService:
                     category_used, category_switched, original_category = (
                         _category_gate.form_override_category(selected_category)
                     )
+                # F1-2: the overridden product's own stub joins the pair category (B1).
+                _category_gate.apply_form_override_stubs(_gate_verdict, products)
 
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
@@ -5064,6 +5066,8 @@ class StructuredComparisonService:
                     category_used, category_switched, original_category = (
                         _category_gate.form_override_category(selected_category)
                     )
+                # F1-2: the overridden product's own stub joins the pair category (B1).
+                _category_gate.apply_form_override_stubs(_gate_verdict, products)
             # B1 (S80): the per-product categories captured BEFORE the pair write-back
             # (read only under ENABLE_RESULT_STATUS_METADATA; unused with the flag OFF).
             product_categories = [canonicalize_category(_p.get("category")) for _p in products]

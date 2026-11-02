@@ -1023,8 +1023,38 @@ def _install_raising_gate_recorders(monkeypatch, called):
     return names
 
 
+# EK1 (RULINGS_FIX1_S81_10 F1-1, the one sanctioned amendment of this frozen file): the
+# golden's G10 body carries the smart-pick "updated_at" label, which
+# home_routes._format_updated_at computes against the wall clock (its function-local
+# `from datetime import datetime`). The scenarios run the REAL formatter with that clock
+# frozen at the record instant, so no later date changes a recorded byte; the golden and
+# app/ are unchanged.
+GOLDEN_RECORD_INSTANT = datetime(2026, 11, 2, 8, 30, 0, tzinfo=timezone.utc)
+
+
+class _RecordInstantDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        moment = GOLDEN_RECORD_INSTANT.astimezone(tz)
+        return moment if tz is not None else moment.replace(tzinfo=None)
+
+
+def _at_record_instant(real_format):
+    import datetime as datetime_module
+
+    def _format(created_at_iso):
+        wall = datetime_module.datetime
+        datetime_module.datetime = _RecordInstantDatetime
+        try:
+            return real_format(created_at_iso)
+        finally:
+            datetime_module.datetime = wall
+    return _format
+
+
 def _run_golden(monkeypatch, tmp_path, caplog, spelling, raising=True):
     caplog.set_level(logging.INFO)
+    monkeypatch.setattr(home_routes, "_format_updated_at", _at_record_instant(home_routes._format_updated_at))
     called = []
     out = {}
     for name, run in GOLDEN_SCENARIOS:

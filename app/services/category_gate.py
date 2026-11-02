@@ -723,6 +723,21 @@ def form_override_category(selected_category: Optional[str]) -> Tuple[str, bool,
     return "fragrances", switched, (selected_category if switched else None)
 
 
+def apply_form_override_stubs(verdict: PostResolveVerdict, products: Sequence[dict]) -> None:
+    """F1-2 (RULINGS_FIX1_S81_10): when the form override fired, each product whose own name
+    carries a concentration / form word (the product the override made a fragrance) takes
+    'fragrances' as its own stub, together with category_used, so B1's per-product
+    categories (captured right after the gate block) agree with the pair and result_gate
+    never reports category_conflict for a pair the gate made a fragrance pair. Every other
+    product keeps its stub; the q= path never overrides (R-S10-5)."""
+    if not verdict.form_override:
+        return
+    for product in products:
+        name = product.get("search_query") or product.get("name")
+        if isinstance(name, str) and name and scan([name]).fragrance_type:
+            product["category"] = "fragrances"
+
+
 def is_live_row(row: Any) -> bool:
     """A History / smart-pick row whose stored pair category is fragrances."""
     from app.services.extraction_service import canonicalize_category
