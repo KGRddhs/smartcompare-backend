@@ -57,6 +57,8 @@ from app.services.usage_service import (
     consume_comparison_credit,
     refund_comparison_credit,
     record_lifetime_comparison,
+    device_quota_kwargs,  # S81-09: {} with ENABLE_DEVICE_DAILY_QUOTA OFF
+    usage_limit_extras,  # S81-09: {} for every base consume result
 )
 from app.utils.async_utils import fire_and_forget
 # S81-06 ANTHROPIC-ROUTER: the consent entry gate (R-S06-3) and its copy.
@@ -86,7 +88,9 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
     user_id = user.get("id") if user else None
     if not user_id:
         return False
-    usage_check = await consume_comparison_credit(user_id, user.get("access_token", ""))
+    usage_check = await consume_comparison_credit(
+        user_id, user.get("access_token", ""), **device_quota_kwargs()
+    )
     if not usage_check["allowed"]:
         raise HTTPException(
             status_code=429,
@@ -95,6 +99,7 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
                 "code": "USAGE_LIMIT",
                 "tier": usage_check["tier"],
                 "remaining": usage_check["remaining"],
+                **usage_limit_extras(usage_check),
             },
         )
     return bool(usage_check.get("consumed", False))

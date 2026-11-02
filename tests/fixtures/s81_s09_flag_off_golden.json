@@ -1,0 +1,722 @@
+{
+ "anon_429_image": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:anon:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:anon:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:anon:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:2026-10"
+   ]
+  ]
+ },
+ "handler_429_usage_limit_extras": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (device_daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"unknown\",\"retry_after_seconds\":60}",
+  "retry_after": "60"
+ },
+ "key_helpers": {
+  "2026-10-29T20:59:59+00:00": [
+   "usage:daily:u:2026-10-29",
+   "usage:daily:u:2026-10-28",
+   "usage:monthly:u:2026-10",
+   "usage:monthly:u:2026-09"
+  ],
+  "2026-10-29T21:00:00+00:00": [
+   "usage:daily:u:2026-10-29",
+   "usage:daily:u:2026-10-28",
+   "usage:monthly:u:2026-10",
+   "usage:monthly:u:2026-09"
+  ],
+  "2026-10-31T23:30:00+00:00": [
+   "usage:daily:u:2026-10-31",
+   "usage:daily:u:2026-10-30",
+   "usage:monthly:u:2026-10",
+   "usage:monthly:u:2026-09"
+  ]
+ },
+ "referral_create_invite": {
+  "ops": [
+   [
+    "users",
+    [
+     "select",
+     [
+      "referral_code"
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "5a09c0de-5a09-4a09-8a09-5a09c0de0a01"
+     ],
+     {}
+    ],
+    [
+     "single",
+     [],
+     {}
+    ]
+   ],
+   [
+    "comparisons",
+    [
+     "select",
+     [
+      "id, user_id, share_token"
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "cmp-s09-synthetic"
+     ],
+     {}
+    ],
+    [
+     "single",
+     [],
+     {}
+    ]
+   ],
+   [
+    "referral_invites",
+    [
+     "insert",
+     [
+      {
+       "referrer_user_id": "5a09c0de-5a09-4a09-8a09-5a09c0de0a01",
+       "comparison_id": "cmp-s09-synthetic",
+       "share_target": "copy",
+       "device_fingerprint_hash": null,
+       "deep_review_expires_at": "<ts>"
+      }
+     ],
+     {}
+    ]
+   ],
+   [
+    "deep_review_credits",
+    [
+     "insert",
+     [
+      {
+       "user_id": "5a09c0de-5a09-4a09-8a09-5a09c0de0a01",
+       "source": "share_loop1"
+      }
+     ],
+     {}
+    ]
+   ],
+   [
+    "users",
+    [
+     "select",
+     [
+      "lifetime_invites_consumed"
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "5a09c0de-5a09-4a09-8a09-5a09c0de0a01"
+     ],
+     {}
+    ],
+    [
+     "single",
+     [],
+     {}
+    ]
+   ]
+  ],
+  "pushes": [],
+  "result": "{\"invite_id\": \"inv-s09-1\", \"referrer_user_id\": \"5a09c0de-5a09-4a09-8a09-5a09c0de0a01\", \"share_link\": \"https://getmyez.com/c/tok-s09-synthetic?ref=QRSYN0\", \"share_token\": \"tok-s09-synthetic\", \"referral_code\": \"QRSYN0\", \"lifetime_invites_used\": 1, \"lifetime_invites_remaining\": 2}",
+  "logs": []
+ },
+ "referral_loop2": {
+  "ops": [
+   [
+    "referral_redemptions",
+    [
+     "insert",
+     [
+      {
+       "invite_id": "inv-s09-1",
+       "referrer_user_id": "5a09c0de-5a09-4a09-8a09-5a09c0de0a01",
+       "invitee_user_id": "5a09c0de-5a09-4a09-8a09-5a09c0de0a03",
+       "loop2_comparisons_granted": 5,
+       "expires_at": "<ts>"
+      }
+     ],
+     {}
+    ]
+   ],
+   [
+    "users",
+    [
+     "select",
+     [
+      "referral_bonus_comparisons_this_month"
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "5a09c0de-5a09-4a09-8a09-5a09c0de0a01"
+     ],
+     {}
+    ],
+    [
+     "single",
+     [],
+     {}
+    ]
+   ],
+   [
+    "users",
+    [
+     "update",
+     [
+      {
+       "referral_bonus_comparisons_this_month": 7
+      }
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "5a09c0de-5a09-4a09-8a09-5a09c0de0a01"
+     ],
+     {}
+    ]
+   ],
+   [
+    "deep_review_credits",
+    [
+     "insert",
+     [
+      {
+       "user_id": "5a09c0de-5a09-4a09-8a09-5a09c0de0a03",
+       "source": "invitee_signup"
+      }
+     ],
+     {}
+    ]
+   ],
+   [
+    "users",
+    [
+     "select",
+     [
+      "lifetime_invites_consumed"
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "5a09c0de-5a09-4a09-8a09-5a09c0de0a01"
+     ],
+     {}
+    ],
+    [
+     "single",
+     [],
+     {}
+    ]
+   ],
+   [
+    "users",
+    [
+     "update",
+     [
+      {
+       "lifetime_invites_consumed": 2
+      }
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "5a09c0de-5a09-4a09-8a09-5a09c0de0a01"
+     ],
+     {}
+    ]
+   ],
+   [
+    "referral_invites",
+    [
+     "update",
+     [
+      {
+       "redeemed_at": "<ts>",
+       "invitee_first_comparison_id": "cmp-s09-synthetic"
+      }
+     ],
+     {}
+    ],
+    [
+     "eq",
+     [
+      "id",
+      "inv-s09-1"
+     ],
+     {}
+    ]
+   ]
+  ],
+  "pushes": [
+   {
+    "referrer_user_id": "5a09c0de-5a09-4a09-8a09-5a09c0de0a01",
+    "invitee_display_name": "Synthetic",
+    "bonus_amount": 5
+   }
+  ],
+  "result": null,
+  "logs": []
+ },
+ "route_429_image": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_429_text_get": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_429_text_post": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_429_text_stream": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_429_url_get": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_429_url_post": {
+  "status": 429,
+  "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"<rid>\"}",
+  "retry_after": null,
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_status_free_lifetime": {
+  "status": 200,
+  "body": "{\"tier\":\"free\",\"used\":{\"daily\":3,\"monthly\":9,\"lifetime\":1},\"limits\":{\"daily\":3,\"monthly\":10,\"monthly_base\":10,\"monthly_bonus\":0,\"lifetime_free\":3},\"remaining\":{\"daily\":3,\"monthly\":10,\"lifetime_free\":2}}",
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_status_free_paid": {
+  "status": 200,
+  "body": "{\"tier\":\"free\",\"used\":{\"daily\":2,\"monthly\":7,\"lifetime\":5},\"limits\":{\"daily\":3,\"monthly\":10,\"monthly_base\":10,\"monthly_bonus\":0,\"lifetime_free\":3},\"remaining\":{\"daily\":1,\"monthly\":3,\"lifetime_free\":0}}",
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "route_status_premium": {
+  "status": 200,
+  "body": "{\"tier\":\"premium\",\"used\":{\"daily\":5,\"monthly\":20,\"lifetime\":100},\"limits\":{\"daily\":10,\"monthly\":74,\"monthly_base\":70,\"monthly_bonus\":4,\"lifetime_free\":0},\"remaining\":{\"daily\":5,\"monthly\":54,\"lifetime_free\":0}}",
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ]
+ },
+ "unit_consume_free_daily_limit": {
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ],
+  "result": "{\"allowed\": false, \"reason\": \"daily_limit\", \"tier\": \"free\", \"consumed\": false, \"remaining\": {\"daily\": 0, \"monthly\": 7, \"lifetime_free\": 0}}",
+  "logs": []
+ },
+ "unit_consume_free_lifetime": {
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "expire",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    86400
+   ],
+   [
+    "incrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ],
+   [
+    "expire",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    2764800
+   ]
+  ],
+  "result": "{\"allowed\": true, \"reason\": null, \"tier\": \"free\", \"consumed\": true, \"consumed_keys\": {\"daily\": \"usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29\", \"monthly\": \"usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10\"}, \"remaining\": {\"daily\": 3, \"monthly\": 10, \"lifetime_free\": 3}}",
+  "logs": []
+ },
+ "unit_consume_free_monthly_limit": {
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "expire",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    86400
+   ],
+   [
+    "incrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ],
+   [
+    "decrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ]
+  ],
+  "result": "{\"allowed\": false, \"reason\": \"monthly_limit\", \"tier\": \"free\", \"consumed\": false, \"remaining\": {\"daily\": 3, \"monthly\": 0, \"lifetime_free\": 0}}",
+  "logs": []
+ },
+ "unit_consume_free_paid": {
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "expire",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    86400
+   ],
+   [
+    "incrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ],
+   [
+    "expire",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    2764800
+   ]
+  ],
+  "result": "{\"allowed\": true, \"reason\": null, \"tier\": \"free\", \"consumed\": true, \"consumed_keys\": {\"daily\": \"usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29\", \"monthly\": \"usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10\"}, \"remaining\": {\"daily\": 2, \"monthly\": 9, \"lifetime_free\": 0}}",
+  "logs": []
+ },
+ "unit_consume_no_redis": {
+  "calls": [],
+  "result": "{\"allowed\": true, \"reason\": null, \"tier\": \"free\", \"consumed\": true, \"consumed_keys\": {\"daily\": \"usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29\", \"monthly\": \"usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10\"}, \"remaining\": {\"daily\": 3, \"monthly\": 10, \"lifetime_free\": 0}}",
+  "logs": []
+ },
+ "unit_consume_premium": {
+  "calls": [
+   [
+    "incrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "expire",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    86400
+   ],
+   [
+    "incrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ],
+   [
+    "expire",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    2764800
+   ]
+  ],
+  "result": "{\"allowed\": true, \"reason\": null, \"tier\": \"premium\", \"consumed\": true, \"consumed_keys\": {\"daily\": \"usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29\", \"monthly\": \"usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10\"}, \"remaining\": {\"daily\": 9, \"monthly\": 73, \"lifetime_free\": 0}}",
+  "logs": []
+ },
+ "unit_refund_keys": {
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ],
+   [
+    "decrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ]
+  ],
+  "result": null,
+  "logs": []
+ },
+ "unit_refund_nokeys": {
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ],
+   [
+    "decrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ]
+  ],
+  "result": null,
+  "logs": []
+ },
+ "unit_refund_nokeys_prevday": {
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-30"
+   ],
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "decrby",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29",
+    1
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ],
+   [
+    "decrby",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10",
+    1
+   ]
+  ],
+  "result": null,
+  "logs": []
+ },
+ "unit_status_free_lifetime": {
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ],
+  "result": "{\"tier\": \"free\", \"used\": {\"daily\": 3, \"monthly\": 9, \"lifetime\": 1}, \"limits\": {\"daily\": 3, \"monthly\": 10, \"monthly_base\": 10, \"monthly_bonus\": 0, \"lifetime_free\": 3}, \"remaining\": {\"daily\": 3, \"monthly\": 10, \"lifetime_free\": 2}}",
+  "logs": []
+ },
+ "unit_status_free_paid": {
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ],
+  "result": "{\"tier\": \"free\", \"used\": {\"daily\": 2, \"monthly\": 7, \"lifetime\": 5}, \"limits\": {\"daily\": 3, \"monthly\": 10, \"monthly_base\": 10, \"monthly_bonus\": 0, \"lifetime_free\": 3}, \"remaining\": {\"daily\": 1, \"monthly\": 3, \"lifetime_free\": 0}}",
+  "logs": []
+ },
+ "unit_status_premium": {
+  "calls": [
+   [
+    "get",
+    "usage:daily:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10-29"
+   ],
+   [
+    "get",
+    "usage:monthly:5a09c0de-5a09-4a09-8a09-5a09c0de0a01:2026-10"
+   ]
+  ],
+  "result": "{\"tier\": \"premium\", \"used\": {\"daily\": 5, \"monthly\": 20, \"lifetime\": 100}, \"limits\": {\"daily\": 10, \"monthly\": 74, \"monthly_base\": 70, \"monthly_bonus\": 4, \"lifetime_free\": 0}, \"remaining\": {\"daily\": 5, \"monthly\": 54, \"lifetime_free\": 0}}",
+  "logs": []
+ }
+}

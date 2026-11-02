@@ -1029,26 +1029,32 @@ BASE_CHAINS = {'db:referral_redemptions:select': [['select', 'loop2_comparisons_
                       ['referral_bonus_comparisons_this_month', 'referral_bonus_reset_at']],
                      ['eq', 'id', 'u-synthetic-1']]}
 
+# S81-09 DEVICE-QUOTA-RIYADH (E1, deliberate): _daily_key, _monthly_key,
+# _previous_daily_key, _previous_monthly_key, consume_comparison_credit and
+# refund_comparison_credit re-recorded on the S81-09 bytes (the one usage date
+# helper, the flag-gated quota branch and the stash refund block); their flag-OFF
+# behaviour stays pinned by BASE_CONSUME_SEQ / BASE_REFUND_SEQ / BASE_ROUTE here
+# and by tests/fixtures/s81_s09_flag_off_golden.json.
 BASE_DIGESTS = {('app/services/usage_service.py', 'TIER_LIMITS'): 'bc58-e3b4-6850-bbc2-9884-c49b-1809-dd3c',
  ('app/services/usage_service.py', '_atomic_consume'): '7469-c961-24b0-ce4e-174f-291a-5dda-e334',
  ('app/services/usage_service.py', '_atomic_consume_async'): '2708-af7b-03bc-a251-da04-cd93-00c6-a8c4',
  ('app/services/usage_service.py', '_bump_counters'): '3ea0-760e-673e-0827-7220-bf36-3f46-e3df',
  ('app/services/usage_service.py', '_bump_counters_async'): '44e4-203d-57b9-e339-203b-b99a-da7a-f233',
- ('app/services/usage_service.py', '_daily_key'): '3f76-488c-05ed-f55d-9222-4f55-3624-f146',
+ ('app/services/usage_service.py', '_daily_key'): 'ebfc-b0ba-be09-861b-5361-aaa6-ffc2-b645',
  ('app/services/usage_service.py', '_get_active_referral_bonus'): '75ad-cbc5-b9ed-1239-0561-f232-46fd-ad76',
  ('app/services/usage_service.py', '_get_redis_count'): '14f0-6465-a31c-293c-397c-2b8c-185b-6e64',
  ('app/services/usage_service.py', '_get_redis_count_async'): 'e06b-3012-6820-7c87-9dbf-1d07-c3da-f1fb',
  ('app/services/usage_service.py', '_get_user_tier_info'): 'd08d-f410-b0f2-54c5-c85b-2388-9e26-6afa',
  ('app/services/usage_service.py', '_maybe_reset_referral_bonus'): '0e22-0a05-bfef-8cc6-4330-1c0b-5461-dbe2',
- ('app/services/usage_service.py', '_monthly_key'): '63ff-3c9e-84fb-d1cb-c6d1-e76b-70af-5099',
- ('app/services/usage_service.py', '_previous_daily_key'): 'b3c3-dd2e-05cb-059e-a194-709c-a761-4d9f',
- ('app/services/usage_service.py', '_previous_monthly_key'): '885f-6947-965d-9c86-7e04-776e-15d1-b5de',
+ ('app/services/usage_service.py', '_monthly_key'): '5b47-fefd-c62c-d7ad-e908-04b1-c10b-0d1c',
+ ('app/services/usage_service.py', '_previous_daily_key'): '7b80-8f15-cdc0-2b56-45d2-845d-0e70-c56f',
+ ('app/services/usage_service.py', '_previous_monthly_key'): '9e40-493a-0952-a30e-7ecd-27a2-d8f9-1d5b',
  ('app/services/usage_service.py', '_refund_credit_sync'): '2c8f-a576-0fcd-214b-f597-6333-6bef-7041',
  ('app/services/usage_service.py', '_refund_one_window'): '7eec-f1d0-72cc-e151-d097-ecc3-4e58-b286',
  ('app/services/usage_service.py', 'check_anon_usage_allowed'): '839e-d955-09d4-647b-23ec-e2ce-5a84-d5f0',
- ('app/services/usage_service.py', 'consume_comparison_credit'): 'cfe7-16e2-3081-b31c-09c4-9933-e294-a8cf',
+ ('app/services/usage_service.py', 'consume_comparison_credit'): 'f772-92f5-5a40-3797-ce72-9fff-137b-d98c',
  ('app/services/usage_service.py', 'record_lifetime_comparison'): 'f8ae-429c-bd5b-a91f-d6cf-c342-11bb-01af',
- ('app/services/usage_service.py', 'refund_comparison_credit'): '65ea-bb27-33f9-b964-66a3-cdfc-749d-a1b9',
+ ('app/services/usage_service.py', 'refund_comparison_credit'): '67a6-7f8d-c18b-bde6-e2cf-49b4-8d30-81be',
  ('app/utils/db_offload.py', 'run_db'): 'a193-babb-9590-f520-dc2c-86c2-f38e-39b0',
  ('app/utils/db_offload.py', 'sync_db_offload_enabled'): '8cf1-4184-edf5-ed67-d7b2-4950-8337-e1b4',
  ('app/utils/redis_offloop.py', '_get_redis_offloop_pool'): '2559-7d3c-06b0-6dfc-9aa7-2b36-ac7d-065b',
@@ -2032,7 +2038,9 @@ def test_r25a_source_inventory():
 
     gets = [c for c in _calls(us_tree, "run_redis_offloop_pool") if _reads_counter(c)]
     assert len(gets) >= 2, "the two counter GETs go through run_redis_offloop_pool"
-    assert len(_calls(us_tree, "to_thread")) == 4, "R-ST1-1: no new to_thread in usage_service"
+    # S81-09 (E2, deliberate): 4 -> 5, the one _offload_dispatch_async of the
+    # device-quota EVALs (the #115 dispatch, parity with _atomic_consume_async).
+    assert len(_calls(us_tree, "to_thread")) == 5, "R-ST1-1: no new to_thread in usage_service"
     assert _calls(us_tree, "run_db_offloop") == []
 
 
