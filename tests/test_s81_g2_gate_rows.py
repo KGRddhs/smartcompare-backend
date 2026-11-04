@@ -17,6 +17,14 @@
   test_g2_gr5_*   F1-5 (GC-4): a D11 host whose persisted robots record
                   disallows "/" for one of the two agents is skipped with
                   reason ``robots`` BEFORE any request (no robots.txt read).
+  test_g2_gr6_*   F2-1 (RV-M1): a results read that raises AFTER every juice
+                  was parsed and written (a tail raise) leaves the kb_specs
+                  rows and no ledger row; the later --resume, with those rows
+                  in the DB, still reads the batch, writes exactly ONE ledger
+                  row, the rows (insert-ignore) and the delete, and counts the
+                  seeded juices already_seeded (unmatched=0).
+  test_g2_gr7_*   F2-1 / R-G2-6: a FRESH run with every juice seeded still
+                  sends nothing (``nothing to seed``, no factory, no create).
 
 Hermetic: the three RED files' harnesses are reused by import (module objects
 only, so none of their rows is collected here twice); synthetic hosts only;
@@ -188,3 +196,85 @@ def test_g2_gr5_origin_gate_before_robots_read(monkeypatch, tmp_path, agent):
     assert rig.validates == []
     h = d11._host_report(rep)
     assert h["reason"] == "robots"
+
+
+# ---------------------------------------------------------------------------
+# F2-1: the resume after a tail raise; the fresh-run filter (scripts/seed_kb_batch.py)
+# ---------------------------------------------------------------------------
+
+def _tail_raise(requests):
+    """Every juice's result, then the stream raises (an incomplete tail read)."""
+    for item in s16._answer_all()(requests):
+        yield item
+    raise RuntimeError("fake" + "-results-" + "tail")
+
+
+def _totals(caplog):
+    return [m for m in s16._messages(caplog) if m.startswith("[KB_SEED] totals")]
+
+
+def test_g2_gr6_resume_after_tail_raise_writes_the_ledger_row(monkeypatch, tmp_path, caplog):
+    common = s16._mod("kb_seed_common")
+    seed = s16._mod("seed_kb_batch")
+    corpus = s16._std_corpus(tmp_path, n=N_JUICES)
+    rig = s16.Rig(monkeypatch, common, seed=seed, merchants=[s16._merchant("store-a.example.com")],
+                  results=_tail_raise)
+    monkeypatch.setenv("ENABLE_LLM_SPEND_BREAKER", "true")
+    monkeypatch.setenv("KB_SEED_MAX_USD", "10")
+    monkeypatch.setattr(seed, "request_bound", lambda requests, model: 5.0)
+    s16._patch_breaker(monkeypatch, rig, ticket="t")
+    s16._dry(monkeypatch, "apply")
+    caplog.set_level(logging.INFO)
+    assert s16._run_seed(seed, ["--corpus", str(corpus)]) == 0
+    names = rig.names()
+    assert _ledger_rows(rig) == [], "a partial (tail-raise) read wrote an llm_spend_ledger row"
+    assert "delete" not in names
+    assert len(_spec_pids(rig)) == N_JUICES, "the tail-raise run did not write every juice"
+    created = list(rig.created)
+    assert len(created) == 1 and len(created[0]) == N_JUICES
+    # the partial run's kb_specs rows carried into the resume rig (the R-G2-6 select sees them)
+    carried = [{"product_id": r["product_id"], "extractor": r.get("extractor")}
+               for t, _, rows, _ in rig.client.writes() if t == "kb_specs" for r in rows]
+    assert carried and {r["extractor"] for r in carried} == {"kb_seed_batch"}
+    rig2 = s16.Rig(monkeypatch, common, seed=seed, merchants=[s16._merchant("store-a.example.com")],
+                   spec_rows=carried, statuses=("ended",), results=lambda _r: s16._answer_all()(created[0]))
+    s16._patch_breaker(monkeypatch, rig2)
+    caplog.clear()
+    assert s16._run_seed(seed, ["--corpus", str(corpus), "--resume", BATCH_ID]) == 0
+    got = [n for n in rig2.names() if n not in ("factory", "retrieve", "sleep")]
+    assert not {"reserve", "create", "settle", "record"} & set(got)
+    assert "results" in got, "the resume never read the batch (the seeded filter emptied the juice set)"
+    total = len(_ledger_rows(rig)) + len(_ledger_rows(rig2))
+    assert total == 1, "the batch carries %d llm_spend_ledger rows across the partial run and the resume" % total
+    (row,) = _ledger_rows(rig2)
+    row = row[0] if isinstance(row, list) else row
+    assert row.get("provider_batch_id") == BATCH_ID
+    assert got.count("delete") == 1, "the resume did not delete the batch exactly once"
+    tail = got[got.index("results"):]
+    assert tail == ["results", "db:llm_spend_ledger:insert", "db:kb_products:upsert", "db:kb_variants:upsert",
+                    "db:kb_specs:upsert", "delete"]
+    assert _spec_pids(rig2) == {r["product_id"] for r in carried}
+    last = _totals(caplog)[-1]
+    assert (" already_seeded=%d" % N_JUICES) in last and " unmatched=0" in last, last
+
+
+def test_g2_gr7_fresh_run_filter_unchanged(monkeypatch, tmp_path, caplog):
+    common = s16._mod("kb_seed_common")
+    seed = s16._mod("seed_kb_batch")
+    from app.services import kb_service as kb
+
+    corpus = s16._std_corpus(tmp_path, n=N_JUICES)
+    pids = [kb.kb_product_id("Maison Example", "Night Oud %d Eau de Parfum 50ml" % i) for i in range(N_JUICES)]
+    rig = s16.Rig(monkeypatch, common, seed=seed, merchants=[s16._merchant("store-a.example.com")],
+                  spec_rows=[{"product_id": p, "extractor": "kb_seed_batch"} for p in pids],
+                  results=s16._answer_all())
+    monkeypatch.setenv("ENABLE_LLM_SPEND_BREAKER", "true")
+    s16._patch_breaker(monkeypatch, rig, ticket="t")
+    s16._dry(monkeypatch, "apply")
+    caplog.set_level(logging.INFO)
+    assert s16._run_seed(seed, ["--corpus", str(corpus)]) == 0
+    names = rig.names()
+    assert rig.factory_calls == [] and "create" not in names, "a fresh run re-sent already-seeded juices"
+    assert not {"reserve", "settle", "record", "results", "delete"} & set(names)
+    assert any("nothing to seed" in m for m in s16._messages(caplog))
+    assert (" already_seeded=%d" % N_JUICES) in _totals(caplog)[-1]

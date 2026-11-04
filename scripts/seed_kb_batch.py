@@ -14,9 +14,12 @@ offclock lane is reserved strictly before the create and settled after the
 results (recorded instead when the reserve failed open); one llm_spend_ledger
 row per batch, written only after a complete results read (a partial read
 settles the ticket with None, so the bound stays held, and writes no ledger
-row; the later --resume writes it once). ``--resume <batch id>`` re-derives the juice set exactly as a
-fresh run does and reads the batch again (no bound check, no reserve, no
-create).
+row; the later --resume writes it once). ``--resume <batch id>`` re-derives
+the juice set WITHOUT the existing-specs filter and the juice cap (R-G2-6
+governs fresh runs only), reads the batch again completely (no bound check,
+no reserve, no create), writes the ONE ledger row, the rows (insert-ignore;
+a juice that already owns kb_seed_batch rows counts ``already_seeded``) and
+deletes the batch after the writes.
 """
 from __future__ import annotations
 
@@ -402,7 +405,13 @@ def main(argv: Optional[List[str]] = None, client: Any = None) -> int:
     except Exception as exc:  # noqa: BLE001
         logger.warning("%s kb_specs read failed (%s)", PREFIX, type(exc).__name__)
         return 0
-    kept = [pid for pid in sorted(juices) if pid not in done][:max_juices()]
+    if args.resume is None:
+        kept = [pid for pid in sorted(juices) if pid not in done][:max_juices()]
+    else:
+        # F2-1: R-G2-6 (the seeded filter) and the juice cap govern FRESH runs
+        # only; a resume sends nothing, its custom ids are fixed and the KB
+        # upserts are insert-ignore, so it maps every juice of the corpus.
+        kept = sorted(juices)
     counts["already_seeded"] = len(done & set(juices))
     juices = {pid: juices[pid] for pid in kept}
     counts["juices"] = len(juices)
@@ -426,7 +435,8 @@ def main(argv: Optional[List[str]] = None, client: Any = None) -> int:
     if not key:
         _say("no ANTHROPIC_API_KEY at startup; nothing sent")
         return 0
-    return _apply(args, client, requests, juices, model, bound, observed, key)
+    seeded = frozenset(done) if args.resume is not None else frozenset()
+    return _apply(args, client, requests, juices, model, bound, observed, key, seeded)
 
 
 def _wait_ended(ac: Any, batch_id: Any) -> bool:
@@ -444,7 +454,8 @@ def _wait_ended(ac: Any, batch_id: Any) -> bool:
 
 
 def _read_results(ac: Any, batch_id: Any, juices: Dict[str, Dict[str, Any]], model: str, run_year: int,
-                  counts: Dict[str, int]) -> Tuple[Dict[str, List[Dict[str, Any]]], List[Dict[str, Any]], bool]:
+                  counts: Dict[str, int], seeded: frozenset = frozenset(),
+                  ) -> Tuple[Dict[str, List[Dict[str, Any]]], List[Dict[str, Any]], bool]:
     """(fields per juice, usage records, read completed). A result whose
     custom_id maps to no juice is ``unmatched``, an unreadable answer
     ``bad_json``; neither writes nor raises. The usage of the first
@@ -475,6 +486,8 @@ def _read_results(ac: Any, batch_id: Any, juices: Dict[str, Dict[str, Any]], mod
             if pid is None:
                 common.bump(counts, "unmatched")
                 continue
+            if pid in seeded:
+                common.bump(counts, "already_seeded")
             fields = valid_fields(_answer(msg), len(juices[pid]["pages"]), run_year, kb.KB_AUDIENCES)
             if fields is None:
                 common.bump(counts, "bad_json")
@@ -489,7 +502,7 @@ def _read_results(ac: Any, batch_id: Any, juices: Dict[str, Dict[str, Any]], mod
 
 
 def _apply(args: argparse.Namespace, client: Any, requests: List[Dict[str, Any]], juices: Dict[str, Dict[str, Any]],
-           model: str, bound: float, observed: Any, key: str) -> int:
+           model: str, bound: float, observed: Any, key: str, seeded: frozenset = frozenset()) -> int:
     from app.services import api_budget_service as abs_
     from app.services import llm_pricing as lp
     from app.services import llm_router as lr
@@ -521,8 +534,8 @@ def _apply(args: argparse.Namespace, client: Any, requests: List[Dict[str, Any]]
     if not _wait_ended(ac, batch_id):
         logger.warning("%s batch not ended; resume with --resume batch_id=%s", PREFIX, batch_id)
         return 0
-    counts: Dict[str, int] = {}
-    parsed, records, results_ok = _read_results(ac, batch_id, juices, model, observed.year, counts)
+    counts: Dict[str, int] = {} if resume is None else {"already_seeded": 0, "unmatched": 0}
+    parsed, records, results_ok = _read_results(ac, batch_id, juices, model, observed.year, counts, seeded)
     period_end = common._now()
     writer = common.KbWriter(client)
     # F1-1: the ONE ledger row per batch is written only after a COMPLETE results
