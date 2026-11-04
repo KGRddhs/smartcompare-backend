@@ -1,0 +1,364 @@
+{
+ "digests": {
+  "camera_full": "aeea73ec98ca8678ba874c9daafdafd91cb4f0cc2b6ad36b3b11ebf977da4023",
+  "rest_full": "160d022b38246f578a64a2d4e350f53fcb21a66ab107ca60bfea5f063ff4c3e2",
+  "stream_full": "a62dd9f651619f1f0f6e16774849abf15bd3af1bbef3b251c49b45a9c1f574a7"
+ },
+ "literals": {
+  "rest_parse_fail": {
+   "error": "Could not identify two products to compare. Try: 'iPhone 15 vs Galaxy S24'",
+   "parsed": {
+    "products": [
+     {
+      "brand": "Apple",
+      "category": "electronics",
+      "name": "iPhone 15",
+      "search_query": "Apple iPhone 15",
+      "variant": null
+     }
+    ]
+   },
+   "success": false
+  },
+  "rest_refusal": {
+   "code": "CONTENT_UNAVAILABLE",
+   "error": "We don't compare this category",
+   "layer": "moderation_api",
+   "success": false
+  },
+  "stream_refusal": [
+   [
+    "status",
+    {
+     "message": "Parsing query...",
+     "progress": 10
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Fetching specs and prices...",
+     "progress": 20
+    }
+   ],
+   [
+    "specs",
+    {
+     "products": [
+      {
+       "brand": "Apple",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "image_url": null,
+       "name": "iPhone 15",
+       "specs": {
+        "battery_mah": "4000",
+        "display_size_in": "6.1",
+        "storage_gb": "128"
+       }
+      },
+      {
+       "brand": "Samsung",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "image_url": null,
+       "name": "Galaxy S24",
+       "specs": {
+        "battery_mah": "4000",
+        "display_size_in": "6.1",
+        "storage_gb": "128"
+       }
+      }
+     ]
+    }
+   ],
+   [
+    "prices",
+    {
+     "product_0": {
+      "best_price": "120.0",
+      "brand": "Apple",
+      "currency": "BHD",
+      "name": "iPhone 15",
+      "price": {
+       "amount": "120.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Best Buy",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://www.bestbuy.com/site/x/1.p"
+      },
+      "retailer": "Best Buy"
+     },
+     "product_1": {
+      "best_price": "120.0",
+      "brand": "Samsung",
+      "currency": "BHD",
+      "name": "Galaxy S24",
+      "price": {
+       "amount": "120.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Best Buy",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://www.bestbuy.com/site/x/1.p"
+      },
+      "retailer": "Best Buy"
+     }
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Analyzing reviews...",
+     "progress": 50
+    }
+   ],
+   [
+    "reviews",
+    {
+     "products": [
+      {
+       "brand": "Apple",
+       "name": "iPhone 15",
+       "rating": "4.5",
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer_quotes": [],
+       "review_count": 10,
+       "review_summary": {
+        "agreement_level": "moderate",
+        "consensus": "",
+        "highlights": [],
+        "overall_sentiment": "mixed",
+        "review_volume": "minimal"
+       },
+       "youtube_review_signal": null
+      },
+      {
+       "brand": "Samsung",
+       "name": "Galaxy S24",
+       "rating": "4.5",
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer_quotes": [],
+       "review_count": 10,
+       "review_summary": {
+        "agreement_level": "moderate",
+        "consensus": "",
+        "highlights": [],
+        "overall_sentiment": "mixed",
+        "review_volume": "minimal"
+       },
+       "youtube_review_signal": null
+      }
+     ]
+    }
+   ],
+   [
+    "first_paint",
+    {
+     "products": [
+      {
+       "brand": "Apple",
+       "name": "iPhone 15"
+      },
+      {
+       "brand": "Samsung",
+       "name": "Galaxy S24"
+      }
+     ]
+    }
+   ],
+   [
+    "scores",
+    {
+     "confidence": {
+      "legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "overall": "low",
+      "price": {
+       "freshness": "live",
+       "method": "retailer_verified",
+       "source_count": 0
+      },
+      "rating": {
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      },
+      "specs": {
+       "citation_count": 3,
+       "verified_pct": 0
+      }
+     },
+     "dimension_winners": {
+      "build_quality_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "ecosystem_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "feature_score": {
+       "margin": "0.0",
+       "winner": "tie"
+      },
+      "futureproof_score": {
+       "margin": "0.0",
+       "winner": "tie"
+      },
+      "performance_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "value_score": {
+       "margin": null,
+       "winner": "N/A"
+      }
+     },
+     "scores": {
+      "product_0": {
+       "breakdown": {
+        "build_quality_score": 50,
+        "ecosystem_score": 50,
+        "feature_score": "90.0",
+        "futureproof_score": "90.0",
+        "performance_score": 50,
+        "value_score": "75.0"
+       },
+       "missing_data": [
+        "performance_score",
+        "value_score",
+        "build_quality_score",
+        "ecosystem_score"
+       ],
+       "overall": "67.0",
+       "weights_used": {
+        "build_quality_score": "0.15",
+        "ecosystem_score": "0.1",
+        "feature_score": "0.2",
+        "futureproof_score": "0.1",
+        "performance_score": "0.25",
+        "value_score": "0.2"
+       }
+      },
+      "product_1": {
+       "breakdown": {
+        "build_quality_score": 50,
+        "ecosystem_score": 50,
+        "feature_score": "90.0",
+        "futureproof_score": "90.0",
+        "performance_score": 50,
+        "value_score": "75.0"
+       },
+       "missing_data": [
+        "performance_score",
+        "value_score",
+        "build_quality_score",
+        "ecosystem_score"
+       ],
+       "overall": "67.0",
+       "weights_used": {
+        "build_quality_score": "0.15",
+        "ecosystem_score": "0.1",
+        "feature_score": "0.2",
+        "futureproof_score": "0.1",
+        "performance_score": "0.25",
+        "value_score": "0.2"
+       }
+      }
+     },
+     "win_margin": "0.0",
+     "winner_index": 0
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Generating verdict...",
+     "progress": 80
+    }
+   ],
+   [
+    "verdict",
+    {
+     "best_for": {},
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "iPhone wins",
+      "winner_index": 0,
+      "winner_reason": "battery"
+     },
+     "key_differences": [],
+     "personalized_insights": [],
+     "recommendation": "battery",
+     "value_context": "",
+     "winner": {
+      "key_tradeoff": "",
+      "margin": "0.0",
+      "name": "iPhone wins",
+      "product_index": 0,
+      "reason": "battery"
+     },
+     "winner_index": 0
+    }
+   ],
+   [
+    "settle_complete",
+    {
+     "code": "CONTENT_UNAVAILABLE",
+     "error": "We don't compare this category",
+     "layer": "moderation_api",
+     "success": false
+    }
+   ],
+   [
+    "complete",
+    {
+     "code": "CONTENT_UNAVAILABLE",
+     "error": "We don't compare this category",
+     "layer": "moderation_api",
+     "success": false
+    }
+   ]
+  ]
+ },
+ "meta": {
+  "recorded_at_base": "744616e37d031923e522e30740b687de76482ee9",
+  "recorded_with": "ENABLE_KB_INGEST / ENABLE_FIELD_STATUS_METADATA unset; the FY25 faked pipeline (tests/test_s75_fanout_identity.py, copied), its normalisation (the clock fields dropped)",
+  "unit": "S81-17 KB-INGEST"
+ }
+}

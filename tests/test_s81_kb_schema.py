@@ -331,8 +331,10 @@ def _py_files(*tops: str) -> list[Path]:
 P01_ALLOWED = {
     ("app/services/merchant_registry.py", "from app.services import kb_service as _kb"),
     ("scripts/kb_seed_common.py", "from app.services import kb_service as _kb"),
+    ("app/services/kb_ingest.py", "from app.services import kb_service as _kb"),
 }
-P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf"}
+P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf",
+                 "app/services/kb_ingest.py": "kb_leaf"}
 P02_ALLOWED = {
     ("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"'),
     ("scripts/kb_seed_common.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
@@ -340,6 +342,12 @@ P02_ALLOWED = {
     ("scripts/kb_seed_common.py", 'KB_OFFERS_TABLE = "kb_offers"'),
     ("scripts/kb_seed_common.py", 'KB_SPECS_TABLE = "kb_specs"'),
     ("scripts/kb_seed_common.py", 'KB_GAPS_TABLE = "kb_gaps"'),
+    ("app/services/kb_ingest.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
+    ("app/services/kb_ingest.py", 'KB_VARIANTS_TABLE = "kb_variants"'),
+    ("app/services/kb_ingest.py", 'KB_OFFERS_TABLE = "kb_offers"'),
+    ("app/services/kb_ingest.py", 'KB_IMAGES_TABLE = "kb_images"'),
+    ("app/services/kb_ingest.py", 'KB_REVIEWS_TABLE = "kb_reviews"'),
+    ("app/services/kb_ingest.py", 'KB_GAPS_TABLE = "kb_gaps"'),
 }
 
 

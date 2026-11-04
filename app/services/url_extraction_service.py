@@ -22,6 +22,9 @@ from app.services.model_config import sampling_kwargs, standard_model, token_lim
 from app.services.extraction_service import canonicalize_category
 from app.services import api_budget_service as _llm_breaker
 from app.services import llm_router as _llm_router
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the persisted robots verdict before a URL-mode
+# fetch (the flag is read per call at each hook; fetch_page itself is untouched).
+from app.services import live_robots
 
 logger = logging.getLogger(__name__)
 
@@ -519,6 +522,9 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
         _log_fetch_failed(url, "blocked", None)
         result["outcome"] = "blocked"
         return result
+    if live_robots.live_robots_enabled() and not live_robots.gate(url, "url_extraction"):
+        result.update(outcome="robots_skip", final_url=url)
+        return result
     current = url
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=False,
@@ -532,8 +538,14 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
                         _log_fetch_failed(url, "blocked", None)
                         result.update(outcome="blocked", final_url=current)
                         return result
+                    if live_robots.live_robots_enabled() and not live_robots.gate(
+                            nxt, "url_extraction"):
+                        result.update(outcome="robots_skip", final_url=current)
+                        return result
                     current = nxt
                     continue
+                if live_robots.live_robots_enabled():
+                    live_robots.record_response("url_extraction", current, response)
                 result.update(status=response.status_code, final_url=current,
                               text=response.text, outcome="ok")
                 return result
@@ -545,6 +557,8 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
         # F4-1 (RULINGS_FIX1_B4, amends GC-1): the transport error is ONE ERROR line
         # inside this except arm with the distinct [URL-V2] template (host, reason
         # word, exception TYPE only), never the base 'Failed to fetch' template.
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("url_extraction", current, "fail")
         logger.error("[URL-V2] fetch failed host=%s reason=%s type=%s",
                      _host_only(url), "fetch_error", type(e).__name__)
         result.update(outcome="error", error_type=type(e).__name__, final_url=current)
@@ -998,7 +1012,7 @@ def _v2_status_reason(status: Any) -> str:
 
 
 _V2_FETCH_OUTCOME_REASONS = {"error": "fetch_error", "blocked": "blocked",
-                             "redirect_cap": "redirect_cap"}
+                             "redirect_cap": "redirect_cap", "robots_skip": "robots_skip"}
 
 
 def _v2_refusal(url: str, code: str, reason: str, outcome: str, status: Any) -> Dict[str, Any]:
@@ -1128,8 +1142,14 @@ async def extract_from_url(url: str, url_mode_v2: bool = False) -> Dict[str, Any
     # R-A1(b), UNFLAGGED log-only: the host, never the pasted path or query.
     logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
     
-    # Fetch page
-    html = await fetch_page(url)
+    # Fetch page (D14: the persisted robots verdict first, at this caller, so
+    # fetch_page stays byte-unchanged; a skip is the existing miss body)
+    if live_robots.live_robots_enabled() and not live_robots.gate(url, "url_extraction"):
+        html = None
+    else:
+        html = await fetch_page(url)
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("url_extraction", url, "ok" if html else "fail")
     if not html:
         return {
             "success": False,
