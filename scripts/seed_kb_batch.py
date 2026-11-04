@@ -12,7 +12,9 @@ Spend: the in-script bound KB_SEED_MAX_USD (at most 10) is checked before any
 submission whatever the breaker state; with ENABLE_LLM_SPEND_BREAKER ON the
 offclock lane is reserved strictly before the create and settled after the
 results (recorded instead when the reserve failed open); one llm_spend_ledger
-row per run. ``--resume <batch id>`` re-derives the juice set exactly as a
+row per batch, written only after a complete results read (a partial read
+settles the ticket with None, so the bound stays held, and writes no ledger
+row; the later --resume writes it once). ``--resume <batch id>`` re-derives the juice set exactly as a
 fresh run does and reads the batch again (no bound check, no reserve, no
 create).
 """
@@ -480,7 +482,8 @@ def _read_results(ac: Any, batch_id: Any, juices: Dict[str, Dict[str, Any]], mod
             common.bump(counts, "succeeded")
             parsed[pid] = fields
     except Exception as exc:  # noqa: BLE001
-        logger.warning("%s results read failed (%s)", PREFIX, type(exc).__name__)
+        logger.warning("%s results read failed (%s); resume with --resume batch_id=%s", PREFIX,
+                       type(exc).__name__, batch_id)
         return parsed, records, False
     return parsed, records, True
 
@@ -522,14 +525,22 @@ def _apply(args: argparse.Namespace, client: Any, requests: List[Dict[str, Any]]
     parsed, records, results_ok = _read_results(ac, batch_id, juices, model, observed.year, counts)
     period_end = common._now()
     writer = common.KbWriter(client)
-    try:
-        writer.ledger(lp.spend_ledger_row(job=EXTRACTOR, lane="offclock", mode="batch", provider="anthropic",
-                                          model=model, records=records, role=ROLE,
-                                          provider_batch_id=str(batch_id), period_start=period_start,
-                                          period_end=period_end))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("%s ledger insert failed (%s)", PREFIX, type(exc).__name__)
-    if breaker:
+    # F1-1: the ONE ledger row per batch is written only after a COMPLETE results
+    # read (a later --resume that completes the read writes it once).
+    if results_ok:
+        try:
+            writer.ledger(lp.spend_ledger_row(job=EXTRACTOR, lane="offclock", mode="batch", provider="anthropic",
+                                              model=model, records=records, role=ROLE,
+                                              provider_batch_id=str(batch_id), period_start=period_start,
+                                              period_end=period_end))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s ledger insert failed (%s)", PREFIX, type(exc).__name__)
+    if breaker and not results_ok:
+        # A partial read: the bound stays held for its Riyadh day (an invalid
+        # actual issues no command); a failed-open reserve records nothing.
+        if ticket is not None:
+            br.settle(ticket, None)
+    elif breaker:
         costs = [r.get("cost_usd") for r in records]
         actual = None if any(c is None for c in costs) else float(sum(costs))
         if ticket is not None:
