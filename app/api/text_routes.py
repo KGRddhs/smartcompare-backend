@@ -557,7 +557,8 @@ def _surface_comparison_failure(result: Dict):
     if code == _category_gate.CODE:
         # S81-10: the post-resolve refusal keeps its additive category keys (a code
         # only the fragrance gate produces; the error handler passes them under the
-        # flag). url_routes never produces it.
+        # flag). The url_routes failure arm reaches it too (S81-10b: compare_from_urls
+        # returns it for a refused link pair).
         raise HTTPException(status_code=400, detail=_category_gate.http_detail(result))
     if code:
         raise HTTPException(

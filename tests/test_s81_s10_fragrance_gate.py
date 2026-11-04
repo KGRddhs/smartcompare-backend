@@ -1023,8 +1023,9 @@ def _install_raising_gate_recorders(monkeypatch, called):
     return names
 
 
-# EK1 (RULINGS_FIX1_S81_10 F1-1, the one sanctioned amendment of this frozen file): the
-# golden's G10 body carries the smart-pick "updated_at" label, which
+# EK1 (RULINGS_FIX1_S81_10 F1-1, the first of the two sanctioned amendments of this frozen
+# file; the second, EK2 = RULINGS_S81_10B R-S10B-4, deleted P02's URL source clause when
+# S81-10b gated the link path): the golden's G10 body carries the smart-pick "updated_at" label, which
 # home_routes._format_updated_at computes against the wall clock (its function-local
 # `from datetime import datetime`). The scenarios run the REAL formatter with that clock
 # frozen at the record instant, so no later date changes a recorded byte; the golden and
@@ -2288,10 +2289,6 @@ def test_p02_non_target_callers_ungated(monkeypatch, tmp_path):
     compares = h.compares()
     assert len(compares) == 1 and "fragrance_gate" not in compares[0][2], compares
     assert not [t for t in h.tags() if t in _REDIS], h.rec
-    for rel in ("app/api/url_routes.py", "app/services/url_extraction_service.py"):
-        text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
-        for needle in ("category_gate", "fragrance_gate", CODE, FLAG):
-            assert needle not in text, (rel, needle)
     tree = ast.parse((ROOT / "scripts" / "cron_warm_price_cache.py").read_text(encoding="utf-8"))
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
              and getattr(n.func, "attr", None) in ("compare_from_text", "compare_from_text_streaming")]
