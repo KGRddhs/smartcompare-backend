@@ -1,0 +1,108 @@
+[
+  {
+    "type": "result",
+    "key": "v2:7f6717ebcda8c6d027353bd364c5182d05e964f2ddd6436f7b7a4a88bde47c1c",
+    "agentId": "ae1592d91cf396286",
+    "result": {
+      "group": "S81-G4 KB-SERVE (S81-18 KB-FIRST-SERVE + verdict-cache key log, S81-19 GAP-QUEUE, D16 OPERATOR-INGEST, D17 MEASURE-COVERAGE); branch feature/s81-g4-kb-serve; base 0b19de5b",
+      "units_covered": [
+        "S81-18",
+        "S81-19",
+        "D16",
+        "D17"
+      ],
+      "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g4/.qa-s80/S81-G4_UNIT_SPEC.md",
+      "spec_sha256": "a38883225be7144c7c1a78f6838bfeaced529a81db34c7e9dd15450d45ae0e31",
+      "summary": "One group spec (112,166 bytes, pure ASCII, LF) with section 0, house sections 1-11 for each of the four units, and section 12 for the group. Every file:line was read at 0b19de5b. Key design choices:\n- S81-18: a NEW leaf app/services/kb_serve.py. One gathered task of two kb_product_card RPCs through run_db, started before the product gather (H0). Inside _fetch_product_data, slots H1-H6 classify full / partial / miss and swap the live coroutines for served values. A full hit skips search, price, specs, reviews, image, rating, smart fallback and Tier 2/3. H7 adds metadata.kb_hit through _stamp_unit_metadata. H8 logs the verdict-cache key (eligible users only; seeded only after a successful verdict).\n- The KB price is source_method page_scrape with an additive as_of. Fresh means within 7 d of last_seen; older prices are served only when the X-Client-Capabilities header lists price_asof. That header is read in the five route handlers through the house optional-kwarg idiom (kb_price_asof).\n- A two-line kb_ingest guard stops G3 from re-observing a KB-served price (a self-freshening loop found by measurement).\n- S81-19: scripts-only cron_kb_enrich.py plus railway.kbenrich.json. Ladder: specs go to licence; then registry search template, then pdp_ hints, then web search (INERT, logs not_built), then needs_operator. Redis SET NX EX single flight, fail-closed. PoliteFetcher with require_tos=True and a 4 s timeout. Head daily / tail weekly price refresh. No LLM call, so the breaker is never called; DRY prints the offclock cap.\n- D16: app/services/kb_operator.py plus two include_in_schema=False routes on the existing admin router. The first dependency is a gate that raises the Starlette base-class 404, so flag OFF matches an unregistered path. verify_admin_key and the 30/min limiter are reused unchanged. The bookmarklet only copies to the clipboard, because CORS would refuse a direct post.\n- D17: cron_kb_coverage.py plus railway.kbcoverage.json. A closed metric list, a search_logs PROXY that reads no personal columns, and kbh: host counters only when present. Upsert on (day, metric).\n- Base run: 1609 passed, 5 environmental CRLF r27 failures. Comm set: 661 files, sha 90b85603...; 439 to recompute at 0b19de5b, the rest per-file reusable from the 744616e3 record.",
+      "change_list": [
+        "NEW app/services/kb_serve.py (S81-18)",
+        "EDIT app/services/structured_comparison_service.py: import, H0 x2 (before :4470 / :5173), H1-H6 in _fetch_product_data (:5935-:6572), H7 in _stamp_unit_metadata :3923, H8 x2 (before :4595 / :5453) + seed lines, kb_price_asof kwarg on compare_from_text :4053 / _compare_from_text_impl :4212 / compare_from_text_streaming :4859 (S81-18)",
+        "EDIT app/api/text_routes.py call sites :661/:882/:1145/:1470 and app/api/image_routes.py :560: **({'kb_price_asof': True} if kb_serve.client_price_asof(request) else {}) (S81-18)",
+        "EDIT app/services/kb_ingest.py: _PRICE_KEYS += '_cache_source'; offer condition skips _cache_source == 'kb' (S81-18)",
+        "NEW tests/test_s81_s18_kb_first_serve.py + tests/fixtures/s81_s18_flag_off_golden.json (S81-18)",
+        "NEW scripts/cron_kb_enrich.py + railway.kbenrich.json + tests/test_s81_s19_gap_queue.py (S81-19)",
+        "NEW app/services/kb_operator.py; EDIT app/api/admin_routes.py (2 routes + import); NEW docs/runbooks/2026-11-kb-operator-ingest.md; NEW tests/test_s81_d16_operator_ingest.py (D16)",
+        "NEW scripts/cron_kb_coverage.py + railway.kbcoverage.json + tests/test_s81_d17_coverage.py (D17)",
+        "EDIT tests/test_s81_kb_schema.py E1/E2: P01 kb_serve + kb_operator kb_leaf; P02 five exact lines (kb_serve 1, kb_operator 2, cron_kb_coverage 2) (shared)",
+        "EDIT CLAUDE.md: one G4 block after :556 + pointer sentence at :341 (shared); GREEN order D17 -> S81-19 -> D16 -> S81-18 -> E-rows -> CLAUDE.md"
+      ],
+      "red_files": [
+        "tests/test_s81_s18_kb_first_serve.py",
+        "tests/test_s81_s19_gap_queue.py",
+        "tests/test_s81_d16_operator_ingest.py",
+        "tests/test_s81_d17_coverage.py"
+      ],
+      "red_rows": 54,
+      "pin_rows": 9,
+      "mutants": 40,
+      "comm_set_size": 661,
+      "focus_surfaces_found": [],
+      "open_questions": [
+        "Q1 S81-18: KB-served price source_method 'page_scrape' (showable, client label 'Retailer page', 7 d genuine window) vs a new method string that is_price_showable refuses and the client renders pill-less",
+        "Q2 S81-18: the L2 is replaced only for the legs the card serves; a partial hit runs the missing legs with their own L1/L2 (vs suppressing every L2 once a card exists)",
+        "Q3 S81-18: as_of = last_seen, because captured_at never moves on a re-observation (KB_OFFER_UPSERT_SET), vs the brief's captured_at",
+        "Q4 S81-18: the capability flows as a kwarg through the five route call sites (no new ContextVar) vs a fourth header in the S81-05 middleware",
+        "Q5 S81-19: scripts-only placement (no app/services/kb_gap_ladder.py)",
+        "Q6 S81-19: the D05 'specs' gap goes to licence wholesale (no per-spec-field split without a D05 vocabulary change)",
+        "Q7 S81-19: the Redis single flight fails closed when Redis is absent (vs fail-open for a one-process cron)",
+        "Q8 D16: flag-OFF identity via a starlette base-class HTTPException(404) raised from the first dependency (equal to an unregistered path); a wrong METHOD answers 405 vs base 404 (D16-L1)",
+        "Q9 D16: live hosts are accepted without tos.reviewed_at (ToS passed at candidate -> live); blocked hosts require it",
+        "Q10 D17: separate kb-coverage Railway service vs an entry of the enrich service",
+        "SAFE ruling: S81-19's non-Lua Redis SET NX EX lock (new kbenrich: namespace) and D17's read-only HGETALL of kbh: keys fall in the class RULINGS_S81_G3 ruled SAFE; both are severable if ruled FOCUS"
+      ],
+      "base_measurements": [
+        "[pyt] tag=g4spec-base-pins start=2026-11-04 19:22:52 end=2026-11-04 19:23:54 elapsed=61s bound=600s status=FAIL rc=1 (5 failed, 1609 passed; [hermeticity] sentinel checked 1614 test(s); [netguard] blocked 52 attempt(s) from 12 node(s), all test_s81_s04_spend_breaker supabase.invalid sentinel)",
+        "The 5 failures are tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[*] (:1097 assert b'\\r' not in raw): ENVIRONMENTAL, from the CRLF working copy under core.autocrlf",
+        "upstash-redis 1.7.0 Redis.set(key, value, nx=, ex=, ...) -> format_set returns res == 'OK'; postgrest 2.31.0 rpc(func, params, count=None, head=False, get=False)",
+        "kb_product_card 045:425-482 returns NULL for a missing product; EXECUTE is service_role only",
+        "No X-Client-Capabilities / price_asof reader in app/; the client sends it (requestContext.ts:17-19, :153)",
+        "No web_search surface in llm_provider.py / llm_router.py (llm_abstract.py does not exist); no SETNX/single flight in app/ (price_service.py:265)",
+        "fragrances required cited specs = (concentration, scent_family, season) after removing the licence fields from CRITICAL_SCHEMA_FIELDS (extraction_service.py:378/:403/:417)",
+        "Comm set 661 files, sha 90b85603e5dbb51268a6221c22b5b18a2785c1b8572f25a455e6faf9eb18ee15; 52 new vs G3; recompute split 439 files, sha 23022997ad0cd974601ad800e1eaf686ee5404f7acc4d6cc776766cd182a1b07",
+        "Corpus SHA gate not run: no price_service edit (S81-19 only calls extract_price_from_html :13952)"
+      ],
+      "stated_limits": [
+        "S81-18-L1 the RPC runs inline on the loop when ENABLE_SYNC_DB_OFFLOAD is OFF (stated precondition)",
+        "S81-18-L2 a miss pays up to the card-read bound before the price race starts",
+        "S81-18-L3 a partial hit keeps the L2 reads of the legs it cannot serve",
+        "S81-18-L4 D05 field_status labels a KB price stale/served_from_cache",
+        "S81-18-L5 the key uses the configured verdict model, not the 4o-cap-routed model",
+        "S81-18-L6 the bounded card task is not drained on an early exit",
+        "S81-18-L7 the full-hit spec set is measured for fragrances only",
+        "S81-18-L8 the would-hit set is per process",
+        "S81-18-L9 URL mode never KB-serves",
+        "S81-18-L10 the KB price title is synthesized from the card",
+        "S81-19-L1 demand is a proxy: demand_count + last_seen within 7 d (no compare_runs)",
+        "S81-19-L2 the web-search step is inert",
+        "S81-19-L3 the search step parses only Shopify suggest JSON / same-host anchors",
+        "S81-19-L4 a lost lock-owner race expires by TTL (no Lua)",
+        "S81-19-L5 never mints identities",
+        "S81-19-L6 rating fills only with the D08 rating",
+        "S81-19-L7 specs go to licence wholesale",
+        "S81-19-L8 a fetched hint becomes closed (no 'fetched' state)",
+        "D16-L1 a wrong method answers 405 with the flag OFF",
+        "D16-L2 no HTML page",
+        "D16-L3 operator identities are written high",
+        "D16-L4 no kb_reviews",
+        "D16-L5 the coverage block is empty until D17 runs",
+        "D17-L1 the identity/pair hit rates are a search_logs proxy",
+        "D17-L2 host counters exist only under the D14 health flush",
+        "D17-L3 no per-pair completeness",
+        "D17-L4 medians are bounded by the paged reads"
+      ],
+      "deliberate_pin_changes": [
+        "E1 tests/test_s81_kb_schema.py:331-337 P01_ALLOWED/P01_FUNCTIONS gain app/services/kb_serve.py and app/services/kb_operator.py kb_leaf ('from app.services import kb_service as _kb')",
+        "E2 tests/test_s81_kb_schema.py:338-351 P02_ALLOWED gains KB_PRODUCT_CARD_RPC = \"kb_product_card\" (kb_serve.py), KB_SPECS_TABLE = \"kb_specs\" and KB_COVERAGE_TABLE = \"kb_coverage_daily\" (kb_operator.py), KB_COVERAGE_TABLE = \"kb_coverage_daily\" and KB_OFFERS_LATEST_VIEW = \"kb_offers_latest\" (scripts/cron_kb_coverage.py)"
+      ],
+      "pyt_lines": [
+        "[pyt] tag=g4spec-base-pins start=2026-11-04 19:22:52 end=2026-11-04 19:23:54 elapsed=61s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\g4spec\\base_pins.log"
+      ]
+    },
+    "toolsUsed": [
+      "Bash",
+      "Write",
+      "Edit",
+      "StructuredOutput"
+    ]
+  }
+]
