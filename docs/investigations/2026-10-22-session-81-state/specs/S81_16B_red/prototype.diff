@@ -1,0 +1,514 @@
+diff --git a/app/services/kb_service.py b/app/services/kb_service.py
+index a0096a24..dfaca603 100644
+--- a/app/services/kb_service.py
++++ b/app/services/kb_service.py
+@@ -54,7 +54,7 @@ KB_CATEGORY = "fragrances"
+ 
+ KB_TABLES: Tuple[str, ...] = (
+     "kb_merchants", "kb_products", "kb_variants", "kb_offers", "kb_images",
+-    "kb_specs", "kb_reviews", "kb_gaps", "kb_feedback", "kb_coverage_daily",
++    "kb_specs", "kb_reviews", "kb_gaps", "kb_feedback", "kb_coverage_daily", "kb_brands",
+ )
+ 
+ KB_COLUMNS: Dict[str, Tuple[str, ...]] = {
+@@ -94,6 +94,7 @@ KB_COLUMNS: Dict[str, Tuple[str, ...]] = {
+         "id", "compare_request_id", "product_id", "field", "verdict", "device_key", "created_at",
+     ),
+     "kb_coverage_daily": ("day", "metric", "value", "n"),
++    "kb_brands": ("qid", "label_en", "label_ar", "official_host", "source", "created_at", "updated_at"),
+ }
+ 
+ #: Tables whose ``id`` is a server-side uuid (never built by the leaf).
+@@ -153,6 +154,12 @@ KB_OFFER_OBSERVATION_KEY: Tuple[str, ...] = (
+ )
+ KB_OFFER_UPSERT_SET: Tuple[str, ...] = ("last_seen", "in_stock", "evidence_rung", "canonical_url")
+ 
++#: S81-16b (migration 052): the Wikidata item id CHECK (no leading zero: one item, one key).
++KB_QID_REGEX = "^Q[1-9][0-9]{0,11}$"
++KB_BRAND_SOURCES: Tuple[str, ...] = ("wikidata", "operator")
++#: What a Wikidata re-run sets on an existing row (never qid, source, created_at).
++KB_BRAND_UPSERT_SET: Tuple[str, ...] = ("label_en", "label_ar", "official_host", "updated_at")
++
+ _DEFAULT_PORTS = {"http": 80, "https": 443}
+ _MAX_SKU_ML = 5000
+ _INT4_MAX = 2 ** 31 - 1
+@@ -804,3 +811,38 @@ def build_coverage_row(*, day: Any, metric: Any, value: Any, n: Any) -> Optional
+         return {"day": str(day), "metric": metric, "value": str(num), "n": n}
+     except Exception:
+         return None
++
++
++def _trimmed(value: Any) -> bool:
++    """A label equal to its own strip() (the 052 btrim CHECK; stricter: every
++    whitespace kind is refused at both ends)."""
++    return isinstance(value, str) and value == value.strip()
++
++
++def build_brand_row(*, qid: Any, label_en: Any, updated_at: Any, label_ar: Any = None,
++                    official_host: Any = None, source: Any = "wikidata") -> Optional[Dict[str, Any]]:
++    """One kb_brands row (S81-16b, migration 052) or None; never raises."""
++    try:
++        upd = _ts_iso(updated_at)
++        if not _pg_text_ok((qid, label_en, label_ar, official_host, source)):
++            return None
++        ok = (
++            _sql_match(KB_QID_REGEX, qid)
++            and _str_len(label_en, 1, 128) and _trimmed(label_en)
++            and (label_ar is None or (_str_len(label_ar, 1, 128) and _trimmed(label_ar)))
++            and (official_host is None or (
++                _str_len(official_host, 1, 253)
++                and _belted_host(official_host)
++                and kb_source_allowed(official_host)
++            ))
++            and isinstance(source, str) and source in KB_BRAND_SOURCES
++            and upd is not None
++        )
++        if not ok:
++            return None
++        return {
++            "qid": qid, "label_en": label_en, "label_ar": label_ar,
++            "official_host": official_host, "source": source, "updated_at": upd,
++        }
++    except Exception:
++        return None
+diff --git a/migrations/052_kb_brands.sql b/migrations/052_kb_brands.sql
+new file mode 100644
+index 00000000..1fb0e4d1
+--- /dev/null
++++ b/migrations/052_kb_brands.sql
+@@ -0,0 +1,95 @@
++-- Migration 052: public.kb_brands -- fragrance brand entities from Wikidata (S81-16b KB-BRANDS, S81)
++--
++-- One row per brand entity: the Wikidata item id (qid), the English label
++-- (required), the Arabic label (NULL when Wikidata has none), the official-site
++-- host (NULL when the item has no usable official website) and the row source
++-- ('wikidata' for the import, 'operator' for a hand-curated row). The rows are
++-- built by app/services/kb_service.py build_brand_row and written only by
++-- scripts/seed_kb_brands_wikidata.py under ENABLE_KB_BRANDS=apply (insert-ignore
++-- on qid, then one update of the label and host columns of the 'wikidata' rows
++-- the insert did not return; a brand gone from Wikidata is never deleted and an
++-- 'operator' row is never updated by the import). Wikidata data is CC0 (public
++-- domain dedication): no attribution or share-alike duty attaches to the rows.
++-- kb_products.brand stays free text: no foreign key, no alias and no product
++-- link in this table (later units). Two brands may share one official host (a
++-- house and its sub-brand): official_host is indexed, not UNIQUE.
++--
++-- MERGING THIS CHANGES NOTHING IN PRODUCTION: no request-path code reads or
++-- writes kb_brands, and the one writer runs only on the kbseed service with
++-- ENABLE_KB_BRANDS=apply.
++--
++-- APPLY ORDER: after 045 (it reuses public.kb_set_updated_at and the 045
++-- host belts; the DO block below refuses to run without 045); none against
++-- 047 or 050. Rollback 052 BEFORE any rollback of 045 (the trigger depends on
++-- the 045 trigger function).
++--
++-- Service role only (the 045 pattern; the 037 both-readings rule): RLS on, no
++-- policy; REVOKE ALL from PUBLIC, anon, authenticated, service_role, then
++-- GRANT SELECT, INSERT, UPDATE, DELETE to service_role. No user, device,
++-- session or address column and no foreign key to users: the 043 deletion
++-- fence does not apply. The import excludes Wikidata items that are humans
++-- (P31 Q5), so a label is a brand or company name, never a person's name.
++--
++-- Both labels are trimmed (label = btrim(label)): a blank or padded label is
++-- refused here and by the builder.
++--
++-- The official_host CHECK mirrors the 045 host belts: the host regex
++-- (kb_service.KB_HOST_REGEX), the deny label belt (kb_service
++-- kb_host_deny_regex, a strict SUBSET of deny_hosts.kb_source_allowed, which
++-- the builder applies) and the top-label rule (KB_HOST_TOP_LABEL_REGEX).
++--
++-- Postcheck: APPLY_052_3_POSTCHECK.sql. Rollback: migrations/rollback/052_kb_brands.sql
++
++BEGIN;
++
++DO $$
++BEGIN
++  IF to_regprocedure('public.kb_set_updated_at()') IS NULL THEN
++    RAISE EXCEPTION '052 needs 045 applied first (public.kb_set_updated_at is missing)';
++  END IF;
++END
++$$;
++
++CREATE TABLE IF NOT EXISTS public.kb_brands (
++    qid text PRIMARY KEY CHECK (qid ~ '^Q[1-9][0-9]{0,11}$'),
++    label_en text NOT NULL CHECK (
++        char_length(label_en) BETWEEN 1 AND 128 AND label_en = btrim(label_en)
++    ),
++    label_ar text CHECK (
++        label_ar IS NULL OR (
++            char_length(label_ar) BETWEEN 1 AND 128 AND label_ar = btrim(label_ar)
++        )
++    ),
++    official_host text CHECK (
++        official_host IS NULL OR (
++            char_length(official_host) BETWEEN 1 AND 253
++            AND official_host ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
++            AND official_host !~ '(^|[.])(basenotes|fimgs|fragrantica|parfumo)[.]'
++        )
++    ),
++    source text NOT NULL DEFAULT 'wikidata' CHECK (source IN ('wikidata', 'operator')),
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT kb_brands_host_top_label_letter CHECK (
++        official_host IS NULL
++        OR official_host ~ '^(https?://)?([^/]*[.])?(?!(0x[0-9a-f]*|[0-9]+)(/|$))[a-z0-9-]*[a-z][a-z0-9-]*(/|$)'
++    )
++);
++
++CREATE INDEX IF NOT EXISTS idx_kb_brands_official_host
++    ON public.kb_brands (official_host) WHERE official_host IS NOT NULL;
++
++CREATE OR REPLACE TRIGGER kb_brands_set_updated_at
++BEFORE UPDATE ON public.kb_brands
++FOR EACH ROW EXECUTE FUNCTION public.kb_set_updated_at();
++
++ALTER TABLE public.kb_brands ENABLE ROW LEVEL SECURITY;
++
++REVOKE ALL ON TABLE public.kb_brands FROM PUBLIC, anon, authenticated, service_role;
++
++GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.kb_brands TO service_role;
++
++COMMENT ON TABLE public.kb_brands IS
++'Fragrance brand entities imported from Wikidata (CC0) by scripts/seed_kb_brands_wikidata.py (S81-16b). No user data. Service role only.';
++
++COMMIT;
+diff --git a/migrations/rollback/052_kb_brands.sql b/migrations/rollback/052_kb_brands.sql
+new file mode 100644
+index 00000000..205b8e7f
+--- /dev/null
++++ b/migrations/rollback/052_kb_brands.sql
+@@ -0,0 +1,16 @@
++-- Rollback for migration 052_kb_brands.sql (S81-16b KB-BRANDS, S81)
++--
++-- Unset ENABLE_KB_BRANDS on the kbseed service first (the only writer). Run
++-- this BEFORE any rollback of 045: the kb_brands trigger depends on the 045
++-- function public.kb_set_updated_at, which this file keeps. The table's
++-- trigger, index and checks go with it.
++--
++-- IMPORTANT: this is destructive. Every imported brand row is lost; a re-run
++-- of the import (ENABLE_KB_BRANDS=apply) after re-applying 052 restores the
++-- Wikidata rows, not the 'operator' rows.
++
++BEGIN;
++
++DROP TABLE IF EXISTS public.kb_brands;
++
++COMMIT;
+diff --git a/scripts/kb_seed_common.py b/scripts/kb_seed_common.py
+index 94b57223..3d1277db 100644
+--- a/scripts/kb_seed_common.py
++++ b/scripts/kb_seed_common.py
+@@ -16,7 +16,7 @@ nothing of the app (no client, no SDK, no settings, no dotenv). What lives here:
+   (insert-ignore; the offer re-observation update of KB_OFFER_UPSERT_SET; the
+   kb_gaps last_seen-only re-discovery update).
+ 
+-The five KB table names below are the only kb_* relation literals of G2 and
++The six KB table names below are the only kb_* relation literals of G2 and
+ ``kb_leaf`` is the only importer of the S81-14 leaf (tests/test_s81_kb_schema.py
+ E1 / E2 key both by exact line).
+ """
+@@ -52,6 +52,7 @@ KB_VARIANTS_TABLE = "kb_variants"
+ KB_OFFERS_TABLE = "kb_offers"
+ KB_SPECS_TABLE = "kb_specs"
+ KB_GAPS_TABLE = "kb_gaps"
++KB_BRANDS_TABLE = "kb_brands"
+ LLM_SPEND_LEDGER_TABLE = "llm_spend_ledger"
+ 
+ #: Every reason ``url_gate`` can return (in the order the gate checks them).
+@@ -436,5 +437,24 @@ class KbWriter:
+         self.counts["gap_updates"] += updates
+         return updates
+ 
++    def brands(self, rows: Sequence[Any]) -> int:
++        """S81-16b: insert-ignore on qid; every row the insert did not return gets
++        ONE update of KB_BRAND_UPSERT_SET restricted to source = 'wikidata' (an
++        operator row never moves; nothing is deleted). ``brand_updates`` counts
++        update ATTEMPTS. Returns the update count."""
++        kb = kb_leaf()
++        built = self._built(KB_BRANDS_TABLE, rows)
++        inserted = self._send(KB_BRANDS_TABLE, built, "qid")
++        seen = {r.get("qid") for r in inserted}
++        updates = 0
++        for row in built:
++            if row["qid"] in seen or row.get("source") != "wikidata":
++                continue
++            (self.client.table(KB_BRANDS_TABLE).update({k: row[k] for k in kb.KB_BRAND_UPSERT_SET})
++             .eq("qid", row["qid"]).eq("source", "wikidata").execute())
++            updates += 1
++            self.counts["brand_updates"] += 1
++        return updates
++
+     def ledger(self, row: Dict[str, Any]) -> None:
+         self.client.table(LLM_SPEND_LEDGER_TABLE).insert(row).execute()
+diff --git a/scripts/seed_kb_brands_wikidata.py b/scripts/seed_kb_brands_wikidata.py
+index 1b47a1b6..80ff6fde 100644
+--- a/scripts/seed_kb_brands_wikidata.py
++++ b/scripts/seed_kb_brands_wikidata.py
+@@ -1,12 +1,16 @@
+-"""S81-16 brand hosts from Wikidata: DRY-ONLY by ruling R-G2-3.
+-
+-The same flag and mode as seed_kb_batch (ENABLE_KB_SEED, read per call, the
+-FIRST statement of ``main``). In DRY and APPLY alike it reads the query
+-service's robots.txt once, then makes ONE SPARQL GET (both through the polite
+-named-agent fetcher, SSRF-checked on every hop), derives the official-site
+-hosts and writes the host list to --report only. It writes NOTHING to the KB in
+-any mode: a brands table needs its own migration (S81-16b), so APPLY behaves as
+-DRY and its mode line says so.
++"""S81-16 brand hosts and S81-16b brand rows from Wikidata (ENABLE_KB_BRANDS).
++
++Its OWN flag since S81-16b: ENABLE_KB_BRANDS (read per call, the FIRST
++statement of ``main``; unset / false / dry -> OFF, true -> DRY, the exact word
++apply -> WRITE) and the knob KB_BRANDS_MAX (300, 1..5000). ENABLE_KB_SEED never
++runs this script. In DRY and APPLY alike it reads the query service's
++robots.txt once, then makes ONE SPARQL GET (both through the polite named-agent
++fetcher, SSRF-checked on every hop), derives the official-site hosts and the
++brand rows (en / mul / ar labels, humans excluded) and writes both with the
++counts to --report. Only APPLY writes, and only public.kb_brands (migration 052)
++through KbWriter.brands: insert-ignore on qid, then one update of the label and
++host columns of the 'wikidata' rows the insert did not return. Never a
++kb_merchants write; nothing is deleted. Wikidata data is CC0.
+ """
+ from __future__ import annotations
+ 
+@@ -23,14 +27,23 @@ from scripts import kb_seed_common as common
+ 
+ logger = logging.getLogger("seed_kb_brands_wikidata")
+ 
+-FLAG = "ENABLE_KB_SEED"
++FLAG = "ENABLE_KB_BRANDS"
++MAX_KNOB = "KB_BRANDS_MAX"
+ PREFIX = "[KB_BRANDS]"
+ ROBOTS_URL = "https://query.wikidata.org/robots.txt"
+ SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
+-# P1056 product or material produced = Q131746 perfume; P856 official website
+-# (offline-unverified ids: the dry-run binding count is the check, S16 L7).
+-SPARQL = ("SELECT DISTINCT ?brand ?site WHERE { ?brand wdt:P1056 wd:Q131746 . "
+-          "?brand wdt:P856 ?site . } LIMIT 2000")
++SPARQL_LIMIT = 2000
++# P1056 product or material produced = Q131746 perfume; P856 official website;
++# P31 Q5 = human (excluded). Offline-unverified ids: the dry-run counts are the
++# check (S16 L7). Labels: exact en, else mul (the default-language label), and
++# exact ar; ordered by the numeric qid so a LIMIT truncation is deterministic.
++SPARQL = ("SELECT DISTINCT ?brand ?site ?label_en ?label_mul ?label_ar WHERE { "
++          "?brand wdt:P1056 wd:Q131746 . ?brand wdt:P856 ?site . "
++          "FILTER NOT EXISTS { ?brand wdt:P31 wd:Q5 . } "
++          'OPTIONAL { ?brand rdfs:label ?label_en . FILTER(LANG(?label_en) = "en") } '
++          'OPTIONAL { ?brand rdfs:label ?label_mul . FILTER(LANG(?label_mul) = "mul") } '
++          'OPTIONAL { ?brand rdfs:label ?label_ar . FILTER(LANG(?label_ar) = "ar") } '
++          '} ORDER BY xsd:integer(STRAFTER(STR(?brand), "/entity/Q")) ?site LIMIT ' + str(SPARQL_LIMIT))
+ MAX_BRAND_HOSTS = 300
+ 
+ 
+@@ -38,6 +51,11 @@ def sparql_url() -> str:
+     return SPARQL_ENDPOINT + "?format=json&query=" + quote(SPARQL, safe="")
+ 
+ 
++def brands_max() -> int:
++    """KB_BRANDS_MAX read per call: 300 by default, clamped to 1..5000."""
++    return common.int_knob(MAX_KNOB, 300, 1, 5000)
++
++
+ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
+     p = argparse.ArgumentParser(prog="seed_kb_brands_wikidata")
+     p.add_argument("--dry-run", action="store_true")
+@@ -88,7 +106,89 @@ def derive_hosts(bindings: Any, existing: set, counts: Dict[str, int]) -> List[s
+     return hosts
+ 
+ 
+-async def _run(args: argparse.Namespace, client: Any) -> int:
++def qid_of(binding: Any) -> Optional[str]:
++    """The last path segment of the brand IRI (a bare id stays); validity is the builder's."""
++    value = ((binding or {}).get("brand") or {}).get("value") if isinstance(binding, dict) else None
++    if not isinstance(value, str) or not value:
++        return None
++    return value.rsplit("/", 1)[-1]
++
++
++def _label(binding: Any, key: str) -> Optional[str]:
++    value = ((binding or {}).get(key) or {}).get("value") if isinstance(binding, dict) else None
++    if not isinstance(value, str):
++        return None
++    value = value.strip()
++    return value or None
++
++
++def _brand_host(site: Optional[str]) -> Optional[str]:
++    from app.services import deny_hosts as dh
++
++    if not site:
++        return None
++    try:
++        host = dh.normalize_host(urlsplit(site).hostname or "")
++    except ValueError:
++        return None
++    return host or None
++
++
++def derive_brands(bindings: Any, counts: Dict[str, int], now: Any, cap: int) -> List[Dict[str, Any]]:
++    """The kb_brands rows of one SPARQL answer, sorted by numeric qid, at most ``cap``."""
++    kb = common.kb_leaf()
++    if isinstance(bindings, list) and len(bindings) == SPARQL_LIMIT:
++        counts["sparql_limit_hit"] = 1
++    groups: Dict[str, Dict[str, Any]] = {}
++    for b in bindings if isinstance(bindings, list) else []:
++        qid = qid_of(b)
++        if qid is None or not kb._sql_match(kb.KB_QID_REGEX, qid):
++            common.bump(counts, "bad_qid")
++            continue
++        g = groups.setdefault(qid, {"en": None, "mul": None, "ar": None, "sites": []})
++        for key, var in (("en", "label_en"), ("mul", "label_mul"), ("ar", "label_ar")):
++            if g[key] is None:
++                g[key] = _label(b, var)
++        site = _site_host(b)
++        if site is not None:
++            g["sites"].append(site)
++    rows: List[Dict[str, Any]] = []
++    for qid, g in groups.items():
++        if g["en"] is not None:
++            common.bump(counts, "with_label_en")
++        if g["ar"] is not None:
++            common.bump(counts, "with_label_ar")
++        label_en = g["en"] if g["en"] is not None else g["mul"]
++        if label_en is None or kb.build_brand_row(qid=qid, label_en=label_en, updated_at=now) is None:
++            common.bump(counts, "no_label_en")
++            continue
++        if g["en"] is None:
++            common.bump(counts, "label_en_from_mul")
++        label_ar = g["ar"]
++        if label_ar is not None and kb.build_brand_row(qid=qid, label_en=label_en, label_ar=label_ar,
++                                                       updated_at=now) is None:
++            common.bump(counts, "label_ar_dropped")
++            label_ar = None
++        host = None
++        for h in sorted({h for h in (_brand_host(s) for s in g["sites"]) if h}):
++            if kb.build_brand_row(qid=qid, label_en=label_en, official_host=h, updated_at=now) is not None:
++                host = h
++                break
++        if host is None:
++            common.bump(counts, "brand_host_null")
++        row = kb.build_brand_row(qid=qid, label_en=label_en, label_ar=label_ar, official_host=host,
++                                 source="wikidata", updated_at=now)
++        if row is not None:
++            rows.append(row)
++    rows.sort(key=lambda r: int(r["qid"][1:]))
++    if len(rows) > cap:
++        counts["over_cap_brands"] = len(rows) - cap
++        rows = rows[:cap]
++    counts["brand_rows"] = len(rows)
++    return rows
++
++
++async def _run(args: argparse.Namespace, client: Any, mode: str) -> int:
+     from app.services import robots_eval as re_
+ 
+     try:
+@@ -121,7 +221,19 @@ async def _run(args: argparse.Namespace, client: Any) -> int:
+         return 0
+     counts: Dict[str, int] = {}
+     hosts = derive_hosts(bindings, existing, counts)
+-    common.write_report(args.report, {"hosts": hosts, "counts": counts})
++    brand_rows = derive_brands(bindings, counts, common._now(), brands_max())
++    if mode == common.MODE_APPLY:
++        writer = common.KbWriter(client)
++        try:
++            writer.brands(brand_rows)
++        except Exception as exc:  # noqa: BLE001 - an owner precondition (052 not applied) ends quietly
++            logger.warning("%s kb_brands write failed (%s)", PREFIX, type(exc).__name__)
++            counts["write_failed"] = 1
++        finally:
++            for key, value in writer.counts.items():
++                counts[key] = counts.get(key, 0) + int(value)
++    report_rows = [{k: r[k] for k in ("qid", "label_en", "label_ar", "official_host")} for r in brand_rows]
++    common.write_report(args.report, {"hosts": hosts, "brands": report_rows, "counts": counts})
+     common.log_counts(PREFIX, counts)
+     return 0
+ 
+@@ -129,15 +241,16 @@ async def _run(args: argparse.Namespace, client: Any) -> int:
+ def main(argv: Optional[List[str]] = None, client: Any = None) -> int:
+     mode = common.run_mode(FLAG)
+     if mode == common.MODE_OFF:
+-        logger.info("%s mode=off ENABLE_KB_SEED not set; skipping run", PREFIX)
++        logger.info("%s mode=off ENABLE_KB_BRANDS not set; skipping run (ENABLE_KB_SEED does not run this script)",
++                    PREFIX)
+         return 0
+     args = _parse_args(argv)
+     mode = common.cli_mode(mode, args.dry_run)
+-    logger.info("%s mode=%s (writes nothing in any mode; apply behaves as dry)", PREFIX, mode)
++    logger.info("%s mode=%s (apply writes kb_brands; dry writes nothing)", PREFIX, mode)
+     client = common.resolve_client(client, PREFIX)
+     if client is None:
+         return 0
+-    return asyncio.run(_run(args, client))
++    return asyncio.run(_run(args, client, mode))
+ 
+ 
+ run = main
+diff --git a/tests/test_s81_kb_schema.py b/tests/test_s81_kb_schema.py
+index 1f7d392b..d483665e 100644
+--- a/tests/test_s81_kb_schema.py
++++ b/tests/test_s81_kb_schema.py
+@@ -1485,7 +1485,7 @@ def test_s14_r27_builder_keys(table):
+     assert tuple(want) == tuple(_attr(kb, "KB_BUILDER_KEYS")[table])
+     if table in ("kb_merchants", "kb_products", "kb_variants"):
+         assert row["updated_at"] == T0.isoformat(), "R-S14-2: builders emit updated_at (belt)"
+-    assert tuple(_attr(kb, "KB_TABLES")) == KB_TABLE_NAMES
++    assert tuple(_attr(kb, "KB_TABLES")) == KB_TABLE_NAMES + ("kb_brands",)  # S81-16b E1: 052 joins the census last
+ 
+ 
+ NAIVE = datetime(2026, 10, 23, 12, 0)
+diff --git a/tests/test_s81_s16_kb_seed.py b/tests/test_s81_s16_kb_seed.py
+index 6888a80a..dedf45c9 100644
+--- a/tests/test_s81_s16_kb_seed.py
++++ b/tests/test_s81_s16_kb_seed.py
+@@ -51,7 +51,8 @@ def _attr(mod, name):
+ def _env(monkeypatch):
+     import app.main  # noqa: F401  (FIRST: the dotenv-override hazard)
+ 
+-    for name in ("ENABLE_KB_SEED", "ENABLE_LLM_SPEND_BREAKER", "ANTHROPIC_API_KEY") + KNOBS:
++    for name in ("ENABLE_KB_SEED", "ENABLE_KB_BRANDS", "KB_BRANDS_MAX", "ENABLE_LLM_SPEND_BREAKER",
++                 "ANTHROPIC_API_KEY") + KNOBS:
+         monkeypatch.delenv(name, raising=False)
+     monkeypatch.setenv("SUPABASE_URL", "https://" + "kbseed-test" + ".invalid")
+     monkeypatch.setenv("SUPABASE_SERVICE_KEY", "svc" + "-" + "x" * 10)
+@@ -984,7 +985,8 @@ def _brand_bindings(hosts_extra=()):
+ 
+     sites = ["https://brand-b.example.com/", "https://store-a.example.com/",
+              "https://www.%s/" % dh.DENY_HOSTS[0], "http://192.0.2.10/"] + list(hosts_extra)
+-    return json.dumps({"results": {"bindings": [{"brand": {"value": "Q%d" % i}, "site": {"value": s}}
++    return json.dumps({"results": {"bindings": [{"brand": {"value": "Q%d" % (i + 1)}, "site": {"value": s},
++                                                 "label_en": {"value": "Brand %d" % i}}
+                                                 for i, s in enumerate(sites)]}})
+ 
+ 
+@@ -997,7 +999,8 @@ def test_s16_r23_brands_dry_and_apply(monkeypatch, tmp_path, mode):
+     over = ["https://brand%03d.example.org/" % i for i in range(301)]
+     rig = Rig(monkeypatch, common, merchants=[_merchant("store-a.example.com")])
+     rig.fetch_responses = [(200, {}, "User-agent: *\nAllow: /\n"), (200, {}, _brand_bindings(over))]
+-    _dry(monkeypatch, mode)
++    monkeypatch.setenv("ENABLE_KB_BRANDS", mode)
++    monkeypatch.setenv("ENABLE_KB_SEED", "apply")
+     rep = tmp_path / "brands.json"
+     assert _attr(brands, "main")(["--report", str(rep)], client=rig.client) == 0
+     assert len(rig.fetches) == 2
+@@ -1005,7 +1008,11 @@ def test_s16_r23_brands_dry_and_apply(monkeypatch, tmp_path, mode):
+     assert rig.fetches[1]["url"].startswith("https://query.wikidata.org/sparql?")
+     assert rig.validates == [f["url"] for f in rig.fetches]
+     assert all(f["headers"] == rr._REQUEST_HEADERS and f["allow_redirects"] is False for f in rig.fetches)
+-    assert rig.client.writes() == []
++    writes = rig.client.writes()
++    if mode == "true":
++        assert writes == []
++    else:
++        assert writes and {w[0] for w in writes} == {"kb_brands"} and {w[1] for w in writes} <= {"upsert", "update"}
+     hosts = _report(rep)["hosts"]
+     assert len(hosts) == 300 and hosts == sorted(hosts)
+     assert "brand-b.example.com" in hosts
+@@ -1021,7 +1028,7 @@ def test_s16_r24_brands_robots_failclosed(monkeypatch, tmp_path, caplog, case):
+     first = {"403": (403, {}, "forbidden"), "timeout": TimeoutError("t"),
+              "disallow": (200, {}, "User-agent: *\nDisallow: /sparql\n")}[case]
+     rig.fetch_responses = [first, (200, {}, _brand_bindings())]
+-    _dry(monkeypatch)
++    monkeypatch.setenv("ENABLE_KB_BRANDS", "true")
+     caplog.set_level(logging.INFO)
+     assert _attr(brands, "main")([], client=rig.client) == 0
+     assert len(rig.fetches) == 1 and rig.client.writes() == []

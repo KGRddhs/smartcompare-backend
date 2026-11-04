@@ -1,0 +1,20 @@
+Deviations (stated, not hidden):
+- D1 CONCURRENCY: the G4 RED lane's comm driver (S81-G4_red/tools/comm_driver, chunks g4red-comm-00..) was running while my mutation harness (33 pyt runs in my scratch worktree, 20:37-20:44) and my G5/G6 base run (20:45:55-20:46:28, real worktree sc-s81-s16b) ran; I had checked for a live pytest only before the first base run (none then). Different worktrees and files; no DUPLICATE tag, no killed process; every one of my results is internally consistent. From 20:47 my comm driver waits until no other lane's pytest / comm driver is alive before each chunk.
+- D2 S04 dry-run node: the spec's "--dry-run present -> writes() == []" alone would PASS at base; the node also asserts the report's literal brands list so it is RED at base.
+- D3 S09 is one node (2000 then 1999 bindings in one test) so the 1999 half cannot pass at base on its own.
+- D4 S02 parametrisation = s16.OFF_SPELLINGS + "dry" (8) x ENABLE_KB_SEED in {apply, true, unset} = 24 nodes; main is driven through a SystemExit catcher so the base argparse exit is an AssertionError, not a SystemExit.
+- D5 K03 holds 35 ids (29 of the review + 3 blank / padded rows per label, R-S16B-6/7); K02 holds 7 (the 253-char host added).
+- D6 B11 lints in-process (sqlfluff.core Linter + FluffConfig.from_path(ROOT), the repo .sqlfluff), measured on the pinned sqlfluff 4.3.0.
+- D7 B04 also asserts the two btrim clauses; B10 asserts no "051" text in either 052 file.
+Choices the RED pins (the gate may rule otherwise; GREEN must follow the RED):
+- C1 with_label_en / with_label_ar count DISTINCT qids carrying the exact en / ar label; a mul-only brand counts label_en_from_mul, not with_label_en.
+- C2 an en label present but refused by the builder (129 chars) counts no_label_en and does NOT fall back to mul.
+- C3 S03 pins the WHOLE counts dict: {bindings, with_site, new, with_label_en, with_label_ar, label_en_from_mul, no_label_en, brand_rows}; derive-side counters are bump-style (absent at 0); brand_rows always present; over_cap_brands / sparql_limit_hit absent when not hit; sparql_limit_hit when len(bindings) == 2000 exactly.
+- C4 the btrim clauses are MERGED into the label_en / label_ar column CHECKs (B03 literal): label_en ... BETWEEN 1 AND 128 AND label_en = btrim(label_en); label_ar IS NULL OR (... AND label_ar = btrim(label_ar)); POSTCHECK check_count stays 6.
+- C5 the SPARQL text binds ?label_mul with OPTIONAL { ?brand rdfs:label ?label_mul . FILTER(LANG(?label_mul) = "mul") } (S03 pins all three OPTIONAL clauses verbatim, the human exclusion, the ORDER BY xsd:integer(STRAFTER(STR(?brand), "/entity/Q")) ?site and LIMIT 2000).
+- C6 the report's brands entries are {qid, label_en, label_ar, official_host} (S03/S04/S06/S07/S11); the writer counters kb_brands_sent / brand_updates (and not_built) are ADDED to counts; write_failed = 1 on a write exception.
+- C7 the builder refuses a label that differs from its Python strip() (every whitespace kind), stricter than btrim (spaces only): a superset, as the house rule wants.
+- C8 S12 requires the brand script's docstring to name ENABLE_KB_BRANDS (beyond "no DRY-ONLY / writes NOTHING").
+Questions:
+- Q1 confirm C1-C3 (the counter semantics) before GREEN; they are pinned by literal dicts.
+- Q2 the spec's EK1 (an APPLY R23 over 300+ brands) now writes through KbWriter.brands in the prototype and stays green; no other frozen row needed an edit beyond EK0-EK2 + E1 (measured).
