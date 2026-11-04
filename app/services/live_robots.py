@@ -453,7 +453,10 @@ def _flush_sync(counts: Dict[Tuple[str, str, str], int], day: str, ttl: int) -> 
         pipe.hincrby(key, field, n)
     for key in keys:
         pipe.expire(key, ttl)
-    pipe.exec()
+    # exec on the upstash-redis pipeline; execute on the redis-py pipeline of
+    # cache_service's redis:// fallback (F1-3).
+    fn = getattr(pipe, "exec", None) or getattr(pipe, "execute")
+    fn()
 
 
 async def _flush_job(counts: Dict[Tuple[str, str, str], int], day: str, ttl: int) -> None:

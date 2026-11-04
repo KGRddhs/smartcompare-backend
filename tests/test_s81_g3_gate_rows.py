@@ -13,6 +13,22 @@ url_extraction); a response object without headers never raises. Mutant G3-GRM2
 (the algolia / url_extraction recording dropped) is killed by the algolia and
 url_extraction cases.
 
+G3-GR3 test_g3_gr3_no_projection_and_unbind_when_off (RULINGS_FIX1_S81_G3 F1-2):
+(a) with ENABLE_KB_INGEST and ENABLE_FIELD_STATUS_METADATA OFF under the full
+configuration, a recorder on kb_ingest.build_job / kb_ingest._now /
+result_gate.assess_result records ZERO calls across the REST and stream success
+exits, and a raising build_job produces no WARNING (spec 2.6 / R-G3-10: no
+projection); (b) with ENABLE_LIVE_ROBOTS_REGISTRY + ENABLE_LIVE_ROBOTS_HEALTH_FLUSH
+ON, two consecutive compares on one context (bind, records, the finally flush, a
+repeated flush) produce exactly ONE pipeline + ONE exec each (flush_attempts
+unbinds _ATTEMPTS_CTX). Mutants S17-M3 (the early return of _kb_ingest_tail
+removed) and ADV-8 (the unbind dropped) are killed.
+
+G3-GR4 test_g3_gr4_flush_uses_exec_or_execute (F1-3): live_robots._flush_sync
+flushes through ``exec`` (the upstash-redis pipeline) or, when absent, ``execute``
+(the redis-py pipeline of cache_service's redis:// path); neither shape raises.
+Mutant G3-GRM4 (the fallback dropped) is killed by the ``execute`` shape.
+
 Hermetic: every transport is faked at its seam; synthetic hosts only; pure ASCII, LF.
 """
 from __future__ import annotations
@@ -349,3 +365,184 @@ def test_g3_gr2_every_hook_records_outcomes(monkeypatch, name):
     assert counts.get((label, HOST, "ok")) == 1, (name, counts)
     assert counts.get((label, HOST, "fail")) == 1, (name, counts)
     assert not any(k[2] == "robots_skip" for k in counts), (name, counts)
+
+
+# ---------------------------------------------------------------------------
+# G3-GR3 no projection with both flags OFF; flush_attempts unbinds (F1-2)
+# ---------------------------------------------------------------------------
+
+def _s17():
+    import importlib
+
+    return importlib.import_module("tests.test_s81_s17_kb_ingest")
+
+
+@pytest.mark.parametrize("kind", ["rest", "stream"])
+def test_g3_gr3_no_projection_and_unbind_when_off(monkeypatch, caplog, kind):
+    import logging
+
+    from app.services import kb_ingest, result_gate
+
+    s17 = _s17()
+    for name in s17.CLEARED_ENV:
+        monkeypatch.delenv(name, raising=False)
+    s17._full_config(monkeypatch, "true")
+    monkeypatch.setenv("ENABLE_KB_INGEST", "false")
+    monkeypatch.setenv("ENABLE_FIELD_STATUS_METADATA", " OFF ")
+    monkeypatch.setenv("ENABLE_LIVE_ROBOTS_HEALTH_FLUSH", "true")
+    monkeypatch.setenv("LIVE_ROBOTS_HEALTH_TTL_DAYS", "8")
+
+    # (a1) recorders that delegate: zero calls at the success exit.
+    calls = []
+    real_build, real_now, real_assess = (kb_ingest.build_job, kb_ingest._now,
+                                         result_gate.assess_result)
+
+    def _build(*a, **k):
+        calls.append("build_job")
+        return real_build(*a, **k)
+
+    def _now():
+        calls.append("_now")
+        return real_now()
+
+    def _assess(*a, **k):
+        calls.append("assess_result")
+        return real_assess(*a, **k)
+
+    monkeypatch.setattr(kb_ingest, "build_job", _build)
+    monkeypatch.setattr(kb_ingest, "_now", _now)
+    monkeypatch.setattr(result_gate, "assess_result", _assess)
+    state = {}
+    payload = asyncio.run(s17._compare(monkeypatch, kind, state=state, settle=0.1))
+    assert payload, kind
+    assert calls == [], (kind, calls)
+    assert "kb_ingest" not in state["labels"], state["labels"]
+
+    # (a2) a raising build_job: no WARNING (it is never reached).
+    def _raising(*_a, **_k):
+        raise RuntimeError("flag OFF: build_job must never run")
+
+    monkeypatch.setattr(kb_ingest, "build_job", _raising)
+    caplog.clear()
+    caplog.set_level(logging.WARNING)
+    asyncio.run(s17._compare(monkeypatch, kind, state={}, settle=0.1))
+    warned = [r.getMessage() for r in caplog.records
+              if r.levelno >= logging.WARNING and "KB_INGEST" in r.getMessage()]
+    assert warned == [], (kind, warned)
+    assert calls == [], (kind, calls)
+
+    # (b) main + health ON: ONE pipeline + ONE exec per compare (the unbind).
+    from app.services import live_robots
+    from app.utils import redis_offloop
+
+    monkeypatch.setenv("ENABLE_LIVE_ROBOTS_REGISTRY", "true")
+    monkeypatch.setattr(live_robots, "_now", lambda: NOW)
+    log = []
+
+    class _Pipe:
+        def __init__(self, n):
+            self.n = n
+
+        def hincrby(self, key, field, n):
+            log.append(("hincrby", self.n, key, field, n))
+
+        def expire(self, key, ttl):
+            log.append(("expire", self.n, key, ttl))
+
+        def exec(self):
+            log.append(("exec", self.n))
+
+    class _Redis:
+        def pipeline(self):
+            n = len([e for e in log if e[0] == "pipeline"])
+            log.append(("pipeline", n))
+            return _Pipe(n)
+
+    async def _pool(fn, *args, durable=False):
+        return await asyncio.to_thread(fn, *args)
+
+    monkeypatch.setattr(live_robots, "_redis_client", lambda: _Redis())
+    monkeypatch.setattr(redis_offloop, "run_redis_offloop_pool", _pool)
+
+    async def _two_compares():
+        for host in (HOST, HOST_B):
+            live_robots.bind_attempts()
+            live_robots.record("curl", host, "ok")
+            live_robots.record("curl", host, "ok")
+            live_robots.flush_attempts()  # the compare's finally
+            live_robots.flush_attempts()  # a repeated flush on the same context
+            await asyncio.sleep(0.2)
+
+    asyncio.run(_two_compares())
+    pipes = [e for e in log if e[0] == "pipeline"]
+    execs = [e for e in log if e[0] == "exec"]
+    assert len(pipes) == 2 and len(execs) == 2, log
+    incr = [e for e in log if e[0] == "hincrby"]
+    key = "kbh:20261101:"
+    assert [(e[1], e[2], e[3], e[4]) for e in incr] == [
+        (0, key + HOST, "curl:ok", 2), (1, key + HOST_B, "curl:ok", 2)], incr
+
+
+# ---------------------------------------------------------------------------
+# G3-GR4 the flush works on both pipeline shapes (F1-3)
+# ---------------------------------------------------------------------------
+
+class _ExecPipe:
+    """The upstash-redis pipeline shape: ``exec`` only."""
+
+    def __init__(self, log):
+        self.log = log
+
+    def hincrby(self, key, field, n):
+        self.log.append(("hincrby", key, field, n))
+
+    def expire(self, key, ttl):
+        self.log.append(("expire", key, ttl))
+
+    def exec(self):
+        self.log.append(("flush", "exec"))
+        return []
+
+
+class _ExecutePipe:
+    """The redis-py pipeline shape: ``execute`` only (no ``exec``)."""
+
+    def __init__(self, log):
+        self.log = log
+
+    def hincrby(self, key, field, n):
+        self.log.append(("hincrby", key, field, n))
+
+    def expire(self, key, ttl):
+        self.log.append(("expire", key, ttl))
+
+    def execute(self):
+        self.log.append(("flush", "execute"))
+        return []
+
+
+@pytest.mark.parametrize("shape", ["exec", "execute"])
+def test_g3_gr4_flush_uses_exec_or_execute(monkeypatch, shape):
+    from app.services import live_robots
+
+    log = []
+    pipe_cls = _ExecPipe if shape == "exec" else _ExecutePipe
+
+    class _Client:
+        def pipeline(self):
+            log.append(("pipeline",))
+            return pipe_cls(log)
+
+    monkeypatch.setattr(live_robots, "_redis_client", lambda: _Client())
+    counts = {("curl", HOST, "ok"): 3, ("woo", HOST, "fail"): 1}
+    raised = None
+    try:
+        live_robots._flush_sync(counts, "20261101", 8 * 86400)
+    except Exception as exc:  # noqa: BLE001 - the row reports it as an assertion
+        raised = type(exc).__name__
+    assert raised is None, (shape, raised)
+    assert log.count(("pipeline",)) == 1, log
+    assert [e for e in log if e[0] == "flush"] == [("flush", shape)], log
+    key = "kbh:20261101:" + HOST
+    assert ("hincrby", key, "curl:ok", 3) in log and ("hincrby", key, "woo:fail", 1) in log, log
+    assert [e for e in log if e[0] == "expire"] == [("expire", key, 8 * 86400)], log

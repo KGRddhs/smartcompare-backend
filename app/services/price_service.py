@@ -48,7 +48,7 @@ from app.services import jsonld_widen
 # fetch, by MODULE ATTRIBUTE (the flag is read per call at each hook).
 from app.services import live_robots
 
-ENABLE_PAGE_SCRAPE =os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
+ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
 logger = logging.getLogger(__name__)
 
