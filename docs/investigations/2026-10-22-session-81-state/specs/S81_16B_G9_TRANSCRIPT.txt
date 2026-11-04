@@ -1,0 +1,153 @@
+
+===== 0 roles + pgcrypto
+CREATE ROLE
+CREATE ROLE
+CREATE ROLE
+CREATE EXTENSION
+rc=0
+
+===== 1 apply 045
+rc=0
+
+===== 2 PRECHECK 052
+-[ RECORD 1 ]--------+--
+pg15_or_later        | t
+kb_045_applied       | t
+kb_brands_absent     | t
+service_role_exists  | t
+anon_exists          | t
+authenticated_exists | t
+
+rc=0
+
+===== 3 apply 052 (ONE_PASTE)
+BEGIN
+DO
+CREATE TABLE
+CREATE INDEX
+CREATE TRIGGER
+ALTER TABLE
+REVOKE
+GRANT
+COMMENT
+COMMIT
+rc=0
+
+===== 4 POSTCHECK 052
+-[ RECORD 1 ]----------+--
+table_present          | t
+relrowsecurity         | t
+policy_count           | 0
+column_count           | 7
+check_count            | 6
+fk_count               | 0
+trigger_present        | t
+host_index_present     | t
+host_index_unique      | f
+sr_select              | t
+sr_insert              | t
+sr_update              | t
+sr_delete              | t
+sr_truncate            | f
+anon_select            | f
+anon_insert            | f
+anon_update            | f
+anon_delete            | f
+anon_truncate          | f
+authenticated_select   | f
+authenticated_insert   | f
+authenticated_update   | f
+authenticated_delete   | f
+authenticated_truncate | f
+row_count              | 0
+
+rc=0
+
+===== 5 re-apply 052 (idempotent)
+BEGIN
+DO
+psql:C:/Users/SynAckITPC/Documents/AI/sc-s81-s16b/migrations/052_kb_brands.sql:79: NOTICE:  relation "kb_brands" already exists, skipping
+CREATE TABLE
+psql:C:/Users/SynAckITPC/Documents/AI/sc-s81-s16b/migrations/052_kb_brands.sql:82: NOTICE:  relation "idx_kb_brands_official_host" already exists, skipping
+CREATE INDEX
+CREATE TRIGGER
+ALTER TABLE
+REVOKE
+GRANT
+COMMENT
+COMMIT
+rc=0
+
+===== 6 negative inserts (each must fail 23514 check_violation or 23502)
+('Q01','Maison',NULL,NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('Q0','Maison',NULL,NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('q42','Maison',NULL,NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('Q42','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -> ERROR:  23514: new row for relation 
+('Q42',' Maison',NULL,NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison ',NULL,NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('Q42','',NULL,NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison',' x',NULL,'wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -> ERROR:  23514: new row for relation 
+('Q42','Maison',NULL,'www.fragrantica.com','wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison',NULL,'192.0.2.10','wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison',NULL,'Brand.Example.com','wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison',NULL,'brand','wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison',NULL,'127.0.0.0x1','wikidata') -> ERROR:  23514: new row for relation 
+('Q42','Maison',NULL,NULL,'manual') -> ERROR:  23514: new row for relation 
+('Q42',NULL,NULL,NULL,'wikidata') -> ERROR:  23502: null value in column 
+ rows_after_negatives 
+----------------------
+                    0
+(1 row)
+
+
+===== 7 positive insert + trigger moves updated_at
+INSERT 0 2
+rc=0
+UPDATE 1
+ qid |  source  | updated_at_moved_by_trigger | ordered 
+-----+----------+-----------------------------+---------
+ Q42 | wikidata | t                           | t
+ Q43 | operator | f                           | f
+(2 rows)
+
+
+===== 8 roles: anon / authenticated refused, service_role allowed
+ERROR:  permission denied for table kb_brands
+ERROR:  permission denied for table kb_brands
+ERROR:  permission denied for table kb_brands
+        0
+(1 row)
+
+
+===== 9 INSERT ... ON CONFLICT (qid) DO NOTHING RETURNING * twice
+
+INSERT 0 1
+
+INSERT 0 0
+
+===== 10 rollback 045 attempted FIRST (expect 2BP01, nothing changed)
+psql:C:/Users/SynAckITPC/Documents/AI/sc-s81-s16b/migrations/rollback/045_kb_core.sql:24: ERROR:  2BP01: cannot drop function kb_set_updated_at() because other objects depend on it
+psql:C:/Users/SynAckITPC/Documents/AI/sc-s81-s16b/migrations/rollback/045_kb_core.sql:25: ERROR:  25P02: current transaction is aborted, commands ignored until end of transaction block
+ kb_brands_still | kb_products_still | fn_still | rows 
+-----------------+-------------------+----------+------
+ t               | t                 | t        |    3
+(1 row)
+
+
+===== 11 rollback 052 then rollback 045
+BEGIN
+DROP TABLE
+COMMIT
+rc=0
+ kb_brands_gone | fn_kept 
+----------------+---------
+ t              | t
+(1 row)
+
+rc=0
+ kb_tables_left 
+----------------
+              0
+(1 row)
+

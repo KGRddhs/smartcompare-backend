@@ -1,0 +1,540 @@
+[
+ {
+  "id": "M01",
+  "desc": "brands_max() ignored (cap = 300)",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s07_cap_and_order",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s09_limit_hit_count"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M01 start=2026-11-04 22:13:39 end=2026-11-04 22:13:48 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M01.log",
+  "summary": "2 failed, 142 passed, 11 warnings in 7.36s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M02",
+  "desc": "KbWriter.brands update loop removed",
+  "file": "scripts/kb_seed_common.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[none-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[two-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[update]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M02 start=2026-11-04 22:13:49 end=2026-11-04 22:13:57 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M02.log",
+  "summary": "3 failed, 141 passed, 11 warnings in 7.18s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M03",
+  "desc": ".eq('source', 'wikidata') dropped from the update",
+  "file": "scripts/kb_seed_common.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[none-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[two-returned]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M03 start=2026-11-04 22:13:58 end=2026-11-04 22:14:07 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M03.log",
+  "summary": "2 failed, 142 passed, 11 warnings in 7.81s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M04",
+  "desc": "the update sets source too",
+  "file": "app/services/kb_service.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k01_census_constants",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[none-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[two-returned]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M04 start=2026-11-04 22:14:07 end=2026-11-04 22:14:16 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M04.log",
+  "summary": "3 failed, 141 passed, 11 warnings in 7.15s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M05",
+  "desc": "the deny belt dropped from the builder",
+  "file": "app/services/kb_service.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k04_belt_holds_without_the_rule"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M05 start=2026-11-04 22:14:17 end=2026-11-04 22:14:25 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M05.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 7.03s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M06",
+  "desc": "kb_source_allowed dropped from the builder",
+  "file": "app/services/kb_service.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k03_builder_refuses[host-rule-only]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k05_rule_read_at_call_time"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M06 start=2026-11-04 22:14:26 end=2026-11-04 22:14:34 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M06.log",
+  "summary": "2 failed, 142 passed, 11 warnings in 7.44s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M07",
+  "desc": "with_label_en not bumped",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M07 start=2026-11-04 22:14:35 end=2026-11-04 22:14:43 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M07.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 7.14s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M08",
+  "desc": "the write runs in DRY too",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16_kb_seed.py::test_s16_r23_brands_dry_and_apply[true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply-dry-run]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M08 start=2026-11-04 22:14:44 end=2026-11-04 22:14:53 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M08.log",
+  "summary": "4 failed, 140 passed, 11 warnings in 7.58s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M09",
+  "desc": "FLAG = ENABLE_KB_SEED",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16_kb_seed.py::test_s16_r23_brands_dry_and_apply[true]",
+   "tests/test_s81_s16_kb_seed.py::test_s16_r24_brands_robots_failclosed[403]",
+   "tests/test_s81_s16_kb_seed.py::test_s16_r24_brands_robots_failclosed[disallow]",
+   "tests/test_s81_s16_kb_seed.py::test_s16_r24_brands_robots_failclosed[timeout]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[0-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[1-dry]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[None-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[apply-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[dry-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[false-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[garbage-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[no-off]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[on-dry]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[true-dry]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s01_flag_constant_and_table[yes-dry]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[0-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[0-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[None-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[None-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[dry-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[dry-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[false-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[false-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[garbage-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[garbage-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[no-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[no-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M09 start=2026-11-04 22:14:54 end=2026-11-04 22:15:03 elapsed=10s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M09.log",
+  "summary": "37 failed, 107 passed, 11 warnings in 8.48s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M10",
+  "desc": "a kb_merchants write in place of writer.brands",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16_kb_seed.py::test_s16_r23_brands_dry_and_apply[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[none-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[two-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s07_cap_and_order",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[update]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[upsert]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M10 start=2026-11-04 22:15:04 end=2026-11-04 22:15:13 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M10.log",
+  "summary": "7 failed, 137 passed, 11 warnings in 7.68s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M11",
+  "desc": "the human exclusion removed",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M11 start=2026-11-04 22:15:13 end=2026-11-04 22:15:22 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M11.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 7.41s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M12",
+  "desc": "the en OPTIONAL made mandatory",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M12 start=2026-11-04 22:15:23 end=2026-11-04 22:15:33 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M12.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 8.09s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M13",
+  "desc": "the host choice takes the LARGEST valid host",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply-dry-run]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M13 start=2026-11-04 22:15:33 end=2026-11-04 22:15:42 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M13.log",
+  "summary": "4 failed, 140 passed, 11 warnings in 7.33s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M14",
+  "desc": "KB_QID_REGEX = ^Q[0-9]{1,12}$",
+  "file": "app/services/kb_service.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b04_regex_texts_equal_the_leaf",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k01_census_constants",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k03_builder_refuses[qid-Q01]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k03_builder_refuses[qid-Q0]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M14 start=2026-11-04 22:15:42 end=2026-11-04 22:15:51 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M14.log",
+  "summary": "5 failed, 139 passed, 11 warnings in 6.80s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M15",
+  "desc": "rows sorted by the qid STRING",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply-dry-run]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s07_cap_and_order"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M15 start=2026-11-04 22:15:51 end=2026-11-04 22:16:00 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M15.log",
+  "summary": "4 failed, 140 passed, 11 warnings in 7.85s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M16",
+  "desc": "the OFF line after resolve_client",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[-seed-unset]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[0-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[0-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[0-seed-unset]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[None-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[None-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[None-seed-unset]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[dry-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[dry-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[dry-seed-unset]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[false-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[false-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[false-seed-unset]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[garbage-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[garbage-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[garbage-seed-unset]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[no-seed-apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[no-seed-true]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s02_off_is_inert[no-seed-unset]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M16 start=2026-11-04 22:16:01 end=2026-11-04 22:16:10 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M16.log",
+  "summary": "24 failed, 120 passed, 11 warnings in 7.53s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M17",
+  "desc": "a label in the totals line",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s11_no_label_or_host_in_logs"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M17 start=2026-11-04 22:16:10 end=2026-11-04 22:16:18 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M17.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 6.74s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M18",
+  "desc": "rows built with source operator",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[none-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[two-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[update]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M18 start=2026-11-04 22:16:19 end=2026-11-04 22:16:28 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M18.log",
+  "summary": "4 failed, 140 passed, 11 warnings in 7.79s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M19",
+  "desc": "service_role dropped from the REVOKE",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b05_service_role_only"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M19 start=2026-11-04 22:16:29 end=2026-11-04 22:16:38 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M19.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 7.64s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M20",
+  "desc": "GRANT SELECT TO anon added",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b05_service_role_only"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M20 start=2026-11-04 22:16:38 end=2026-11-04 22:16:47 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M20.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 7.84s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M21",
+  "desc": "the host index UNIQUE",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b07_host_index_not_unique"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M21 start=2026-11-04 22:16:48 end=2026-11-04 22:16:55 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M21.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 6.29s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M22",
+  "desc": "the trigger statement removed",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b06_trigger_and_045_guard"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M22 start=2026-11-04 22:16:56 end=2026-11-04 22:17:04 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M22.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 6.28s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M23",
+  "desc": "the !~ deny clause removed",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b03_columns_match_the_leaf",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b04_regex_texts_equal_the_leaf"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M23 start=2026-11-04 22:17:04 end=2026-11-04 22:17:12 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M23.log",
+  "summary": "2 failed, 142 passed, 11 warnings in 6.40s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M24",
+  "desc": "the 045 DO guard removed",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b06_trigger_and_045_guard"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M24 start=2026-11-04 22:17:12 end=2026-11-04 22:17:22 elapsed=10s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M24.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 8.20s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M25",
+  "desc": "DROP FUNCTION kb_set_updated_at added to the rollback",
+  "file": "migrations/rollback/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b09_rollback_statements"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M25 start=2026-11-04 22:17:23 end=2026-11-04 22:17:32 elapsed=9s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M25.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 7.46s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M26",
+  "desc": "label_ar upper bound 128 -> 256",
+  "file": "migrations/052_kb_brands.sql",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_b03_columns_match_the_leaf"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M26 start=2026-11-04 22:17:32 end=2026-11-04 22:17:40 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M26.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 6.30s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M27",
+  "desc": "label_ar_dropped drops the brand",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M27 start=2026-11-04 22:17:40 end=2026-11-04 22:17:50 elapsed=10s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M27.log",
+  "summary": "1 failed, 143 passed, 11 warnings in 6.43s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M28",
+  "desc": "the write-failed WARNING at ERROR",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[update]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[upsert]"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M28 start=2026-11-04 22:17:51 end=2026-11-04 22:18:01 elapsed=11s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M28.log",
+  "summary": "2 failed, 142 passed, 11 warnings in 6.43s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M29",
+  "desc": "kb_brands FIRST in KB_TABLES",
+  "file": "app/services/kb_service.py",
+  "failed": [
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_coverage_daily]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_feedback]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_gaps]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_images]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_merchants]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_offers]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_products]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_reviews]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_specs]",
+   "tests/test_s81_kb_schema.py::test_s14_r27_builder_keys[kb_variants]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_k01_census_constants",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_pin3_the_045_census_unchanged"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M29 start=2026-11-04 22:18:02 end=2026-11-04 22:18:13 elapsed=12s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M29.log",
+  "summary": "12 failed, 132 passed, 11 warnings in 10.03s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M30",
+  "desc": "derive_hosts caps at brands_max()",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_pin2_host_derivation_literal",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s07_cap_and_order"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M30 start=2026-11-04 22:18:14 end=2026-11-04 22:18:26 elapsed=12s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M30.log",
+  "summary": "2 failed, 142 passed, 11 warnings in 9.73s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M31",
+  "desc": "official_host only from the NEW host list",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply-dry-run]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M31 start=2026-11-04 22:18:27 end=2026-11-04 22:18:35 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M31.log",
+  "summary": "3 failed, 141 passed, 11 warnings in 6.51s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M32",
+  "desc": "qid_of returns the full IRI",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply-dry-run]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[none-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s05_rerun_updates_wikidata_rows_only[two-returned]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s07_cap_and_order",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s09_limit_hit_count",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[update]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s10_write_failure_is_quiet[upsert]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s11_no_label_or_host_in_logs"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M32 start=2026-11-04 22:18:35 end=2026-11-04 22:18:43 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M32.log",
+  "summary": "11 failed, 133 passed, 11 warnings in 6.40s",
+  "types": [
+   "AssertionError"
+  ]
+ },
+ {
+  "id": "M33",
+  "desc": "the mul fallback dropped",
+  "file": "scripts/seed_kb_brands_wikidata.py",
+  "failed": [
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s03_dry_counts_no_write",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply-dry-run]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s04_apply_writes_kb_brands_only[apply]",
+   "tests/test_s81_s16b_kb_brands.py::test_s16b_s06_dedupe_and_host_choice"
+  ],
+  "pyt": "[pyt] tag=s16b-green-mut-M33 start=2026-11-04 22:18:43 end=2026-11-04 22:18:51 elapsed=8s bound=600s status=FAIL rc=1 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\0e351457-2b4f-4512-a571-3ecd2f577f5c\\scratchpad\\S81-16b_green\\mutants\\M33.log",
+  "summary": "4 failed, 140 passed, 11 warnings in 6.39s",
+  "types": [
+   "AssertionError"
+  ]
+ }
+]
