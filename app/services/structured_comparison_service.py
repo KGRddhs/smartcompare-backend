@@ -1564,6 +1564,9 @@ from app.services import jsonld_widen
 # tail; both by MODULE ATTRIBUTE, every flag read per call.
 from app.services import live_robots
 from app.services import kb_ingest
+# S81-18 (ENABLE_KB_FIRST_SERVE / ENABLE_VERDICT_CACHE_LOG): the KB-first serve and
+# the verdict-cache key log, by MODULE ATTRIBUTE (every flag read per call).
+from app.services import kb_serve
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
 # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
 # `site:` discovery query runs FIRST, and every candidate is gated registry-
@@ -3945,6 +3948,11 @@ class StructuredComparisonService:
                 (dict(m) for m in marks),
                 key=lambda m: (m.get("product", 0), m.get("tier", "")),
             )
+        # S81-18 H7: the per-slot KB hit marks, only when the flag started the
+        # card task for this compare (additive; absent with the flag OFF).
+        kb_marks = getattr(self, "_kb_hit_marks", None)
+        if kb_marks:
+            metadata["kb_hit"] = list(kb_marks)
 
     def _tier_fill_residual_skip(
         self, tier: str, wall_seconds: float, *, brand: str, name: str,
@@ -4065,6 +4073,7 @@ class StructuredComparisonService:
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
         fragrance_gate: Optional[Any] = None,
+        kb_price_asof: bool = False,
     ) -> Dict[str, Any]:
         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
@@ -4132,6 +4141,8 @@ class StructuredComparisonService:
                     # S81-10: forwarded only when a route passed it (the output_lang
                     # pattern), so every other caller makes the identical impl call.
                     **({"fragrance_gate": fragrance_gate} if fragrance_gate is not None else {}),
+                    # S81-18 (R-G4-4): forwarded only when a route passed True.
+                    **({"kb_price_asof": True} if kb_price_asof else {}),
                 ),
                 timeout=STREAM_HARD_CAP_SECONDS,
             )
@@ -4224,6 +4235,7 @@ class StructuredComparisonService:
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
         fragrance_gate: Optional[Any] = None,
+        kb_price_asof: bool = False,
     ) -> Dict[str, Any]:
         """Main entry point for text-based comparisons (post-L2.7 inner impl).
 
@@ -4239,6 +4251,8 @@ class StructuredComparisonService:
         # COST-METER (#66): a FRESH per-request ledger; every task this compare
         # spawns copies the context and appends into this same list.
         self._openai_ledger = start_openai_ledger()
+        if kb_price_asof:
+            self._kb_price_asof = True  # S81-18 (R-G4-4): the client renders as_of
         # S81-06 (F1-9): the llm ledger + escalation scope in the PARENT task,
         # before any tracked call; every role flag OFF binds nothing.
         _llm_router.bind_request_scope()
@@ -4466,6 +4480,12 @@ class StructuredComparisonService:
                     get_user_demographics(user_id),
                 ))
 
+            # S81-18 H0 (ENABLE_KB_FIRST_SERVE, read once per compare): ONE bounded,
+            # total task reads both kb_product_card rows; OFF writes nothing.
+            if kb_serve.kb_first_serve_enabled():
+                self._kb_cards_task = asyncio.ensure_future(kb_serve.fetch_cards(products, output_lang))
+                self._kb_hit_marks = ["miss", "miss"]
+                self._kb_views = [None, None]
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache, partial_slot=0),
@@ -4592,6 +4612,15 @@ class StructuredComparisonService:
             # priors block in extraction_service can render when conditions are met).
             # M18 PO-prompts-02 — feed the actual data-quality signal into the
             # verdict prompt (flag OFF -> 'normal', the legacy hardcode).
+            # S81-18 H8 (ENABLE_VERDICT_CACHE_LOG, read first inside): the would-hit
+            # key line for an eligible compare; OFF -> None, nothing else read.
+            _vkey = kb_serve.log_verdict_key(
+                user_preferences=user_preferences, demographics_profile=demographics_profile,
+                behavior_profile=behavior_profile, product_data=product_data,
+                scores_summary=scores_summary, winner_index=scoring_result.get("winner_index", 0),
+                lang=output_lang, category=category_used, comparison_quality=None,
+                views=getattr(self, "_kb_views", None),
+            )
             _verdict_quality = verdict_comparison_quality(product_data)
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             comparison, usage = await generate_comparison(
@@ -4606,6 +4635,7 @@ class StructuredComparisonService:
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
+            kb_serve.seed_verdict_key(_vkey)  # S81-18 H8: seeded only after a successful verdict
             # #268 R2.5 — the verdict ran on the standard model (cap downgrade
             # or 429 fallback), as marked on generate_comparison's success
             # usage dict (R2.4).
@@ -4871,6 +4901,7 @@ class StructuredComparisonService:
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
         fragrance_gate: Optional[Any] = None,
+        kb_price_asof: bool = False,
     ):
         """Async generator version of compare_from_text that yields partial results."""
         start_time = datetime.now()
@@ -4881,6 +4912,8 @@ class StructuredComparisonService:
         self._shopping_items_cache = {}
         # COST-METER (#66): the streaming entry binds its own fresh ledger.
         self._openai_ledger = start_openai_ledger()
+        if kb_price_asof:
+            self._kb_price_asof = True  # S81-18 (R-G4-4): the client renders as_of
         # S81-06 (F1-9): the stream twin of the impl's scope bind.
         _llm_router.bind_request_scope()
 
@@ -5164,6 +5197,12 @@ class StructuredComparisonService:
                     get_user_demographics(user_id),
                 ))
 
+            # S81-18 H0 (ENABLE_KB_FIRST_SERVE, read once per compare): ONE bounded,
+            # total task reads both kb_product_card rows; OFF writes nothing.
+            if kb_serve.kb_first_serve_enabled():
+                self._kb_cards_task = asyncio.ensure_future(kb_serve.fetch_cards(products, output_lang))
+                self._kb_hit_marks = ["miss", "miss"]
+                self._kb_views = [None, None]
             # Bundle E § Decision 8 — hard 25s cap on the data-fetch step.
             # Wraps both products' fetches together so a single hung scraper
             # can't extend the stream beyond the budget. On timeout we yield
@@ -5450,6 +5489,15 @@ class StructuredComparisonService:
             yield ("status", {"message": "Generating verdict...", "progress": 80})
             # M18 PO-prompts-02 — feed the actual data-quality signal into the
             # verdict prompt (flag OFF -> 'normal', the legacy hardcode).
+            # S81-18 H8 (ENABLE_VERDICT_CACHE_LOG, read first inside): the would-hit
+            # key line for an eligible compare; OFF -> None, nothing else read.
+            _vkey = kb_serve.log_verdict_key(
+                user_preferences=user_preferences, demographics_profile=demographics_profile,
+                behavior_profile=behavior_profile, product_data=product_data,
+                scores_summary=scores_summary, winner_index=scoring_result.get("winner_index", 0),
+                lang=output_lang, category=category_used, comparison_quality=None,
+                views=getattr(self, "_kb_views", None),
+            )
             _verdict_quality = verdict_comparison_quality(product_data)
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             # M13-04 — the verdict LLM call is the dominant post-Phase-1 tail cost
@@ -5477,6 +5525,7 @@ class StructuredComparisonService:
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
+            kb_serve.seed_verdict_key(_vkey)  # S81-18 H8: seeded only after a successful verdict
             # #268 R2.5 — same carrier read as the sync path.
             self._verdict_model_downgraded = (
                 isinstance(usage, dict) and usage.get("model_downgraded") is True
@@ -5998,8 +6047,34 @@ class StructuredComparisonService:
         # S78-F8 (R2) -- ONE hoisted flag read per product for the race record;
         # OFF (or partial_slot None): no callback, no post-loop write.
         _record_races = partial_slot is not None and _flag_on("ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT")
+        # S81-18 H1: the per-request card task (absent with the flag OFF, and for
+        # every non-orchestrator caller: partial_slot None never serves from the KB).
+        _kb = None
+        _kb_task = getattr(self, "_kb_cards_task", None)
+        if _kb_task is not None and partial_slot in (0, 1):
+            try:
+                _kb_cards = await _kb_task
+                _kb = kb_serve.classify(
+                    _kb_cards[partial_slot], category=category, region=region, now=kb_serve._now(),
+                    accepts_asof=bool(getattr(self, "_kb_price_asof", False)),
+                )
+            except Exception as _kb_exc:  # noqa: BLE001 - a miss for this slot
+                logger.warning("[KB_SERVE] classify failed: %s", type(_kb_exc).__name__)
+                _kb = None
+            if _kb is not None:
+                self._kb_hit_marks[partial_slot] = _kb["hit"]
+                self._kb_views[partial_slot] = _kb
+        _kb_price = _kb["price"] if _kb else None
+        _kb_specs = _kb["specs"] if (_kb and _kb["specs_complete"]) else None
+        _kb_full = bool(_kb and _kb["hit"] == "full")
+        if _kb_price is not None:
+            # S81-18 H2: every eligible KB offer is a fairness candidate.
+            self._seed_shortcircuit_candidates(full_name, kind="price_dicts", price_dicts=_kb["candidates"])
         _price_task = asyncio.ensure_future(asyncio.wait_for(
-            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
+            _timed_task("price", (
+                kb_serve.served(_kb_price) if _kb_price is not None
+                else self._get_price(brand, name, variant, region, search_query, nocache, category)
+            ), stage_timings),
             timeout=_PHASE1_TIMEOUTS["price"],
         ))
 
@@ -6059,7 +6134,10 @@ class StructuredComparisonService:
                 reviews_key = get_reviews_cache_key(brand, name, variant)
                 specs_hit = (await _cache_get_async(specs_key)) if not nocache else None
                 reviews_hit = (await _cache_get_async(reviews_key)) if not nocache else None
-                if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
+                # S81-18 H3: a KB-served leg needs no unified search (OFF: _kb_specs
+                # None and _kb_full False, the base condition).
+                if ((include_specs and not specs_hit and _kb_specs is None)
+                        or (include_reviews and not reviews_hit and not _kb_full)):
                     t0 = time.perf_counter() if stage_timings is not None else None
                     _unified_query = f"{search_query} specifications reviews price"
                     if _flag_on("ENABLE_UNIFIED_SEARCH_BOUND"):
@@ -6125,7 +6203,10 @@ class StructuredComparisonService:
                 # refactor: flag-OFF (or partial_slot None) no callback is attached
                 # and the 4105-loop writes result['specs'] with the identical value.
                 _specs_task = asyncio.ensure_future(asyncio.wait_for(
-                    _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
+                    _timed_task("specs", (
+                        kb_serve.served(_kb_specs) if _kb_specs is not None
+                        else self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context)
+                    ), stage_timings),
                     timeout=_PHASE1_TIMEOUTS["specs"],
                 ))
                 if _stash_early:
@@ -6159,10 +6240,13 @@ class StructuredComparisonService:
                 # populated DURING _get_price (Phase 1) so we can't pre-collect.
                 # _get_reviews accepts None and skips retailer_ratings enrichment.
                 phase1_tasks.append(asyncio.wait_for(
-                    _timed_task("reviews", self._get_reviews(
-                        brand, name, variant, search_query, nocache,
-                        category=category, retailer_ratings=None,
-                        search_results=unified_search,
+                    _timed_task("reviews", (
+                        kb_serve.served(_kb["reviews"]) if _kb_full  # S81-18 H4
+                        else self._get_reviews(
+                            brand, name, variant, search_query, nocache,
+                            category=category, retailer_ratings=None,
+                            search_results=unified_search,
+                        )
                     ), stage_timings),
                     timeout=_PHASE1_TIMEOUTS["reviews"],
                 ))
@@ -6177,7 +6261,7 @@ class StructuredComparisonService:
             # path costs zero extra wall (we discard the eager Tier 1/3 result),
             # piggyback miss path saves zero wall too (Tier 1/3 already running).
             phase1_tasks.append(asyncio.wait_for(
-                _timed_task("image_url", get_product_image_url(
+                _timed_task("image_url", kb_serve.served(_kb["image_url"]) if (_kb and _kb["image_url"]) else get_product_image_url(  # S81-18 H5
                     full_name, region=region,
                     page_scrape_image=None,  # piggyback evaluated post-Phase1 below
                     organic_results=(unified_search.get("organic", []) if unified_search else None),
@@ -6440,7 +6524,7 @@ class StructuredComparisonService:
                 return {"rating": None, "review_count": None,
                         "rating_verified": False, "rating_source": None}
 
-        if not _phase2_skip:
+        if not _phase2_skip and not _kb_full:  # S81-18 H6: a full hit carries the card rating
             phase2_tasks.append(_timed_task("rating", _rating_with_cap(), stage_timings))
             phase2_keys.append("_rating_data")
 
@@ -6465,7 +6549,7 @@ class StructuredComparisonService:
             if specs_so_far.get(f) in (None, "", "N/A")
         ][:6]
         fallback_added = False
-        if missing_critical and not _phase2_skip:
+        if missing_critical and not _phase2_skip and not _kb_full:  # S81-18 H6
             phase2_tasks.append(_timed_task("smart_fallback", self._smart_fallback_extract(
                 brand, name, variant, category, missing_critical,
             ), stage_timings))
@@ -6517,7 +6601,7 @@ class StructuredComparisonService:
         result_specs_now = result.get("specs") or {}
         t_tier2 = time.perf_counter() if stage_timings is not None else None
         # S78-TG -- the residual guard (flag OFF: the base call, unchanged).
-        if self._tier_fill_residual_skip(
+        if _kb_full or self._tier_fill_residual_skip(  # S81-18 H6: skipped like the S78-TG skip
             "tier2", _TIER2_WALL_SECONDS, brand=brand, name=name, category=category,
             specs_so_far=result_specs_now, partial_slot=partial_slot,
         ):
@@ -6548,7 +6632,7 @@ class StructuredComparisonService:
         # path adds zero wall.
         t_tier3 = time.perf_counter() if stage_timings is not None else None
         # S78-TG -- the residual guard, re-read after Tier 2 (independent decision).
-        if self._tier_fill_residual_skip(
+        if _kb_full or self._tier_fill_residual_skip(  # S81-18 H6: skipped like the S78-TG skip
             "tier3", _TIER3_WALL_SECONDS, brand=brand, name=name, category=category,
             specs_so_far=result_specs_now, partial_slot=partial_slot,
         ):
@@ -6620,6 +6704,9 @@ class StructuredComparisonService:
         result["review_count"] = rating_data.get("review_count")
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
+        if _kb_full:  # S81-18 H6: the card's rating, after the rating_data block (GC-4 (a))
+            result["rating"] = _kb["rating"]
+            result["review_count"] = _kb["review_count"]
 
         # D08 (ENABLE_JSONLD_RATING, read per call, checked FIRST): rating
         # channel 1 = the Product node's own JSON-LD aggregateRating (stamped on

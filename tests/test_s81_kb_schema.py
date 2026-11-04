@@ -332,9 +332,12 @@ P01_ALLOWED = {
     ("app/services/merchant_registry.py", "from app.services import kb_service as _kb"),
     ("scripts/kb_seed_common.py", "from app.services import kb_service as _kb"),
     ("app/services/kb_ingest.py", "from app.services import kb_service as _kb"),
+    ("app/services/kb_serve.py", "from app.services import kb_service as _kb"),
+    ("app/services/kb_operator.py", "from app.services import kb_service as _kb"),
 }
 P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf",
-                 "app/services/kb_ingest.py": "kb_leaf"}
+                 "app/services/kb_ingest.py": "kb_leaf", "app/services/kb_serve.py": "kb_leaf",
+                 "app/services/kb_operator.py": "kb_leaf"}
 P02_ALLOWED = {
     ("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"'),
     ("scripts/kb_seed_common.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
@@ -348,6 +351,11 @@ P02_ALLOWED = {
     ("app/services/kb_ingest.py", 'KB_IMAGES_TABLE = "kb_images"'),
     ("app/services/kb_ingest.py", 'KB_REVIEWS_TABLE = "kb_reviews"'),
     ("app/services/kb_ingest.py", 'KB_GAPS_TABLE = "kb_gaps"'),
+    ("app/services/kb_serve.py", 'KB_PRODUCT_CARD_RPC = "kb_product_card"'),
+    ("app/services/kb_operator.py", 'KB_SPECS_TABLE = "kb_specs"'),
+    ("app/services/kb_operator.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
+    ("scripts/cron_kb_coverage.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
+    ("scripts/cron_kb_coverage.py", 'KB_OFFERS_LATEST_VIEW = "kb_offers_latest"'),
 }
 
 

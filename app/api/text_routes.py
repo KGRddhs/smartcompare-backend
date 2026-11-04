@@ -52,6 +52,9 @@ from app.services.sentry_service import capture_result_status
 # S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the pre-consume gate of the
 # three compare routes, reached through the module attribute (a stdlib-only module).
 from app.services import category_gate as _category_gate
+# S81-18 KB-FIRST-SERVE (ENABLE_KB_FIRST_SERVE): the X-Client-Capabilities reader of the
+# four compare call sites (module attribute; flag OFF = one env read, no keyword passed).
+from app.services import kb_serve as _kb_serve
 
 logger = logging.getLogger(__name__)
 
@@ -670,6 +673,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         explicit_pair=explicit_pair,
         **({"output_lang": _ol} if (_ol := normalize_output_lang(body.lang)) else {}),
         **({"fragrance_gate": _gate} if _gate is not None else {}),
+        **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -892,6 +896,7 @@ async def text_compare_get(
         explicit_pair=explicit_pair,
         **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
         **({"fragrance_gate": _gate} if _gate is not None else {}),
+        **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -1155,6 +1160,7 @@ async def text_compare_stream(
             explicit_pair=explicit_pair,
             **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
             **({"fragrance_gate": _gate} if _gate is not None else {}),
+            **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
         )
         try:
             async for event_type, data in _stream:
@@ -1472,7 +1478,8 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
             region=body.region,
             include_specs=True,
             include_reviews=True,
-            include_pros_cons=True
+            include_pros_cons=True,
+            **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
         )
     except Exception:
         if _truth:
