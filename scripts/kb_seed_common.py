@@ -16,7 +16,7 @@ nothing of the app (no client, no SDK, no settings, no dotenv). What lives here:
   (insert-ignore; the offer re-observation update of KB_OFFER_UPSERT_SET; the
   kb_gaps last_seen-only re-discovery update).
 
-The five KB table names below are the only kb_* relation literals of G2 and
+The six KB table names below are the only kb_* relation literals of G2 and
 ``kb_leaf`` is the only importer of the S81-14 leaf (tests/test_s81_kb_schema.py
 E1 / E2 key both by exact line).
 """
@@ -52,6 +52,7 @@ KB_VARIANTS_TABLE = "kb_variants"
 KB_OFFERS_TABLE = "kb_offers"
 KB_SPECS_TABLE = "kb_specs"
 KB_GAPS_TABLE = "kb_gaps"
+KB_BRANDS_TABLE = "kb_brands"
 LLM_SPEND_LEDGER_TABLE = "llm_spend_ledger"
 
 #: Every reason ``url_gate`` can return (in the order the gate checks them).
@@ -434,6 +435,27 @@ class KbWriter:
              .eq("product_key", row["product_key"]).eq("field", row["field"]).execute())
             updates += 1
         self.counts["gap_updates"] += updates
+        return updates
+
+    def brands(self, rows: Sequence[Any]) -> int:
+        """S81-16b: insert-ignore on qid; each built row the insert did not return
+        and whose source is 'wikidata' gets ONE update of KB_BRAND_UPSERT_SET,
+        filtered on qid AND source = 'wikidata' (an 'operator' row never moves).
+        No delete, no select. ``brand_updates`` counts the update calls made
+        (an attempt is counted once its call returns; not the rows changed).
+        Returns that count."""
+        kb = kb_leaf()
+        built = self._built(KB_BRANDS_TABLE, rows)
+        inserted = self._send(KB_BRANDS_TABLE, built, "qid")
+        seen = {r.get("qid") for r in inserted}
+        updates = 0
+        for row in built:
+            if row["qid"] in seen or row["source"] != "wikidata":
+                continue
+            (self.client.table(KB_BRANDS_TABLE).update({k: row[k] for k in kb.KB_BRAND_UPSERT_SET})
+             .eq("qid", row["qid"]).eq("source", "wikidata").execute())
+            updates += 1
+            self.counts["brand_updates"] += 1
         return updates
 
     def ledger(self, row: Dict[str, Any]) -> None:

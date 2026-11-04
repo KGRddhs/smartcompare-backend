@@ -51,7 +51,8 @@ def _attr(mod, name):
 def _env(monkeypatch):
     import app.main  # noqa: F401  (FIRST: the dotenv-override hazard)
 
-    for name in ("ENABLE_KB_SEED", "ENABLE_LLM_SPEND_BREAKER", "ANTHROPIC_API_KEY") + KNOBS:
+    for name in ("ENABLE_KB_SEED", "ENABLE_KB_BRANDS", "KB_BRANDS_MAX", "ENABLE_LLM_SPEND_BREAKER",
+                 "ANTHROPIC_API_KEY") + KNOBS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SUPABASE_URL", "https://" + "kbseed-test" + ".invalid")
     monkeypatch.setenv("SUPABASE_SERVICE_KEY", "svc" + "-" + "x" * 10)
@@ -984,7 +985,8 @@ def _brand_bindings(hosts_extra=()):
 
     sites = ["https://brand-b.example.com/", "https://store-a.example.com/",
              "https://www.%s/" % dh.DENY_HOSTS[0], "http://192.0.2.10/"] + list(hosts_extra)
-    return json.dumps({"results": {"bindings": [{"brand": {"value": "Q%d" % i}, "site": {"value": s}}
+    return json.dumps({"results": {"bindings": [{"brand": {"value": "Q%d" % (i + 1)}, "site": {"value": s},
+                                                 "label_en": {"value": "Brand %d" % i}}
                                                 for i, s in enumerate(sites)]}})
 
 
@@ -997,7 +999,8 @@ def test_s16_r23_brands_dry_and_apply(monkeypatch, tmp_path, mode):
     over = ["https://brand%03d.example.org/" % i for i in range(301)]
     rig = Rig(monkeypatch, common, merchants=[_merchant("store-a.example.com")])
     rig.fetch_responses = [(200, {}, "User-agent: *\nAllow: /\n"), (200, {}, _brand_bindings(over))]
-    _dry(monkeypatch, mode)
+    monkeypatch.setenv("ENABLE_KB_BRANDS", mode)
+    monkeypatch.setenv("ENABLE_KB_SEED", "apply")
     rep = tmp_path / "brands.json"
     assert _attr(brands, "main")(["--report", str(rep)], client=rig.client) == 0
     assert len(rig.fetches) == 2
@@ -1005,7 +1008,11 @@ def test_s16_r23_brands_dry_and_apply(monkeypatch, tmp_path, mode):
     assert rig.fetches[1]["url"].startswith("https://query.wikidata.org/sparql?")
     assert rig.validates == [f["url"] for f in rig.fetches]
     assert all(f["headers"] == rr._REQUEST_HEADERS and f["allow_redirects"] is False for f in rig.fetches)
-    assert rig.client.writes() == []
+    writes = rig.client.writes()
+    if mode == "true":
+        assert writes == []
+    else:
+        assert writes and {w[0] for w in writes} == {"kb_brands"} and {w[1] for w in writes} <= {"upsert", "update"}
     hosts = _report(rep)["hosts"]
     assert len(hosts) == 300 and hosts == sorted(hosts)
     assert "brand-b.example.com" in hosts
@@ -1021,7 +1028,7 @@ def test_s16_r24_brands_robots_failclosed(monkeypatch, tmp_path, caplog, case):
     first = {"403": (403, {}, "forbidden"), "timeout": TimeoutError("t"),
              "disallow": (200, {}, "User-agent: *\nDisallow: /sparql\n")}[case]
     rig.fetch_responses = [first, (200, {}, _brand_bindings())]
-    _dry(monkeypatch)
+    monkeypatch.setenv("ENABLE_KB_BRANDS", "true")
     caplog.set_level(logging.INFO)
     assert _attr(brands, "main")([], client=rig.client) == 0
     assert len(rig.fetches) == 1 and rig.client.writes() == []

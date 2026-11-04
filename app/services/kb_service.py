@@ -55,6 +55,7 @@ KB_CATEGORY = "fragrances"
 KB_TABLES: Tuple[str, ...] = (
     "kb_merchants", "kb_products", "kb_variants", "kb_offers", "kb_images",
     "kb_specs", "kb_reviews", "kb_gaps", "kb_feedback", "kb_coverage_daily",
+    "kb_brands",
 )
 
 KB_COLUMNS: Dict[str, Tuple[str, ...]] = {
@@ -94,6 +95,7 @@ KB_COLUMNS: Dict[str, Tuple[str, ...]] = {
         "id", "compare_request_id", "product_id", "field", "verdict", "device_key", "created_at",
     ),
     "kb_coverage_daily": ("day", "metric", "value", "n"),
+    "kb_brands": ("qid", "label_en", "label_ar", "official_host", "source", "created_at", "updated_at"),
 }
 
 #: Tables whose ``id`` is a server-side uuid (never built by the leaf).
@@ -152,6 +154,12 @@ KB_OFFER_OBSERVATION_KEY: Tuple[str, ...] = (
     "variant_id", "merchant_id", "market", "observed_currency", "amount", "list_vs_sale",
 )
 KB_OFFER_UPSERT_SET: Tuple[str, ...] = ("last_seen", "in_stock", "evidence_rung", "canonical_url")
+#: S81-16b (migration 052): the Wikidata item id, equal as text to the 052 CHECK
+#: (no leading zero, so one item has one key).
+KB_QID_REGEX = "^Q[1-9][0-9]{0,11}$"
+KB_BRAND_SOURCES: Tuple[str, ...] = ("wikidata", "operator")
+#: What a Wikidata re-run sets on an existing row (never qid, source or created_at).
+KB_BRAND_UPSERT_SET: Tuple[str, ...] = ("label_en", "label_ar", "official_host", "updated_at")
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _MAX_SKU_ML = 5000
@@ -802,5 +810,46 @@ def build_coverage_row(*, day: Any, metric: Any, value: Any, n: Any) -> Optional
             return None
         # str(date) is its isoformat(); the date CHECK above is the one barrier (F1-7)
         return {"day": str(day), "metric": metric, "value": str(num), "n": n}
+    except Exception:
+        return None
+
+
+def _stripped_label(value: Any, required: bool) -> bool:
+    """A label of 1..128 characters equal to its own Python strip() (the 052
+    btrim CHECK; stricter: every whitespace kind is refused at either end).
+    None passes only when the label is optional."""
+    if value is None:
+        return not required
+    return _str_len(value, 1, 128) and value == value.strip()
+
+
+def build_brand_row(*, qid: Any, label_en: Any, updated_at: Any, label_ar: Any = None,
+                    official_host: Any = None, source: Any = "wikidata") -> Optional[Dict[str, Any]]:
+    """One kb_brands row (S81-16b, migration 052) or None on any refusal; never raises.
+
+    The builder only refuses (no strip, no case folding): the caller normalises."""
+    try:
+        upd = _ts_iso(updated_at)
+        if not _pg_text_ok((qid, label_en, label_ar, official_host, source)):
+            return None
+        host_ok = official_host is None or (
+            _str_len(official_host, 1, 253)
+            and _belted_host(official_host)
+            and kb_source_allowed(official_host)
+        )
+        ok = (
+            _sql_match(KB_QID_REGEX, qid)
+            and _stripped_label(label_en, True)
+            and _stripped_label(label_ar, False)
+            and host_ok
+            and isinstance(source, str) and source in KB_BRAND_SOURCES
+            and upd is not None
+        )
+        if not ok:
+            return None
+        return {
+            "qid": qid, "label_en": label_en, "label_ar": label_ar,
+            "official_host": official_host, "source": source, "updated_at": upd,
+        }
     except Exception:
         return None

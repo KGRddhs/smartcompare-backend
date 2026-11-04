@@ -1493,7 +1493,7 @@ def test_s14_r27_builder_keys(table):
     assert tuple(want) == tuple(_attr(kb, "KB_BUILDER_KEYS")[table])
     if table in ("kb_merchants", "kb_products", "kb_variants"):
         assert row["updated_at"] == T0.isoformat(), "R-S14-2: builders emit updated_at (belt)"
-    assert tuple(_attr(kb, "KB_TABLES")) == KB_TABLE_NAMES
+    assert tuple(_attr(kb, "KB_TABLES")) == KB_TABLE_NAMES + ("kb_brands",)  # S81-16b E1: 052 joins the census last
 
 
 NAIVE = datetime(2026, 10, 23, 12, 0)
