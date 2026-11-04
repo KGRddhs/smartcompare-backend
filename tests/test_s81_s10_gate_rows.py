@@ -1,7 +1,9 @@
 """S81-10 FRAGRANCE-ONLY-GATE: the GREEN-owned gate rows (GATE_S81_10 GC-1, GC-5, GC-6), kept
 in their own file so the frozen RED file (tests/test_s81_s10_fragrance_gate.py, blob sha256
-fe2032237c2a09564f23c8595378939b339afb69ba0e84eb0d269961637ff28e since the one sanctioned
-amendment EK1 of fix round 1; d988882a... before it) and its golden keep their bytes.
+ac6b061618319f5947ff4a89b22bc6fd83804eeb30655ebd3287f231d4db7656 since the second sanctioned
+amendment EK2 of S81-10b (RULINGS_S81_10B R-S10B-4: P02's URL source clause deleted);
+fe2032237c2a... after the first, EK1 of fix round 1; d988882a... before both) and its golden
+keep their bytes.
 
 Every row reuses the RED file's hermetic harness (the autouse `_s10_clean`, the route-level
 `Harness`, the service-level `SvcHarness`, the run-time test lexicon and the synthetic

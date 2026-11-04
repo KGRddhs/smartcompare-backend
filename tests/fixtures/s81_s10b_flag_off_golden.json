@@ -1,0 +1,996 @@
+{
+ "meta": {
+  "unit": "S81-10b LINKS-GATE",
+  "recorded_at_base": "c6fb65336deab4f48275b13d3847e0f42b298984",
+  "recorded_with": "ENABLE_FRAGRANCE_ONLY_GATE unset; full configuration (REFUSAL_DAILY_BUDGET=1, a run-time lexicon, the device header bound with a synthetic pepper, ENABLE_PAID_ROUTE_METERING=true, refusal counters seeded above the budget, the A2b armed to answer electronics, a fixed X-Request-ID, the tier recorder)",
+  "scenarios": 19
+ },
+ "scenarios": {
+  "UG01": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "fragrances"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Lattafa\",\"name\":\"Khamrah Eau de Parfum 100ml\",\"full_name\":\"Lattafa Khamrah Eau de Parfum 100ml\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Rasasi\",\"name\":\"Hawas for Him Eau de Parfum 100ml\",\"full_name\":\"Rasasi Hawas for Him Eau de Parfum 100ml\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"fragrances\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG02": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "electronics"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Apple\",\"name\":\"iPhone 15 Pro 256GB\",\"full_name\":\"Apple iPhone 15 Pro 256GB\",\"variant\":null,\"category\":\"electronics\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Samsung\",\"name\":\"Galaxy S24 Ultra 512GB\",\"full_name\":\"Samsung Galaxy S24 Ultra 512GB\",\"variant\":null,\"category\":\"electronics\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"electronics\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG03": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "other"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Apple\",\"name\":\"iPhone 15 Pro 256GB\",\"full_name\":\"Apple iPhone 15 Pro 256GB\",\"variant\":null,\"category\":\"other\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Samsung\",\"name\":\"Galaxy S24 Ultra 512GB\",\"full_name\":\"Samsung Galaxy S24 Ultra 512GB\",\"variant\":null,\"category\":\"other\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"other\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": []
+  },
+  "UG04": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      "fragrances"
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     "fragrances"
+    ],
+    [
+     "generate",
+     "fragrances"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Apple\",\"name\":\"iPhone 15 Pro 256GB\",\"full_name\":\"Apple iPhone 15 Pro 256GB\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Samsung\",\"name\":\"Galaxy S24 Ultra 512GB\",\"full_name\":\"Samsung Galaxy S24 Ultra 512GB\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"fragrances\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG05": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     [
+      "url_mode_v2"
+     ]
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     true
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     true
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "makeup"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Fenty Beauty\",\"name\":\"Pro Filtr Soft Matte Foundation\",\"full_name\":\"Fenty Beauty Pro Filtr Soft Matte Foundation\",\"variant\":null,\"category\":\"makeup\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Huda Beauty\",\"name\":\"FauxFilter Foundation\",\"full_name\":\"Huda Beauty FauxFilter Foundation\",\"variant\":null,\"category\":\"makeup\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"s10b reason\",\"key_differences\":[\"a\",\"b\"],\"category_used\":\"makeup\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG06": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "haircare"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Chanel\",\"name\":\"Coco Mademoiselle Hair Mist 35ml\",\"full_name\":\"Chanel Coco Mademoiselle Hair Mist 35ml\",\"variant\":null,\"category\":\"haircare\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Dior\",\"name\":\"Sauvage Eau de Toilette 100ml\",\"full_name\":\"Dior Sauvage Eau de Toilette 100ml\",\"variant\":null,\"category\":\"haircare\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"haircare\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG07": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "refund",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "usage_refund.url.compare.failure"
+    ]
+   ],
+   "status": 400,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"Could not extract both products\",\"code\":\"BAD_REQUEST\",\"request_id\":\"s10b-rid\"}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG08": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     [
+      "url_mode_v2"
+     ]
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     true
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     true
+    ],
+    [
+     "refund",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "usage_refund.url.compare.failure"
+    ]
+   ],
+   "status": 400,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"That link opens a store page, not a product page. Paste the product's own page link.\",\"code\":\"NOT_PRODUCT_PAGE\",\"request_id\":\"s10b-rid\",\"field\":\"url1\",\"reason\":\"category\"}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test",
+    "[URL-V2] outcome=ok reason=category status=200",
+    "[URL-V2] refused code=NOT_PRODUCT_PAGE field=url1 reason=category"
+   ]
+  },
+  "UG09": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ]
+   ],
+   "status": 429,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"Comparison limit reached (daily_limit)\",\"code\":\"USAGE_LIMIT\",\"request_id\":\"s10b-rid\"}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG10": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "fragrances"
+    ],
+    [
+     "refund",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "usage_refund.url.compare.failure"
+    ]
+   ],
+   "status": 503,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"Still warming up the comparison engine \u2014 give it another tap in a moment.\",\"code\":\"LLM_UNAVAILABLE\",\"request_id\":\"s10b-rid\"}",
+   "logs": [
+    "[URL] verdict generation failed; not delivering a comparison"
+   ]
+  },
+  "UG11": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "electronics"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Apple\",\"name\":\"iPhone 15 Pro 256GB\",\"full_name\":\"Apple iPhone 15 Pro 256GB\",\"variant\":null,\"category\":\"electronics\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Samsung\",\"name\":\"Galaxy S24 Ultra 512GB\",\"full_name\":\"Samsung Galaxy S24 Ultra 512GB\",\"variant\":null,\"category\":\"electronics\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"electronics\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "[paid-auth] admin credential accepted route=POST /api/v1/url/compare",
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG12": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ]
+   ],
+   "status": 400,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"That link opens a store page, not a product page. Paste the product's own page link.\",\"code\":\"NOT_PRODUCT_PAGE\",\"request_id\":\"s10b-rid\",\"field\":\"url1\",\"reason\":\"homepage\"}",
+   "logs": [
+    "[URL-V2] refused code=NOT_PRODUCT_PAGE field=url1 reason=homepage"
+   ]
+  },
+  "UG13": {
+   "calls": [
+    [
+     "ssrf",
+     "https://blocked.example.test/p/item-three"
+    ]
+   ],
+   "status": 400,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"URL blocked by security policy\",\"code\":\"BAD_REQUEST\",\"request_id\":\"s10b-rid\"}",
+   "logs": [
+    "URL comparison request: blocked.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG14": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"},\"supported\":false}",
+   "logs": [
+    "[paid-auth] admin credential accepted route=POST /api/v1/url/detect"
+   ]
+  },
+  "UG15": {
+   "calls": [],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"retailers\":[{\"key\":\"amazon.ae\",\"name\":\"Amazon UAE\",\"region\":\"uae\",\"currency\":\"AED\",\"example_domains\":[\"amazon.ae\"]},{\"key\":\"amazon.sa\",\"name\":\"Amazon Saudi\",\"region\":\"saudi_arabia\",\"currency\":\"SAR\",\"example_domains\":[\"amazon.sa\"]},{\"key\":\"amazon.com\",\"name\":\"Amazon US\",\"region\":\"us\",\"currency\":\"USD\",\"example_domains\":[\"amazon.com\"]},{\"key\":\"noon.com\",\"name\":\"Noon\",\"region\":\"uae\",\"currency\":\"AED\",\"example_domains\":[\"noon.com\"]},{\"key\":\"carrefour\",\"name\":\"Carrefour\",\"region\":\"bahrain\",\"currency\":\"BHD\",\"example_domains\":[\"carrefour\"]},{\"key\":\"sharafdg.com\",\"name\":\"Sharaf DG\",\"region\":\"uae\",\"currency\":\"AED\",\"example_domains\":[\"sharafdg.com\"]},{\"key\":\"luluhypermarket\",\"name\":\"Lulu Hypermarket\",\"region\":\"bahrain\",\"currency\":\"BHD\",\"example_domains\":[\"luluhypermarket\"]},{\"key\":\"extra.com\",\"name\":\"Extra Stores\",\"region\":\"saudi_arabia\",\"currency\":\"SAR\",\"example_domains\":[\"extra.com\"]},{\"key\":\"jarir.com\",\"name\":\"Jarir Bookstore\",\"region\":\"saudi_arabia\",\"currency\":\"SAR\",\"example_domains\":[\"jarir.com\"]},{\"key\":\"xcite.com\",\"name\":\"Xcite Kuwait\",\"region\":\"kuwait\",\"currency\":\"KWD\",\"example_domains\":[\"xcite.com\"]}],\"note\":\"URLs from unlisted retailers will still be processed using generic extraction.\"}",
+   "logs": []
+  },
+  "UG16": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"product\":{\"brand\":\"Lattafa\",\"name\":\"Khamrah Eau de Parfum 100ml\",\"full_name\":\"Lattafa Khamrah Eau de Parfum 100ml\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"},\"source_url\":\"https://shop-a.example.test/p/item-one\"}",
+   "logs": [
+    "[paid-auth] admin credential accepted route=POST /api/v1/url/extract",
+    "URL extraction request: host=shop-a.example.test"
+   ]
+  },
+  "UG17": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "electronics"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "log_search",
+     "url",
+     true,
+     null
+    ],
+    [
+     "ff",
+     "log_search.url.success"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Apple\",\"name\":\"iPhone 15 Pro 256GB\",\"full_name\":\"Apple iPhone 15 Pro 256GB\",\"variant\":null,\"category\":\"electronics\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Samsung\",\"name\":\"Galaxy S24 Ultra 512GB\",\"full_name\":\"Samsung Galaxy S24 Ultra 512GB\",\"variant\":null,\"category\":\"electronics\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"\",\"key_differences\":[],\"category_used\":\"electronics\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG18": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     []
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     false
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     false
+    ],
+    [
+     "refund",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "usage_refund.url.compare.failure"
+    ],
+    [
+     "log_search",
+     "url",
+     false,
+     "Could not extract both products"
+    ],
+    [
+     "ff",
+     "log_search.url.failure"
+    ]
+   ],
+   "status": 400,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":false,\"error\":\"Could not extract both products\",\"code\":\"BAD_REQUEST\",\"request_id\":\"s10b-rid\"}",
+   "logs": [
+    "URL comparison request: shop-a.example.test vs shop-b.example.test"
+   ]
+  },
+  "UG19": {
+   "calls": [
+    [
+     "ssrf",
+     "https://shop-a.example.test/p/item-one"
+    ],
+    [
+     "ssrf",
+     "https://shop-b.example.test/p/item-two"
+    ],
+    [
+     "consume",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "compare_from_urls",
+     [
+      "https://shop-a.example.test/p/item-one",
+      "https://shop-b.example.test/p/item-two",
+      "bahrain",
+      null
+     ],
+     [
+      "url_mode_v2"
+     ]
+    ],
+    [
+     "extract",
+     "https://shop-a.example.test/p/item-one",
+     true
+    ],
+    [
+     "extract",
+     "https://shop-b.example.test/p/item-two",
+     true
+    ],
+    [
+     "resolve",
+     true,
+     null
+    ],
+    [
+     "generate",
+     "fragrances"
+    ],
+    [
+     "save",
+     "url"
+    ],
+    [
+     "ff",
+     "save_comparison.url"
+    ],
+    [
+     "record_lifetime",
+     "facefeed-beef-4bad-8cab-deadbeefcafe"
+    ],
+    [
+     "ff",
+     "record_lifetime.url"
+    ],
+    [
+     "capture_result_status",
+     "url"
+    ]
+   ],
+   "status": 200,
+   "headers": {
+    "content-type": "application/json"
+   },
+   "body": "{\"success\":true,\"products\":[{\"brand\":\"Lattafa\",\"name\":\"Khamrah Eau de Parfum 100ml\",\"full_name\":\"Lattafa Khamrah Eau de Parfum 100ml\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-a.example.test\",\"url\":\"https://shop-a.example.test/p/item-one\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-a.example.test/p/item-one\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-a.example.test\",\"name\":\"shop-a.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}},{\"brand\":\"Rasasi\",\"name\":\"Hawas for Him Eau de Parfum 100ml\",\"full_name\":\"Rasasi Hawas for Him Eau de Parfum 100ml\",\"variant\":null,\"category\":\"fragrances\",\"price\":{\"amount\":10.5,\"currency\":\"BHD\",\"retailer\":\"shop-b.example.test\",\"url\":\"https://shop-b.example.test/p/item-two\",\"in_stock\":null},\"specs\":{},\"reviews\":{\"rating\":null,\"count\":null},\"image_url\":null,\"source_url\":\"https://shop-b.example.test/p/item-two\",\"retailer\":{\"key\":\"unknown\",\"domain\":\"shop-b.example.test\",\"name\":\"shop-b.example.test\",\"region\":\"unknown\",\"currency\":\"USD\"}}],\"comparison\":{\"winner_index\":0,\"winner_reason\":\"s10b reason\",\"specs_comparison\":{\"product_0_advantages\":[\"a\"],\"product_1_advantages\":[\"b\"]}},\"winner_index\":0,\"recommendation\":\"s10b reason\",\"key_differences\":[\"a\",\"b\"],\"category_used\":\"fragrances\",\"source_urls\":[\"https://shop-a.example.test/p/item-one\",\"https://shop-b.example.test/p/item-two\"]}",
+   "logs": []
+  }
+ }
+}

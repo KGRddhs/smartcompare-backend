@@ -2,9 +2,10 @@
 
 Flag ``ENABLE_FRAGRANCE_ONLY_GATE`` (default OFF, read PER CALL with the house idiom);
 knobs ``REFUSAL_DAILY_BUDGET`` (10, clamped 1..100) and ``FRAGRANCE_LEXICON_PATH``
-(``data/fragrance_lexicon.json``, repo-root relative). Under the flag the four user
+(``data/fragrance_lexicon.json``, repo-root relative). Under the flag the six user
 compare routes (POST / GET ``/api/v1/text/compare``, ``/api/v1/text/compare/stream``,
-POST ``/api/v1/image/identify``) compare fragrances only:
+POST ``/api/v1/image/identify`` and, since S81-10b, POST / GET ``/api/v1/url/compare``)
+compare fragrances only:
 
 * rule 1 (pre-consume, $0): a non-fragrance product-type word of the lexicon with no
   fragrance concentration / form word and no house or note hit is refused with code
@@ -26,7 +27,9 @@ POST ``/api/v1/image/identify``) compare fragrances only:
   failure arm refunds it and ONE Lua EVAL counts it on both budget keys); ``other``
   proceeds (R-S10-3); a concentration / form word in a product's own name makes it a
   fragrance on the explicit-pair and vision paths (R-S10-5) and the pair is then
-  compared as fragrances (GC-1).
+  compared as fragrances (GC-1). The link compare (S81-10b) reads the budget in
+  ``url_routes`` and runs the same decision inside ``compare_from_urls`` after the
+  paid extraction, over per-product copies of the extracted pages.
 
 The S81-09 dependency sat behind two seams (R-S10-11), collapsed at the rebase onto
 the S81-09 merge (RULINGS_REBASE_S81_10 RB10-6): ``reset_window`` delegates to
@@ -91,7 +94,7 @@ _NON_FRAGRANCE_GROUPS = (
 )
 _POSITIVE_NON_FRAGRANCE = frozenset(_NON_FRAGRANCE_GROUPS)
 SECOND_TOKEN_MARK = "*"
-_ROUTE_LABELS = ("text.post", "text.get", "text.stream", "image")
+_ROUTE_LABELS = ("text.post", "text.get", "text.stream", "image", "url.post", "url.get")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_LEXICON_PARTS = ("data", "fragrance_lexicon.json")
@@ -647,7 +650,8 @@ async def text_gate(texts: Sequence[Any], user: Any, *, route: str) -> GateDecis
 async def post_resolve_refusal(decision: GateDecision, products: Sequence[dict], *, parser_path: bool,
                                selected_category: Optional[str] = None,
                                category_used: Optional[str] = None,
-                               classify: Any = None) -> PostResolveVerdict:
+                               classify: Any = None,
+                               resolver_classified: bool = True) -> PostResolveVerdict:
     """The chip-free post-resolve decision (rules 2 and 3), run only when a route
     passed its pre-consume decision.
 
@@ -659,7 +663,10 @@ async def post_resolve_refusal(decision: GateDecision, products: Sequence[dict],
     client chip -> the resolver's own chip-free category (its A2b already ran, C11);
     with lexicon evidence -> proceed without a classifier (a stated limit, GC-2);
     else ONE A2b call through ``classify`` (the orchestrator's own module name).
-    A classifier 'other' (its failure value too) proceeds."""
+    A classifier 'other' (its failure value too) proceeds. ``resolver_classified``
+    False is the link path (S81-10b): its resolver never classifies, so with no real
+    chip ONE A2b decides whatever the evidence (R-S10B-2); a real chip keeps the
+    evidence-or-classifier arm."""
     from app.services.extraction_service import canonicalize_category
 
     names = [product.get("search_query") or product.get("name") for product in products]
@@ -677,9 +684,10 @@ async def post_resolve_refusal(decision: GateDecision, products: Sequence[dict],
     if parser_path or "fragrances" in per_product:
         return PostResolveVerdict(form_override=form_override)
     chip = canonicalize_category(selected_category) if selected_category else None
-    if not chip or chip == "other":
+    no_real_chip = not chip or chip == "other"
+    if no_real_chip and resolver_classified:
         detected = canonicalize_category(category_used)
-    elif decision.evidence:
+    elif not no_real_chip and decision.evidence:
         return PostResolveVerdict()
     else:
         if classify is None:

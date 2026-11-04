@@ -63,6 +63,9 @@ from app.services.usage_service import (
 from app.utils.async_utils import fire_and_forget
 # S81-06 ANTHROPIC-ROUTER: the consent entry gate (R-S06-3) and its copy.
 from app.services import llm_router as _llm_router
+# S81-10b LINKS-GATE: the fragrance-only gate, imported as a module alias only
+# (every gate function is read off the module at call time).
+from app.services import category_gate as _category_gate
 from app.services.structured_comparison_service import LLM_UNAVAILABLE_FRIENDLY_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -103,6 +106,29 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
             },
         )
     return bool(usage_check.get("consumed", False))
+
+
+def _url_fragrance_gate_kwargs(request: Request, route: str) -> Dict[str, str]:
+    """S81-10b: the gate kwarg of one link compare. ``{}`` when the shared
+    fragrance-only reader says OFF (nothing else is read) or the admin-key mark is
+    set (R-S10-8); else ``{"gate_route": route}``."""
+    if not _category_gate.fragrance_only_gate_enabled():
+        return {}
+    if getattr(request.state, "paid_route_admin", False):
+        return {}
+    return {"gate_route": route}
+
+
+async def _url_refusal_budget(user: Optional[Dict], route: str):
+    """S81-10b: the day's refusal budget of a gated link compare (ONE MGET over the
+    account and device keys, fail-open). Spent -> the 429 CATEGORY_NOT_LIVE, never
+    billed; else the proceed decision carrying the budget subject."""
+    subject = _category_gate.budget_subject(user)
+    spent = await _category_gate.budget_state_async(subject)
+    if spent is not None:
+        _category_gate.log_budget_spent(route)
+        raise HTTPException(status_code=429, detail=_category_gate.budget_detail(*spent))
+    return _category_gate.GateDecision("proceed", None, False, subject)
 
 
 # B4 URL-MODE-V2: the deadline around compare_from_urls under the flag (a module
@@ -152,14 +178,16 @@ def _raise_url_refusal(code: str, error: str, field: str, reason: str) -> None:
     )
 
 
-async def _compare_with_deadline(url1, url2, region, selected_category) -> Dict:
+async def _compare_with_deadline(url1, url2, region, selected_category, fragrance_gate=None) -> Dict:
     """B4: compare_from_urls under the 25 s deadline; an expiry is a coded TIMEOUT
     RESULT (never a raise), which the shared text mapping ships as the structured
     503 build 3 already maps. Any other exception propagates to the caller's
     base exception arm."""
+    # S81-10b: the gate decision rides only when the route passed one.
+    gate_kw = {} if fragrance_gate is None else {"fragrance_gate": fragrance_gate}
     try:
         return await asyncio.wait_for(
-            compare_from_urls(url1, url2, region, selected_category, url_mode_v2=True),
+            compare_from_urls(url1, url2, region, selected_category, url_mode_v2=True, **gate_kw),
             timeout=_URL_COMPARE_DEADLINE_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -207,6 +235,7 @@ async def _compare_urls_metered(
     user: Optional[Dict],
     search_log_extra: Optional[Dict] = None,
     url_mode_v2: bool = False,
+    gate_route: Optional[str] = None,
 ) -> Dict:
     """Run the URL comparison under the freemium gate, then persist it.
 
@@ -227,6 +256,10 @@ async def _compare_urls_metered(
     a non-delivery through the SAME failure exit below (R-A3: refund once, no
     lifetime bump, no history row, the failure row with the code's constant).
     """
+    # S81-10b: the refusal budget runs only when the handler passed gate_route (flag
+    # ON, no admin mark): before the consent 503 and the reserve, never billed.
+    _gate = await _url_refusal_budget(user, gate_route) if gate_route is not None else None
+    _gate_kw = {} if _gate is None else {"fragrance_gate": _gate}
     # S81-06 (R-S06-3 / GC-4): the consent entry gate of both verbs, BEFORE the
     # credit reserve (nothing consumed, nothing to refund): the coded 503
     # LLM_UNAVAILABLE envelope. Every role flag OFF: four getenv reads.
@@ -255,9 +288,9 @@ async def _compare_urls_metered(
 
     try:
         if url_mode_v2:
-            result = await _compare_with_deadline(url1, url2, region, selected_category)
+            result = await _compare_with_deadline(url1, url2, region, selected_category, **_gate_kw)
         else:
-            result = await compare_from_urls(url1, url2, region, selected_category)
+            result = await compare_from_urls(url1, url2, region, selected_category, **_gate_kw)
     except Exception:
         if usage_consumed and user_id:
             fire_and_forget(
@@ -468,6 +501,8 @@ async def compare_urls(
     logger.info("URL comparison request: %s vs %s", _host_only(body.url1), _host_only(body.url2))
     # B4: ENABLE_URL_MODE_V2 read ONCE per request; the bool is threaded down.
     v2 = url_mode_v2_enabled()
+    # S81-10b: the fragrance-only gate read ONCE per request, threaded as a kwarg.
+    gate_kw = _url_fragrance_gate_kwargs(request, "url.post")
 
     # The SSRF guard is free and runs BEFORE the gate, so a blocked URL stays a
     # pre-gate 400 with nothing reserved and nothing to refund.
@@ -482,12 +517,12 @@ async def compare_urls(
                                refusal["field"], refusal["reason"])
         return await _compare_urls_metered(
             body.url1, body.url2, body.region, body.selected_category, user,
-            search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True,
+            search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True, **gate_kw,
         )
 
     return await _compare_urls_metered(
         body.url1, body.url2, body.region, body.selected_category, user,
-        search_log_extra=_search_log_synthetic_kwargs(request),
+        search_log_extra=_search_log_synthetic_kwargs(request), **gate_kw,
     )
 
 
@@ -506,6 +541,8 @@ async def compare_urls_get(
     """GET version of compare for easy testing."""
     # B4: ENABLE_URL_MODE_V2 read ONCE per request; the bool is threaded down.
     v2 = url_mode_v2_enabled()
+    # S81-10b: the fragrance-only gate read ONCE per request, threaded as a kwarg.
+    gate_kw = _url_fragrance_gate_kwargs(request, "url.get")
     if not await _validate_url_offloop_or_sync(url1) or not await _validate_url_offloop_or_sync(url2):
         raise HTTPException(status_code=400, detail="URL blocked by security policy")
 
@@ -517,12 +554,12 @@ async def compare_urls_get(
                                refusal["field"], refusal["reason"])
         return await _compare_urls_metered(
             url1, url2, region, selected_category, user,
-            search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True,
+            search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True, **gate_kw,
         )
 
     return await _compare_urls_metered(
         url1, url2, region, selected_category, user,
-        search_log_extra=_search_log_synthetic_kwargs(request),
+        search_log_extra=_search_log_synthetic_kwargs(request), **gate_kw,
     )
 
 
