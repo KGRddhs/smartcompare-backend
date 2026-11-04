@@ -1,0 +1,140 @@
+[
+  {
+    "type": "result",
+    "key": "v2:b6480acef73e13ab9146f82d79e2d9201ba0cadc21a10fad200929b7f0bcb055",
+    "agentId": "aaeaba1f2bb68bce4",
+    "result": {
+      "unit": "S81-16b KB-BRANDS (FOCUS: a migration)",
+      "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s16b/.qa-s80/S81-16b_UNIT_SPEC.md",
+      "spec_sha256": "34706e223d1885d0e11bc5b83dd539b0473bbc30b52ada1a0b0ef7304d43cda2",
+      "summary": "The spec was measured at 0b19de5b and written to the path above: 72,100 bytes, ASCII, LF. `git status --short` in the worktree is empty because .qa-*/ is gitignored.\n\nWhat it specifies:\n- **Migration 051 kb_brands.** Written, not applied. Columns: qid, label_en, label_ar, official_host, source, created_at, updated_at. The CHECK constraints copy the 045 belts: the host regex, the deny-label belt and the top-label rule. official_host gets a partial index that is NOT unique. A DO guard makes 051 refuse to run unless 045 is applied, and it reuses the 045 trigger function kb_set_updated_at. Access follows the 045 pattern: RLS on, REVOKE ALL from PUBLIC, anon, authenticated and service_role, then GRANT SELECT, INSERT, UPDATE, DELETE to service_role. The rollback is a DROP TABLE and must run before any rollback of 045, because the 045 rollback drops the trigger function without CASCADE.\n- **The builder.** `kb_service.build_brand_row`, plus kb_brands added last to KB_TABLES / KB_COLUMNS / KB_BUILDER_KEYS, plus three constants: KB_QID_REGEX, KB_BRAND_SOURCES and KB_BRAND_UPSERT_SET.\n- **The flag.** The brand script moves to its own flag, ENABLE_KB_BRANDS, with the G2 mode idiom (unset/false OFF, true DRY, apply WRITE). This answers Q1: the kbseed service sets ENABLE_KB_SEED=apply for the batch run, so a shared flag would turn the owner's brand DRY count into a write. The OFF log line names both flags, so G2 R02 stays unedited.\n- **The SPARQL query.** It gains OPTIONAL rdfs:label clauses with exact LANG en / ar filters. The label-service form was rejected because it falls back to the bare QID when a label is missing. The query also excludes humans (P31 Q5), adds ORDER BY, and reports a sparql_limit_hit count.\n- **The write.** APPLY writes through `KbWriter.brands`: insert-ignore on qid, then one update of the four label/host columns for each row the insert did not return, filtered on source = 'wikidata'. Nothing is ever deleted and kb_merchants is never written. KB_BRANDS_MAX (default 300, clamped 1..5000) caps the rows, keeping the lowest numeric QIDs.\n- **Tests.** E-rows EK0-EK2 change the G2 seed test file (its autouse env list, R23 with labels added to the bindings helper, and R24), and E1 changes `test_s81_kb_schema` R27. The new RED file `tests/test_s81_s16b_kb_brands.py` has 30 RED and 6 PIN rows.\n- **Mutation table:** 30 mutants. M05 is equivalent in production because the deny-label belt is a strict subset of the deny rule. It is only killed because row K04 patches the rule open.\n\nBase run: 789 passed, 5 failed. The 5 are the G2 R27 hygiene nodes, which fail on this Windows CRLF checkout and pass in CI. `[pyt] tag=s16b-spec-base1 elapsed=91s bound=1200s status=FAIL rc=1`\n\nThe draft migration, rollback and the three APPLY_051 files are in the scratchpad `s16b/proto/` folder and are sqlfluff-clean (rc 0). The draft passed the 043 personal-data fence and the index-predicate check in a scratch probe.",
+      "change_list": [
+        "NEW migrations/051_kb_brands.sql (BEGIN; a DO guard on to_regprocedure('public.kb_set_updated_at()'); CREATE TABLE public.kb_brands with qid ^Q[1-9][0-9]{0,11}$, label_en 1..128 NOT NULL, label_ar 1..128 or NULL, official_host 1..253 with the host regex, the deny belt and the top-label rule, source wikidata|operator; a partial index on official_host, not unique; a BEFORE UPDATE trigger on kb_set_updated_at; RLS; REVOKE ALL FROM PUBLIC, anon, authenticated, service_role; GRANT SELECT, INSERT, UPDATE, DELETE TO service_role; COMMENT; COMMIT)",
+        "NEW migrations/rollback/051_kb_brands.sql (BEGIN; DROP TABLE IF EXISTS public.kb_brands; COMMIT; header: run before any rollback of 045)",
+        "app/services/kb_service.py: KB_TABLES + 'kb_brands' last; KB_COLUMNS['kb_brands']; KB_QID_REGEX, KB_BRAND_SOURCES, KB_BRAND_UPSERT_SET after :154; build_brand_row after :806",
+        "scripts/kb_seed_common.py: KB_BRANDS_TABLE = \"kb_brands\" after :54; the docstring says six table names instead of five; KbWriter.brands (insert-ignore on qid, then an update of KB_BRAND_UPSERT_SET filtered on eq qid and eq source wikidata; no delete)",
+        "scripts/seed_kb_brands_wikidata.py: FLAG = ENABLE_KB_BRANDS; KB_BRANDS_MAX through brands_max(); SPARQL with en/ar labels, the human exclusion, ORDER BY and LIMIT 2000; qid_of, _label, _brand_host, derive_brands; _run(args, client, mode) writes in APPLY only; the OFF line names both flags; docstring rewritten; derive_hosts byte-unchanged",
+        "tests/test_s81_s16_kb_seed.py: EK0 (the autouse delenv list gains ENABLE_KB_BRANDS and KB_BRANDS_MAX), EK1 (_brand_bindings gains label_en with qids from Q1; R23 keyed on ENABLE_KB_BRANDS with ENABLE_KB_SEED=apply set; DRY = no write; APPLY = kb_brands upsert/update only), EK2 (R24 keyed on ENABLE_KB_BRANDS)",
+        "tests/test_s81_kb_schema.py: E1 (R27 :1488 compares KB_TABLES to KB_TABLE_NAMES + ('kb_brands',))",
+        "NEW tests/test_s81_s16b_kb_brands.py (written by the RED agent; frozen at GREEN)",
+        "CLAUDE.md: three in-place edits in the S81-G2 block (:550 the parenthesis and the brand sentence, :551 owner step 8), CRLF kept"
+      ],
+      "red_rows": 30,
+      "pin_rows": 6,
+      "mutants": 30,
+      "comm_set_size": 302,
+      "open_questions": [
+        "11.1 The qid CHECK: this spec uses ^Q[1-9][0-9]{0,11}$ (no leading zero, so one Wikidata item has one key); the brief had ^Q[0-9]{1,12}$.",
+        "11.2 The human exclusion (P31 Q5) also changes the G2 DRY host list (stated limit L3): accept it, or filter humans from the brand rows only?",
+        "11.3 The OFF line names both flags so G2 R02 stays unedited. The alternative is a fourth E-row, EK3 on R02.",
+        "11.4 When a brand has several valid official sites, which host wins: the smallest host string (this spec) or a non-subdomain apex?",
+        "11.5 Confirm the update guard eq source wikidata: operator rows are never refreshed by the import.",
+        "11.6 G9 (apply / rollback on a throwaway local PostgreSQL 18): a GREEN gate, or a fix-round item if the binaries cannot start on this box?",
+        "11.7 Should the report's brands list carry the labels (CC0 brand names), or only qids and hosts?"
+      ],
+      "base_measurements": [
+        "[pyt] tag=s16b-spec-base1 start=2026-11-04 19:09:50 end=2026-11-04 19:11:21 elapsed=91s bound=1200s status=FAIL rc=1 (7 files, 789 passed / 5 failed = the G2 R27 hygiene nodes failing on the CRLF working copy, environmental F1-3); [hermeticity] sentinel checked 794 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)",
+        "[pyt] tag=s16b-spec-collect start=2026-11-04 19:17:55 end=2026-11-04 19:17:59 elapsed=4s bound=600s status=OK rc=0 (kb_schema 529, s16_kb_seed 140, g2_gate_rows 9, sqlfluff_config 11, index_predicate 46, migration_043 51, migration_044 8 nodes)",
+        "sqlfluff 4.3.0 on the draft 051, its rollback and the three APPLY_051 files under the repo .sqlfluff: rc 0 (the APPLY files after an EXISTS( fix for LT06)",
+        "043 fence with the draft 051 added: gaps set(), no kb_* user table; index predicate volatile hits []",
+        "derive_hosts at base on the PIN-2 probe: ['brand-b.example.com', 'brand-c.example.org'], counts bindings=7 denied=1 existing=1 invalid=2 new=2 with_site=6",
+        "LF sha256 of 045 = ba853c75a98953e5ca40ba06ffd92fe3acf4a7f6ceb9c19ea5ffd7339f867075; of rollback/045 = 4a7fcbabc946e5dfbea8e2180dfe8e7ceaa91a8afc439f803dac050eae9043ba",
+        "comm set at base: 302 files, sha256 c57341827e783b49d685423cb557ac102315428afebcabd4508a7fb257d63479; at head: 303 files, sha256 fcceee0b65e153f27e4bf492eda2f34ef69c97f0f0ee643ad204b0a58435f5c1",
+        "node -e 0 = 2.4 s (box loaded)"
+      ],
+      "pyt_lines": [
+        "[pyt] tag=s16b-spec-base1 start=2026-11-04 19:09:50 end=2026-11-04 19:11:21 elapsed=91s bound=1200s status=FAIL rc=1",
+        "[pyt] tag=s16b-spec-collect start=2026-11-04 19:17:55 end=2026-11-04 19:17:59 elapsed=4s bound=600s status=OK rc=0"
+      ],
+      "deliberate_pin_changes": [
+        "EK0 tests/test_s81_s16_kb_seed.py:54: the autouse _env deletes ENABLE_KB_BRANDS and KB_BRANDS_MAX",
+        "EK1 tests/test_s81_s16_kb_seed.py:982-1013: _brand_bindings gains label_en with qids from Q1; R23 keyed on ENABLE_KB_BRANDS with ENABLE_KB_SEED=apply set; DRY = no write; APPLY = kb_brands upsert/update only",
+        "EK2 tests/test_s81_s16_kb_seed.py:1016-1027: R24 sets ENABLE_KB_BRANDS=true instead of _dry",
+        "E1 tests/test_s81_kb_schema.py:1488 (R27, 10 nodes): KB_TABLES == KB_TABLE_NAMES + ('kb_brands',)"
+      ],
+      "stated_limits": [
+        "L1 The Wikidata ids P1056 / Q131746 / P856 / P31 / Q5 and the rdfs: prefix are unverified offline; the DRY counts are the check.",
+        "L2 Labels match exact en / ar only; an item labelled only in a regional code or mul is skipped (counted no_label_en).",
+        "L3 The human exclusion also changes the G2 DRY host list.",
+        "L4 A brand that loses its en label keeps its old row; a brand gone from Wikidata is never deleted.",
+        "L5 Rollback 051 before 045: the 045 rollback fails with 2BP01 while kb_brands exists.",
+        "L6 Merging re-deploys the three G2 services, because kb_seed_common.py is in their watchPatterns; harmless while their flags are unset.",
+        "L7 The insert-ignore return shape (inserted rows only) is unmeasured offline (R-G2-12); the owner's canary reads it.",
+        "L8 The query truncates at 2,000 (brand, site) pairs; the sparql_limit_hit count says so.",
+        "L9 G2 R27 stays red on a CRLF checkout; the new S12 row normalises line endings.",
+        "L10 One update per existing row per run.",
+        "L11 The reason official_host is NULL is counted, not stored."
+      ]
+    },
+    "toolsUsed": [
+      "Bash",
+      "Write",
+      "StructuredOutput"
+    ]
+  },
+  {
+    "type": "result",
+    "key": "v2:8c0df129e0c82c06183119003523626e5b14d3f177585e81f09cbc44cb23ae54",
+    "agentId": "ad1fa60cfcb2a2b0e",
+    "result": {
+      "unit": "S81-16b KB-BRANDS",
+      "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s16b/.qa-s80/S81-16b_SPEC_REVIEW.md (sha256 b95cab9ed9d29482105d05dfd581029cca39af2e4c7df7810e5efa42d992f13f, 14016 bytes, ASCII, LF; written through a python script because the harness refuses a direct Write of a report .md)",
+      "verdict": "APPROVE_WITH_CHANGES",
+      "refuted_claims": [
+        "RC1 (spec 1.4 / 2.6 / Q4 says '051 is the next free number'): FALSE. RULINGS_S81_14 R-S14-12 reserves 051 for the kb_ingest_compare RPC (S81-17b; RULINGS_S81_G3 :6, R-G3-7, :57) and says '052+ are assigned by the orchestrator on request'. tests/test_s81_kb_schema.py:516-517 (test_s14_r01_files_exist_once) asserts that no 051_*.sql file exists. I measured it RED with the draft 051 copied into a scratch worktree: 'AssertionError: 051 belongs to another unit (R-S14-12)' [pyt] tag=s16b-rev-mig-draft elapsed=40s status=FAIL rc=1 (1 failed, 1184 passed).",
+        "RC2 (spec 4.1 / 4.2 says E1 (R27) is the only change to test_s81_kb_schema.py): FALSE while the file is numbered 051, because R01 also goes red. TRUE once it is renumbered to 052: [pyt] tag=s16b-rev-r01-052 status=OK rc=0, and sqlfluff gives 'All Finished!' on both 052 files.",
+        "RC3 (spec header line 7 and 2.8 say kb_ingest consumes KB_BUILDER_KEYS): app/services/kb_ingest.py names no KB_BUILDER_KEYS, KB_TABLES or KB_COLUMNS. It uses only the KB_*_TABLE constants, KB_OFFER_UPSERT_SET, KB_OFFER_OBSERVATION_KEY and kb_leaf at :117-119. The error is harmless.",
+        "RC4 (spec 5.4 says 'K03 alone 27'): the K03 list has 29 ids. The prototype's '254-char host' is actually 257 chars (proto_builder.out shows len254: 257), so the 253/254 boundary was never probed."
+      ],
+      "corrections": [
+        "C1: define B12 as AST string constants EQUAL to 'kb_brands' (the P02 form at :401-405), not a substring scan. The script's own 'seed_kb_brands_wikidata' constants (:24, :42) and the spec's 2.2 log formats contain the substring, so a substring B12 can never go green.",
+        "C2: S02 must call main WITHOUT client=, so the factory recorder catches M16. Give it an argv that argparse refuses (the R02 --corpus idiom) plus --report <tmp>, with open() recorded on that path.",
+        "C3: say which counter a builder-refused en label bumps (129 chars / NUL / lone surrogate: no_label_en or not_built?) and pin it in S06. counts.update(writer.counts) overwrites a derive-side not_built: use distinct names or add the counts. Move counts.update into a finally so a mid-run failure still reports the batches already sent. Note that brand_updates counts update attempts, not rows changed.",
+        "C4: the S03 fixture needs a brand with two sites carrying the same labels (this pins distinct-qid with_label_* counts) and an item with no Arabic label.",
+        "C5: K03 needs an exact 254-char host (refused) and K02 a 253-char twin (accepted); the K03 count is 29.",
+        "C6: the builder accepts a whitespace-only label_en (_str_len(' ',1,128) is True), and the CHECK limits only the length. Either refuse blank / padded labels in the builder and add CHECK clauses with K03 rows, or record it as a stated limit.",
+        "C7: owner step 3 must first confirm ENABLE_KB_SEED is unset on kbseed. A Railway variable change redeploys the service, and its startCommand is seed_kb_batch (R28 :1119), so it would re-run the PAID batch seeder. Prefer a one-off command that carries the flag in its own environment.",
+        "C8: add to G9 the same INSERT ... ON CONFLICT (qid) DO NOTHING RETURNING run twice (the second returns 0 rows). This measures the SQL half of R-G2-12 / L7 locally.",
+        "C9: the PR body carries L6 (the merge re-runs the three G2 jobs) next to the header phrase 'MERGING THIS CHANGES NOTHING IN PRODUCTION'.",
+        "C10: POSTCHECK adds anon / authenticated UPDATE and DELETE = false columns."
+      ],
+      "blocking": [
+        "BL1: the migration number. 051 is reserved for S81-17b (R-S14-12, R-G3-7) and pinned by tests/test_s81_kb_schema.py:516-517, which I measured RED with the draft present. The orchestrator assigns the number; 052 is recommended (measured clean, R01 needs no E-row). Rename the files, B01/B08-B11, the DO message, APPLY_052_1..3, 8.1-8.4, the ledger draft and the PR body.",
+        "BL2: S04 is tautological. It compares each written row with build_brand_row(row), i.e. the row with itself. These mutants survive: official_host taken only from derive_hosts' new list (an existing kb_merchants host becomes None); label_ar read from the wrong key; and qid_of returning the full IRI, which leaves an empty write list that passes 'every write is kb_brands' vacuously. Fix: S04 asserts a literal expected row list and the exact upsert count; add an S06 case where the site is an existing merchant host and the official_host is kept; add mutants M31 / M32.",
+        "BL3: S10's 'update raises' case is vacuous. The s16 FakeClient returns every upserted row by default (tests/test_s81_s16_kb_seed.py:144-146), so no update runs and the fault never fires. That case must set returned=lambda q, rows: [] (or a subset)."
+      ],
+      "contract_risks": [
+        "No request-path, response-key, envelope, billing (R-A3), camera, cache-key or error-handler surface. The only app/ edit is the kb_service leaf, whose importers are the three function-local, flag-gated P01 entries.",
+        "Operational: merging re-deploys and re-runs the three G2 Railway jobs (kb_seed_common is in all three watchPatterns, L6). A variable change on kbseed re-runs the paid batch seeder (C7).",
+        "Known rebase with G4 KB-SERVE on kb_service.py and the test_s81_kb_schema.py P01 / P02 allowlists (whichever merges second unions them). G4's brief names no migration, so no number clash."
+      ],
+      "pin_collisions": [
+        "tests/test_s81_kb_schema.py::test_s14_r01_files_exist_once (:508-517) goes RED with any 051_*.sql file and is not in spec 4.1. BL1 (renumber to 052) resolves it; otherwise it needs an E-row.",
+        "No collision found with T23 OpenAPI, the FY25 / W4-13 identity digests (P06 :463-480 untouched), the w4_11 prompt digests, the test_retro_w2_1 URL pins, the copy-policy fences or the fourteen client fences. The 15 other migration scanners stay green with the draft (run s16b-rev-mig-draft), and with the census edit only R27 x10 (E1) breaks besides R01 (run s16b-rev-census: 16 failed = R01 + R27 x10 + 5 environmental G2 R27 CRLF nodes, 1091 passed)."
+      ],
+      "pyt_lines": [
+        "[pyt] tag=s16b-rev-base1 start=2026-11-04 19:33:56 end=2026-11-04 19:34:04 elapsed=8s bound=600s status=FAIL rc=1 (5 failed = the environmental G2 R27 CRLF nodes, 42 passed; [hermeticity] sentinel checked 47 test(s); [netguard] blocked 0 attempt(s) from 0 node(s))",
+        "[pyt] tag=s16b-rev-mig-draft start=2026-11-04 19:36:11 end=2026-11-04 19:36:52 elapsed=40s bound=1200s status=FAIL rc=1 (1 failed = test_s14_r01_files_exist_once, 1184 passed; scratch worktree with the draft 051)",
+        "[pyt] tag=s16b-rev-census start=2026-11-04 19:37:36 end=2026-11-04 19:38:20 elapsed=44s bound=1200s status=FAIL rc=1 (16 failed = R01 + R27 x10 + 5 CRLF R27, 1091 passed; [hermeticity] sentinel checked 1107 test(s))",
+        "[pyt] tag=s16b-rev-r01-052 start=2026-11-04 19:38:33 end=2026-11-04 19:38:38 elapsed=5s bound=600s status=OK rc=0 (3 passed; draft renamed to 052; sqlfluff All Finished!)"
+      ],
+      "questions_for_orchestrator": [
+        "1. Assign the migration number (BL1): 052 is recommended and measured clean. The alternative is 051 with an R01 E-row plus moving S81-17b to 052 and amending RULINGS_S81_14 / RULINGS_S81_G3.",
+        "2. Wikidata 'mul' labels: L2 may be a defect rather than a stated limit. Should a mul fallback for label_en be added (one OPTIONAL clause, counted label_en_from_mul), or should the DRY with_label_en count decide before APPLY?",
+        "3. Truncation order (L8): ORDER BY ?brand sorts IRIs as strings, while the cap keeps the lowest numeric qids. Accept as is, or ORDER BY xsd:integer(STRAFTER(STR(?brand),'Q'))?",
+        "4. 11.1: confirm the tighter qid regex ^Q[1-9][0-9]{0,11}$ (one item, one key).",
+        "5. 11.2: accept that the human exclusion also changes the DRY host list (L3)?",
+        "6. 11.3: accept the OFF line naming both flags (R02's brand nodes then prove only that unset means OFF; S02 carries the B1 matrix), with no EK3?",
+        "7. 11.6: keep G9 (a local PostgreSQL 18 apply / rollback run) as a GREEN gate? Note that the POSTCHECK counts contype 'c' only, so its check count of 6 holds on PG15/17/18.",
+        "8. 11.7: confirm that labels may appear in --report (CC0 brand names, humans excluded).",
+        "9. C6: should the builder refuse blank / padded labels and the migration add CHECK clauses, or is this a stated limit?"
+      ]
+    },
+    "toolsUsed": [
+      "Bash",
+      "Read",
+      "Write",
+      "StructuredOutput"
+    ]
+  }
+]
