@@ -1559,6 +1559,11 @@ from app.services.deny_hosts import data_guards_v2_enabled
 # MODULE ATTRIBUTE so the per-call flag readers, the robots seam and the clock
 # seam are read at call time (a patch of the leaf takes effect here).
 from app.services import jsonld_widen
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the per-compare attempt aggregator (bind +
+# flush) and S81-17 (ENABLE_KB_INGEST / ENABLE_FIELD_STATUS_METADATA): the ingest
+# tail; both by MODULE ATTRIBUTE, every flag read per call.
+from app.services import live_robots
+from app.services import kb_ingest
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
 # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
 # `site:` discovery query runs FIRST, and every candidate is gated registry-
@@ -3557,6 +3562,8 @@ class StructuredComparisonService:
         into the SAME list. Always-on, $0, metadata-only."""
         self._provider_attempts: List[Dict[str, Any]] = []
         _PROVIDER_ATTEMPTS_CTX.set(self._provider_attempts)
+        # D14: the robots-skip / outcome aggregator (flag OFF: one env read).
+        live_robots.bind_attempts()
 
     def _attach_provider_attempts(self, source_trace: Dict[str, Any]) -> Dict[str, Any]:
         """Attach the collected provider attempts under the EXISTING
@@ -3875,6 +3882,43 @@ class StructuredComparisonService:
         result = attach_data_freshness_notice(result)
         self._stamp_unit_metadata(result)
         return result
+
+    def _kb_ingest_tail(
+        self,
+        result: Dict[str, Any],
+        product_data: Any,
+        *,
+        product_categories: Any,
+        region: Any,
+        vision: bool,
+    ) -> None:
+        """S81-17 KB-INGEST + D05 FIELD-STATUS, called at the two success exits
+        only (REST after the L3 moderation pass, before `return result`; stream
+        after it, before the `settle_complete` yield). Both flags are read FIRST;
+        both OFF -> return (no projection, no task, no key). Otherwise the plain-data
+        projection is built on the loop with no I/O (a failure is one WARNING and the
+        body untouched); ENABLE_FIELD_STATUS_METADATA stamps the additive
+        `metadata.field_status`; ENABLE_KB_INGEST hands kb_ingest.run_job to ONE
+        asyncio.to_thread inside ONE fire-and-forget task (label `kb_ingest`),
+        never awaited: the response never waits for, or sees, the job."""
+        ingest = kb_ingest.kb_ingest_enabled()
+        expose = kb_ingest.field_status_metadata_enabled()
+        if not (ingest or expose):
+            return
+        try:
+            snap = kb_ingest.build_job(
+                result, product_data, product_categories=product_categories,
+                region=region, vision=vision, captured_at=kb_ingest._now(),
+            )
+        except Exception as exc:  # noqa: BLE001 - the response never depends on it
+            logger.warning("[KB_INGEST] build failed: %s", type(exc).__name__)
+            return
+        if expose:
+            metadata = result.setdefault("metadata", {})
+            if isinstance(metadata, dict):
+                metadata["field_status"] = snap["field_status"]
+        if ingest:
+            _fire_and_forget(asyncio.to_thread(kb_ingest.run_job, snap), "kb_ingest")
 
     def _stamp_unit_metadata(self, response: Dict[str, Any]) -> None:
         """FANOUT-STARVE (FS-R3 m9 / FS-R4) -- the additive, flag-ON-only metadata keys
@@ -4770,6 +4814,13 @@ class StructuredComparisonService:
                     "layer": "moderation_api",
                 }
 
+            # S81-17 / D05: the field_status exposure and the ONE ingest job (both
+            # flags OFF: two env reads, nothing else).
+            self._kb_ingest_tail(
+                result, product_data, product_categories=product_categories,
+                region=region, vision=bool(vision_products),
+            )
+
             # Fire-and-forget: update behavioral profile (M6: tracked so
             # silent task failures surface as WARNING logs).
             if user_id:
@@ -4800,6 +4851,10 @@ class StructuredComparisonService:
                 "code": "INTERNAL_ERROR",
                 "total_cost": self.total_cost,
             }
+        finally:
+            # D14: ONE health flush per compare (flag OFF: one env read). A bare
+            # call that never awaits and never raises (no return in a finally).
+            live_robots.flush_attempts()
 
     async def compare_from_text_streaming(
         self,
@@ -5689,6 +5744,12 @@ class StructuredComparisonService:
             # after this. Existing `complete` event is preserved
             # immediately after for backward-compat with current EAS
             # builds that listen on `complete`.
+            # S81-17 / D05: the field_status exposure and the ONE ingest job,
+            # before the settle_complete yield (both flags OFF: two env reads).
+            self._kb_ingest_tail(
+                complete_response, product_data, product_categories=product_categories,
+                region=region, vision=bool(vision_products),
+            )
             yield ("settle_complete", complete_response)
             yield ("complete", complete_response)
 
@@ -5713,6 +5774,11 @@ class StructuredComparisonService:
                 "code": "INTERNAL_ERROR",
                 "total_cost": self.total_cost,
             })
+        finally:
+            # D14: ONE health flush per compare, on the cancel / aclose / error
+            # paths too (flag OFF: one env read). A bare call: never awaits, never
+            # raises, never returns from the finally.
+            live_robots.flush_attempts()
 
     # ============================================
     # Internal orchestration methods

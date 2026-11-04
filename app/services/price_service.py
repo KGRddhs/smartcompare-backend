@@ -44,8 +44,11 @@ from app.services.deny_hosts import data_guards_v2_enabled, is_denied_source, is
 # by MODULE ATTRIBUTE so the flag readers run per call and a patch of the leaf
 # takes effect here.
 from app.services import jsonld_widen
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the persisted robots verdict before a live
+# fetch, by MODULE ATTRIBUTE (the flag is read per call at each hook).
+from app.services import live_robots
 
-ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
+ENABLE_PAGE_SCRAPE =os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
 
 logger = logging.getLogger(__name__)
 
@@ -14928,6 +14931,8 @@ def _curl_timeout_for_url(url: str) -> int:
 
 async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
     """Fetch raw HTML via curl_cffi (no JS rendering)."""
+    if live_robots.live_robots_enabled() and not live_robots.gate(url, "curl"):
+        return None
     try:
         from curl_cffi import requests as curl_requests
         timeout = _curl_timeout_for_url(url)
@@ -14936,6 +14941,8 @@ async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
                 url, impersonate="chrome", timeout=timeout, allow_redirects=True,
             )
         )
+        if live_robots.live_robots_enabled():
+            live_robots.record_response("curl", url, resp)
         if resp.status_code != 200:
             domain = urlparse(url).netloc.replace("www.", "")
             logger.info(f"[PRICE] Page scrape: HTTP {resp.status_code} for {domain}")
@@ -14947,6 +14954,8 @@ async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
             return resp.text[:PRICE_FETCH_MAX_BYTES] if cap else resp.text
         return resp.text
     except Exception as e:
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("curl", url, "fail")
         logger.warning(f"[PRICE] curl_cffi fetch failed for {url}: {e}")
         return None
 
@@ -15013,6 +15022,8 @@ async def curl_fetch_html_same_site(
     if not await _validate_url_offloop_or_sync(url) or not _host_on_domain(url, domain):
         logger.info("[PRICE] same-site fetch blocked initial url for %s", domain)
         return None
+    if live_robots.live_robots_enabled() and not live_robots.gate(url, "curl_same_site"):
+        return None
 
     try:
         from curl_cffi import requests as curl_requests
@@ -15037,8 +15048,13 @@ async def curl_fetch_html_same_site(
                         domain,
                     )
                     return None
+                if live_robots.live_robots_enabled() and not live_robots.gate(
+                        nxt, "curl_same_site"):
+                    return None
                 current = nxt
                 continue
+            if live_robots.live_robots_enabled():
+                live_robots.record_response("curl_same_site", current, resp)
             if status == 200:
                 text = resp.text or ""
                 if isinstance(final_url_out, list):
@@ -15050,6 +15066,8 @@ async def curl_fetch_html_same_site(
         logger.info("[PRICE] same-site fetch exceeded redirect cap for %s", domain)
         return None
     except Exception as e:  # noqa: BLE001 — fetch must never raise
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("curl_same_site", url, "fail")
         logger.warning(f"[PRICE] curl_fetch_html_same_site failed for {url}: {e}")
         return None
 
