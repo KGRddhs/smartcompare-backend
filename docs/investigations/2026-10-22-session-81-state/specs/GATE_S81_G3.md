@@ -1,0 +1,40 @@
+# GATE_S81_G3 (orchestrator Fable 5.1, 2026-11-04 ~12:15 AST, session 83): the RED gate of the G3 KB-INGEST group (S81-17 KB-INGEST + D05 FIELD-STATUS + D14 LIVE-ROBOTS); the RED round wf_45305946-23b (51 min, 563k tokens; report specs/S81_G3_RED_REPORT.md, comm list specs/S81_G3_COMM_SET.txt)
+
+Verdict: PASS. GREEN may start (after the junction and the usage reset). Precedence: these gate conditions, then RULINGS_S81_G3 (R-G3-1..18), the spec (sc-s81-g3/.qa-s80/S81-G3_UNIT_SPEC.md, filed as specs/S81_G3_UNIT_SPEC.md), the brief.
+
+## GC-1 (the frozen RED files, byte-identical through every later round; re-hash first and last)
+- tests/test_s81_d14_live_robots.py 542cd25984632308b7b1321753438c09abfe139d5fe9f653681277c7246147b9 (50,467 B)
+- tests/test_s81_s17_kb_ingest.py 547cdb741bcf03483a586888fed42d6b82addf1ecb8ee8fbfbafd498f5959f63 (54,300 B)
+- tests/fixtures/s81_d14_flag_off_golden.json 55851c046262be9812abf3ac7fc70034fc4503e4d01da85e633f7acb5cff5c4f (5,128 B)
+- tests/fixtures/s81_s17_flag_off_golden.json 514d1cd29252c321c4cae1a7cbbe753a3d9c4b0875e3be36d53a2294cea69a98 (8,178 B)
+The goldens carry sha256 hex digests and the base sha (digit runs of 8 or more that are digests, not personal data: the S81-10b golden shape) and `<redacted>` for any header whose name contains `key` (DV-11): accepted. Every amendment of a frozen row needs an E-row in RULINGS_FIX (none expected).
+
+## GC-2 (RED at base 744616e3)
+140 RED nodes fail on an AssertionError only (140 / 140 by specs/S81_G3_red/red_node_proof.json: D14 77 nodes = L1 x2, L2 x20, L2b x20, L3 x4, L4 x10, L5 x11, L6, L7, L8 x4, L9 x2, L10, L11; S81-17 63 nodes = S1 x2, S2, S3 x12, S4 x2, S5, S6 x4, S7 x2, S8 x2, S9 x2, S10, S11 x4, S12 x11, S13, S14 x4, S15 x2, S16, S17 x6, S18, S19, S20, S21 x3); 46 PIN nodes green with the FULL configuration ([pyt] tag=g3red-final-base 140 failed, 46 passed; [hermeticity] sentinel checked 186; [netguard] blocked 0). The netguard: DV-3 patches app.services.audit_service.log_content_blocked with a recorder on the moderation-refusal path (accepted: a Supabase write the sentinel would block). DV-2 (the parse-failure exit driven by a one-product fake parse) and DV-5 (S3 = 12 nodes) accepted.
+
+## GC-3 (the prototype)
+In a detached scratch worktree without a junction (removed, verified gone): both RED files 186 / 186 OFF and 186 / 186 with the four flags exported; the CI-order existing members OFF 1,757 passed / 1 failed (r06, the CRLF box noise, equal to base). 24 of the 25 listed mutants killed; S17-M7 as written is EQUIVALENT (the builder refuses an offer whose evidence_rung is None, the belt) and its live form S17-M7b (converted_usd admitted with a rung) is killed by S12: recorded as equivalent-by-belt, not a survivor. DV-8's placements (D14-M2 at both sites, D14-M5 inside jsonld_widen.rating_host_allowed, S17-M2 killed by S7's order recorder, S17-M4 as an inline synchronous run_job) accepted. The prototype diff (specs/S81_G3_red/prototype.diff, 45,584 B) is a reference GREEN may read but must not copy blindly: GREEN re-derives every hunk from the spec and the rulings and byte-copies every existing file first.
+
+## GC-4 (DV-1 / Q1: the CI-order gate at GREEN, amending spec 12.2 and R-G3-13)
+The CI-order set's EXISTING members run OFF only (their fetcher pins assume fetches that D14's fail-closed verdict skips with a cold memo, and FY25 moves under the additive exposure key by design); the two RED files and the GREEN-owned gate-rows file run OFF and ON (the four flags exported in ONE runner call). No existing pin is edited for this (an existing member red under ON is not a finding; red under OFF is).
+
+## GC-5 (Q2: outcome recording at every hooked fetcher)
+Every hooked fetcher that observes a response records its outcome (ok / fail; challenge where a status and headers exist), the Algolia and URL-mode hooks included (plan :158 "an attempt hook in the curl wave and every adapter"); L5 pins curl only (DV-6), so GREEN adds the row G3-GR2 to the NEW GREEN-owned tests/test_s81_g3_gate_rows.py (one ok and one fail outcome counted for shopify, woo, algolia and url_extraction with the fetcher label; the hook never raises on a response without headers) and the adversary re-reads every hook.
+
+## GC-6 (Q3: offer re-observation matching)
+PostgREST returns `amount` as a number while the builder sends a 3-place string: the re-observation match normalises both through Decimal (`Decimal(str(x)).normalize()`, the prototype's rule) on every numeric member of KB_OFFER_OBSERVATION_KEY, so an unchanged offer is never re-updated; GREEN adds G3-GR1 (a returned numeric amount matches the sent string: zero updates; a changed amount: one update) to the gate-rows file. The mutant G3-GRM1 (the normalisation dropped) must be killed by G3-GR1.
+
+## GC-7 (Q4: converted_usd)
+Both guards stand: the rung map answers None for converted_usd and the render tiers (the job refuses before building) AND the builder belt refuses a None rung. S17-M7 is equivalent by the belt; S17-M7b is the live mutant. No further row.
+
+## GC-8 (DV-4: the contract the RED fixed; GREEN satisfies it exactly)
+The memo clock `live_robots._monotonic()` (seconds) and the verdict clock `live_robots._now()` (an aware datetime); `live_robots._admin_client` / `_redis_client` and `kb_ingest._admin_client` as seams usable callable or direct; the aggregator = the dict on `live_robots._ATTEMPTS_CTX` keyed (source, normalized host, outcome) -> int; the fetcher labels curl / curl_same_site / shopify / woo / algolia / url_extraction (V2 also url_extraction); `load_records_sync(client)` returns {host: view} and stores the good load; `build_job(result, product_data, *, product_categories, region, vision, captured_at)` with an aware captured_at; `run_job(snap)` reads `kb_ingest._admin_client()` and `live_robots.records_snapshot()`; `field_status` takes no vision argument by default (identity source `parse`) and keeps the vision / parse source even when the identity state is unknown; L4 accepts one or more skip INFO lines (DV-7).
+
+## GC-9 (the comm set and the base record, LC-6)
+609 files (specs/S81_G3_COMM_SET.txt, sha256 ba26af35866801b40d145a9735a7797b0677efacf71e2154b8bb18b4a70093ec), 17 chunks + tests/test_secret_scan_static.py alone; the base record STORED at <scratchpad>/harness/base_records/744616e37d031923e522e30740b687de76482ee9/ba26af35...{txt,files,pyt.log,header.txt}: 188 members reused from stored records (a513ea3b x88, 90d45c0b x60, eaccd550 x30, c6fb6533 x10; the reuse rule applied STRICTER than R-G3-12, DV-10: accepted as the rule from now on) and 421 run at base (about 13 min). The 14 baseline failures are the known box nodes (test_auth_interceptor x2, test_page_scraping x2, test_personalization_bundle_c x2, test_prompt_truth x2 cold tiktoken, s10 r06 and the five s16 r27 CRLF nodes: DV-9): GREEN reuses the record and expects `comm -13` EMPTY against it. The CI-order existing members at base: 1,757 passed / 1 failed (r06).
+
+## GC-10 (not measured in RED, GREEN's duties)
+The corpus gate at HEAD (the base SHA 601338261705718a85c8c4ff281cefd47368a8c7aa1b12c2aad501baae18a1ef with the four flags forced OFF; one sitting); the fourteen backend-scanning client fences by path through the junction the orchestrator creates at sc-s81-g3/SmartCompareApp/node_modules (13 / 14 with exactly the four config/nativeBundle.w37 drift nodes); the E1 / E2 rows of tests/test_s81_kb_schema.py; the CLAUDE.md block (R-G3-16); the footprint re-check (R-G3-1: 14 files + the gate-rows file = 15; more re-opens the SAFE class); the full jest suite in the last round (LC-7).
+
+## GC-11 (hygiene)
+The worktree holds exactly the four untracked files (git diff --quiet exits 0); no pytest left running; the scratch worktree gone; the report through the shell (33,837 B, pure ASCII). GREEN branches feature/s81-g3-kb-ingest from 744616e3, commits the four frozen files with its own files in ONE commit through the hook (never --no-verify), keeps CRLF on existing files and LF on new ones, and writes no `robots_registry` text into the two new modules and no `kb_merchants` text into the hooked fetchers (R-G3-14).

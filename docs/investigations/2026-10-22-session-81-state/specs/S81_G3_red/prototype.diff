@@ -1,0 +1,1075 @@
+diff --git a/app/services/algolia_service.py b/app/services/algolia_service.py
+index 4f03a081..94592544 100644
+--- a/app/services/algolia_service.py
++++ b/app/services/algolia_service.py
+@@ -36,6 +36,7 @@ from typing import Optional, Dict, Any, List
+ 
+ from app.services.cache_service import get_cached, set_cached
+ from app.utils.redis_offloop import run_redis_offloop
++from app.services import live_robots
+ from app.services.price_service import (
+     strict_title_match,
+     _selection_match,
+@@ -770,6 +771,9 @@ async def fetch_algolia_price(
+     if norm_domain in ALGOLIA_EXPLICIT_STORES:
+         return await _fetch_explicit_store_price(norm_domain, product_name, resolved_category=category)
+ 
++    if live_robots.live_robots_enabled() and not live_robots.gate(
++            "https://" + norm_domain + "/", "algolia"):
++        return None
+     cfg = await _harvest_config(domain)
+     if not cfg:
+         return None
+@@ -857,6 +861,9 @@ async def _fetch_explicit_store_price(
+     store = ALGOLIA_EXPLICIT_STORES.get(domain)
+     if not store:
+         return None
++    if live_robots.live_robots_enabled() and not live_robots.gate(
++            "https://" + domain + "/", "algolia"):
++        return None
+ 
+     hits: List[Dict[str, Any]] = []
+     # R1 retrieval-term ladder (mirrors the harvest path; _algolia_query_explicit
+diff --git a/app/services/price_service.py b/app/services/price_service.py
+index e234bd2e..107a2b5e 100644
+--- a/app/services/price_service.py
++++ b/app/services/price_service.py
+@@ -44,6 +44,8 @@ from app.services.deny_hosts import data_guards_v2_enabled, is_denied_source, is
+ # by MODULE ATTRIBUTE so the flag readers run per call and a patch of the leaf
+ # takes effect here.
+ from app.services import jsonld_widen
++# D14 LIVE-ROBOTS: the verdict before each live fetch (flag read per call).
++from app.services import live_robots
+ 
+ ENABLE_PAGE_SCRAPE = os.environ.get("ENABLE_PAGE_SCRAPE", "true").lower() != "false"
+ 
+@@ -14928,6 +14930,8 @@ def _curl_timeout_for_url(url: str) -> int:
+ 
+ async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
+     """Fetch raw HTML via curl_cffi (no JS rendering)."""
++    if live_robots.live_robots_enabled() and not live_robots.gate(url, "curl"):
++        return None
+     try:
+         from curl_cffi import requests as curl_requests
+         timeout = _curl_timeout_for_url(url)
+@@ -14936,6 +14940,8 @@ async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
+                 url, impersonate="chrome", timeout=timeout, allow_redirects=True,
+             )
+         )
++        if live_robots.live_robots_enabled():
++            live_robots.record("curl", live_robots.host_of(url), live_robots.outcome_of(resp))
+         if resp.status_code != 200:
+             domain = urlparse(url).netloc.replace("www.", "")
+             logger.info(f"[PRICE] Page scrape: HTTP {resp.status_code} for {domain}")
+@@ -14947,6 +14953,8 @@ async def curl_fetch_html(url: str, *, cap: bool = True) -> Optional[str]:
+             return resp.text[:PRICE_FETCH_MAX_BYTES] if cap else resp.text
+         return resp.text
+     except Exception as e:
++        if live_robots.live_robots_enabled():
++            live_robots.record("curl", live_robots.host_of(url), "fail")
+         logger.warning(f"[PRICE] curl_cffi fetch failed for {url}: {e}")
+         return None
+ 
+@@ -15013,6 +15021,8 @@ async def curl_fetch_html_same_site(
+     if not await _validate_url_offloop_or_sync(url) or not _host_on_domain(url, domain):
+         logger.info("[PRICE] same-site fetch blocked initial url for %s", domain)
+         return None
++    if live_robots.live_robots_enabled() and not live_robots.gate(url, "curl_same_site"):
++        return None
+ 
+     try:
+         from curl_cffi import requests as curl_requests
+@@ -15037,8 +15047,14 @@ async def curl_fetch_html_same_site(
+                         domain,
+                     )
+                     return None
++                if live_robots.live_robots_enabled() and not live_robots.gate(
++                        nxt, "curl_same_site"):
++                    return None
+                 current = nxt
+                 continue
++            if live_robots.live_robots_enabled():
++                live_robots.record("curl_same_site", live_robots.host_of(current),
++                                   live_robots.outcome_of(resp))
+             if status == 200:
+                 text = resp.text or ""
+                 if isinstance(final_url_out, list):
+diff --git a/app/services/shopify_pdp_service.py b/app/services/shopify_pdp_service.py
+index 9eaecd6b..29d919aa 100644
+--- a/app/services/shopify_pdp_service.py
++++ b/app/services/shopify_pdp_service.py
+@@ -335,6 +335,9 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
+         if not await _hop_is_allowed_async(current, domain):
+             logger.info("[SHOPIFY_JS] blocked hop for %s", domain)
+             return None, None
++        from app.services import live_robots
++        if live_robots.live_robots_enabled() and not live_robots.gate(current, "shopify"):
++            return None, None
+         await _await_domain_slot(domain)
+         try:
+             resp = await asyncio.to_thread(_curl_get, current, HTTP_TIMEOUT)
+@@ -343,6 +346,10 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
+             return None, None
+ 
+         status = getattr(resp, "status_code", None)
++        if live_robots.live_robots_enabled() and not (
++                isinstance(status, int) and 300 <= status < 400):
++            live_robots.record("shopify", live_robots.host_of(current),
++                               live_robots.outcome_of(resp))
+         if isinstance(status, int) and 300 <= status < 400:
+             headers = getattr(resp, "headers", None) or {}
+             location = headers.get("Location") or headers.get("location")
+diff --git a/app/services/structured_comparison_service.py b/app/services/structured_comparison_service.py
+index 9ff34f95..49a4e217 100644
+--- a/app/services/structured_comparison_service.py
++++ b/app/services/structured_comparison_service.py
+@@ -3557,6 +3557,8 @@ class StructuredComparisonService:
+         into the SAME list. Always-on, $0, metadata-only."""
+         self._provider_attempts: List[Dict[str, Any]] = []
+         _PROVIDER_ATTEMPTS_CTX.set(self._provider_attempts)
++        from app.services import live_robots
++        live_robots.bind_attempts()
+ 
+     def _attach_provider_attempts(self, source_trace: Dict[str, Any]) -> Dict[str, Any]:
+         """Attach the collected provider attempts under the EXISTING
+@@ -4770,6 +4772,9 @@ class StructuredComparisonService:
+                     "layer": "moderation_api",
+                 }
+ 
++            self._kb_ingest_tail(result, product_data, product_categories=product_categories,
++                                 region=region, vision=bool(vision_products))
++
+             # Fire-and-forget: update behavioral profile (M6: tracked so
+             # silent task failures surface as WARNING logs).
+             if user_id:
+@@ -4800,6 +4805,9 @@ class StructuredComparisonService:
+                 "code": "INTERNAL_ERROR",
+                 "total_cost": self.total_cost,
+             }
++        finally:
++            from app.services import live_robots
++            live_robots.flush_attempts()
+ 
+     async def compare_from_text_streaming(
+         self,
+@@ -5689,6 +5697,9 @@ class StructuredComparisonService:
+             # after this. Existing `complete` event is preserved
+             # immediately after for backward-compat with current EAS
+             # builds that listen on `complete`.
++            self._kb_ingest_tail(complete_response, product_data,
++                                 product_categories=product_categories, region=region,
++                                 vision=False)
+             yield ("settle_complete", complete_response)
+             yield ("complete", complete_response)
+ 
+@@ -5713,6 +5724,28 @@ class StructuredComparisonService:
+                 "code": "INTERNAL_ERROR",
+                 "total_cost": self.total_cost,
+             })
++        finally:
++            from app.services import live_robots
++            live_robots.flush_attempts()
++
++    def _kb_ingest_tail(self, result, product_data, *, product_categories, region, vision):
++        """S81-17 (prototype): the D05 exposure and the ONE off-loop ingest job."""
++        from app.services import kb_ingest
++        ingest = kb_ingest.kb_ingest_enabled()
++        expose = kb_ingest.field_status_metadata_enabled()
++        if not (ingest or expose):
++            return
++        try:
++            snap = kb_ingest.build_job(result, product_data,
++                                       product_categories=product_categories, region=region,
++                                       vision=vision, captured_at=kb_ingest._now())
++        except Exception as exc:  # noqa: BLE001
++            logger.warning("[KB_INGEST] build failed: %s", type(exc).__name__)
++            return
++        if expose:
++            result.setdefault("metadata", {})["field_status"] = snap["field_status"]
++        if ingest:
++            _fire_and_forget(asyncio.to_thread(kb_ingest.run_job, snap), "kb_ingest")
+ 
+     # ============================================
+     # Internal orchestration methods
+diff --git a/app/services/url_extraction_service.py b/app/services/url_extraction_service.py
+index 695ab29b..290dfc27 100644
+--- a/app/services/url_extraction_service.py
++++ b/app/services/url_extraction_service.py
+@@ -519,6 +519,10 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
+         _log_fetch_failed(url, "blocked", None)
+         result["outcome"] = "blocked"
+         return result
++    from app.services import live_robots
++    if live_robots.live_robots_enabled() and not live_robots.gate(url, "url_extraction"):
++        result.update(outcome="robots_skip", final_url=url)
++        return result
+     current = url
+     try:
+         async with httpx.AsyncClient(timeout=30.0, follow_redirects=False,
+@@ -532,6 +536,10 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
+                         _log_fetch_failed(url, "blocked", None)
+                         result.update(outcome="blocked", final_url=current)
+                         return result
++                    if live_robots.live_robots_enabled() and not live_robots.gate(
++                            nxt, "url_extraction"):
++                        result.update(outcome="robots_skip", final_url=current)
++                        return result
+                     current = nxt
+                     continue
+                 result.update(status=response.status_code, final_url=current,
+@@ -998,7 +1006,7 @@ def _v2_status_reason(status: Any) -> str:
+ 
+ 
+ _V2_FETCH_OUTCOME_REASONS = {"error": "fetch_error", "blocked": "blocked",
+-                             "redirect_cap": "redirect_cap"}
++                             "redirect_cap": "redirect_cap", "robots_skip": "robots_skip"}
+ 
+ 
+ def _v2_refusal(url: str, code: str, reason: str, outcome: str, status: Any) -> Dict[str, Any]:
+@@ -1129,7 +1137,11 @@ async def extract_from_url(url: str, url_mode_v2: bool = False) -> Dict[str, Any
+     logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
+     
+     # Fetch page
+-    html = await fetch_page(url)
++    from app.services import live_robots
++    if live_robots.live_robots_enabled() and not live_robots.gate(url, "url_extraction"):
++        html = None
++    else:
++        html = await fetch_page(url)
+     if not html:
+         return {
+             "success": False,
+diff --git a/app/services/woocommerce_service.py b/app/services/woocommerce_service.py
+index 65cb3da5..cc16fead 100644
+--- a/app/services/woocommerce_service.py
++++ b/app/services/woocommerce_service.py
+@@ -62,6 +62,7 @@ _WOO_GENUINE_METHOD = "woo_store_api"
+ # Per-request timeout (s). The cascade also wraps the coro in a 10s
+ # _ADAPTER_TIMEOUT, so keep the inner curl timeout below that.
+ from app.services.adapter_timeouts import adapter_timeout
++from app.services import live_robots
+ _WOO_TIMEOUT = adapter_timeout(10)  # M13-34: clamp under the per-source _timeout_none wrap
+ 
+ # Default headers. WAF stores (ownperfumes/purpleorchidbh/fragrancebh) 403 the
+@@ -337,16 +338,25 @@ async def fetch_woocommerce_store_api_price(
+     for term in build_adapter_search_terms(product_name, resolved_category):
+         params = {"search": term, "per_page": 20}
+         try:
++            if live_robots.live_robots_enabled() and not live_robots.gate(
++                    _store_api_url(domain, term, versioned=False), "woo"):
++                return None
+             resp = await asyncio.to_thread(
+                 _do_get, _store_api_url(domain, term, versioned=False),
+                 params, headers,
+             )
+             if getattr(resp, "status_code", None) == 404:
+                 # Unversioned path missing → retry the /v1/ alias.
++                if live_robots.live_robots_enabled() and not live_robots.gate(
++                        _store_api_url(domain, term, versioned=True), "woo"):
++                    return None
+                 resp = await asyncio.to_thread(
+                     _do_get, _store_api_url(domain, term, versioned=True),
+                     params, headers,
+                 )
++            if live_robots.live_robots_enabled():
++                live_robots.record("woo", live_robots.host_of(
++                    _store_api_url(domain, term, versioned=False)), live_robots.outcome_of(resp))
+             if getattr(resp, "status_code", None) != 200:
+                 logger.info(
+                     "[PRICE] woo HTTP %s for '%s' (%s)",
+diff --git a/tests/test_s81_kb_schema.py b/tests/test_s81_kb_schema.py
+index 8d163428..1f7d392b 100644
+--- a/tests/test_s81_kb_schema.py
++++ b/tests/test_s81_kb_schema.py
+@@ -331,8 +331,10 @@ def _py_files(*tops: str) -> list[Path]:
+ P01_ALLOWED = {
+     ("app/services/merchant_registry.py", "from app.services import kb_service as _kb"),
+     ("scripts/kb_seed_common.py", "from app.services import kb_service as _kb"),
++    ("app/services/kb_ingest.py", "from app.services import kb_service as _kb"),
+ }
+-P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf"}
++P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf",
++                 "app/services/kb_ingest.py": "kb_leaf"}
+ P02_ALLOWED = {
+     ("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"'),
+     ("scripts/kb_seed_common.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
+@@ -340,6 +342,12 @@ P02_ALLOWED = {
+     ("scripts/kb_seed_common.py", 'KB_OFFERS_TABLE = "kb_offers"'),
+     ("scripts/kb_seed_common.py", 'KB_SPECS_TABLE = "kb_specs"'),
+     ("scripts/kb_seed_common.py", 'KB_GAPS_TABLE = "kb_gaps"'),
++    ("app/services/kb_ingest.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
++    ("app/services/kb_ingest.py", 'KB_VARIANTS_TABLE = "kb_variants"'),
++    ("app/services/kb_ingest.py", 'KB_OFFERS_TABLE = "kb_offers"'),
++    ("app/services/kb_ingest.py", 'KB_IMAGES_TABLE = "kb_images"'),
++    ("app/services/kb_ingest.py", 'KB_REVIEWS_TABLE = "kb_reviews"'),
++    ("app/services/kb_ingest.py", 'KB_GAPS_TABLE = "kb_gaps"'),
+ }
+ 
+ 
+diff --git a/app/services/live_robots.py b/app/services/live_robots.py
+new file mode 100644
+index 00000000..85352f2d
+--- /dev/null
++++ b/app/services/live_robots.py
+@@ -0,0 +1,372 @@
++"""D14 LIVE-ROBOTS (PROTOTYPE, the RED round; thrown away): the verdict before
++every live fetch, read from the persisted S81-15 record through a per-process
++memo; the per-compare attempt aggregator and the ONE Redis health flush.
++
++Behind ENABLE_LIVE_ROBOTS_REGISTRY (+ ENABLE_LIVE_ROBOTS_HEALTH_FLUSH), read per
++call; flag OFF every hook is one env read."""
++import asyncio
++import contextvars
++import copy
++import logging
++import math
++import os
++import threading
++import time
++from datetime import datetime, timezone
++from typing import Any, Dict, Mapping, Optional
++from urllib.parse import urlsplit
++
++from app.services import deny_hosts, jsonld_widen
++
++logger = logging.getLogger(__name__)
++
++_TRUTHY = ("true", "1", "yes", "on")
++VERDICT_REASONS = ("bad_url", "denied", "no_row", "not_live", "no_record", "origin", "robots")
++OUTCOMES = ("ok", "fail", "robots_skip", "challenge")
++READ_COLUMNS = "host,status,deny,robots,challenge"
++READ_STATUSES = ("live", "blocked")
++VIEW_KEYS = ("host", "status", "deny", "robots", "challenge")
++PAGE_SIZE = 500
++
++
++def live_robots_enabled() -> bool:
++    return os.getenv("ENABLE_LIVE_ROBOTS_REGISTRY", "false").strip().lower() in _TRUTHY
++
++
++def health_flush_enabled() -> bool:
++    return os.getenv("ENABLE_LIVE_ROBOTS_HEALTH_FLUSH", "false").strip().lower() in _TRUTHY
++
++
++def _ttl_seconds() -> int:
++    raw = os.getenv("LIVE_ROBOTS_HEALTH_TTL_DAYS")
++    days = 8.0
++    if raw is not None:
++        try:
++            value = float(str(raw).strip())
++            if math.isfinite(value) and value > 0:
++                days = min(max(value, 1.0), 30.0)
++        except (TypeError, ValueError):
++            pass
++    return int(days) * 86400
++
++
++def _now() -> datetime:
++    return datetime.now(timezone.utc)
++
++
++def _monotonic() -> float:
++    return time.monotonic()
++
++
++def _admin_client():
++    from app.services.database_service import get_admin_supabase_client
++    return get_admin_supabase_client()
++
++
++def _redis_client():
++    from app.services import cache_service
++    return cache_service.redis_client
++
++
++def _memo_seconds() -> float:
++    from app.services import merchant_registry
++    return merchant_registry.memo_seconds()
++
++
++def _read_timeout() -> float:
++    from app.services import merchant_registry
++    return merchant_registry.read_timeout_seconds()
++
++
++def _max_stale() -> float:
++    from app.services import merchant_registry
++    return merchant_registry.max_stale_seconds()
++
++
++def _origin_of(url: Any) -> str:
++    try:
++        parts = urlsplit(url)
++        host = (parts.hostname or "").lower()
++        port = parts.port
++    except (ValueError, TypeError, AttributeError):
++        return ""
++    if parts.scheme not in ("http", "https") or not host:
++        return ""
++    return parts.scheme + "://" + host + (":" + str(port) if port else "")
++
++
++def host_of(url: Any) -> str:
++    return deny_hosts.normalize_host(jsonld_widen._url_host(url))
++
++
++def outcome_of(resp: Any) -> str:
++    status = getattr(resp, "status_code", None)
++    if status == 200:
++        return "ok"
++    headers = getattr(resp, "headers", None) or {}
++    try:
++        mark = headers.get("cf-mitigated") or headers.get("Cf-Mitigated")
++    except Exception:  # noqa: BLE001
++        mark = None
++    if isinstance(mark, str) and mark.strip().lower() == "challenge":
++        return "challenge"
++    return "fail"
++
++
++def url_verdict(url: Any, row: Any, now: Any) -> Optional[str]:
++    try:
++        if not isinstance(url, str):
++            return "bad_url"
++        parts = urlsplit(url.strip())
++        if parts.scheme not in ("http", "https") or not parts.hostname:
++            return "bad_url"
++        if deny_hosts.is_denied_url(url):
++            return "denied"
++        if not isinstance(row, dict):
++            return "no_row"
++        if row.get("deny"):
++            return "denied"
++        if row.get("status") != "live":
++            return "not_live"
++        robots = row.get("robots")
++        if not isinstance(robots, dict) or not robots.get("origin"):
++            return "no_record"
++        if robots.get("origin") != _origin_of(url):
++            return "origin"
++        entry = {k: row.get(k) for k in ("status", "deny", "robots", "challenge")}
++        if not jsonld_widen.rating_host_allowed(entry, url, now):
++            return "robots"
++        return None
++    except Exception:  # noqa: BLE001 - fail-closed
++        return "bad_url"
++
++
++# --------------------------------------------------------------------- the memo
++_LOCK = threading.Lock()
++_STATE: Dict[str, Any] = {"rows": None, "loaded_at": None, "good_at": None, "failed": False,
++                          "warned_at": None}
++_REFRESH = None
++
++
++def _read_rows(client: Any) -> Dict[str, Dict[str, Any]]:
++    from app.services import merchant_registry
++
++    rows: Dict[str, Dict[str, Any]] = {}
++    start = 0
++    while True:
++        resp = (client.table(merchant_registry.KB_MERCHANTS_TABLE)
++                .select(READ_COLUMNS)
++                .in_("status", list(READ_STATUSES))
++                .order("host")
++                .range(start, start + PAGE_SIZE - 1)
++                .execute())
++        data = getattr(resp, "data", None) or []
++        for raw in data:
++            if not isinstance(raw, dict) or not isinstance(raw.get("host"), str):
++                continue
++            host = deny_hosts.normalize_host(raw["host"])
++            if not host:
++                continue
++            view = {k: copy.deepcopy(raw.get(k)) for k in VIEW_KEYS}
++            view["host"] = host
++            rows[host] = view
++        if len(data) < PAGE_SIZE:
++            break
++        start += PAGE_SIZE
++    return rows
++
++
++def load_records_sync(client: Any) -> Dict[str, Dict[str, Any]]:
++    rows = _read_rows(client)
++    now = _monotonic()
++    with _LOCK:
++        _STATE.update(rows=rows, loaded_at=now, good_at=now, failed=False)
++    return copy.deepcopy(rows)
++
++
++def records_snapshot() -> Optional[Dict[str, Dict[str, Any]]]:
++    try:
++        now = _monotonic()
++        with _LOCK:
++            rows, good_at = _STATE["rows"], _STATE["good_at"]
++        if rows is None or good_at is None or now - good_at > _memo_seconds():
++            return None
++        return copy.deepcopy(rows)
++    except Exception:  # noqa: BLE001
++        return None
++
++
++async def _refresh() -> None:
++    try:
++        client = _admin_client()
++        if client is None:
++            raise RuntimeError("no service-role client")
++        rows = await asyncio.wait_for(asyncio.to_thread(_read_rows, client), _read_timeout())
++        now = _monotonic()
++        with _LOCK:
++            _STATE.update(rows=rows, loaded_at=now, good_at=now, failed=False)
++    except Exception as exc:  # noqa: BLE001
++        now = _monotonic()
++        warn = False
++        with _LOCK:
++            _STATE["failed"] = True
++            _STATE["loaded_at"] = now
++            last = _STATE["warned_at"]
++            if last is None or now - last >= _memo_seconds():
++                _STATE["warned_at"] = now
++                warn = True
++        if warn:
++            logger.warning("[LIVE_ROBOTS] memo refresh failed: %s", type(exc).__name__)
++
++
++def _schedule_refresh() -> None:
++    global _REFRESH
++    try:
++        loop = asyncio.get_running_loop()
++    except RuntimeError:
++        return
++    with _LOCK:
++        current = _REFRESH
++        if current is not None and current[0] is loop and not current[1].done():
++            return
++    coro = _refresh()
++    try:
++        task = contextvars.Context().run(loop.create_task, coro)
++    except Exception:  # noqa: BLE001
++        coro.close()
++        return
++    with _LOCK:
++        _REFRESH = (loop, task)
++
++
++def _match(rows: Mapping[str, Any], host: str) -> Optional[Dict[str, Any]]:
++    if host in rows:
++        return rows[host]
++    best = None
++    for key in rows:
++        if host.endswith("." + key) and (best is None or len(key) > len(best)):
++            best = key
++    return rows[best] if best is not None else None
++
++
++def row_for_host(host: Any) -> Optional[Dict[str, Any]]:
++    try:
++        h = deny_hosts.normalize_host(host)
++        now = _monotonic()
++        with _LOCK:
++            rows, good_at, loaded_at = _STATE["rows"], _STATE["good_at"], _STATE["loaded_at"]
++        row = None
++        if h and rows is not None and good_at is not None and now - good_at <= _max_stale():
++            row = _match(rows, h)
++        if rows is None or loaded_at is None or now - loaded_at >= _memo_seconds():
++            _schedule_refresh()
++        return copy.deepcopy(row)
++    except Exception:  # noqa: BLE001
++        return None
++
++
++# ---------------------------------------------------------------- the hook
++def gate(url: Any, source: str) -> bool:
++    if not live_robots_enabled():
++        return True
++    host = ""
++    try:
++        host = host_of(url)
++        reason = url_verdict(url, row_for_host(host), _now())
++    except Exception:  # noqa: BLE001
++        reason = "bad_url"
++    if reason is None:
++        return True
++    record(source, host, "robots_skip")
++    logger.info("[LIVE_ROBOTS] skip source=%s host=%s reason=%s", source, host or "-", reason)
++    return False
++
++
++_ATTEMPTS_CTX: "contextvars.ContextVar[Optional[Dict[Any, int]]]" = contextvars.ContextVar(
++    "live_robots_attempts", default=None)
++
++
++def record(source: str, host: Any, outcome: str) -> None:
++    if not live_robots_enabled():
++        return
++    try:
++        if outcome not in OUTCOMES:
++            return
++        bucket = _ATTEMPTS_CTX.get()
++        if not isinstance(bucket, dict):
++            return
++        key = (str(source), deny_hosts.normalize_host(host), outcome)
++        bucket[key] = bucket.get(key, 0) + 1
++    except Exception:  # noqa: BLE001
++        return
++
++
++def bind_attempts() -> None:
++    if not live_robots_enabled():
++        return
++    _ATTEMPTS_CTX.set({})
++
++
++def _flush_sync(snapshot: Dict[Any, int], day: str, ttl: int) -> None:
++    client = _redis_client()
++    if client is None:
++        return
++    commands = []
++    keys = []
++    for (source, host, outcome), n in sorted(snapshot.items()):
++        if not host or not isinstance(n, int) or isinstance(n, bool) or n <= 0:
++            continue
++        key = "kbh:" + day + ":" + host
++        commands.append((key, source + ":" + outcome, n))
++        if key not in keys:
++            keys.append(key)
++    if not commands:
++        return
++    pipe = client.pipeline()
++    for key, field, n in commands:
++        pipe.hincrby(key, field, n)
++    for key in keys:
++        pipe.expire(key, ttl)
++    pipe.exec()
++
++
++async def _flush_job(snapshot: Dict[Any, int], day: str, ttl: int) -> None:
++    try:
++        from app.utils.redis_offloop import run_redis_offloop_pool
++        await run_redis_offloop_pool(_flush_sync, snapshot, day, ttl)
++    except Exception as exc:  # noqa: BLE001
++        logger.warning("[LIVE_ROBOTS] health flush failed: %s", type(exc).__name__)
++
++
++def flush_attempts() -> None:
++    if not live_robots_enabled():
++        return
++    try:
++        bucket = _ATTEMPTS_CTX.get()
++        if bucket is None:
++            return
++        _ATTEMPTS_CTX.set(None)
++        if not bucket or not health_flush_enabled():
++            return
++        try:
++            asyncio.get_running_loop()
++        except RuntimeError:
++            logger.debug("[LIVE_ROBOTS] flush dropped: no running loop")
++            return
++        from app.utils import async_utils
++        async_utils.fire_and_forget(_flush_job(dict(bucket), _now().strftime("%Y%m%d"),
++                                               _ttl_seconds()), "live_robots_health_flush")
++    except Exception:  # noqa: BLE001
++        return
++
++
++def robots_entry_lookup(host: str) -> Optional[Mapping[str, Any]]:
++    if not live_robots_enabled():
++        return None
++    row = row_for_host(host)
++    if not isinstance(row, dict):
++        return None
++    return {k: row.get(k) for k in ("status", "deny", "robots", "challenge")}
++
++
++jsonld_widen.ROBOTS_ENTRY_LOOKUP = robots_entry_lookup
+diff --git a/app/services/kb_ingest.py b/app/services/kb_ingest.py
+new file mode 100644
+index 00000000..fbff4160
+--- /dev/null
++++ b/app/services/kb_ingest.py
+@@ -0,0 +1,383 @@
++"""S81-17 KB-INGEST + D05 FIELD-STATUS (PROTOTYPE, the RED round; thrown away)."""
++import copy
++import logging
++import math
++import os
++import re
++import time
++from datetime import datetime, timezone
++from decimal import Decimal, InvalidOperation
++from typing import Any, Dict, List, Optional
++
++from app.services import deny_hosts, jsonld_widen
++from app.services import result_gate as _rg
++
++logger = logging.getLogger(__name__)
++
++KB_PRODUCTS_TABLE = "kb_products"
++KB_VARIANTS_TABLE = "kb_variants"
++KB_OFFERS_TABLE = "kb_offers"
++KB_IMAGES_TABLE = "kb_images"
++KB_REVIEWS_TABLE = "kb_reviews"
++KB_GAPS_TABLE = "kb_gaps"
++
++_TRUTHY = ("true", "1", "yes", "on")
++D05_FIELDS = ("identity", "image", "price", "size", "concentration", "specs", "rating",
++              "review_count")
++_PAGE_EVIDENCE = frozenset({"page_scrape", "page_scrape_jsonld", "local_bhd"})
++_PLATFORM_API = frozenset({"shopify_json", "woo_store_api", "salla_api", "occ_rest_bhd",
++                           "magento_graphql_bhd", "rest_json_bhd"})
++_ML_RE = re.compile(r"^\s*(\d{1,5})\s*ml\s*$", re.IGNORECASE)
++
++
++def kb_ingest_enabled() -> bool:
++    return os.getenv("ENABLE_KB_INGEST", "false").strip().lower() in _TRUTHY
++
++
++def field_status_metadata_enabled() -> bool:
++    return os.getenv("ENABLE_FIELD_STATUS_METADATA", "false").strip().lower() in _TRUTHY
++
++
++def _gap_max() -> int:
++    raw = os.getenv("KB_INGEST_GAP_MAX")
++    if raw is None:
++        return 16
++    try:
++        value = float(str(raw).strip())
++    except (TypeError, ValueError):
++        return 16
++    if not math.isfinite(value) or value <= 0:
++        return 16
++    return int(min(max(value, 1), 64))
++
++
++def _now() -> datetime:
++    return datetime.now(timezone.utc)
++
++
++def _admin_client():
++    from app.services.database_service import get_admin_supabase_client
++    return get_admin_supabase_client()
++
++
++def kb_leaf():
++    from app.services import kb_service as _kb
++    return _kb
++
++
++def rung_for(method: Any) -> Optional[str]:
++    if method in _PAGE_EVIDENCE:
++        return "page_evidence"
++    if method in _PLATFORM_API:
++        return "platform_api"
++    return None
++
++
++def _z(moment: Any) -> Optional[str]:
++    if not isinstance(moment, datetime):
++        return None
++    aware = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
++    return aware.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
++
++
++def _na(value: Any) -> bool:
++    return _rg._is_na(value)
++
++
++def _tier3(specs: Dict[str, Any]) -> set:
++    return _rg._tier3_fields(specs) if isinstance(specs, dict) else set()
++
++
++def _item(state, source=None, reason=None):
++    return {"state": state, "source": source, "reason": reason}
++
++
++def _size_ml(price: Any) -> Optional[int]:
++    if not isinstance(price, dict):
++        return None
++    m = _ML_RE.match(str(price.get("size") or ""))
++    if not m:
++        return None
++    ml = int(m.group(1))
++    return ml if 1 <= ml <= 9999 else None
++
++
++def _status_one(p: Dict[str, Any], captured_at: Any, vision: bool) -> Dict[str, Any]:
++    from app.services.price_service import OFFICIAL_BRAND_DOMAINS
++
++    kb = kb_leaf()
++    price = p.get("price") if isinstance(p.get("price"), dict) else {}
++    specs = p.get("specs") if isinstance(p.get("specs"), dict) else {}
++    t3 = _tier3(specs)
++    out: Dict[str, Any] = {}
++    id_source = "vision" if vision else "parse"
++    if _rg.product_is_placeholder({"brand": p.get("brand"), "name": p.get("name")}):
++        out["identity"] = _item("unknown", id_source, "placeholder_identity")
++    elif kb.kb_product_id(p.get("brand") or "", p.get("name") or "", p.get("variant")) is None:
++        out["identity"] = _item("unknown", id_source, "no_product_id")
++    else:
++        out["identity"] = _item("known", id_source)
++    served = p.get("image_url")
++    if isinstance(served, str) and served.strip().lower().startswith("https://"):
++        page_img = price.get("image_url")
++        ok = (served == page_img and jsonld_widen.allowed_image_url(
++            page_img, price.get("url"), OFFICIAL_BRAND_DOMAINS) is not None)
++        out["image"] = _item("known", "retailer_page" if ok else "search")
++    else:
++        out["image"] = _item("unknown", None, "no_image")
++    if _rg.price_is_showable(price):
++        host = deny_hosts.normalize_host(jsonld_widen._url_host(price.get("url"))) or None
++        rung = rung_for(price.get("source_method"))
++        if price.get("_cached") is False:
++            item = dict(_item("fresh", host), as_of=_z(captured_at), rung=rung)
++        elif price.get("_cached") is True:
++            item = dict(_item("stale", host, "served_from_cache"), as_of=None, rung=rung)
++        else:
++            item = dict(_item("stale", host, "unmarked"), as_of=None, rung=rung)
++    else:
++        est = price.get("estimated") is True or price.get("source_method") == "estimated"
++        item = dict(_item("unknown", None, "estimated" if est else "no_price"), as_of=None,
++                    rung=None)
++    out["price"] = item
++    if _size_ml(price) is not None:
++        out["size"] = _item("known", "listing")
++    elif not _na(specs.get("volume")) and "volume" not in t3:
++        out["size"] = _item("known", "specs")
++    elif not _na(specs.get("volume")):
++        out["size"] = _item("unknown", None, "model_knowledge")
++    else:
++        out["size"] = _item("unknown", None, "no_size")
++    conc = specs.get("concentration")
++    if not _na(conc) and "concentration" not in t3:
++        out["concentration"] = _item("known", "specs")
++    elif not _na(conc):
++        out["concentration"] = _item("unknown", None, "model_knowledge")
++    else:
++        out["concentration"] = _item("unknown", None, "no_concentration")
++    real = [k for k, v in specs.items() if not str(k).startswith("_") and not _na(v)]
++    if [k for k in real if k not in t3]:
++        out["specs"] = _item("known", "search")
++    elif real:
++        out["specs"] = _item("unknown", None, "model_knowledge")
++    else:
++        out["specs"] = _item("unknown", None, "no_specs")
++    rsrc = "retailer_jsonld" if isinstance(p.get("jsonld_rating"), dict) else "provider"
++    if _rg.rating_is_real(p):
++        out["rating"] = _item("known", rsrc)
++    elif p.get("rating_derived") is True:
++        out["rating"] = _item("unknown", None, "derived_rating")
++    else:
++        out["rating"] = _item("unknown", None, "no_rating")
++    rc = p.get("review_count")
++    if isinstance(rc, int) and not isinstance(rc, bool) and rc > 0:
++        out["review_count"] = _item("known", rsrc)
++    else:
++        out["review_count"] = _item("unknown", None, "no_review_count")
++    return out
++
++
++def field_status(product_data: Any, result: Any, *, captured_at: Any, vision: bool = False
++                 ) -> List[Dict[str, Any]]:
++    products = list(product_data or [])[:2]
++    return [_status_one(p if isinstance(p, dict) else {}, captured_at, vision) for p in products]
++
++
++def build_job(result: Any, product_data: Any, *, product_categories: Any, region: Any,
++              vision: Any, captured_at: Any) -> Dict[str, Any]:
++    assessment = _rg.assess_result(result, product_categories=product_categories)
++    fs = field_status(product_data, result, captured_at=captured_at, vision=bool(vision))
++    products = []
++    for p, f in zip(list(product_data or [])[:2], fs):
++        p = p if isinstance(p, dict) else {}
++        price = p.get("price") if isinstance(p.get("price"), dict) else {}
++        products.append({
++            "brand": p.get("brand"), "name": p.get("name"), "variant": p.get("variant"),
++            "category": p.get("category"),
++            "price": {k: copy.deepcopy(price.get(k)) for k in (
++                "amount", "currency", "url", "source_method", "estimated", "_cached", "size",
++                "image_url", "in_stock")},
++            "jsonld_facts": copy.deepcopy(price.get("_jsonld_facts"))
++            if isinstance(price.get("_jsonld_facts"), dict) else None,
++            "jsonld_rating": copy.deepcopy(p.get("jsonld_rating"))
++            if isinstance(p.get("jsonld_rating"), dict) else None,
++            "field_status": copy.deepcopy(f),
++        })
++    return {"captured_at": captured_at, "region": region,
++            "identity_confidence": assessment.get("identity_confidence"),
++            "products": products, "field_status": copy.deepcopy(fs)}
++
++
++def _record_for(records: Dict[str, Any], host: str) -> Optional[Dict[str, Any]]:
++    if not host or not isinstance(records, dict):
++        return None
++    if host in records:
++        return records[host]
++    best = None
++    for key in records:
++        if host.endswith("." + key) and (best is None or len(key) > len(best)):
++            best = key
++    return records[best] if best is not None else None
++
++
++def _norm(col: str, value: Any) -> str:
++    if col == "amount":
++        try:
++            return str(Decimal(str(value)).normalize())
++        except (InvalidOperation, ValueError):
++            return str(value)
++    return str(value)
++
++
++def _key(row: Dict[str, Any], cols) -> tuple:
++    return tuple(_norm(c, row.get(c)) for c in cols)
++
++
++def _insert_ignore(client, table, rows, conflict) -> List[Dict[str, Any]]:
++    if not rows:
++        return []
++    resp = client.table(table).upsert(rows, on_conflict=",".join(conflict),
++                                      ignore_duplicates=True).execute()
++    return list(getattr(resp, "data", None) or [])
++
++
++def run_job(snap: Dict[str, Any]) -> None:
++    started = time.monotonic()
++    counts = dict.fromkeys(("products", "variants", "offers", "offer_updates", "images",
++                            "reviews", "gaps", "gap_increments", "gap_cas_lost", "not_built"), 0)
++    client = _admin_client()
++    if client is None:
++        logger.warning("[KB_INGEST] no service-role client")
++        return
++    from app.services import live_robots
++    from app.services.price_service import OFFICIAL_BRAND_DOMAINS, _GENUINE_BH_SOURCE_METHODS
++
++    kb = kb_leaf()
++    records = live_robots.records_snapshot() or live_robots.load_records_sync(client) or {}
++    captured = snap.get("captured_at")
++    cap_iso = kb._ts_iso(captured)
++    conf = snap.get("identity_confidence")
++    rows = {t: [] for t in (KB_PRODUCTS_TABLE, KB_VARIANTS_TABLE, KB_OFFERS_TABLE,
++                            KB_IMAGES_TABLE, KB_REVIEWS_TABLE, KB_GAPS_TABLE)}
++
++    def _add(table, row):
++        if row is None:
++            counts["not_built"] += 1
++        else:
++            rows[table].append(row)
++
++    if conf in ("high", "medium"):
++        for prod in snap.get("products") or []:
++            pid = kb.kb_product_id(prod.get("brand") or "", prod.get("name") or "",
++                                   prod.get("variant"))
++            if pid is None:
++                continue
++            price = prod.get("price") or {}
++            url = price.get("url")
++            host = deny_hosts.normalize_host(jsonld_widen._url_host(url))
++            row = _record_for(records, host)
++            verdict_ok = (isinstance(url, str) and isinstance(row, dict)
++                          and live_robots.url_verdict(url, row, captured) is None)
++            cat = prod.get("category")
++            if conf == "high" and (cat is None or str(cat).strip().lower() == kb.KB_CATEGORY):
++                conc = pid.split("|")[3]
++                conc = None if conc == "-" else conc
++                _add(KB_PRODUCTS_TABLE, kb.build_product_row(
++                    id=pid, brand=prod.get("brand"), name=prod.get("name"),
++                    identity_confidence="high", updated_at=captured, concentration=conc))
++                size_ml = _size_ml(price)
++                vid = kb.kb_variant_key(pid, conc, size_ml)
++                facts = prod.get("jsonld_facts") or {}
++                gtin = facts.get("gtin") if kb.gtin_check_digit_ok(facts.get("gtin")) else None
++                sku = facts.get("sku") if isinstance(facts.get("sku"), str) else None
++                _add(KB_VARIANTS_TABLE, kb.build_variant_row(
++                    id=vid, product_id=pid, updated_at=captured, concentration=conc,
++                    size_ml=size_ml, gtin=gtin, sku=sku))
++                method = price.get("source_method")
++                rung = rung_for(method)
++                canon = kb.canonical_offer_url(url)
++                if (method in _GENUINE_BH_SOURCE_METHODS and rung is not None
++                        and price.get("estimated") is not True and canon is not None
++                        and verdict_ok and row.get("status") == "live"
++                        and snap.get("region") == "bahrain" and vid is not None):
++                    in_stock = price.get("in_stock") if isinstance(price.get("in_stock"), bool) else None
++                    _add(KB_OFFERS_TABLE, kb.build_offer_row(
++                        variant_id=vid, merchant_id=row.get("host"), market="BH",
++                        amount=price.get("amount"), observed_currency=price.get("currency"),
++                        evidence_rung=rung, canonical_url=canon, captured_at=captured,
++                        size_ml=size_ml, in_stock=in_stock))
++                img = price.get("image_url")
++                if (isinstance(img, str) and verdict_ok and jsonld_widen.allowed_image_url(
++                        img, url, OFFICIAL_BRAND_DOMAINS) is not None):
++                    _add(KB_IMAGES_TABLE, kb.build_image_row(
++                        product_id=pid, url=img, provenance_host=host,
++                        source="retailer_jsonld" if prod.get("jsonld_facts") else "retailer_og",
++                        captured_at=captured))
++                jr = prod.get("jsonld_rating")
++                if isinstance(jr, dict):
++                    count = jr.get("count") if isinstance(jr.get("count"), int) else None
++                    _add(KB_REVIEWS_TABLE, kb.build_review_row(
++                        product_id=pid, source="retailer_jsonld", source_url=jr.get("url"),
++                        aggregate_rating=jr.get("value"), review_count=count,
++                        captured_at=captured))
++            fs = prod.get("field_status") or {}
++            for field in D05_FIELDS:
++                if field == "identity" or (fs.get(field) or {}).get("state") != "unknown":
++                    continue
++                if len(rows[KB_GAPS_TABLE]) >= _gap_max():
++                    break
++                assert not field.startswith("pdp_")
++                state = "needs_operator" if isinstance(row, dict) and row.get(
++                    "status") == "blocked" else "open"
++                hint = row.get("host") if isinstance(row, dict) else None
++                _add(KB_GAPS_TABLE, kb.build_gap_row(
++                    product_key=pid, field=field, first_seen=captured, demand_count=1,
++                    state=state, source_hint=hint))
++
++    counts["products"] = len(_insert_ignore(client, KB_PRODUCTS_TABLE, rows[KB_PRODUCTS_TABLE], ("id",)))
++    counts["variants"] = len(_insert_ignore(client, KB_VARIANTS_TABLE, rows[KB_VARIANTS_TABLE], ("id",)))
++    obs = kb.KB_OFFER_OBSERVATION_KEY
++    got = _insert_ignore(client, KB_OFFERS_TABLE, rows[KB_OFFERS_TABLE], obs)
++    counts["offers"] = len(got)
++    got_keys = {_key(r, obs) for r in got}
++    for row in rows[KB_OFFERS_TABLE]:
++        if _key(row, obs) in got_keys:
++            continue
++        q = client.table(KB_OFFERS_TABLE).update({k: row[k] for k in kb.KB_OFFER_UPSERT_SET})
++        for col in obs:
++            q = q.eq(col, row[col])
++        q.execute()
++        counts["offer_updates"] += 1
++    counts["images"] = len(_insert_ignore(client, KB_IMAGES_TABLE, rows[KB_IMAGES_TABLE],
++                                          ("product_id", "url")))
++    counts["reviews"] = len(_insert_ignore(client, KB_REVIEWS_TABLE, rows[KB_REVIEWS_TABLE],
++                                           ("product_id", "source_url")))
++    gaps = rows[KB_GAPS_TABLE]
++    gkey = ("product_key", "field")
++    got = _insert_ignore(client, KB_GAPS_TABLE, gaps, gkey)
++    counts["gaps"] = len(got)
++    got_keys = {_key(r, gkey) for r in got}
++    missing = [g for g in gaps if _key(g, gkey) not in got_keys]
++    if missing:
++        resp = (client.table(KB_GAPS_TABLE).select("product_key,field,demand_count,state")
++                .in_("product_key", sorted({g["product_key"] for g in missing}))
++                .in_("field", sorted({g["field"] for g in missing})).execute())
++        existing = {_key(r, gkey): r for r in (getattr(resp, "data", None) or [])}
++        for g in missing:
++            cur = existing.get(_key(g, gkey))
++            if not cur or not isinstance(cur.get("demand_count"), int):
++                continue
++            n = cur["demand_count"]
++            out = (client.table(KB_GAPS_TABLE)
++                   .update({"demand_count": n + 1, "last_seen": cap_iso})
++                   .eq("product_key", g["product_key"]).eq("field", g["field"])
++                   .eq("demand_count", n).execute())
++            if getattr(out, "data", None):
++                counts["gap_increments"] += 1
++            else:
++                counts["gap_cas_lost"] += 1
++    logger.info(
++        "[KB_INGEST] job products=%d variants=%d offers=%d offer_updates=%d images=%d "
++        "reviews=%d gaps=%d gap_increments=%d gap_cas_lost=%d not_built=%d elapsed_ms=%d",
++        counts["products"], counts["variants"], counts["offers"], counts["offer_updates"],
++        counts["images"], counts["reviews"], counts["gaps"], counts["gap_increments"],
++        counts["gap_cas_lost"], counts["not_built"], int((time.monotonic() - started) * 1000))
