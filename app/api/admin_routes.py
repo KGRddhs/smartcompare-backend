@@ -21,6 +21,7 @@ from app.services.model_config import standard_model, verdict_model
 from app.services.openai_pricing import PRICE_TABLE_AS_OF  # COST-METER (#66)
 from app.services import llm_pricing as _llm_pricing  # S81-03 (ENABLE_LLM_LEDGER_V2), module attribute (BL4)
 from app.services import llm_spend_breaker as _llm_spend_breaker  # S81-04 (ENABLE_LLM_SPEND_BREAKER), module attribute
+from app.services import kb_operator  # D16 (ENABLE_OPERATOR_INGEST), module attribute
 from app.utils.db_offload import run_db  # COST-METER (#66) G4: never a blocking .execute() on the loop
 from app.middleware.rate_limiter import limiter
 from app.services.analytics_service import (
@@ -1297,3 +1298,64 @@ async def costs_gauges(request: Request, _=Depends(verify_admin_key)):
         "scrapedo_month": _gauge(int(sd.get("used", 0)), int(sd.get("limit", 900))),
         "serper_lifetime": _gauge(int(sp.get("used", 0)), int(sp.get("limit", 2200))),
     }
+
+
+# D16 OPERATOR-INGEST (ENABLE_OPERATOR_INGEST, default OFF, read per call). The flag
+# gate is the FIRST dependency: OFF raises the Starlette base-class 404, so both
+# paths answer exactly like an unregistered path and neither the admin key, the body
+# handler nor the service-role client is reached. Both routes stay out of the
+# published schema. Refusals are 400 with a KB_* code (never a bare 503).
+def _kb_operator_refusal(code: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=kb_operator.OperatorRefusal(code).detail())
+
+
+@router.get("/kb/operator", include_in_schema=False)
+@limiter.limit("30/minute")
+async def kb_operator_view(
+    request: Request,
+    _gate=Depends(kb_operator.operator_gate),
+    _=Depends(verify_admin_key),
+):
+    """The operator view: blocked registry hosts, the needs_operator queue, the
+    latest coverage day (D16)."""
+    limit = kb_operator.page_limit(request.query_params.get("limit"))
+    try:
+        client = kb_operator._admin_client()
+        if client is None:
+            raise _kb_operator_refusal("KB_STORE_UNAVAILABLE")
+        view = await run_db(lambda: kb_operator.read_view(client, limit))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - the store, never a 5xx
+        logger.warning("[KB_OPERATOR] view read failed (%s)", type(exc).__name__)
+        raise _kb_operator_refusal("KB_STORE_UNAVAILABLE")
+    return {"success": True, **view}
+
+
+@router.post("/kb/ingest", include_in_schema=False)
+@limiter.limit("30/minute")
+async def kb_operator_ingest(
+    request: Request,
+    body: kb_operator.OperatorIngest,
+    _gate=Depends(kb_operator.operator_gate),
+    _=Depends(verify_admin_key),
+):
+    """Ingest one captured payload (operator or partner) into the KB (D16)."""
+    if kb_operator.payload_too_large(body):
+        raise _kb_operator_refusal("KB_PAYLOAD_TOO_LARGE")
+    if kb_operator.licence_violation(body):
+        raise _kb_operator_refusal("KB_LICENCE_FIELD")
+    try:
+        client = kb_operator._admin_client()
+        if client is None:
+            raise _kb_operator_refusal("KB_STORE_UNAVAILABLE")
+        now = kb_operator._now()
+        written = await run_db(lambda: kb_operator.ingest(client, body, now))
+    except kb_operator.OperatorRefusal as refusal:
+        raise _kb_operator_refusal(refusal.code)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a raising write is a 400, never a 5xx
+        logger.warning("[KB_OPERATOR] ingest write failed (%s)", type(exc).__name__)
+        raise _kb_operator_refusal("KB_STORE_UNAVAILABLE")
+    return {"success": True, "written": written}

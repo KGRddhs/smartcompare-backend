@@ -76,6 +76,9 @@ from app.utils.async_utils import fire_and_forget
 # S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the camera's budget read and
 # the rules on the identified names (a stdlib-only module, module attribute access).
 from app.services import category_gate as _category_gate
+# S81-18 KB-FIRST-SERVE (ENABLE_KB_FIRST_SERVE): the X-Client-Capabilities reader of the
+# camera compare call (module attribute; flag OFF = one env read, no keyword passed).
+from app.services import kb_serve as _kb_serve
 
 logger = logging.getLogger(__name__)
 
@@ -560,6 +563,7 @@ async def identify_and_compare(
         result = await service.compare_from_text(
             query, region=region, vision_products=products, nocache=nocache, **_compare_extra,
             **({"fragrance_gate": _gate_decision} if _gate_decision is not None else {}),
+            **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
         )
         compare_ms = int((time.perf_counter() - _t_compare) * 1000)
         # S81-10: the orchestrator's post-resolve refusal (already counted there) is

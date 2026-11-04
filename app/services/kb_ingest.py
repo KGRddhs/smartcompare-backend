@@ -263,7 +263,7 @@ def field_status(product_data: Any, result: Any, *, captured_at: Any, vision: bo
 # --------------------------------------------------------------------------- the job
 _PRICE_KEYS: Tuple[str, ...] = (
     "amount", "currency", "url", "source_method", "estimated", "_cached", "size", "image_url",
-    "in_stock",
+    "in_stock", "_cache_source",
 )
 
 
@@ -444,7 +444,8 @@ def run_job(snap: Dict[str, Any]) -> None:
                 canonical = kb.canonical_offer_url(url)
                 if (method in _GENUINE_BH_SOURCE_METHODS and rung is not None
                         and price.get("estimated") is not True and canonical is not None
-                        and allowed and snap.get("region") == "bahrain" and vid is not None):
+                        and allowed and snap.get("region") == "bahrain" and vid is not None
+                        and price.get("_cache_source") != "kb"):  # S81-18 C4: never re-observe a KB price
                     stock = price.get("in_stock")
                     _add(KB_OFFERS_TABLE, kb.build_offer_row(
                         variant_id=vid, merchant_id=row.get("host"), market="BH",
