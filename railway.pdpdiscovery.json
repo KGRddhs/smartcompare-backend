@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "watchPatterns": [
+      "scripts/cron_pdp_discovery.py",
+      "scripts/kb_seed_common.py",
+      "railway.pdpdiscovery.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -m scripts.cron_pdp_discovery",
+    "restartPolicyType": "NEVER"
+  }
+}

@@ -1,0 +1,48 @@
+{
+ "_doc": "S81-G2 D09 synthetic feed templates (synthetic hosts only): one Shopify /products.json product and one WooCommerce Store API product; tests vary them at run time.",
+ "shopify_product": {
+  "handle": "night-oud",
+  "id": 1000,
+  "product_type": "Perfume",
+  "tags": [
+   "fragrance"
+  ],
+  "title": "Night Oud Eau de Parfum 100ml",
+  "variants": [
+   {
+    "available": true,
+    "barcode": "",
+    "compare_at_price": null,
+    "id": 1,
+    "price": "45.000",
+    "sku": "NO-100",
+    "title": "100ml"
+   }
+  ],
+  "vendor": "Maison Example"
+ },
+ "woo_product": {
+  "brands": [
+   {
+    "name": "Brand Bee"
+   }
+  ],
+  "categories": [
+   {
+    "name": "Perfume"
+   }
+  ],
+  "id": 2,
+  "is_in_stock": true,
+  "name": "Amber Veil Eau de Toilette 75ml",
+  "permalink": "https://store-w.example.com/product/amber-veil/",
+  "prices": {
+   "currency_code": "BHD",
+   "currency_minor_unit": 3,
+   "price": "12500",
+   "regular_price": "12500",
+   "sale_price": "12500"
+  },
+  "sku": "AV-75"
+ }
+}
