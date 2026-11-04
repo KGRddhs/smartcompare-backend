@@ -1,0 +1,380 @@
+{
+ "failed": [
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r1_module_flag_knob",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r2_view_requires_key_when_on",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r3_view_content_and_bounds",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r4_ingest_happy_path_operator",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r5_blocked_host_needs_review",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r6_refusal_codes",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r7_validation",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r8_partner_source",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r9_log_line_constants",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r10_runbook_names_only",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d16_operator_ingest.py::test_r11_licence_fields_partner_only",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[None-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[false-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[0-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[no-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[OFF-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[dry-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[garbage-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[true-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[ TRUE -dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[1-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[yes-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[on-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[apply-apply]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r1_entry_and_mode[ APPLY -apply]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r2_metric_names_closed_and_valid",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r3_values_on_seeded_kb",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r4_proxy_reads_no_personal_columns",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r5_host_metrics_absent_never_zero",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r6_apply_upserts_through_builder",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r7_report_markdown",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r8_failure_isolation",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_d17_coverage.py::test_r9_railway_config_and_hygiene",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r1_module_and_flags",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r2_knobs_parse_defensively[KB_FIRST_SERVE_TIMEOUT_SECONDS-1.0-cases0]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r2_knobs_parse_defensively[KB_FIRST_SERVE_MAX_ASOF_DAYS-30-cases1]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r2_knobs_parse_defensively[VERDICT_CACHE_LOG_MAX_KEYS-10000-cases2]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r3_client_price_asof",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r4_required_spec_fields_fragrances",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r5_fetch_cards_one_gather_two_rpcs_through_run_db",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r6_fetch_cards_total[raise]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r6_fetch_cards_total[timeout]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r6_fetch_cards_total[client_none]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r6_fetch_cards_total[data_list]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r7_classify_full_partial_miss",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r8_price_ttl_and_asof",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r9_price_dict_shape",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r17_verdict_key_inputs",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r10_rest_full_hit_skips_paid_legs",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r11_stream_full_hit_same",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r12_partial_runs_only_missing_legs",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r13_candidates_seeded_for_fairness",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r16_verdict_key_log_eligible_only",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r18_no_seed_on_failed_verdict",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r20_card_failure_falls_through",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r19_kb_served_price_never_reobserved",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r14_asof_only_with_header",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s18_kb_first_serve.py::test_r15_camera_route_forwards_capability",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[None-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[false-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[0-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[OFF-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[dry-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[garbage-off]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[true-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[ TRUE -dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[1-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[yes-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[on-dry]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[apply-apply]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r1_entry_exists_and_mode[ Apply -apply]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r2_off_is_inert",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r3_dry_reads_only",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r4_rank_and_window",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r5_single_flight",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r6_specs_gap_goes_licence",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r7_step1_search_template_polite",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r8_step2_pdp_hint_consumed[ok]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r8_step2_pdp_hint_consumed[tos]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r8_step2_pdp_hint_consumed[timeout]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r8_step2_pdp_hint_consumed[http500]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r9_step3_inert",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r10_step4_blocked_to_operator",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r11_cas_never_moves_demand_or_hint",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r12_refresh_head_daily_tail_weekly[3-False]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r12_refresh_head_daily_tail_weekly[1-True]",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r13_log_lines_constants_only",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r14_railway_config",
+   "type": "AssertionError"
+  },
+  {
+   "node": "tests/test_s81_s19_gap_queue.py::test_r15_hygiene",
+   "type": "AssertionError"
+  }
+ ],
+ "types": {
+  "AssertionError": 91
+ },
+ "per_file": {
+  "test_s81_d16_operator_ingest|failed": 11,
+  "test_s81_d16_operator_ingest|passed": 7,
+  "test_s81_d17_coverage|failed": 23,
+  "test_s81_s18_kb_first_serve|failed": 25,
+  "test_s81_s18_kb_first_serve|passed": 13,
+  "test_s81_s19_gap_queue|failed": 32,
+  "test_s81_s19_gap_queue|passed": 2
+ }
+}
