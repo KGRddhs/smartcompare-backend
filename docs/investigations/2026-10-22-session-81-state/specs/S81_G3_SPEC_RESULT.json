@@ -1,0 +1,87 @@
+[
+  {
+    "type": "result",
+    "key": "v2:45ff9b256c163e79d6949c61b1addb01129920bb7dde33c514fba499cb76d3c4",
+    "agentId": "aa7fe31998eaabe15",
+    "result": {
+      "group": "S81-G3 KB-INGEST",
+      "units_covered": [
+        "S81-17 KB-INGEST (+ D05 field_status / kb_gaps)",
+        "D14 LIVE-ROBOTS + attempt hooks"
+      ],
+      "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g3/.qa-s80/S81-G3_UNIT_SPEC.md",
+      "spec_sha256": "cbeb3cb6fa4b082c5a634d09e8aa9ae0c1beff43b9934c1f42de630c5dd9fb93",
+      "summary": "The group spec is measured at base 744616e3 and written: 78,710 bytes, pure ASCII, LF line endings, in the gitignored .qa-s80/ folder. The worktree's git status is empty. No migration is needed: there is no kb_ingest_compare RPC, and that RPC is the stated follow-up S81-17b. One FOCUS surface was found, the D14 Redis health flush (one Upstash HINCRBY/EXPIRE pipeline per compare, no Lua). It sits behind its own sub-flag, ENABLE_LIVE_ROBOTS_HEALTH_FLUSH, and can be severed into D14b with no other change (section 12.7); the ruling is the orchestrator's (Q-D14-2).\n\nFlags and the D05 exposure ruling: S81-17 adds a NEW leaf, app/services/kb_ingest.py, with ENABLE_KB_INGEST plus a ruled sub-flag ENABLE_FIELD_STATUS_METADATA, which gates only metadata.field_status and is independent of the ingest flag.\n\nHooks (Q1): REST after the L3 moderation pass, before return result (scs :4774-4781); stream after the moderation pass, before the settle_complete yield (:5686-5692); the camera path goes through the same exit (image_routes :560). Each successful compare gets ONE _fire_and_forget(asyncio.to_thread(run_job)), labelled kb_ingest. The job writes through the S81-14 builders with insert-ignore only.\n\nIdentity confidence (Q2): it comes from the flag-free, pure result_gate.assess_result and is a pair value. The B1 flag is ENABLE_RESULT_STATUS_METADATA and is not needed.\n\nWhat the job writes: cards only at identity confidence high. Offers only for genuine, non-render methods on live registry hosts with an allow verdict, using one shared last_seen. Images under the D08 policy. Reviews from channel-1 JSON-LD only. NO kb_specs: the live LLM specs carry snippet indices, not source URLs, so no value can be cited. No kb_feedback. Gaps are written for identity high or medium.\n\nkb_gaps increments (Q5): insert-ignore, then one select, then a compare-and-set update on demand_count with no retry. Lost increments are counted (gap_cas_lost) and the concurrency loss is a stated limit. State and source_hint never move on an existing row, and the G2 pdp_ namespace is never touched.\n\nD14: a NEW leaf, app/services/live_robots.py, behind ENABLE_LIVE_ROBOTS_REGISTRY. Its verdict function re-homes the G2 url_gate (most restrictive of QarenBot and '*', expiry, challenge, origin).\n\nMemo (Q3): a SECOND per-process memo of host,status,deny,robots,challenge. Widening merchant_registry.READ_COLUMNS would redden the frozen S15 R6 row (test_s81_s15_registry_robots.py:914-917) and couple D14 to ENABLE_MERCHANT_REGISTRY_DB.\n\nFetcher hooks: curl_fetch_html, curl_fetch_html_same_site (each hop), shopify _fetch_once (each hop; covers the .js/.json/UCP endpoints), woo, algolia (merchant origin), and URL mode. Base-path URL mode is hooked at its caller extract_from_url :1132 because fetch_page's source sha is pinned; _fetch_page_v2 is hooked on every hop and returns outcome robots_skip.\n\nCounters: kept in their own ContextVar, never in the response's source_trace, and flushed in finally arms of the REST and stream try blocks. jsonld_widen.ROBOTS_ENTRY_LOOKUP gets a flag-first reader, so the D08 R13 row stays green. The UA is unchanged.\n\nQ4: measured on the pinned upstash-redis 1.7.0, the sync Pipeline offers hincrby/expire/exec as one REST call. The service-role absolute health write was rejected: it means N row updates per compare and lost updates.\n\nQ6: the corpus SHA at base with the group's four flags forced OFF is 601338261705718a85c8c4ff281cefd47368a8c7aa1b12c2aad501baae18a1ef (414 records / 1,656 calls). The hooks are not on the extract_price_from_html path.\n\nQ7: E-rows are E1/E2 on tests/test_s81_kb_schema.py P01/P02 for kb_ingest.py only. The S15 p5/p6/R43 rows, the B4 fetch_page sha row and the shopify importer row are satisfied by construction: no robots_registry text in the new modules, no kb_merchants text in the fetchers.\n\nQ8: no adapter receives the registry row; every lookup keys on the URL host.\n\nThe base pins passed and the comm set was derived (counts in the fields below).",
+      "change_list": [
+        "NEW app/services/live_robots.py (D14: flags, url_verdict, the robots memo, the gate/record/bind/flush aggregator, the Redis health flush behind its sub-flag, robots_entry_lookup assigned to jsonld_widen.ROBOTS_ENTRY_LOOKUP)",
+        "app/services/price_service.py: one import beside :46; gate + record in curl_fetch_html :14929 and curl_fetch_html_same_site :14975 (initial URL + each hop)",
+        "app/services/shopify_pdp_service.py: _fetch_once :325 per-hop gate (function-local import)",
+        "app/services/woocommerce_service.py: gate before each GET :340/:346",
+        "app/services/algolia_service.py: gate in fetch_algolia_price before _harvest_config and in _fetch_explicit_store_price before the first query",
+        "app/services/url_extraction_service.py: gate at the extract_from_url caller :1132 (fetch_page untouched); _fetch_page_v2 initial + each hop; one additive _V2_FETCH_OUTCOME_REASONS entry robots_skip",
+        "NEW app/services/kb_ingest.py (S81-17: flags, the pure field_status, build_job, run_job, the writer re-homed from the KbWriter semantics, kb_leaf with the one function-local kb_service import)",
+        "app/services/structured_comparison_service.py: imports; _init_provider_attempts binds the D14 aggregator; NEW _kb_ingest_tail + call lines at the REST and stream success exits after moderation; finally arms on the REST try :4288/:4783 and the stream try :4979/:5695 calling flush_attempts",
+        "tests/test_s81_kb_schema.py: E1 (P01_ALLOWED + P01_FUNCTIONS for kb_ingest.py / kb_leaf), E2 (P02_ALLOWED for the six KB_*_TABLE lines in kb_ingest.py)",
+        "NEW tests/test_s81_s17_kb_ingest.py + tests/fixtures/s81_s17_flag_off_golden.json",
+        "NEW tests/test_s81_d14_live_robots.py + tests/fixtures/s81_d14_flag_off_golden.json",
+        "CLAUDE.md: one G3 block after :551 with the two rows + one pointer clause on :341"
+      ],
+      "red_files": [
+        "tests/test_s81_s17_kb_ingest.py",
+        "tests/test_s81_d14_live_robots.py"
+      ],
+      "red_rows": 32,
+      "pin_rows": 5,
+      "mutants": 24,
+      "comm_set_size": 609,
+      "focus_surfaces_found": [
+        "Redis (D14 health flush only): one Upstash REST pipeline per compare of HINCRBY kbh:<UTC day>:<host> <source>:<outcome> + EXPIRE, a new key namespace, no Lua/EVAL, no quota key, fail-open, behind its own sub-flag ENABLE_LIVE_ROBOTS_HEALTH_FLUSH. Severable into D14b with no other change (spec 12.7; ruling asked as Q-D14-2). No other FOCUS surface: no migration, auth, quota, legal, consent, middleware, secret or client file."
+      ],
+      "open_questions": [
+        "Q-D14-1: URL mode under ENABLE_LIVE_ROBOTS_REGISTRY: fail-closed for every non-registry host (spec default, plan text and owner decision 11) or skip only on an explicit disallow / challenge / expired record of a registry host (missing row = allow, the 2026-08-31 ruling)?",
+        "Q-D14-2: keep the Redis health flush in G3 as telemetry counters (the cache_service.record_tier15_attempt class) or move it to D14b, keeping the group strictly SAFE?",
+        "Q-D14-3: gate the remaining adapters (Magento / Salla / OCC / rest_json) in a later D14c?",
+        "Q-S17-1: confirm the ruled exposure sub-flag ENABLE_FIELD_STATUS_METADATA rather than riding ENABLE_KB_INGEST",
+        "Q-S17-2: S81-17b (kb_ingest_compare RPC = migration 051, FOCUS) now or after the canary measures the job's thread time (up to about 23 PostgREST round trips per job)?",
+        "Q-S17-3: write gaps for identity-medium products (spec: yes) or high only?"
+      ],
+      "base_measurements": [
+        "[pyt] tag=g3spec-base-pins start=2026-11-04 10:46:57 end=2026-11-04 10:47:28 elapsed=31s bound=600s status=OK rc=0 (1087 passed, 11 warnings; [hermeticity] sentinel checked 1087 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)) over test_s81_kb_schema, test_s81_d08_jsonld_widen, test_s81_g1_gate_rows, test_s81_s15_registry_robots, test_shopify_pdp_json, test_woocommerce_adapter, test_algolia_service, test_url_extraction, test_s75_fanout_identity, test_fire_and_forget_wrap",
+        "corpus gate at base 744616e3, the four G3 flags forced OFF: RECORDS n=414 skipped_no_html=6 distinct_queries=362 non_none=829 calls=1656, OVERALL SHA256 601338261705718a85c8c4ff281cefd47368a8c7aa1b12c2aad501baae18a1ef, rc=0",
+        "upstash-redis 1.7.0 (pinned, requirements.txt:202): sync Pipeline has hincrby/expire/exec; AsyncPipeline.exec is one http.execute(from_pipeline=True)",
+        "comm set = 609 files, sha256 ba26af35866801b40d145a9735a7797b0677efacf71e2154b8bb18b4a70093ec (list at <scratchpad>/g3spec/comm_final2.txt)"
+      ],
+      "deliberate_pin_changes": [
+        "E1 tests/test_s81_kb_schema.py:331-335: P01_ALLOWED + ('app/services/kb_ingest.py', 'from app.services import kb_service as _kb'); P01_FUNCTIONS + 'app/services/kb_ingest.py': 'kb_leaf'",
+        "E2 tests/test_s81_kb_schema.py:336-344: P02_ALLOWED + the six KB_{PRODUCTS,VARIANTS,OFFERS,IMAGES,REVIEWS,GAPS}_TABLE lines keyed to app/services/kb_ingest.py"
+      ],
+      "stated_limits": [
+        "D14-L1 UA stays Chrome under the flag (named UA after M6)",
+        "D14-L2 another origin of a registry host (www/apex, http/https) is skipped",
+        "D14-L3 a cold or failing memo skips every gated fetch (fail-closed)",
+        "D14-L4 URL mode refuses hosts without an allow record (Q-D14-1)",
+        "D14-L5 attempts finishing after the compare's finally are not counted",
+        "D14-L6 Redis counters are not folded into kb_merchants.health (D14b), 8-day TTL",
+        "D14-L7 the Algolia DSN host is not robots-checked; the merchant origin decides",
+        "S81-17-L1 identity confidence is a pair value",
+        "S81-17-L2 no kb_specs from the live path (no per-field source URL)",
+        "S81-17-L3 demand_count compare-and-set without retry loses concurrent increments",
+        "S81-17-L4 up to about 23 PostgREST round trips per job on one executor thread",
+        "S81-17-L5 kb_reviews / kb_images are first-observation-wins",
+        "S81-17-L6 a stale price carries no as_of",
+        "S81-17-L7 a gap's state is set at insert only",
+        "S81-17-L8 market BH only"
+      ],
+      "pyt_lines": [
+        "[pyt] tag=g3spec-base-pins start=2026-11-04 10:46:57 end=2026-11-04 10:47:28 elapsed=31s bound=600s status=OK rc=0"
+      ]
+    },
+    "toolsUsed": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "StructuredOutput"
+    ]
+  }
+]
