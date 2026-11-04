@@ -58,12 +58,13 @@ const ADV_SCHEMA = {
 
 phase('Fix')
 const fix = await agent([
-  'You are the FIX agent (RED-then-GREEN) for unit ' + u.id + ': ' + u.title + ', fix round on branch ' + u.branch + ' at HEAD ' + u.headSha + ' in ' + u.worktree + ' (verify both first; `git status --short` must be empty).',
+  'You are the FIX agent (RED-then-GREEN) for unit ' + u.id + ': ' + u.title + ', fix round on branch ' + u.branch + ' at HEAD ' + u.headSha + ' in ' + u.worktree + (u.stateNote ? ' (' + u.stateNote + ').' : ' (verify both first; `git status --short` must be empty).'),
   RULES,
   'Follow the "Procedure for the fix agent" in the fix-round rulings file exactly, in order: RED step (append the rows the rulings name, prove each new row fails at HEAD on an AssertionError only, existing rows still green, record the new sha256 of every RED file), GREEN step (smallest additive hunks; the flag first in every gated predicate; flag OFF byte-identical), the documentation rulings on the CLAUDE.md row and the PR body draft, the gates the rulings list, then ONE commit on the branch with `git add <paths>` and `git commit -m "<msg>\n\nCo-Authored-By: Claude <YOUR OWN MODEL NAME, e.g. Opus 5.5> <noreply@anthropic.com>" -- <paths>` (no push, no rebase, no stash). Write the fix report to <scratchpad>/' + u.id + '_fix' + R + '/' + u.id + '_FIX' + R + '_REPORT.md and return the structured output with the new HEAD sha.',
 ].join('\n\n'), { label: 'fix:' + u.id, phase: 'Fix', schema: FIX_SCHEMA })
 if (!fix) { log('fix agent produced no report'); return { fix: null, reverify: null } }
 log('fix ' + u.id + ' at ' + fix.head_sha)
+if (args.reverify === false) { log('re-verifier skipped by the fix rulings (LC-2: a test-only / docs-only round; the orchestrator verifies the bytes)'); return { fix, reverify: null } }
 
 phase('Reverify')
 const reverify = await agent([

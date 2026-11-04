@@ -1,0 +1,53 @@
+S18-M1 KILLED 9 failed, 29 passed, 15 warnings in 8.59s restored
+S18-M2 KILLED 2 failed, 36 passed, 11 warnings in 5.86s restored
+S18-M3 KILLED 7 failed, 31 passed, 11 warnings in 4.39s restored
+S18-M4 KILLED 2 failed, 36 passed, 11 warnings in 5.47s restored
+S18-M5 KILLED 1 failed, 37 passed, 11 warnings in 3.97s restored
+S18-M6 KILLED 2 failed, 36 passed, 11 warnings in 5.60s restored
+S18-M7 KILLED 1 failed, 37 passed, 11 warnings in 4.06s restored
+S18-M8 KILLED 1 failed, 37 passed, 11 warnings in 5.36s restored
+S18-M9 KILLED 1 failed, 37 passed, 11 warnings in 3.99s restored
+S18-M10 KILLED 1 warning, 38 errors in 17.82s restored
+S18-M11 KILLED 5 failed, 33 passed, 11 warnings in 4.09s restored
+S18-M12 KILLED 5 failed, 33 passed, 11 warnings in 5.05s restored
+S18-M13 KILLED 4 failed, 34 passed, 11 warnings in 4.02s restored
+S18-M14 KILLED 1 failed, 37 passed, 11 warnings in 4.77s restored
+S19-M1 KILLED 1 failed, 33 passed, 1 warning in 2.55s restored
+S19-M2 KILLED 2 failed, 32 passed, 1 warning in 3.84s restored
+S19-M3 KILLED 1 failed, 33 passed, 1 warning in 2.50s restored
+S19-M4 KILLED 1 failed, 33 passed, 1 warning in 2.46s restored
+S19-M5 KILLED 3 failed, 31 passed, 1 warning in 3.92s restored
+S19-M6 KILLED 3 failed, 31 passed, 1 warning in 2.48s restored
+S19-M7 KILLED 2 failed, 32 passed, 1 warning in 2.49s restored
+S19-M8 KILLED 2 failed, 32 passed, 1 warning in 2.58s restored
+S19-M9 KILLED 6 failed, 28 passed, 1 warning in 3.07s restored
+S19-M10 KILLED 1 failed, 33 passed, 1 warning in 2.55s restored
+S19-M11 KILLED 1 failed, 33 passed, 1 warning in 3.28s restored
+S19-M12 KILLED 1 failed, 33 passed, 1 warning in 2.61s restored
+D16-M1 KILLED 4 failed, 14 passed, 11 warnings in 4.66s restored
+D16-M2 KILLED 4 failed, 14 passed, 11 warnings in 3.85s restored
+D16-M3 KILLED 1 failed, 17 passed, 11 warnings in 3.80s restored
+D16-M4 KILLED 1 failed, 17 passed, 11 warnings in 4.54s restored
+D16-M5 KILLED 1 failed, 17 passed, 11 warnings in 3.82s restored
+D16-M6 KILLED 1 failed, 17 passed, 11 warnings in 4.46s restored
+D16-M7 KILLED 1 failed, 17 passed, 11 warnings in 4.23s restored
+D16-M8 KILLED 1 failed, 17 passed, 11 warnings in 3.82s restored
+D16-M9 KILLED 1 failed, 17 passed, 11 warnings in 4.59s restored
+D16-M10 KILLED 1 failed, 17 passed, 11 warnings in 3.91s restored
+D17-M1 KILLED 1 failed, 22 passed, 1 warning in 3.24s restored
+D17-M2 KILLED 3 failed, 20 passed, 1 warning in 2.52s restored
+D17-M3 KILLED 1 failed, 22 passed, 1 warning in 3.23s restored
+D17-M4 KILLED 1 failed, 22 passed, 1 warning in 2.47s restored
+D17-M5 KILLED 1 failed, 22 passed, 1 warning in 2.85s restored
+D17-M6 KILLED 2 failed, 21 passed, 1 warning in 2.46s restored
+S18-M10r KILLED 1 failed, 37 passed, 11 warnings in 4.66s restored
+ADV-1 H7 unconditional kb_hit KILLED 9 failed, 29 passed, 11 warnings in 5.00s restored
+ADV-2 H1 classify accepts_asof always True KILLED 1 failed, 37 passed, 11 warnings in 4.26s restored
+ADV-3 H6 rating written before rating_data block SURVIVED 38 passed, 11 warnings in 4.02s restored
+ADV-4 fetch_cards no wait_for KILLED 1 failed, 37 passed, 11 warnings in 5.24s restored
+ADV-5 region check dropped KILLED 1 failed, 37 passed, 11 warnings in 4.20s restored
+ADV-6 identity high not required KILLED 1 failed, 37 passed, 11 warnings in 4.89s restored
+ADV-7 release deletes without owner check SURVIVED 34 passed, 1 warning in 2.00s restored
+ADV-8 redis None fetches KILLED 1 failed, 33 passed, 1 warning in 3.09s restored
+ADV-9 stub carries specs SURVIVED 38 passed, 11 warnings in 3.50s restored
+ADV-10 C4 PRICE_KEYS drop KILLED 1 failed, 37 passed, 11 warnings in 4.74s restored
