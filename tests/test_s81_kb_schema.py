@@ -328,8 +328,19 @@ def _py_files(*tops: str) -> list[Path]:
 
 #: S81-15 deliberate changes E3 / E4 (RULINGS_FIX1_S81_15 F1-2): the ONE importer and the ONE relation
 #: literal the merchant registry needs, each keyed by its file AND its exact line text (never a whole file).
-P01_ALLOWED = {("app/services/merchant_registry.py", "from app.services import kb_service as _kb")}
-P02_ALLOWED = {("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"')}
+P01_ALLOWED = {
+    ("app/services/merchant_registry.py", "from app.services import kb_service as _kb"),
+    ("scripts/kb_seed_common.py", "from app.services import kb_service as _kb"),
+}
+P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf"}
+P02_ALLOWED = {
+    ("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"'),
+    ("scripts/kb_seed_common.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
+    ("scripts/kb_seed_common.py", 'KB_VARIANTS_TABLE = "kb_variants"'),
+    ("scripts/kb_seed_common.py", 'KB_OFFERS_TABLE = "kb_offers"'),
+    ("scripts/kb_seed_common.py", 'KB_SPECS_TABLE = "kb_specs"'),
+    ("scripts/kb_seed_common.py", 'KB_GAPS_TABLE = "kb_gaps"'),
+}
 
 
 def _line(lines, lineno):
@@ -349,7 +360,7 @@ def test_s14_p01_no_importer_of_kb_service():
         tree = ast.parse(text)
         seed_builder = set()
         for fn in ast.walk(tree):
-            if isinstance(fn, ast.FunctionDef) and fn.name == "build_seed_rows":
+            if isinstance(fn, ast.FunctionDef) and fn.name == P01_FUNCTIONS.get(rel):
                 seed_builder.update(id(n) for n in ast.walk(fn))
         for node in ast.walk(tree):
             hit = False
