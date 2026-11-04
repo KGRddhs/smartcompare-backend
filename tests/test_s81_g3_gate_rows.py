@@ -19,9 +19,12 @@ configuration, a recorder on kb_ingest.build_job / kb_ingest._now /
 result_gate.assess_result records ZERO calls across the REST and stream success
 exits, and a raising build_job produces no WARNING (spec 2.6 / R-G3-10: no
 projection); (b) with ENABLE_LIVE_ROBOTS_REGISTRY + ENABLE_LIVE_ROBOTS_HEALTH_FLUSH
-ON, two consecutive compares on one context (bind, records, the finally flush, a
-repeated flush) produce exactly ONE pipeline + ONE exec each (flush_attempts
-unbinds _ATTEMPTS_CTX). Mutants S17-M3 (the early return of _kb_ingest_tail
+ON, the live_robots seam is driven twice on ONE context (the adversary's ADV-8
+probe shape, not two full compares): each cycle is bind_attempts, two records,
+flush_attempts (the compare's finally) and a repeated flush_attempts, and the two
+cycles produce exactly TWO pipelines + TWO execs in all, ONE per cycle (the
+repeated flush sends nothing because flush_attempts unbinds _ATTEMPTS_CTX).
+Mutants S17-M3 (the early return of _kb_ingest_tail
 removed) and ADV-8 (the unbind dropped) are killed.
 
 G3-GR4 test_g3_gr4_flush_uses_exec_or_execute (F1-3): live_robots._flush_sync
