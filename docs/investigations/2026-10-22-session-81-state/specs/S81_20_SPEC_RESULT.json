@@ -1,0 +1,155 @@
+[
+ {
+  "type": "result",
+  "key": "v2:823a07493ffc06037dd1f200b3ea4785bd63b6f0e3f89056aa66b4cad5a7a885",
+  "agentId": "abbc5eae7c57e4ffc",
+  "result": {
+   "unit": "S81-20 B2-RESULT-GATE-V2 (ENABLE_RESULT_GATE; FOCUS: the quota path)",
+   "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s20/.qa-s80/S81-20_UNIT_SPEC.md",
+   "spec_sha256": "8435f266934df2275db25978cc60695db9bd940da903aa0e76a787c6176fdf09",
+   "summary": "I wrote the spec (107,537 bytes; pure ASCII; LF; 0 CR) in the gitignored .qa-s80/ folder of sc-s81-s20 at base 6869a3e6. HEAD equals the base sha and git status --short was empty before and after every probe. Every file:line in the spec was re-read at the base sha.\n\nKey measurements:\n- Text seams: POST after :726 (keys :640/:656), GET after :944 (keys :868/:884).\n- Stream: the intercept goes at :1172, the persist operand at :1199-1202, and a new first finally branch before :1275 (which becomes elif). The S81-10 stream refusal raises at :1047-1049, before StreamingResponse.\n- Camera: the size enrichment is at :479-482 and runs before the seam. A one-read snapshot (_rg_on plus the identities) goes before :479. The block goes after _syn :545 and before try :546, which is after the S81-10 pair gate :532-540.\n- URL: the block goes after the failure block :339. Keys come in through a keys_out dict on _reserve_comparison_credit :76/:108.\n- error_handler: a fourth passthrough block after the S81-10 block :231.\n- builder: the stamp goes after the B1 block :2326.\n- consumed_keys shape (S81-09): {daily, monthly}, or {daily, device_daily} on the quota path. The existing keyless refunds already refund a device debit through the _DEVICE_DEBIT stash.\n- V2 vision marker: _is_product (openai_service :394). V1 dicts carry no underscore key.\n- Real URL JSON-LD prices are strings: '490.00', '4099', '175.000', '271.0'; the godukkan rating is '5'.\n- G3 tail (R-S20-18): it is called only at scs :4849 and :5798. build_job takes identity_confidence from the same assess_result. Probed per refusal class: no_evidence gives medium (gaps only) or high (cards plus gaps); placeholder gives unresolved; same and conflict give low. So identity-class refusals queue nothing. Hard-cap partials (_build_partial_response :3759) skip the tail entirely.\n\nBase runs: four pyt runs, 3069 nodes. The only failure is the known environmental r06 lexicon CRLF node.\n\nComm set: 388 files, built by the union rule including importers.\n\nSpec contents: 50 RED test functions, 18 PIN rows, mutants M1-M38 plus 1 equivalent, E1-E7, and the E8+ candidates.",
+   "change_list": [
+    "app/services/result_gate.py: append GATE_REASONS, CAMERA_GATE_REASONS, GATE_CODE, GATE_REFUSAL_MESSAGE (chr(0x2014), byte-equal to H6), CAMERA_GATE_MESSAGE (neutral, R-S20-12), GATE_LOG_PREFIX, _GATE_REASON_BY_ASSESS, _URL_NUMBER_RE; result_gate_enabled, gate_reason, _url_number/_url_price/_url_rating (JSON-LD string reading, R-S20-1), url_gate_reason, camera_gate_reason(p0,p1,*,categories,identities) (pre-enrichment placeholder R-S20-2, any-low on _is_product dicts R-S20-5, features ignored with the size veto kept R-S20-4), gate_refusal_body, result_gate_refusal (flag first, try/except), gate_log_message; docstring line; P11-clean",
+    "app/services/response_builder.py: result_gate_enabled on the :21 import; setdefault metadata.product_categories under the flag after the B1 block :2326",
+    "app/middleware/error_handler.py: _RESULT_GATE_REASONS, _result_gate_keys_enabled(), a fourth INSUFFICIENT_DATA reason passthrough block after :231",
+    "app/api/text_routes.py: import; reason arm in _surface_comparison_failure coded branch (:566-570, after the S81-10 arm); _result_gate_exit helper (keyed refund, one row both W4-13 states, INFO, raise); POST/GET usage_consumed_keys + call after :726 / :944; stream usage_consumed_keys, _s20_refusal, terminal intercept at :1172, persist operand :1199-1202, new first finally branch + if->elif at :1275",
+    "app/api/image_routes.py: imports (result_gate names; extraction_service canonicalize_category + classify_category_from_text); usage_consumed_keys after :361; _refund_reserved_credit(label, consumed_keys=None); _camera_gate_categories; the _rg_on/_rg_identities snapshot before :479; the action:error block after :545 before try :546",
+    "app/api/url_routes.py: import; _reserve_comparison_credit(user, keys_out=None); _s20_keys at the :274 call; the refusal block after :339",
+    "tests/test_s81_s20_result_gate.py (new RED file) + E1-E7 one-name env-clean edits (+ E8+ decided by the local-.env sweep)",
+    "CLAUDE.md: the S81-20 block after the S81-G5 block (:572-575) before ## Tests (:576); one sentence in the :341 Feature Flags pointer clause",
+    "No other file (no scs, kb_ingest, url_extraction_service, usage_service, category_gate, migration, client, dependency)"
+   ],
+   "red_rows": 50,
+   "pin_rows": 18,
+   "mutants": 38,
+   "comm_set_size": 388,
+   "open_questions": [
+    "Q1 (R-S20-18, measured): a hard-cap PARTIAL refused as no_evidence never passes the G3 tail (_build_partial_response scs :3759-3887, callers :4161/:4983/:5239, no _kb_ingest_tail call), so it queues no gap; accept as stated limit L17 or rule a gap-only call (outside this unit as ruled)?",
+    "Q2 (R-S20-2): the camera reads the flag ONCE (_rg_on before the size enrichment) and the block's first operand is that read; confirm this satisfies 'FIRST statement of the camera block' (a second read would re-open BL2 for a mid-request flip).",
+    "Q3 (R-S20-5): V2 marker measured as _is_product (openai_service.py:394, always True on kept V2 candidates; V1 dicts :678-684 carry no underscore key); confirm as the gate's V2 test.",
+    "Q4 (R-S20-21): the stream design re-derived unchanged on the 6869a3e6 chain (S81-10 refusal raises at :1047-1049 before StreamingResponse; persist condition :1199-1202; keyless refunds :1372-1376 / :1403-1407).",
+    "Q5 (L17): G3 writes KB cards (products/variants/offers/images/reviews) for a refused no_evidence pair at identity high (each side corroborated one-sidedly); accept as stated limit?",
+    "Q6: E8+ env-clean edits are a candidate list by inspection (s03, s06, s09, s10, s10_gate_rows, s10b, s18); no file can go red at base because nothing reads the flag, so the GREEN local-.env sweep decides.",
+    "Q7: nothing measured makes the unit more than FOCUS-by-quota (no legal/consent/migration/Lua/client change); the error_handler edit is a fourth scoped envelope passthrough of the merged precedents' shape."
+   ],
+   "base_measurements": [
+    "text_routes.py 2061 lines: _surface_comparison_failure :534-587 (S81-10 arm :560-565, coded arm :566-570); text_compare :597, S81-10 gate :618-622, usage_consumed :640/:656 (keys dropped), failure refund :703-707 keyless, surface :724-726, lifetime :793-796, B1 :798; GET :804, consume :868/:884, refund :922-926, surface :942-944; stream :999, gate :1047-1049, consume :1067/:1083, generator :1113, terminal :1172, persist :1199-1202, complete_response=data :1221, finally :1271, first branch :1275, elif had_error :1359, else :1394",
+    "image_routes.py 791 lines: anon_consumed_keys :251; _refund_reserved_credit :296-309 keyless; _refund_anon_credit :313-330 keyed :328; S81-10 budget :335-344; consume :346-361; products :476; size enrichment :479-482; one-product exit :500-524; p1/p2 :527-528; S81-10 pair gate :532-540; _syn :545; try :546; compare :563-567; CATEGORY_NOT_LIVE arm :572-575",
+    "url_routes.py 606 lines: _reserve_comparison_credit :76-108 (keys dropped :108); reserve call :274; failure block :306-339; delivery :341-363",
+    "error_handler.py: content :180-185; B4 :188-195; S81-09 :200-211; S81-10 :217-231; headers :232",
+    "response_builder.py: import :21; B1 stamp :2304-2326; D08 :2328-2338; _strip_inference_markers :2346",
+    "scs: _kb_ingest_tail :3889-3924 called only :4849 / :5798; _build_partial_response :3759 (no tail); categories captured :4450 / :5161; H6 :4515-4522 (U+2014 bytes); vision identity full=brand+name, variant=size_or_count :4347-4361",
+    "kb_ingest: build_job :270 uses assess_result identity_confidence; run_job :383 cards at high (:427), gaps at high|medium (:412), fragrance only (:414)",
+    "probe (pure result_gate, lane1 tomford_vs_creed): SUP supported/high cov4; V09 placeholder unresolved; V07 same low; CAT conflict low; V10 no_evidence medium cov0; V10 one-sided no_evidence high",
+    "URL fixtures JSON-LD: bheshop price '490.00'; godukkan price '4099' rating '5'; ae_lulu '175.000'; ae_samawa '271.0' (all str)",
+    "usage_service: consume :664 consumed_keys {daily,monthly} or quota path {daily,device_daily} (:431-440 stash); refund :833 with _device_refund_keys :456",
+    "openai_service V2 normaliser :341-397 marker _is_product True :394; V1 dict :675-684",
+    "line endings: six app files + CLAUDE.md i/lf w/crlf; result_gate.py 0 bytes >127"
+   ],
+   "pyt_lines": [
+    "[pyt] tag=s20spec-base-r1 start=2026-11-05 08:15:29 end=2026-11-05 08:15:41 elapsed=13s bound=600s status=OK rc=0 (226 passed; [hermeticity] sentinel checked 226; [netguard] blocked 25 attempt(s) from 25 node(s))",
+    "[pyt] tag=s20spec-base-r2 start=2026-11-05 08:16:02 end=2026-11-05 08:17:25 elapsed=83s bound=600s status=OK rc=0 (739 passed; [hermeticity] sentinel checked 739; [netguard] blocked 44 attempt(s) from 18 node(s))",
+    "[pyt] tag=s20spec-base-r3 start=2026-11-05 08:17:56 end=2026-11-05 08:18:31 elapsed=35s bound=600s status=OK rc=0 (972 passed, 1 deselected; [hermeticity] sentinel checked 972; [netguard] blocked 0)",
+    "[pyt] tag=s20spec-base-r4 start=2026-11-05 08:19:06 end=2026-11-05 08:20:06 elapsed=60s bound=600s status=FAIL rc=1 (1 failed, 1131 passed: tests/test_s81_s10_fragrance_gate.py::test_r06_production_lexicon_content, ENVIRONMENTAL autocrlf CRLF of data/fragrance_lexicon.json, present in the stored base records; [hermeticity] sentinel checked 1132; [netguard] blocked 0)"
+   ],
+   "deliberate_pin_changes": [
+    "E1 tests/test_s75_fanout_identity.py:60-70 UNIT_ENV += ENABLE_RESULT_GATE (FY25 nine digests vs the stamp)",
+    "E2 tests/test_retro_w2_1.py:173-179 _clean_flags += ENABLE_RESULT_GATE (thin stub bodies)",
+    "E3 tests/test_s71_u13_compare_auth_required.py:76-89 CLEAN_ENV += ENABLE_RESULT_GATE",
+    "E4 tests/test_paid_route_metering.py:244 _CLEAN_ENV += ENABLE_RESULT_GATE (unconditional, B4 merged)",
+    "E5 tests/test_w4_13_measurement_truth.py:154-160 _clean_flags += ENABLE_RESULT_GATE (also guards the W4-13 flag-OFF ledger generator)",
+    "E6 tests/test_s80_b1.py:52-61 CLEAR += ENABLE_RESULT_GATE",
+    "E7 tests/test_s80_b3_vision_identity_v2.py:79-92 UNIT_ENV += ENABLE_RESULT_GATE",
+    "E8+ candidates decided by the GREEN local-.env sweep: test_s81_s03_llm_ledger_v2 UNIT_ENV :102, test_s81_s06_anthropic_router delenv :338-341, test_s81_s09_device_quota CLEAN_ENV :97, test_s81_s10_fragrance_gate _CLEAR_ENV :500, test_s81_s10_gate_rows :252/:288, test_s81_s10b_links_gate (new delenv), test_s81_s18_kb_first_serve CLEARED_ENV :82"
+   ],
+   "stated_limits": [
+    "L1 camera bodies thin after the compare are delivered (R-S20-7)",
+    "L2 URL: no category_conflict; storefront-title names not placeholders",
+    "L-URL-SAME: same product at two stores refused same_identity; follow-up S81-20b price-check mode (R-S20-3)",
+    "L-URL-GAPS: URL has no ingest tail",
+    "L-CAM-GAPS: camera refusals are pre-compare, queue no gap",
+    "L3 stream intermediate frames precede the refusal terminal",
+    "L4 text/URL refusals after the paid fan-out; behaviour-profile update still runs (R-S20-14)",
+    "L5 B1 message not emitted for refusals (R-S20-15)",
+    "L6 refusal row in both W4-13 states (new row on URL/camera with W4-13 OFF)",
+    "L7 existing exits stay keyless (device debit still refunded via the S81-09 stash)",
+    "L8 camera category V2 _category vs B1 stub divergence (R-S20-17)",
+    "L9 inherits B1 predicate limits; B1 camera stamp keeps the enrichment hole",
+    "L10 /text/quick not gated",
+    "L11 mid-request flip splits one request",
+    "L12 never set the flag in a local .env",
+    "L13 history keeps no trace of a refusal",
+    "L14 MYEZ-007 refusal half only",
+    "L15 features veto dropped on camera until the compare uses features (R-S20-4)",
+    "L16 V1 low not refused; V2 rollback changes what is refused (R-S20-5)",
+    "L17 G3 writes cards for refused no_evidence at identity high, gaps at medium, fragrance only; hard-cap partials queue no gap",
+    "L18 KB full-hit refusals not countable until S81-22 (R-S20-19)",
+    "L19 B1 URL telemetry over-report is B1b (R-S20-13)",
+    "L20 camera log row query is the base camera query string; INFO line carries none",
+    "L21 client gone before the refusal terminal: base incomplete arm, keyless, T5 row"
+   ]
+  },
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ]
+ },
+ {
+  "type": "result",
+  "key": "v2:33d4fd9533daa5886f94497f676c78dccaabd1bf6acd9476a50e68274c2db4c4",
+  "agentId": "a449b8f3ceab5460f",
+  "result": {
+   "unit": "S81-20 B2-RESULT-GATE-V2 (FOCUS: the quota path); spec sha256 8435f266934df2275db25978cc60695db9bd940da903aa0e76a787c6176fdf09 at base 6869a3e6; review sha256 37799ad1acec4dc6264ec4de6ea473006fe6e1c86972e3c1d560146f4e1103a5 (15416 bytes, ASCII, LF); worktree git status --short empty before and after",
+   "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s20/.qa-s80/S81-20_SPEC_REVIEW.md",
+   "verdict": "APPROVE_WITH_CHANGES",
+   "refuted_claims": [
+    "RC-1 (minor) spec 1.1 URL row line numbers are off: the reserve call is url_routes.py:273 (not :274), _url_row :277-287 (not :279-289), the compare try :289-293 (not :291-295), the exception arm :294-303, the failure block :305-339. The insertion point 'after :339, before :341' is correct.",
+    "RC-2 spec 2.11 says camera_gate_reason is a 'module global' that recorders patch. Not true for the camera: 2.6 imports camera_gate_reason BY NAME into image_routes, so a recorder on result_gate.camera_gate_reason never sees the route call. P4's 'camera recorder 0 calls' is therefore vacuous. gate_reason and url_gate_reason are fine, because result_gate_refusal calls them through result_gate's own globals.",
+    "RC-3 spec 2.6 says the block sits after the S81-10 pair gate 'so a CATEGORY_NOT_LIVE refusal wins and is counted on ITS budget'. No row pins that order: R60 uses a fragrance pair that passes S81-10, so swapping the two blocks leaves every listed row green."
+   ],
+   "corrections": [
+    "C1 Add mutant M39 (S81-20 camera block moved before the S81-10 pair gate) and killing row R61. Setup: ENABLE_FRAGRANCE_ONLY_GATE ON + ENABLE_RESULT_GATE ON, a non-fragrance same-identity camera pair. Expected: the camera_refusal_body (CATEGORY_NOT_LIVE, no reason key), record_refusal_async called once, compare 0, one reserved refund labelled usage_refund.image.category_not_live, no result_gate: row and no [RESULT_GATE] line.",
+    "C2 (R-S20-22 scope) Real-consume Lua-recorder rows exist only for text POST (R30) and camera (R58). Add GET, STREAM and URL variants with ENABLE_DEVICE_DAILY_QUOTA ON: refund keys equal the consumed {daily, device_daily}, one DEVICE_REFUND_SCRIPT EVAL, lifetime 0, history 0, one row. Also add a no-fingerprint STREAM variant (consumed_keys {daily} only). There the keyed refund resolves through the _DEVICE_DEBIT stash inside the generator's finally, so it depends on the stash being visible in the StreamingResponse task; pin that instead of assuming it.",
+    "C3 Mutant survivor: dropping 'not had_error' from the new stream first branch survives every row, because no row has an error event plus a refusal terminal. Either add a row (stub yields error, then complete(BODY_V09); expect the existing elif had_error arm, keyless label usage_refund.text_stream, no result_gate: row) or record it EQUIVALENT with the measured fact that no terminal follows an error event. Record 'complete_response is _s20_refusal' dropped as EQUIVALENT.",
+    "C4 Fix RC-2. Either make image_routes.camera_gate_reason the named seam and install P4's recorder there, or have image_routes call it through the module (from app.services import result_gate as _rg; the S81-10 module-attribute precedent).",
+    "C5 Rewrite the 1.1 URL row with the measured lines from RC-1.",
+    "C6 Missing stated limit (quota lens). _refund_anon_credit is a no-op unless ENABLE_PAID_ROUTE_METERING is ON (image_routes.py:249-251 / :325), and the authed camera consume also runs only under metering. So with ENABLE_ANON_USAGE_GATE ON and metering OFF, a camera refusal burns the anonymous credit. The CLAUDE.md row and section 9 must say 'refunds where metering is ON'. Production has metering ON.",
+    "C7 R32 (caplog INFO line) covers POST only. Parametrize it over POST and GET so the GET call site is pinned (R-S20-10 S9).",
+    "C8 _URL_NUMBER_RE over a str matches Unicode decimal digits (no re.ASCII) and float() accepts them, so an Arabic-Indic digit price counts as evidence. Either add re.ASCII plus an R11 case, or state it explicitly as intended.",
+    "C9 Add these source scanners of the edited files to the 4.2 stay-green list by name (all green at base and in the comm set): test_s81_s05_request_context.py, test_logger_no_query_leak.py, test_text_routes_sse_contract.py, and the URL-file source row of test_s81_s10b_links_gate.py."
+   ],
+   "blocking": [],
+   "contract_risks": [
+    "CR-1 (quota lens: unmetered paid loop) Text, stream and URL refusals happen after the paid fan-out (L4), are refunded, and count against no budget (spec 2.13: never record_refusal_async). A free user can loop no_evidence / same_identity pairs for unlimited paid compares, bounded only by the 10/min limiter. With the flag OFF the same request is billed and capped at 3/day. This widens the existing H6 / TIMEOUT refund class rather than opening a new one, but it needs a stated limit plus a canary on refusals per user per day, or a ruled budget.",
+    "CR-2 False camera category_conflict from the name stub while V2 is OFF (production). classify_category_from_text (extraction_service.py:1183-1233) maps generic tokens: hair -> haircare, skin -> skincare, mobile / phone -> electronics. A fragrance name with such a word and no fragrance word (a hair mist, a perfume named Skin) reads [haircare or skincare, fragrances] and is refused before the compare. Name it in the CLAUDE.md row and split the camera canary by reason.",
+    "CR-3 CAMERA_GATE_MESSAGE ('Photograph each product in its own photo...') is not rendered by build 3, which uses its own vision_failed i18n. A later client rendering error for category_conflict or low_confidence would show the wrong instruction, so S81-11 must key its copy on reason, never on error.",
+    "CR-4 (additive) With B2 ON and B1 OFF, delivered text, stream and camera bodies, and the stored history rows, gain metadata.product_categories. Allowed by section 0, but S81-11 must not read it as a signal that B1 is on."
+   ],
+   "pin_collisions": [
+    "Already covered: FY25 nine digests (E1); test_retro_w2_1 URL and camera pins (E2); T23 OpenAPI (no route parameter change; E3); W4-13 flag-OFF ledger (flag OFF adds no label; E5 covers it through the imported _clean_flags at test_w4_13_flag_off_ledger.py:43-44).",
+    "Confirmed no collision: w4_11 prompt digests (no prompt edit); copy-policy fences (no client file); test_global_anti_patterns (the camera string passes the fence).",
+    "Source scanners confirmed green at base and untouched by the planned text: test_s81_s05_request_context P07 and test_s81_s10_fragrance_gate P07 (the device-fingerprint header-read needle once per file, no request_context substring); test_logger_no_query_leak (the image_routes query_hash format is kept); test_text_routes_sse_contract (the _BUNDLE_E_EVENT_TYPES breadcrumb is kept); test_s81_s10b_links_gate (URL files neither name the fragrance flag nor import category_gate by name). Base run: 241 passed. [hermeticity] sentinel checked 241 test(s); [netguard] blocked 22 attempt(s) from 22 node(s). [pyt] tag=s20rev-base-a start=2026-11-05 08:51:11 end=2026-11-05 08:51:32 elapsed=21s bound=600s status=OK rc=0"
+   ],
+   "pyt_lines": [
+    "[pyt] tag=s20rev-base-a start=2026-11-05 08:51:11 end=2026-11-05 08:51:32 elapsed=21s bound=600s status=OK rc=0 (241 passed; [hermeticity] sentinel checked 241 test(s); [netguard] blocked 22 attempt(s) from 22 node(s); files: test_text_routes_error_mapping, test_http_400_cap_cut_mapping, test_text_error_envelope_no_raw_exception, test_m18_usage_symmetry, test_text_routes_sse_contract, test_logger_no_query_leak, test_s81_s05_request_context)"
+   ],
+   "questions_for_orchestrator": [
+    "1 (CR-1) Do result-gate refusals stay uncounted (stated limit plus a canary on refusals per user per day), or join a refusal budget (S81-10's REFUSAL_DAILY_BUDGET, or a new knob, which the brief forbids)?",
+    "2 (C4) Camera seam: by-name import with the recorder on image_routes, or a module-attribute call through result_gate as in S81-10?",
+    "3 (C3) Accept the two stream-branch operands as EQUIVALENT on the measured 'no terminal after an error event' fact, or require the extra row?",
+    "4 (C8) Should the URL string reading be ASCII-only (re.ASCII), or count Unicode digits as evidence?",
+    "5 (CR-2) Is a pre-compare camera refusal on a stub-derived category_conflict acceptable while V2 is OFF, or should the camera conflict rule fire only when both categories come from V2 _category (stub conflicts left to B1 telemetry)?",
+    "6 (spec Q5 / L17) G3 writes KB cards for a refused no_evidence pair at identity high (measured in spec 1.7). Confirm this is intended before RED pins it in R33."
+   ]
+  },
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "StructuredOutput"
+  ]
+ }
+]
