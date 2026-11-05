@@ -1,0 +1,17 @@
+# S81-G5 GREEN gate logs (summary; full logs under <scratchpad>/S81-G5_green/*.log)
+
+- lint: ruff --select E9,F63,F7,F82 --no-cache on scripts/cron_learning.py, tests/test_s81_kb_schema.py, tests/test_s81_g5_gate_rows.py: All checks passed; full ruff on cron_learning.py: All checks passed; py_compile OK; json.loads(railway.learning.json) OK.
+- bytes: scripts/cron_learning.py, railway.learning.json, tests/test_s81_g5_gate_rows.py: 0 bytes > 127, 0 CR, no 64-hex, no 8-digit run, no +973, no at sign (the gate-rows file's one at sign is the @pytest decorator); every blob LF (git show HEAD:<path>: 0 CR). CLAUDE.md: CRLF kept, the inserted block ASCII (line 341's 66 non-ASCII bytes are pre-existing, identical before / after).
+- git diff --stat ec747b49 HEAD: CLAUDE.md 5+/1-, railway.learning.json 14+, scripts/cron_few_shot_rotation.py 434-, scripts/cron_learning.py 787+, tests/test_cron_few_shot_rotation.py 309-, tests/test_s81_d22_nightly_learning.py 1592+, tests/test_s81_g5_gate_rows.py 134+, tests/test_s81_kb_schema.py 3+ (hunks only on the existing files).
+- [pyt] tag=g5green-red-off start=2026-11-05 04:33:09 end=2026-11-05 04:33:23 elapsed=15s bound=600s status=OK rc=0 (50 passed; hermeticity 50; netguard 0)
+- [pyt] tag=g5green-red-true start=2026-11-05 04:33:32 end=2026-11-05 04:33:46 elapsed=14s bound=600s status=OK rc=0 (ENABLE_LEARNING_JOB=true in the runner env; 50 passed; netguard 0)
+- [pyt] tag=g5green-red-apply start=2026-11-05 04:33:49 end=2026-11-05 04:34:01 elapsed=12s bound=600s status=OK rc=0 (ENABLE_LEARNING_JOB=apply in the runner env; 50 passed; netguard 0)
+- [pyt] tag=g5green-gr start=2026-11-05 04:34:51 end=2026-11-05 04:34:54 elapsed=3s bound=600s status=OK rc=0 (2 passed)
+- [pyt] tag=g5green-pins start=2026-11-05 04:35:43 end=2026-11-05 04:36:17 elapsed=34s bound=1200s status=FAIL rc=1 (kb_schema E1, exemplar_contamination, s16b, s05, s08b, legal_s78, legal_disclosure_s77, retro_w1_2b, u3c, d17: 1 failed / 1052 passed = d17 test_r9 CRLF baseline; hermeticity 1053; netguard 0)
+- [pyt] tag=g5green-ciorder start=2026-11-05 04:38:03 end=2026-11-05 04:39:17 elapsed=74s bound=1200s status=FAIL rc=1 (spec 12.1 set: 1 failed / 835 passed; the 1 = d17 r9; hermeticity 836; netguard 0)
+- [pyt] tag=g5green-comm-head-00 start=2026-11-05 04:39:46 end=2026-11-05 04:41:25 elapsed=99s bound=1200s status=FAIL rc=1 (25 files: 2 failed, 1096 passed, 1 skipped; failed = d16 r10, d17 r9; netguard lines = test_hermeticity_pins' own probes)
+- [pyt] tag=g5green-comm-head-01 start=2026-11-05 04:41:34 end=2026-11-05 04:43:13 elapsed=99s bound=1200s status=FAIL rc=1 (21 files: 6 failed, 2089 passed; failed = the five s16 r27 + s19 r15; netguard 24 attempts from the two s04 rows on the neutralized sentinel)
+- [pyt] tag=g5green-comm-head-secretscan start=2026-11-05 04:43:15 end=2026-11-05 04:43:34 elapsed=19s bound=600s status=OK rc=0 (31 passed)
+- comm vs the stored record base_records/ec747b49.../c636b9d5....txt (REUSED; its .files == the RED COMM_SET.txt): comm -13 EMPTY, comm -23 EMPTY; the 8 base nodes identical at HEAD.
+- [jest] tag=g5green-fences start=2026-11-05 04:44:22 end=2026-11-05 04:44:45 rc=1 (node v24.11.1, jest 29.7.0; 14 suites by path from sc-s81-g5/SmartCompareApp through the junction: 13 passed / 1 failed; 4 failed / 236 passed = config/nativeBundle.w37 d5, k2, k4, k5)
+- not run: the corpus gate (no price_service edit), the hook test files (no .githooks change), the FULL jest (LC-7).
