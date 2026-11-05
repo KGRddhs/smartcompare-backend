@@ -1,0 +1,90 @@
+[
+ {
+  "type": "result",
+  "key": "v2:7e0ffa808531416311c38c6c33c2620b9b74cc044a5333a41178b04e6bb2a776",
+  "agentId": "aec17c2fb5c2ca4a8",
+  "result": {
+   "group": "S81-G7 FOLLOWUPS (D16b + D17b + D22c + D22d)",
+   "units_covered": [
+    "D16b OPERATOR-INGEST-DATES",
+    "D17b COVERAGE-PAGING",
+    "D22c PROFILE-SELECT + VARHINT-RETIRE",
+    "D22d LEARNING-HARDENING"
+   ],
+   "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g7/.qa-s80/S81-G7_UNIT_SPEC.md",
+   "spec_sha256": "cdb7e4f52e5d6b9ca2194206ee1442546a936f9fe84ae6a048874d62f24b02a1",
+   "summary": "I wrote one group spec (77,858 bytes, pure ASCII, LF) covering all four units. All four stay SAFE and there is one new flag, ENABLE_BEHAVIOR_PROFILE_EVENT_DATA.\n\nD16b: the operator ingest gets a captured_at field validator. A captured_at later than now + kb_serve.FUTURE_SKEW_SECONDS (300 s) is refused with the existing 422 VALIDATION_ERROR (the G4 contract already uses it for a bad field), so no new code is needed. kb_serve.classify and the coverage freshness/age readings treat a timestamp beyond the skew as unknown. At base, a future last_seen grades fresh and, being the newest, is the price served.\n\nD17b: _paged gets .order(\"id\"); every paged relation has an id primary key (measured in 045 and 002). The host pipeline gets the live_robots exec/execute fallback. Measured on the pinned venv: upstash-redis 1.7.0 Pipeline.execute(command) only queues a command, so exec must be preferred; redis-py 8.1.0 has only execute.\n\nD22c (1), deviation from the brief: the measured M22 record CR-DATA-MIGRATIONS-05 shows the comparisons select (category_used, products) also hits missing columns (42703), and it runs FIRST. Repointing only the user_events select would leave the profile write dead in production. The spec therefore repoints both selects under the new flag, using the house JSON-path alias idiom already used by cron_learning, and pins flag OFF with a three-scenario golden. Measured: no client file emits tab_switch, so after a flip the weights do not move; the scoring_method label becomes behavioral for profiled users while ENABLE_BEHAVIORAL_DIM_TRANSLATION is OFF.\n\nD22c (2): the varhint dead block and the data file are deleted, with E1 removing the b3b fixture from 13 test signatures. The expected corpus SHA is the G3 value 6013...a1ef, because price_service has not changed since then.\n\nD22d: _read_by gets paged id-ordered reads per 100-id chunk. Each unclean kb_feedback field-name row counts in dropped_deidentify (E2: GR6 changes from 0 to 6). Control characters in product names are escaped at the three render sites.\n\nComm set: 691 files. I stored a base record at 6869a3e6 (382 reused from the same-sha S81-20 record, 272 reused per file under GC-9, 37 run here, all green); its failed set is 17 known environmental nodes.\n\nBase pins run: [pyt] tag=g7spec-base-pins elapsed=25s status=FAIL rc=1 (2 failed, 801 passed; the two failures are the known CRLF hygiene rows d16 r10 and d17 r9, the same as in the stored record).",
+   "change_list": [
+    "D16b app/services/kb_serve.py: FUTURE_SKEW_SECONDS=300; classify skips an offer whose last_seen is beyond now+skew (seen=None)",
+    "D16b app/services/kb_operator.py: OperatorIngest captured_at field_validator (naive->UTC, > _now()+skew -> ValueError -> 422 VALIDATION_ERROR); timedelta import",
+    "D16b scripts/cron_kb_coverage.py: _past helper; _field_shares fresh set and _ages medians ignore values beyond the skew",
+    "D17b scripts/cron_kb_coverage.py: PAGE_ORDER_COLUMN='id'; _paged adds .order(id) before range; _hosts uses getattr(pipe,'exec',None) or getattr(pipe,'execute')",
+    "D22c(1) app/services/structured_comparison_service.py: behavior_profile_event_data_enabled() reader + two _V2 column constants; _update_behavior_profile under the flag selects 'category_used:full_response->>category_used, products:full_response->products, created_at' and 'event_type, metadata:event_data' and normalises NULL payloads; OFF byte-identical",
+    "D22c(1) tests/fixtures/s81_d22c_flag_off_golden.json (new, recorded at base)",
+    "D22c(2) app/services/price_service.py: delete _VARHINT_LEARNED_PATH, _varhint_append_learned, its call at :9210; rewrite two comments",
+    "D22c(2) data/variant_hint_learned.json deleted",
+    "E1 tests/test_variant_llm_hint_b3b.py: no_learned_write fixture deleted and removed from 13 test signatures",
+    "D22d scripts/cron_learning.py: _read_by paged id-ordered per chunk up to cap; unclean kb_feedback field-name row counted via gathered['dropped_fields'] seeding dropped; _render escaping C0/C1/U+2028/U+2029 at the md exemplar line and the exemplar/eval_case log lines",
+    "E2 tests/test_s81_g5_gate_rows.py:286 dropped_deidentify 0 -> 6 plus the docstring sentence",
+    "CLAUDE.md: one S81-G7 block after the S81-G5 block (five rows plus owner steps) and the :341 Feature Flags pointer clause",
+    "New RED files: tests/test_s81_d16b_operator_dates.py, tests/test_s81_d17b_coverage_paging.py, tests/test_s81_d22c_profile_select.py, tests/test_s81_d22c_varhint_retire.py, tests/test_s81_d22d_learning_hardening.py"
+   ],
+   "red_files": [
+    "tests/test_s81_d16b_operator_dates.py",
+    "tests/test_s81_d17b_coverage_paging.py",
+    "tests/test_s81_d22c_profile_select.py",
+    "tests/test_s81_d22c_varhint_retire.py",
+    "tests/test_s81_d22d_learning_hardening.py"
+   ],
+   "red_rows": 26,
+   "pin_rows": 17,
+   "mutants": 31,
+   "comm_set_size": 691,
+   "focus_surfaces_found": [],
+   "open_questions": [
+    "Q-D22c-1 (deviation D-1): the brief names only the user_events select, but the measured M22 record CR-DATA-MIGRATIONS-05 shows the comparisons select (category_used, products) also fails with 42703, and it runs first. The spec repoints both selects under the one flag. Accept this, or split the comparisons repoint into its own unit?",
+    "Q-D22c-2: keep the flag name ENABLE_BEHAVIOR_PROFILE_EVENT_DATA, or use ENABLE_BEHAVIOR_PROFILE_REBUILD (the M22 proposal), which better describes a change to both selects?",
+    "Q-D16b-1: confirm the 300 s skew allowance.",
+    "Q-D22d-1: should unclean kb_gaps field names also count in dropped_deidentify? The spec defaults to no.",
+    "D22d mutant M7 (a _render that also escapes a backslash) is equivalent on the current world, since no base name contains a backslash; a ruling is needed.",
+    "The corpus gate base SHA has not been re-run here; the expected value 6013...a1ef is inferred because price_service.py has not changed since G3 measured it. The RED agent re-measures it."
+   ],
+   "base_measurements": [
+    "[pyt] tag=g7spec-base-pins start=2026-11-05 12:17:55 end=2026-11-05 12:18:19 elapsed=25s bound=1200s status=FAIL rc=1 (2 failed, 801 passed; d16 r10 and d17 r9 are environmental CRLF failures, identical in the stored S81-20 record)",
+    "[pyt] tag=g7spec-comm-base-a start=2026-11-05 12:20:53 end=2026-11-05 12:21:03 elapsed=10s bound=1200s status=OK rc=0 (161 passed, 9 deselected)",
+    "[pyt] tag=g7spec-comm-base-b start=2026-11-05 12:21:12 end=2026-11-05 12:21:39 elapsed=27s bound=1200s status=OK rc=0 (511 passed, 3 skipped)",
+    "base record stored: <scratchpad>/harness/base_records/6869a3e655805afd3adbba43f99578dd79585934/ab9758eddc0c5c7c7546425ac6e8bceaaaa105b793f313c624db44e4e1d2f8fa.{files,header.txt,txt}, 17 failed node ids",
+    "upstash-redis 1.7.0 Pipeline: exec() runs the queue; execute(command) queues one command. redis-py 8.1.0 Pipeline: only execute()",
+    "SmartCompareApp/src contains no tab_switch or dwell_ms emitter; the client renders no scoring_method"
+   ],
+   "deliberate_pin_changes": [
+    "E1 tests/test_variant_llm_hint_b3b.py: the no_learned_write fixture (:64-68) is deleted and removed from the 13 test signatures that use it, because the symbol it patches is deleted",
+    "E2 tests/test_s81_g5_gate_rows.py:286: dropped_deidentify changes from 0 to 6 and the GR6 docstring sentence is amended (D22d counts unclean kb_feedback field-name rows)"
+   ],
+   "stated_limits": [
+    "L-D16b-1: the 300 s skew lets a capture up to 5 min ahead be served as fresh",
+    "L-D16b-2: rows already stored with a future last_seen stay in the table; cron_kb_enrich still sorts them last",
+    "L-D16b-3: there is no lower bound on captured_at",
+    "L-D17b-1/2: an id sort on every page read, including the outer re-sort over the kb_offers_latest view",
+    "L-D22c-1: after the flip the scoring label and verdict-cache eligibility change for returning users; weights stay the same until a client emits tab_switch",
+    "L-D22c-2: the ON comparisons select reads the full_response products subtree of up to 50 rows (fire-and-forget)",
+    "L-D22c-3: a malformed dwell_ms still lands in the except arm",
+    "L-D22c-4: the live column set comes from the 2026-09-06 measured record and was not re-probed",
+    "L-D22c-5: the learned-file convergence log is removed (it had no entries)",
+    "L-D22d-1: one extra request per 500 spec rows",
+    "L-D22d-2: kb_gaps field names are not counted",
+    "L-D22d-3: a backslash is not doubled, so a literal backslash-x in a name renders the same as an escape"
+   ],
+   "pyt_lines": [
+    "[pyt] tag=g7spec-base-pins elapsed=25s bound=1200s status=FAIL rc=1",
+    "[pyt] tag=g7spec-comm-base-a elapsed=10s bound=1200s status=OK rc=0",
+    "[pyt] tag=g7spec-comm-base-b elapsed=27s bound=1200s status=OK rc=0"
+   ]
+  },
+  "toolsUsed": [
+   "Bash",
+   "Write",
+   "StructuredOutput"
+  ]
+ }
+]
