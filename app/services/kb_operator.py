@@ -26,6 +26,8 @@ Flag ON (behind the EXISTING ``verify_admin_key`` dependency and the existing
   The licence spec fields (``kb_serve.LICENCE_FIELDS``) are accepted only from
   ``source == "partner"`` (R-G4-7). Refusals raise :class:`OperatorRefusal`
   with one of the ``KB_*`` codes; the route answers 400 (never a bare 503).
+  A ``captured_at`` later than now + ``kb_serve.FUTURE_SKEW_SECONDS`` fails body
+  validation (the existing 422 ``VALIDATION_ERROR``; D16b).
 
 Test seams (module attributes read at call time): ``_now`` and ``_admin_client``.
 Log lines carry constants, the registry host and ints only.
@@ -172,6 +174,21 @@ class OperatorIngest(BaseModel):
                 raise ValueError("spec field name")
             if not 1 <= len(text) <= 2000:
                 raise ValueError("spec value length")
+        return value
+
+    @field_validator("captured_at")
+    @classmethod
+    def _captured_at_not_future(cls, value: Optional[datetime]) -> Optional[datetime]:
+        # D16b: a capture later than now + kb_serve.FUTURE_SKEW_SECONDS is refused
+        # (ValueError -> the existing 422 VALIDATION_ERROR). A naive value is read
+        # as UTC, as _aware does; the clock is the module seam _now.
+        if value is None:
+            return value
+        from app.services import kb_serve
+
+        moment = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if kb_serve.beyond_skew(moment, _now()):
+            raise ValueError("captured_at is in the future")
         return value
 
 
