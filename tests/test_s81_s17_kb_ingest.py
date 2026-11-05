@@ -91,6 +91,7 @@ CLEARED_ENV = (
     "ENABLE_SONNET_ESCALATION", "ENABLE_OPENAI_PRE_V3", "ENABLE_FRAGRANCE_ONLY_GATE",
     "ENABLE_JSONLD_RATING", "ENABLE_IMAGE_PIPELINE_V2", "ENABLE_DATA_GUARDS_V2",
     "ENABLE_PREVERDICT_DISCONNECT_ABORT",
+    "ENABLE_RESULT_GATE",  # S81-20 E14: an exported result gate refuses these rows' thin compare bodies
 )
 OFF_SPELLINGS = [None, "false", " 0 ", "OFF"]
 NOW = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)

@@ -7,6 +7,8 @@ the event generator's finally: no Await node inside that finally (base had none)
 settle label, and the read -> decide -> refund-or-keep -> record -> row sequence.
 G20-GR3 (L21): a client that leaves BEFORE the refusal terminal takes the base incomplete arm:
 keyless refund, no budget read at the exit, no record, the T5 row, no settle scheduled.
+G20-GR4 (RB-S20-3): the stream refusal row carries input_type text_stream under the settle
+label usage_refund.text_stream.result_gate (kills the adversary's A8).
 
 The harness (fixtures, ledgers, bodies) is the frozen RED file's, imported by module. Hermetic:
 no network, no .env, no credential; synthetic ids. Pure ASCII, LF.
@@ -190,6 +192,23 @@ def test_g20_gr3_client_gone_before_refusal_terminal(monkeypatch):
     assert led.history == [] and led.persist == [] and led.lifetime == []
     assert red._gate_rows(led) == []
     assert [r.get("error_message") for r in led.rows] == ["client_gone_before_complete"], led.rows
+
+
+# =============================================================== G20-GR4 (RB-S20-3, A8)
+
+def test_g20_gr4_stream_refusal_row_is_text_stream_under_the_settle_label(
+        monkeypatch, client, authed):
+    """RB-S20-3 (kills A8): the stream refusal's ONE search_logs row carries input_type
+    text_stream (never text) and is written by the task scheduled under the settle label."""
+    red._prod_on(monkeypatch, red.FLAG)
+    led, resp = red._budget_route(monkeypatch, client, "stream", None)
+    assert resp.status_code == 200, resp.text[:200]
+    rows = red._gate_rows(led)
+    assert [r.get("input_type") for r in rows] == ["text_stream"], rows
+    assert rows[0].get("error_message") == "result_gate:no_evidence", rows
+    assert rows[0].get("success") is False, rows
+    assert [x for x in led.labels if x.startswith("usage_refund.")] == [SETTLE_LABEL], led.labels
+    assert led.refunds == [authed["id"]] and len(led.budget_records) == 1, led.refunds
 
 
 def test_g20_gr_url_module_reaches_the_gate_by_attribute():
