@@ -1,0 +1,218 @@
+{
+ "type": "result",
+ "key": "v2:f9b182e3192029aa83ed73c2a2300a58e1d6ff1ca348700220adecf953bbd4b3",
+ "agentId": "ad9a3f2119dc885bc",
+ "result": {
+  "unit": "S81-G5 (D22 NIGHTLY-LEARNING) RED",
+  "test_files": [
+   {
+    "path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g5/tests/test_s81_d22_nightly_learning.py",
+    "sha256": "98b2bafced383455edc4d6cc9c8690d1bea5c3193a042a0d760ddf0eb5d08656",
+    "bytes": 74868
+   }
+  ],
+  "base_run": {
+   "failed": 43,
+   "passed": 7,
+   "every_failure_is_assertion_error": true,
+   "failed_node_ids": [
+    "test_r1_module_and_seams",
+    "test_r2_off_is_one_line_and_nothing_else[unset|''|'false'|' FALSE '|'0'|'off'|'no'|'garbage'|'dry'] (9)",
+    "test_r3_dry_reads_and_never_writes[true| TRUE |1|yes|On] (5)",
+    "test_r4_apply_one_upsert_through_the_builder[apply| APPLY ] (2)",
+    "test_r5_cli_dry_run_downgrades_apply",
+    "test_r6_read_discipline",
+    "test_r7_paging_and_cap",
+    "test_r8_bucket_counts",
+    "test_r9_clusters_and_systematic_rule",
+    "test_r10_knobs_move_the_rule",
+    "test_r11_window_and_day",
+    "test_r12_proposals",
+    "test_r13_exemplar_candidates",
+    "test_r14_report_log_and_rows_are_deidentified",
+    "test_r15_eval_candidates",
+    "test_r16_absent_kb_tables_are_counted_skips",
+    "test_r17_one_table_error_isolated",
+    "test_r18_client_failure_exits_one[raises|none] (2)",
+    "test_r19_unwritable_report_keeps_the_log",
+    "test_r20_metric_names_closed_and_valid",
+    "test_r21_apply_is_idempotent_per_day",
+    "test_r22_db_only_no_llm_no_network",
+    "test_r23_never_writes_data_dir",
+    "test_r24_railway_config",
+    "test_r25_script_hygiene",
+    "test_r26_rotation_cron_retired",
+    "test_r27_verdict_unsupported_threshold",
+    "test_r28_context_metrics",
+    "test_r29_log_templates"
+   ],
+   "pyt_line": "[pyt] tag=g5red-base-unit3 start=2026-11-05 03:58:28 end=2026-11-05 03:58:34 elapsed=5s bound=600s status=FAIL rc=1 (43 failed, 7 passed; [hermeticity] sentinel checked 50 test(s); [netguard] blocked 0 attempt(s) from 0 node(s))"
+  },
+  "prototype": {
+   "on_passed": 50,
+   "on_failed": 0,
+   "off_passed": 50,
+   "off_failed": 0,
+   "pyt_lines": [
+    "[pyt] tag=g5red-proto-3 start=2026-11-05 03:58:36 end=2026-11-05 03:58:45 elapsed=8s bound=600s status=OK rc=0 (final RED bytes, flag unset in runner env: 50 passed)",
+    "[pyt] tag=g5red-proto-amb-true start=2026-11-05 03:50:05 end=2026-11-05 03:50:24 elapsed=19s bound=600s status=OK rc=0 (ENABLE_LEARNING_JOB=true: 50 passed)",
+    "[pyt] tag=g5red-proto-amb-apply start=2026-11-05 03:50:25 end=2026-11-05 03:50:54 elapsed=29s bound=600s status=OK rc=0 (ENABLE_LEARNING_JOB=apply: 50 passed)",
+    "[pyt] tag=g5red-proto-pins start=2026-11-05 03:51:04 end=2026-11-05 03:51:44 elapsed=40s bound=1200s status=FAIL rc=1 (scripts-scanning pins + kb_schema with E1: 1 failed / 1083 passed; the 1 = d17 test_r9 CRLF baseline)"
+   ],
+   "notes": "Prototype in a detached, junction-free scratch worktree <scratchpad>/g5x at ec747b49: scripts/cron_learning.py + railway.learning.json + E1 (2 P02_ALLOWED rows + comment) + E2/E3 deletions. It was removed afterwards and verified gone. The diff is at <scratchpad>/S81-G5_red/prototype.diff and the files are in prototype_files/. Each row sets the flag (OFF/DRY/APPLY) itself, so the ambient true/apply runs show the rows are isolated. No spec row was found wrong."
+  },
+  "mutants": [
+   {
+    "id": "M1",
+    "description": "client built before the OFF check",
+    "survived": false,
+    "killed_by": "R2 x9, R11, R18[raises]"
+   },
+   {
+    "id": "M2",
+    "description": "run_mode -> house_flag semantics (truthy writes)",
+    "survived": false,
+    "killed_by": "R3 x5, R4 x2, R5, R1, R7, R11, R12, R14, R16, R21, R23, R29"
+   },
+   {
+    "id": "M3",
+    "description": "drop .order(id) from windowed read",
+    "survived": false,
+    "killed_by": "R6, R7"
+   },
+   {
+    "id": "M4",
+    "description": ".lt(window end) -> .lte",
+    "survived": false,
+    "killed_by": "R6, R8, R9, R12, R17, R28"
+   },
+   {
+    "id": "M5",
+    "description": "actors>=min_devices -> cases>=min_devices",
+    "survived": false,
+    "killed_by": "R9, R12"
+   },
+   {
+    "id": "M6",
+    "description": "change_suggestion added to FEEDBACK_COLUMNS",
+    "survived": false,
+    "killed_by": "R1, R6"
+   },
+   {
+    "id": "M7",
+    "description": "de-identification screen skipped",
+    "survived": false,
+    "killed_by": "R12, R13, R14"
+   },
+   {
+    "id": "M8",
+    "description": "upsert also in DRY",
+    "survived": false,
+    "killed_by": "R3 x5, R5"
+   },
+   {
+    "id": "M9",
+    "description": "on_conflict day,metric -> metric",
+    "survived": false,
+    "killed_by": "R4 x2, R21"
+   },
+   {
+    "id": "M10",
+    "description": "kb table read error raises instead of counted skip",
+    "survived": false,
+    "killed_by": "R16, R20, R29"
+   },
+   {
+    "id": "M11",
+    "description": "exemplars_per_category default 10, clamp removed",
+    "survived": false,
+    "killed_by": "R1, R13"
+   },
+   {
+    "id": "M12",
+    "description": "< CRITIQUE_THRESHOLD -> <=",
+    "survived": false,
+    "killed_by": "R8, R9, R12, R17, R27"
+   },
+   {
+    "id": "M13",
+    "description": "HINT_PREFIX filter removed on kb_gaps",
+    "survived": false,
+    "killed_by": "R8, R9, R17"
+   },
+   {
+    "id": "M14",
+    "description": "client failure returns 0",
+    "survived": false,
+    "killed_by": "R18 x2"
+   },
+   {
+    "id": "M15",
+    "description": "proposal judge_state pending -> agreed",
+    "survived": false,
+    "killed_by": "R12"
+   }
+  ],
+  "comm_set": {
+   "files": 46,
+   "chunks": 2,
+   "base_failures": [
+    "tests/test_s81_d16_operator_ingest.py::test_r10_runbook_names_only",
+    "tests/test_s81_d17_coverage.py::test_r9_railway_config_and_hygiene",
+    "tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[cron_feed_walker]",
+    "tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[cron_pdp_discovery]",
+    "tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[kb_seed_common]",
+    "tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[seed_kb_batch]",
+    "tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[seed_kb_brands_wikidata]",
+    "tests/test_s81_s19_gap_queue.py::test_r15_hygiene"
+   ],
+   "pyt_lines": [
+    "[pyt] tag=g5red-comm-base-00 start=2026-11-05 04:08:48 end=2026-11-05 04:11:52 elapsed=184s bound=1200s status=FAIL rc=1 (25 files: 2 failed, 2248 passed)",
+    "[pyt] tag=g5red-comm-base-01 start=2026-11-05 04:11:56 end=2026-11-05 04:13:35 elapsed=100s bound=1200s status=FAIL rc=1 (9 files: 6 failed, 631 passed; netguard blocked 0)",
+    "[pyt] tag=g5red-base-secretscan start=2026-11-05 04:03:50 end=2026-11-05 04:04:12 elapsed=23s bound=600s status=OK rc=0 (test_secret_scan_static ALONE: 31 passed)",
+    "[pyt] tag=g5red-base-ciorder start=2026-11-05 04:04:21 end=2026-11-05 04:04:50 elapsed=28s bound=1200s status=FAIL rc=1 (CI-order set 12.1: 44 failed = 43 RED + d17 test_r9 CRLF; 792 passed)"
+   ],
+   "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G5_red/COMM_SET.txt"
+  },
+  "restore_check": {
+   "worktree_clean_except_new_tests": true,
+   "scratch_removed": true,
+   "note": "The sha256 of all 3,497 tracked files is identical before and after (tree digest eb0dd407...). HEAD is ec747b49 and git status shows only '?? tests/test_s81_d22_nightly_learning.py'. The scratch worktree g5x is removed and not listed. There is no mutation lock and no g5red pytest process alive. The base record is stored at <scratchpad>/harness/base_records/ec747b496953869c0370e4f28bf025c6f694a97d/c636b9d554cb6766c65b1103a8fddaa9065219a7e8999d5fb9e46fe302bf33b4.{txt,files,header.txt,pyt.log}: 11 members reused under GC-9, 35 run (34 in 2 chunks plus the secret scan run alone). The comm base run was the LAST pytest step. The reports were written through the shell (python) to <scratchpad>/S81-G5_RED_REPORT.md and <scratchpad>/S81-G5_red/RED_REPORT.md, with comm_reasons.tsv and COMM_SET.txt alongside."
+  },
+  "deviations_from_spec": [
+   "The fixture uses 8 comparisons, not 6. Cluster C needs 2 cases, and a case collapses per comparison, so it needs two electronics comparisons. One of them uses a padded 'Electronics ' category to test lower-stripping.",
+   "Every main() call goes through _call(), which turns any raise or SystemExit into an AssertionError. The R2/R11 _admin_client stubs raise AssertionError. As a result every mutant kill is an assertion failure.",
+   "R8 adds a second run with a kb_feedback identity+wrong row (R-G5-5: 1/1). It also pins the actor_basis dict.",
+   "The R25 needle list covers the whole section 1.9 table, which adds device_key_pepper, x-ai-consent-version and header_state.",
+   "R6 pins the by-id reads: comparison ids are sorted and de-duplicated; kb_specs product ids are only the spec_wrong kb case products.",
+   "R23 reads 'no data path segment' as: no data/ path literal and no '/ \"data\"' join. getattr(resp, 'data') is still allowed.",
+   "R12 adds a run with min 1/1 that pins the full section 2.5 action map. R13 pins the per-category cap on a world with 8 clean candidates.",
+   "R29 also pins: the header line is the first record, there is exactly one totals line and it is last, and there is one table= line for each READ_TABLES entry.",
+   "R18 has a second node: _admin_client returning None also gives exit 1 with one ERROR line.",
+   "Comm set: two scripts/ walkers were added that the spec missed (test_domain_s76, test_s81_d08_jsonld_widen), so it has 46 files at base. The spec's 44 were re-derived exactly (sha 803bde0c...).",
+   "test_s81_g4_gate_rows was run, not reused. It imports scripts.cron_kb_enrich, which pulls in kb_seed_common, and that changed at ec747b49. test_secret_scan_static uses its run alone instead of the stored record.",
+   "Measured node counts: 43 RED and 7 PIN. The spec estimated about 45 and 9."
+  ],
+  "open_questions": [
+   "R15 keeps the eval candidate for the comparison whose winner_reason has an email shape, because the eval shape has no winner_reason; 6 eval candidates are pinned. Confirm this, or rule that a row dropped as an exemplar is also dropped as an eval candidate.",
+   "When two different users report the same comparison it collapses to one case. Whether both count as actors is not specified; the fixture avoids this case.",
+   "The order of the de-identification screen and the per-category cut is not pinned; R14 holds either way. The prototype screens before the cut.",
+   "In the prototype, groundings are built and their unclean entries counted only for systematic kb spec_wrong clusters. R14 pins only dropped_deidentify >= 1.",
+   "test_s81_d16_operator_ingest::test_r10_runbook_names_only fails at base on this box because the runbook working copy has CRLF line endings. It is recorded the same way as in the e1491c97 record."
+  ],
+  "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G5_RED_REPORT.md",
+  "not_measured_alone": [
+   "The fourteen client jest fences (GREEN's duty).",
+   "The corpus gate (no price_service edit)."
+  ]
+ },
+ "toolsUsed": [
+  "Bash",
+  "mcp__ccd_turn__update_plan",
+  "Read",
+  "Write",
+  "ToolSearch",
+  "Monitor",
+  "StructuredOutput"
+ ]
+}
