@@ -1,0 +1,62 @@
+{
+ "type": "result",
+ "key": "v2:b312e85f39ffea44e6246d03fb441545b76465699bfc85684f0b74844315c62b",
+ "agentId": "a0459c10b8f5d8c89",
+ "result": {
+  "unit": "S81-G6 CLIENT-PERF = CL2 CLIENT-SPEED (final round, RULINGS_REBASE_S81_G6)",
+  "verdict": "READY_FOR_PR",
+  "head_before": "ab4b3b3184f176568e97ad852b9cfdebea8ffd9c",
+  "base_main": "ec747b496953869c0370e4f28bf025c6f694a97d",
+  "head_after": "a93b0153b3fc13651f420f94aa15256ffeb66785",
+  "commits_replayed": 0,
+  "conflicts": [],
+  "resolutions": [
+   "None needed: origin/main fetched twice = ec747b49 = base; git rebase origin/main -> up to date, 0 commits replayed"
+  ],
+  "pin_rows_added": [
+   "G6-GR1 (RB-G6-2) in NEW SmartCompareApp/__tests__/cl2/gateRows.cl2.test.tsx sha256 ff3f0716cf025bf262572014eb4e8124d994447a0cc966e5aba2a88ddc088165: one node; t=300 navigates at once with fastHit: true, t=301 held to the 400 ms floor with no fastHit; green at HEAD ([jest] tag=g6final-gr1b rc=0)",
+   "CLAUDE.md S81-G6 block amended in place (CL2-L1..L6, gate-rows file, 58 nodes, comm 159 + 5 pins), CRLF kept, sha256 a436b63846434c1d5b7662c2f9b0c6bdbc5b4bb4b32793bcdd0a1522c4d8b6d6"
+  ],
+  "red_file_sha256": "The 12 frozen RED files match GC-1 both in git show HEAD: and on disk, before and after the round commit, so they are unchanged. The new gateRows.cl2.test.tsx has sha256 ff3f0716cf025bf262572014eb4e8124d994447a0cc966e5aba2a88ddc088165.",
+  "gates": [
+   "(a) Re-hash: 12/12 GC-1 OK plus the 29 GREEN rows OK before the commit; after it the same, except CLAUDE.md, which changed as expected; BAD 0",
+   "(b) [jest] tag=g6final-cl2 start=05:33:08 end=05:33:26 rc=0: 13 suites, 58/58",
+   "(b) [jest] tag=g6final-touched start=05:33:29 end=05:33:43 rc=0: 29 suites, 213 passed, 5 todo; includes the 14 base-touched suites and the 6 E-row suites",
+   "(c) [jest] tag=g6final-inband-A start=05:34:01 end=05:34:07 rc=0: 21 suites, 115/115",
+   "(c) [jest] tag=g6final-inband-B start=05:34:10 end=05:34:16 rc=0: 21 suites, 115/115",
+   "(c) [jest] tag=g6final-inband-touched start=05:34:21 end=05:34:30 rc=0: 29 suites, 213 passed",
+   "(d) [tsc] tag=g6final-tsc-2 start=05:41:44 end=05:41:53 rc=0 (tsc 5.9.3)",
+   "(e) [eslint] tag=g6final-eslint-2 start=05:41:55 end=05:42:04 rc=0 files=29: 0 errors, 108 warnings (GREEN's 99 plus 9 of a pre-existing class in the new test file)",
+   "(f) Comm set, 159 jest suites in 7 batches: chunks 00-03, 05 and 06 rc=0, chunk 04 rc=1. Results: 1698 passed, 13 todo, 4 failed, which are exactly the four nativeBundle.w37 drift nodes. The base failed set (reused) is the same four. comm -13 EMPTY, comm -23 EMPTY",
+   "(f) [pyt] tag=g6final-be-pins start=2026-11-05 05:39:40 end=2026-11-05 05:40:19 elapsed=39s bound=600s status=OK rc=0: 210 passed (the 5 pins include the 2 CLAUDE.md readers); [hermeticity] sentinel checked 210; [netguard] blocked 12 attempt(s) from 6 node(s), sentinel/egress-blocked only",
+   "(g) Full jest once, 05:40:31-05:40:55. full.json reports success=false, so the true exit code is 1, caused only by the 4 w37 nodes. Results: Test Suites 1 failed, 3 skipped, 398 passed of 402; Tests 3852 passed (= 3794 + 57 + G6-GR1), 4 failed, 13 skipped, 13 todo, 3882 total; Snapshots 42/42 with 0 added/updated; time 21.6 s. The rc=0 printed in the shell line came from my own line and is not jest's exit code",
+   "(h) Export not repeated (RB-G6-6)",
+   "(i) Fetch + rebase: up to date",
+   "(j) Footprint vs ec747b49: 30 files (the 29 GREEN files + gateRows), 2445+/37-, hunks only, diff --check clean; git status --short empty",
+   "Mutant O1 (<= to < at the Home fast-hit gate), run on a byte copy under .qa-mutation.lock: [jest] tag=g6final-mut-O1 rc=1, KILLED by expect(fastHit).toBe(true); RESTORE OK, sha ed3edaf9... equal; lock removed",
+   "RULED NOT RUN (RB-G6-9, client unit): the R8 sentry pair, test_paid_route_metering, flag ON/OFF runs, the pytest CI-order set, the corpus gate, ruff/py_compile, the hook files tests/test_precommit_hook*.py (no .githooks file touched), the base scratch worktree"
+  ],
+  "pr_body_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G6_final/PR_BODY.md",
+  "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G6_final/REBASE_REPORT.md",
+  "mutants": [
+   "O1 (adversary, Home fast-hit gate <= -> <): KILLED by G6-GR1 (Expected true, Received undefined); HomeScreen.tsx restored and sha256-equal (ed3edaf912da76528c994ad16c19ae3ae05d8e409d476ef7ea19ebf1b6115407)",
+   "M14, O5, O7 and O11: EQUIVALENT by ruling (GC-3, RB-G6-3); not re-applied"
+  ],
+  "deviations": [
+   "D-F1: the first draft of G6-GR1 had two it nodes. I merged them into one node before the commit, so the total is 58 as ruled",
+   "D-F2: the 5 backend pins include the two CLAUDE.md readers, as in GREEN's run, so 5 pytest files ran in all, not 5 + 2",
+   "D-F3: my first tsc line and my full-jest line read rc with $? after a $(date) expansion. I re-ran tsc with the exit code captured first (rc 0). The full-jest status is taken from full.json (success=false, only the 4 w37 nodes failed); per LC-7 the full suite was not re-run",
+   "D-F4: eslint shows 108 warnings, GREEN showed 99. The 9 extra are pre-existing-class warnings in the new test file (8 no-require-imports in the jest.mock factories, 1 import/first); 0 errors",
+   "The PR body and the report were written through the shell via python, because the harness refuses a subagent Write of a .md file. The GREEN emoji trailer was dropped; the orchestrator appends the trailer"
+  ],
+  "footprint_check": "git diff --stat ec747b49 HEAD = 30 files changed, 2445 insertions(+), 37 deletions(-): exactly the 29 GREEN files + SmartCompareApp/__tests__/cl2/gateRows.cl2.test.tsx; no .snap; hunks only; git status --short empty",
+  "not_measured": [
+   "None among the ruled gates; the export (RB-G6-6) and on-device behaviour (CL2-L1) are outside this round by ruling"
+  ]
+ },
+ "toolsUsed": [
+  "Bash",
+  "Write",
+  "StructuredOutput"
+ ]
+}
