@@ -1,0 +1,348 @@
+{
+ "type": "result",
+ "key": "v2:f78172b291ac9c59dc4c82941ef64056a1c2046eec71037ac2a7f7dd0ac22d1b",
+ "agentId": "a85d3fea89a728344",
+ "result": {
+  "unit": "S81-G6 CL2 CLIENT-SPEED (RED round; report written through the shell to C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G6_red/RED_REPORT.md and C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G6_RED_REPORT.md)",
+  "test_files": [
+   {
+    "path": "SmartCompareApp/__tests__/cl2/bootParallel.cl2.test.ts",
+    "sha256": "2762a2dc47cafdd9c036398c39e44b79ca9ce7998528df4a9c1991dd21aa89a8",
+    "bytes": 8051
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/clientSpeed.cl2.test.ts",
+    "sha256": "b211d9a484c9aec67aa4318d02ca9e397efe41edbd48c88fba87cf4d035ed2ea",
+    "bytes": 1611
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/freezeOnBlur.cl2.test.ts",
+    "sha256": "c03900e7a3173ad6d1a0275a118bcb180d9d0a05b3beb0857036daeeee8de0ed",
+    "bytes": 1769
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/historySwr.cl2.test.tsx",
+    "sha256": "c613f37c932278df82f6debb9e1887fb3ff5983ae621e4e96eee488be413916c",
+    "bytes": 9655
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/homeFloor.cl2.test.tsx",
+    "sha256": "d963fa5d59b06e44417cad6c770b47509d673e87994241c2b450574bbd8b5de0",
+    "bytes": 11702
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/imagePrefetch.cl2.test.ts",
+    "sha256": "4ead2f471e481a025d7333a7f2c28bc0d0215918615b8a9d55ca67d92fc4605b",
+    "bytes": 6928
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/lazyScreens.cl2.test.tsx",
+    "sha256": "1bd2ee55f3a28d69927e75fa38425ea4b983e501466b47a381af477e45ae8542",
+    "bytes": 6748
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/metroSentry.cl2.test.ts",
+    "sha256": "6477aea2e54a244af5baf0f36f501694c09e5759608ed69560312955aef2bef4",
+    "bytes": 4213
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/revealCut.cl2.test.tsx",
+    "sha256": "3784131a7f14469c8b0337995fac4d7b5237029c664f730db4c73412d23c99f7",
+    "bytes": 5427
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/scope.cl2.test.ts",
+    "sha256": "af416eb9d5a7556f59f0f98eb455f6bc86a5ab6f7acefd3516af6f7685ddba18",
+    "bytes": 3806
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/sessionClear.cl2.test.ts",
+    "sha256": "c75694ff6734a57ffaf6be410ab6db23515e40d1c4aa382d97cfff23872d6c7f",
+    "bytes": 2537
+   },
+   {
+    "path": "SmartCompareApp/__tests__/cl2/swrCache.cl2.test.ts",
+    "sha256": "ef05d1021ef3e0df03ea35de7f9f9e9de3f742ecf93871612b94d64c42780e03",
+    "bytes": 3784
+   }
+  ],
+  "base_run": {
+   "failed": 37,
+   "passed": 20,
+   "every_failure_is_assertion_error": true,
+   "failed_node_ids": [
+    "cl2/bootParallel: R33",
+    "cl2/clientSpeed: R1",
+    "cl2/clientSpeed: R2",
+    "cl2/clientSpeed: R3",
+    "cl2/freezeOnBlur: R34",
+    "cl2/historySwr: R22",
+    "cl2/historySwr: R23",
+    "cl2/historySwr: R24",
+    "cl2/homeFloor: R4",
+    "cl2/homeFloor: R4b fast path",
+    "cl2/homeFloor: R5",
+    "cl2/homeFloor: R6",
+    "cl2/homeFloor: R7",
+    "cl2/imagePrefetch: R9 (two nodes)",
+    "cl2/imagePrefetch: R10",
+    "cl2/imagePrefetch: R11",
+    "cl2/imagePrefetch: R12 (two nodes)",
+    "cl2/imagePrefetch: R13",
+    "cl2/imagePrefetch: R14",
+    "cl2/imagePrefetch: R15",
+    "cl2/lazyScreens: R30",
+    "cl2/lazyScreens: R31",
+    "cl2/lazyScreens: R32",
+    "cl2/metroSentry: R27",
+    "cl2/metroSentry: R28",
+    "cl2/metroSentry: R29",
+    "cl2/revealCut: R8",
+    "cl2/sessionClear: R25",
+    "cl2/sessionClear: R26",
+    "cl2/swrCache: R16",
+    "cl2/swrCache: R17",
+    "cl2/swrCache: R18",
+    "cl2/swrCache: R19",
+    "cl2/swrCache: R20",
+    "cl2/swrCache: R21"
+   ],
+   "pyt_line": "[jest] tag=g6red-comm-chunk_base_04 files=23 start=04:07:26 end=04:07:40 rc=1 (the 12 cl2 files on the final bytes, inside the base comm run: 57 nodes = 37 failed + 20 passed; all 37 first-failure lines are expect() assertions, base_red_assertions.tsv). Earlier probe: [jest] tag=g6red-base-cl2-2 start=03:43:20 end=03:43:30 rc=1"
+  },
+  "prototype": {
+   "on_passed": 194,
+   "on_failed": 0,
+   "off_passed": 20,
+   "off_failed": 37,
+   "pyt_lines": [
+    "[jest] tag=g6red-proto-cl2-t14-b start=03:49:57 end=03:50:16 rc=0 (26 suites = 12 cl2 + 14 base-touched incl. E1-E5: 194 passed, 5 todo)",
+    "[jest] tag=g6red-proto-boot-2 start=03:58:46 end=03:58:55 rc=0 (bootParallel final bytes, 3 passed)",
+    "[jest] tag=g6red-proto-inband-A start=03:59:30 end=03:59:38 rc=0 (17 suites, 81 passed, order-preserving sequencer)",
+    "[jest] tag=g6red-proto-inband-B start=03:59:40 end=03:59:49 rc=0 (reverse order, 17 suites, 81 passed)",
+    "[tsc] tag=g6red-proto-tsc start=03:47:40 rc=2; [tsc] tag=g6red-proto-tsc-2 start=03:48:07 rc=2; [tsc] tag=g6red-proto-tsc-3 start=03:48:35 end=03:48:42 rc=0 (tsc 5.9.3)",
+    "[eslint] tag=g6red-proto-eslint rc=1 (1 error in my own test, fixed); [eslint] tag=g6red-proto-eslint-2 start=03:49:32 end=03:49:45 rc=0 (0 errors, 100 pre-existing-class warnings; eslint 9.39.4)",
+    "[jest] tag=g6red-proto-E6E7 start=04:04:14 end=04:04:28 rc=0 (minDisplayFloor + a18 with the two new E-rows: 18 passed)",
+    "[pyt] tag=g6red-be-pins-proto start=2026-11-05 04:04:39 end=2026-11-05 04:04:55 elapsed=16s bound=600s status=OK rc=0 (210 passed; [hermeticity] sentinel checked 210)"
+   ],
+   "notes": "Client unit: no flag. 'on' means the prototype in place; 'off' means base (the cl2 files at base). Prototype = 4 new leaves + App.tsx, metro.config.js, HomeScreen, ResultsScreen, HistoryScreen + src/types/types.ts (fastHit?: boolean, needed by R-G6-4) + E1-E5 + 2 new E-rows (E6 ResultsEntryParams.a18:153 adds 'fastHit' to the declared Results param list; E7 HomeScreen.minDisplayFloor:157-164 also accepts the fastHit navigate form). tsc needs lazyScreen<NewOnboardingHostProps>(...) for the named-export host. Diff at scratchpad/S81-G6_red/prototype.diff, copies at prototype_files/. Thrown away and restored byte-for-byte."
+  },
+  "mutants": [
+   {
+    "id": "M1",
+    "description": "clientSpeed SKIP 300 -> 0",
+    "survived": false,
+    "killed_by": "clientSpeed R1,R2; homeFloor R4,R4b"
+   },
+   {
+    "id": "M2",
+    "description": "clientSpeed FLOOR 400 -> 1200",
+    "survived": false,
+    "killed_by": "clientSpeed R1,R2; homeFloor R5"
+   },
+   {
+    "id": "M3",
+    "description": "> -> >= at the skip boundary",
+    "survived": false,
+    "killed_by": "clientSpeed R2"
+   },
+   {
+    "id": "M4",
+    "description": "revealDelayMs always 800",
+    "survived": false,
+    "killed_by": "clientSpeed R3; revealCut R8"
+   },
+   {
+    "id": "M5",
+    "description": "Home remaining = Math.max(0, 1200 - elapsed)",
+    "survived": false,
+    "killed_by": "homeFloor R4,R4b,R5,R6"
+   },
+   {
+    "id": "M6",
+    "description": "Results reveal delay literal 800 restored",
+    "survived": false,
+    "killed_by": "revealCut R8"
+   },
+   {
+    "id": "M7",
+    "description": "imagePrefetch drops the https check",
+    "survived": false,
+    "killed_by": "imagePrefetch R10"
+   },
+   {
+    "id": "M8",
+    "description": "imagePrefetch slice(0, 3)",
+    "survived": false,
+    "killed_by": "imagePrefetch R11"
+   },
+   {
+    "id": "M9",
+    "description": "imagePrefetch removes the .catch",
+    "survived": false,
+    "killed_by": "imagePrefetch R12 (thenable row, assertion); the rejection row fails as a jest-circus unhandled-rejection error"
+   },
+   {
+    "id": "M10",
+    "description": "imagePrefetch never checks the seen-set",
+    "survived": false,
+    "killed_by": "imagePrefetch R14"
+   },
+   {
+    "id": "M11",
+    "description": "Home drops prefetchProductImages(result)",
+    "survived": false,
+    "killed_by": "homeFloor R7; imagePrefetch R15"
+   },
+   {
+    "id": "M12",
+    "description": "setSwrUser never clears",
+    "survived": false,
+    "killed_by": "swrCache R19"
+   },
+   {
+    "id": "M13",
+    "description": "throttle >= -> >",
+    "survived": false,
+    "killed_by": "swrCache R18"
+   },
+   {
+    "id": "M14",
+    "description": "swrWrite ignores the no-user guard",
+    "survived": true,
+    "equivalent_by_ruling": false
+   },
+   {
+    "id": "M15",
+    "description": "History focus ignores shouldRefetchOnFocus",
+    "survived": false,
+    "killed_by": "historySwr R22"
+   },
+   {
+    "id": "M16",
+    "description": "History delete without invalidateSwrPrefix",
+    "survived": false,
+    "killed_by": "historySwr R24"
+   },
+   {
+    "id": "M17",
+    "description": "App drops the setSwrUser effect",
+    "survived": false,
+    "killed_by": "sessionClear R25"
+   },
+   {
+    "id": "M18",
+    "description": "Results drops the history invalidation",
+    "survived": false,
+    "killed_by": "sessionClear R26"
+   },
+   {
+    "id": "M19",
+    "description": "metro includeWebReplay: true",
+    "survived": false,
+    "killed_by": "metroSentry R27,R28"
+   },
+   {
+    "id": "M20",
+    "description": "ScanCamera back to a static import (R-G6-1)",
+    "survived": false,
+    "killed_by": "lazyScreens R30"
+   },
+   {
+    "id": "M21",
+    "description": "lazyScreen fallback <Text>Loading</Text>",
+    "survived": false,
+    "killed_by": "lazyScreens R31; scope P17"
+   },
+   {
+    "id": "M22",
+    "description": "getStableId awaited after bootstrapRtl (base form)",
+    "survived": false,
+    "killed_by": "bootParallel R33"
+   },
+   {
+    "id": "M23",
+    "description": "drop stableIdP.catch(...)",
+    "survived": false,
+    "killed_by": "bootParallel P12 (assertion, via the tracking Promise binding)"
+   },
+   {
+    "id": "M24",
+    "description": "freezeOnBlur removed",
+    "survived": false,
+    "killed_by": "freezeOnBlur R34"
+   },
+   {
+    "id": "M25",
+    "description": "fastHit always true (R-G6-4)",
+    "survived": false,
+    "killed_by": "homeFloor R4b (mid path), P1"
+   }
+  ],
+  "comm_set": {
+   "files": 142,
+   "chunks": 11,
+   "base_failures": [
+    "__tests__/config/nativeBundle.w37.test.ts::W3-7 (d) ... d5 react-native-gesture-handler is removed from package.json",
+    "__tests__/config/nativeBundle.w37.test.ts::session 70 U4b ... k2 package-lock.json and node_modules resolve the five packages",
+    "__tests__/config/nativeBundle.w37.test.ts::session 70 U4b ... k4 eslint-config-expo is on the SDK-54 line",
+    "__tests__/config/nativeBundle.w37.test.ts::session 70 U4b ... k5 offline expo-install consistency"
+   ],
+   "list_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G6_red/COMM_SET.txt",
+   "pyt_lines": [
+    "base reuse: [jest] tag=g6spec-base-touched start=03:11:18 end=03:11:34 rc=0 (14 suites, 137 passed, 5 todo)",
+    "[jest] tag=g6red-comm-chunk_base_00 files=25 start=04:05:42 end=04:06:31 rc=0",
+    "[jest] tag=g6red-comm-chunk_base_01 files=25 start=04:06:34 end=04:06:48 rc=0",
+    "[jest] tag=g6red-comm-chunk_base_02 files=25 start=04:06:49 end=04:07:04 rc=0",
+    "[jest] tag=g6red-comm-chunk_base_03 files=25 start=04:07:06 end=04:07:25 rc=1 (w37)",
+    "[jest] tag=g6red-comm-chunk_base_04 files=23 start=04:07:26 end=04:07:40 rc=1 (37 cl2 RED nodes)",
+    "[jest] tag=g6red-comm-chunk_head_00 files=25 start=04:00:12 end=04:00:27 rc=0",
+    "[jest] tag=g6red-comm-chunk_head_01 files=25 start=04:00:28 end=04:00:44 rc=1 (minDisplayFloor + a18, R-G6-4)",
+    "[jest] tag=g6red-comm-chunk_head_02 files=25 start=04:00:45 end=04:00:58 rc=0",
+    "[jest] tag=g6red-comm-chunk_head_03 files=25 start=04:00:59 end=04:01:17 rc=1 (w37)",
+    "[jest] tag=g6red-comm-chunk_head_04 files=25 start=04:01:18 end=04:01:33 rc=0",
+    "[jest] tag=g6red-comm-chunk_head_05 files=12 start=04:01:34 end=04:01:41 rc=0",
+    "[jest] tag=g6red-proto-E6E7 start=04:04:14 end=04:04:28 rc=0 (both suites green with E6/E7)",
+    "base pins reuse: [pyt] tag=g6spec-be-pins start=2026-11-05 03:10:52 end=2026-11-05 03:11:06 elapsed=14s bound=1200s status=OK rc=0 (210 passed)",
+    "[pyt] tag=g6red-be-pins-proto start=2026-11-05 04:04:39 end=2026-11-05 04:04:55 elapsed=16s bound=600s status=OK rc=0 (210 passed)",
+    "comm -13 (head-only) EMPTY; comm -23 (base-only, existing suites) EMPTY; base failed set = head-final failed set = the 4 w37 drift nodes; the 37 cl2 nodes fail only at base, as designed"
+   ]
+  },
+  "restore_check": {
+   "worktree_clean_except_new_tests": true,
+   "scratch_removed": true,
+   "note": "No scratch worktree was created (the client exception). git status --short = '?? SmartCompareApp/__tests__/cl2/' only; git diff --quiet clean; snap.py verify: all 10 edited files sha256 equal to base (e.g. App.tsx ef0669d1..., HomeScreen bee8b927...), plus minDisplayFloor 8d8a4e0e... and a18 1fb90513... OK; the 4 new source files removed; .qa-mutation.lock removed; no pytest of mine left running (only the stall monitors)."
+  },
+  "deviations_from_spec": [
+   "D1 (needs new E-row E6): __tests__/ResultsEntryParams.a18.test.ts:153 pins the Results param declaration as the literal list [comparison_id, result, vision_products]. Adding fastHit?: boolean to src/types/types.ts (R-G6-4) turns it red. One-line amendment measured green.",
+   "D2 (needs new E-row E7): __tests__/HomeScreen.minDisplayFloor.test.ts:157-164 requires exactly one navigation.navigate('Results' as any, { result }). Spec 4.1 says this suite stays green, but that is false under R-G6-4. Prototype amendment: the regex also accepts the `fastHit ? { result, fastHit: true } : { result }` form.",
+   "D3 (R29): the spec says the stock config does not collapse the Sentry debug frame. Measured: the stock expo customizeFrame already returns collapse:true for node_modules/@sentry/core/cjs/debug.js. R29 now also pins that customizeFrame is Sentry's withSentryFramesCollapsed wrapper (its 7.2.0 source contains collapseSentryInternalFrames) and that an app frame stays collapse:false.",
+   "D4: M14 (swrWrite ignores the no-user guard) survives and is equivalent by construction. swrRead returns undefined when there is no user, and setSwrUser clears on every change, so a no-user write cannot be observed through the API. A ruling is requested; R17 was not weakened.",
+   "D5: R-G6-4 needs a 6th edited source file, SmartCompareApp/src/types/types.ts (Results gains fastHit?: boolean), which is not in spec section 3's list.",
+   "D6: the prototype's fast-hit boundary is 0 <= elapsed <= 300 (the 'renders now' band). The rows only pin t=100 (fastHit true) and t=350 / t=1500 (no fastHit), so GREEN chooses the exact boundary.",
+   "D7: the C6 form in spec 2.3 for NewOnboardingHost (an untyped .then mapping) fails tsc. The prototype uses lazyScreen<NewOnboardingHostProps>(() => import(...).then(...)), and R30 accepts an explicit type argument.",
+   "D8: under jest-circus a real unhandled rejection is reported as a test error and never reaches the test's process listener, so the listener checks in R12 / P12 do nothing on their own. The catch is pinned instead by a recorded thenable (R12) and by a tracking Promise binding injected into the boot block (P12), so M9 and M23 are killed by assertions.",
+   "D9: the lazyScreen fallback is <View style={{ flex: 1, backgroundColor: colors.bg.primary }} /> (R-G6-1). R31 pins backgroundColor === colors.bg.primary.",
+   "No full jest run (LC-7); the offline expo export was not repeated (7.4)."
+  ],
+  "open_questions": [
+   "Rule E6 (a18 declared list + 'fastHit') and E7 (minDisplayFloor helper-internal regex accepts the fastHit navigate form) as GREEN E-rows. Both are required by R-G6-4.",
+   "Rule M14 equivalent (the no-user write cannot be observed through the swrCache API), or name a row that should observe it.",
+   "Confirm the fast-hit boundary (elapsed <= 300 inclusive, matching homeFloorDelayMs's 'renders now' band) for GREEN.",
+   "Confirm that the explicit generic form lazyScreen<Props>(() => import(...)) is acceptable for NewOnboardingHost, since the untyped .then form fails tsc."
+  ],
+  "report_path": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/S81-G6_RED_REPORT.md",
+  "not_measured_alone": [
+   "Full jest suite (LC-7: final round only)",
+   "Offline expo export at HEAD (7.4: GREEN's measurement)",
+   "On-device behaviour: lazy fallback duration, freezeOnBlur, reveal feel, cold start"
+  ]
+ },
+ "toolsUsed": [
+  "Bash",
+  "Read",
+  "Write",
+  "Edit",
+  "PowerShell",
+  "StructuredOutput"
+ ]
+}
