@@ -34,6 +34,9 @@ KB_COVERAGE_TABLE = "kb_coverage_daily"
 KB_OFFERS_LATEST_VIEW = "kb_offers_latest"
 SEARCH_LOGS_TABLE = "search_logs"
 SEARCH_LOG_COLUMNS = "products_found,success,is_synthetic,created_at"
+#: D17b: every paged read is ordered by the primary key (every paged relation
+#: has an ``id`` pk; PostgREST paging without an ORDER BY is not stable).
+PAGE_ORDER_COLUMN = "id"
 
 #: The fragrance spec fields a KB card must cite for a full hit (the S81-18
 #: required set: the critical schema list minus the licence fields).
@@ -70,6 +73,17 @@ def _ts(value: Any) -> Optional[datetime]:
     return out if out.tzinfo is not None else out.replace(tzinfo=timezone.utc)
 
 
+def _past(value: Any, now: datetime) -> Optional[datetime]:
+    """D16b: :func:`_ts`, but a moment beyond kb_serve.FUTURE_SKEW_SECONDS ahead of
+    ``now`` is unknown (None): never fresh, never a negative age."""
+    moment = _ts(value)
+    if moment is None:
+        return None
+    from app.services import kb_serve
+
+    return None if kb_serve.beyond_skew(moment, now) else moment
+
+
 def _share(part: int, whole: int) -> float:
     return round(part / whole, SHARE_PLACES) if whole else 0.0
 
@@ -95,13 +109,15 @@ def _product_of(variant_id: Any) -> Optional[str]:
 
 def _paged(client: Any, table: str, columns: str,
            filters: Tuple[Tuple[str, Tuple[Any, ...]], ...] = ()) -> List[Dict[str, Any]]:
-    """Every row of ``table`` in pages of PAGE_SIZE (at most MAX_PAGES pages)."""
+    """Every row of ``table`` in pages of PAGE_SIZE (at most MAX_PAGES pages), every
+    page ordered by the primary key ``id`` (D17b)."""
     rows: List[Dict[str, Any]] = []
     for page in range(common.MAX_PAGES):
         start = page * common.PAGE_SIZE
         query = client.table(table).select(columns)
         for name, args in filters:
             query = getattr(query, name)(*args)
+        query = query.order(PAGE_ORDER_COLUMN)
         data = getattr(query.range(start, start + common.PAGE_SIZE - 1).execute(), "data", None)
         if not isinstance(data, list):
             raise TypeError("page is not a list")
@@ -196,7 +212,8 @@ class _Rollup:
             cut = self.now - timedelta(days=FRESH_DAYS)
             with_offer = {_product_of(o.get("variant_id")) for o in offers}
             fresh = {_product_of(o.get("variant_id")) for o in offers
-                     if (_ts(o.get("last_seen")) is not None and _ts(o.get("last_seen")) >= cut)}
+                     if (_past(o.get("last_seen"), self.now) is not None
+                         and _past(o.get("last_seen"), self.now) >= cut)}
             self.add("kb.field.offer_share", share(with_offer), total)
             self.add("kb.field.offer_fresh_share", share(fresh), total)
         if imaged is not None:
@@ -214,8 +231,10 @@ class _Rollup:
             self.add("kb.field.complete_share", share(complete), total)
 
     def _ages(self, offers: List[Dict[str, Any]]) -> None:
-        seen = [_hours(self.now, t) for t in (_ts(o.get("last_seen")) for o in offers) if t is not None]
-        caps = [_hours(self.now, t) for t in (_ts(o.get("captured_at")) for o in offers) if t is not None]
+        seen = [_hours(self.now, t) for t in (_past(o.get("last_seen"), self.now) for o in offers)
+                if t is not None]
+        caps = [_hours(self.now, t) for t in (_past(o.get("captured_at"), self.now) for o in offers)
+                if t is not None]
         if seen:
             self.add("kb.price.age_median_hours", round(statistics.median(seen), 2), len(seen))
         if caps:
@@ -273,7 +292,10 @@ class _Rollup:
             pipe = self.redis.pipeline()
             for host in hosts:
                 pipe.hgetall("kbh:" + stamp + ":" + host)
-            return list(pipe.exec() or [])
+            # D17b: the live_robots form: upstash-redis 1.7.0 runs the queue with
+            # exec() (its one-argument execute only queues); redis-py has execute().
+            run = getattr(pipe, "exec", None) or getattr(pipe, "execute")
+            return list(run() or [])
 
         result = self.guarded("hosts", read)
         if result is None:

@@ -9051,8 +9051,8 @@ def _detect_ambiguous_variant_axes(
 # (product-line facts are stable). A HIT short-circuits ($0) — and the LIVE path
 # MAY read this $0 cache (a filled verdict costs nothing) but must NEVER call the
 # LLM. On a MISS: the async path calls gpt-4o-mini (temperature=0, json_object),
-# caches the verdict, optionally appends to data/variant_hint_learned.json for
-# convergence. FAIL-CLOSED default (flag off / low confidence / client error /
+# caches the verdict in Redis (the only store; D22c retired the learned-file
+# append). FAIL-CLOSED default (flag off / low confidence / client error /
 # per-run cap exceeded / "unknown" response) = VETO the write (never cache an
 # unverified identity). Only a HIGH-confidence answer acts:
 #   distinct + high -> veto ; same + high -> allow ; else -> fail-closed veto.
@@ -9063,9 +9063,6 @@ def _detect_ambiguous_variant_axes(
 # single process; reset at import / via _reset_varhint_run_state for tests).
 # ---------------------------------------------------------------------------
 _VARHINT_VERDICT_TTL_SECONDS = 90 * 24 * 3600  # 90d — product-line facts are stable
-_VARHINT_LEARNED_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "data", "variant_hint_learned.json",
-)
 # Process-local per-run LLM-call counter (a warm run = one process).
 _varhint_calls_this_run = 0
 
@@ -9153,25 +9150,6 @@ def _varhint_write_verdict_cache(key: str, verdict: str) -> None:
         pass
 
 
-def _varhint_append_learned(family: str, axis: str, verdict: str) -> None:
-    """Append a resolved verdict to data/variant_hint_learned.json for convergence
-    (the committed-data precedent). Best-effort; never raises. Keyed 'family|axis'."""
-    if verdict not in ("distinct", "same"):
-        return
-    try:
-        doc: Dict[str, Any] = {}
-        if os.path.exists(_VARHINT_LEARNED_PATH):
-            with open(_VARHINT_LEARNED_PATH, "r", encoding="utf-8") as fh:
-                loaded = json.load(fh)
-                if isinstance(loaded, dict):
-                    doc = loaded
-        doc[f"{family}|{axis}"] = verdict
-        with open(_VARHINT_LEARNED_PATH, "w", encoding="utf-8") as fh:
-            json.dump(doc, fh, ensure_ascii=True, indent=2, sort_keys=True)
-    except Exception:  # noqa: BLE001 — learned-file is additive, never fatal
-        pass
-
-
 async def _consult_variant_llm_hint(
     category: Optional[str], query_name: str, candidate_title: str, axis: str,
 ) -> str:
@@ -9180,7 +9158,7 @@ async def _consult_variant_llm_hint(
     ORDER: (a) Redis verdict cache HIT -> return it ($0, NO client construction).
     (b) MISS: enforce the per-run cap (beyond it -> "unknown" WITHOUT calling),
     else call disambiguate_variant_line; only a HIGH-confidence answer resolves
-    to distinct/same (cached + learned); anything else -> "unknown" (the caller
+    to distinct/same (cached in Redis); anything else -> "unknown" (the caller
     fail-closes). NEVER raises."""
     global _varhint_calls_this_run
     key = _varhint_verdict_key(query_name, candidate_title, axis)
@@ -9207,9 +9185,6 @@ async def _consult_variant_llm_hint(
     else:
         return "unknown"
     _varhint_write_verdict_cache(key, verdict)
-    _varhint_append_learned(
-        _varhint_normalized_family(query_name, candidate_title, axis), axis, verdict,
-    )
     return verdict
 
 

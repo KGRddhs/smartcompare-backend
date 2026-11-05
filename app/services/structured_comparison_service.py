@@ -384,6 +384,46 @@ def spec_confidence_cache_enabled() -> bool:
     )
 
 
+def behavior_profile_rebuild_enabled() -> bool:
+    """D22c PROFILE-SELECT (S81-G7): True iff ENABLE_BEHAVIOR_PROFILE_REBUILD is
+    truthy (default OFF). Read PER CALL, as the first statement of
+    `_update_behavior_profile`. ON repoints the two phantom-column selects of the
+    profile write at live columns (the comparisons category / products inside
+    `full_response`, the user_events `event_data`); OFF is byte-identical."""
+    return os.getenv("ENABLE_BEHAVIOR_PROFILE_REBUILD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: D22c: the ON selects of `_update_behavior_profile` (PostgREST JSON-path
+#: aliases deliver the keys behavior_service reads).
+_PROFILE_COMPARISON_COLUMNS_V2 = (
+    "category_used:full_response->>category_used, products:full_response->products, created_at"
+)
+_PROFILE_EVENT_COLUMNS_V2 = "event_type, metadata:event_data"
+
+
+def _profile_rows_v2(comparisons: Any, events: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """D22c (ON only): a comparisons row whose `products` is not a list gets [],
+    an events row whose `metadata` is not a dict gets {} (a NULL `event_data` or
+    `full_response` must not raise inside behavior_service); non-dict rows drop."""
+    comparison_rows = []
+    for row in comparisons or []:
+        if isinstance(row, dict):
+            fixed = dict(row)
+            if not isinstance(fixed.get("products"), list):
+                fixed["products"] = []
+            comparison_rows.append(fixed)
+    event_rows = []
+    for row in events or []:
+        if isinstance(row, dict):
+            fixed = dict(row)
+            if not isinstance(fixed.get("metadata"), dict):
+                fixed["metadata"] = {}
+            event_rows.append(fixed)
+    return comparison_rows, event_rows
+
+
 #: Transient per-request keys that must never be persisted by the enriched
 #: specs re-cache. `_spec_citation_confidence` is deliberately NOT here — it is
 #: the derived map #107 persists across the cache (same lifecycle as
@@ -5931,6 +5971,7 @@ class StructuredComparisonService:
     async def _update_behavior_profile(self, user_id: str):
         """Fire-and-forget: update user's behavioral profile after comparison."""
         try:
+            rebuild = behavior_profile_rebuild_enabled()  # D22c: read per call, first
             from app.services.behavior_service import get_behavior_service
             from app.services.database_service import get_supabase_client
 
@@ -5942,12 +5983,18 @@ class StructuredComparisonService:
             # inline when OFF). The comparison_feedback select gains a .limit()
             # mirroring the 50/200 bounds its siblings already carry — it was
             # the one unbounded read in the chain.
-            comparisons = await run_db(lambda: supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute())
+            comparison_columns = _PROFILE_COMPARISON_COLUMNS_V2 if rebuild else "category_used, products, created_at"
+            event_columns = _PROFILE_EVENT_COLUMNS_V2 if rebuild else "event_type, metadata"
+            comparisons = await run_db(lambda: supabase.table("comparisons").select(comparison_columns).eq("user_id", user_id).order("created_at", desc=True).limit(50).execute())
             feedback = await run_db(lambda: supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).limit(200).execute())
-            events = await run_db(lambda: supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200).execute())
+            events = await run_db(lambda: supabase.table("user_events").select(event_columns).eq("user_id", user_id).order("created_at", desc=True).limit(200).execute())
 
+            comparison_rows = comparisons.data or []
+            event_rows = events.data or []
+            if rebuild:
+                comparison_rows, event_rows = _profile_rows_v2(comparison_rows, event_rows)
             profile = await behavior_service.build_behavior_profile(
-                comparisons.data or [], feedback.data or [], events.data or [],
+                comparison_rows, feedback.data or [], event_rows,
             )
             await run_db(lambda: supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute())
         except Exception as e:

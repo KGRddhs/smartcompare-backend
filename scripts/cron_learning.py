@@ -174,6 +174,24 @@ def _clean(text: Any) -> bool:
     return not any(rx.search(text) for rx in _UNCLEAN_RES)
 
 
+#: D22d (L15): C0 / C1 control characters -> \xNN, U+2028 / U+2029 -> \uNNNN;
+#: a backslash is NOT doubled. Built once; applied by :func:`_render`.
+_RENDER_ESCAPES: Dict[int, str] = {
+    **{code: "\\x%02x" % code for code in range(0x00, 0x20)},
+    **{code: "\\x%02x" % code for code in range(0x7F, 0xA0)},
+    0x2028: "\\u2028",
+    0x2029: "\\u2029",
+}
+
+
+def _render(text: Any) -> Any:
+    """D22d: a product name made safe for a log line or a markdown cell (the
+    control characters escaped); a name without one is returned unchanged."""
+    if not isinstance(text, str):
+        return text
+    return text.translate(_RENDER_ESCAPES)
+
+
 def _all_clean(values: Iterable[Any]) -> bool:
     return all(_clean(v) for v in values)
 
@@ -304,9 +322,18 @@ def _read_by(client: Any, table: str, columns: str, column: str, values: Iterabl
     rows: List[Dict[str, Any]] = []
     for i in range(0, len(wanted), IN_CHUNK):
         chunk = wanted[i:i + IN_CHUNK]
-        rows.extend(_page(client, table, columns, [("in_", (column, chunk))], 0, IN_CHUNK * 8 - 1))
-        if len(rows) >= cap:
-            return rows[:cap], "capped"
+        # D22d (L14): id-ordered pages of PAGE_SIZE per chunk until a short page,
+        # never past the cap (was ONE range(0, 799) per chunk, silently cut).
+        offset = 0
+        while True:
+            size = min(common.PAGE_SIZE, cap - len(rows))
+            page = _page(client, table, columns, [("in_", (column, chunk))], offset, offset + size - 1)
+            rows.extend(page)
+            if len(rows) >= cap:
+                return rows[:cap], "capped"
+            if len(page) < size:
+                break
+            offset += size
     return rows, "ok"
 
 
@@ -547,6 +574,7 @@ def _gather(client: Any, kb_category: str, start_iso: str, end_iso: str, cap: in
         actor = _actor("u", cmp_row.get("user_id")) if cmp_row else None
         cases.add("verdict_unsupported", case_id, _category(cmp_row), "critic", "verdict", actor)
     spec_products: Set[str] = set()
+    dropped_fields = 0
     for row in kb_feedback:
         if row.get("verdict") != "wrong":
             continue
@@ -559,6 +587,8 @@ def _gather(client: Any, kb_category: str, start_iso: str, end_iso: str, cap: in
         elif raw_field == "identity":
             cases.add("identity_wrong", case_id, kb_category, "kb", "identity", actor)
         else:
+            if isinstance(raw_field, str) and not _clean(raw_field):
+                dropped_fields += 1  # D22d: an unclean field-name row counts once (it maps to other)
             cases.add("spec_wrong", case_id, kb_category, "kb", _field_name(raw_field), actor, product=product)
             if product:
                 spec_products.add(product)
@@ -601,7 +631,8 @@ def _gather(client: Any, kb_category: str, start_iso: str, end_iso: str, cap: in
     return {"tables": tables, "cases": cases, "feedback": feedback, "comparisons": comparisons, "specs": specs,
             "context": {"events_abandon": abandon, "events_confirm": confirm,
                         "searches_failed": searches_failed, "searches_total": searches_total},
-            "abandon_users": len(abandon_users), "confirm_users": len(confirm_users)}
+            "abandon_users": len(abandon_users), "confirm_users": len(confirm_users),
+            "dropped_fields": dropped_fields}
 
 
 def _metrics(cases: _Cases, clusters: List[Dict[str, Any]], proposals: List[Dict[str, Any]],
@@ -655,8 +686,8 @@ def _write_md(path: Optional[str], report: Dict[str, Any]) -> None:
     lines += ["", "Exemplar candidates (names only; the verdict text is in the JSON report):"]
     for category, block in sorted(report["exemplar_candidates"].items()):
         for item in block["exemplars"]:
-            lines.append("- %s %s: %s || %s" % (category, block["version"], item["product_names"][0],
-                                               item["product_names"][1]))
+            lines.append("- %s %s: %s || %s" % (category, block["version"], _render(item["product_names"][0]),
+                                               _render(item["product_names"][1])))
     with open(path, "w", encoding="ascii", errors="backslashreplace", newline="\n") as fh:
         fh.write("\n".join(lines) + "\n")
 
@@ -700,7 +731,7 @@ def main(argv: Optional[List[str]] = None, client: Any = None) -> int:
         logger.info("%s table=%s status=%s rows=%d", PREFIX, table, st["status"], st["rows"])
 
     cases: _Cases = gathered["cases"]
-    dropped = [0]
+    dropped = [gathered["dropped_fields"]]  # D22d: the unclean field-name rows
     clusters = _clusters(cases, need_cases, need_actors)
     proposals = []
     for c in clusters:
@@ -728,11 +759,12 @@ def main(argv: Optional[List[str]] = None, client: Any = None) -> int:
                     block["count"])
         for item in block["exemplars"]:
             logger.info("%s exemplar category=%s version=%s names=%s || %s", PREFIX, category, block["version"],
-                        item["product_names"][0], item["product_names"][1])
+                        _render(item["product_names"][0]), _render(item["product_names"][1]))
     for item in evals:
         priced = 1 if any(item["confirmed_prices"].values()) else 0
         logger.info("%s eval_case category=%s winner=%d prices=%d names=%s || %s", PREFIX, item["category"],
-                    item["confirmed_winner_index"], priced, item["product_names"][0], item["product_names"][1])
+                    item["confirmed_winner_index"], priced, _render(item["product_names"][0]),
+                    _render(item["product_names"][1]))
 
     metrics = _metrics(cases, clusters, proposals, exemplars, evals, gathered, dropped[0])
     rows: List[Dict[str, Any]] = []

@@ -26,7 +26,8 @@ R-G4-4) and the internal ``_cached`` / ``_cache_source = "kb"`` keys, which
 ``public_price_view`` strips. A price older than the 7-day genuine window is
 served only to a client that declared ``price_asof`` and only up to the as-of
 knob. The verdict key's prompt digest is PRODUCT-FREE (R-G4-3): the verdict
-prompt rendered over two identity-only stubs.
+prompt rendered over two identity-only stubs. An offer whose ``last_seen`` lies
+beyond ``FUTURE_SKEW_SECONDS`` in the future is treated as unknown (D16b).
 
 Only the standard library is imported at module top; the S81-14 leaf through
 :func:`kb_leaf`, everything else lazily. Test seams: ``_now``, ``_admin_client``,
@@ -42,7 +43,7 @@ import math
 import os
 import threading
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,9 @@ KB_PRODUCT_CARD_RPC = "kb_product_card"
 LICENCE_FIELDS: Tuple[str, ...] = ("notes_top", "notes_heart", "notes_base", "longevity", "sillage")
 KB_HIT_VALUES: Tuple[str, ...] = ("full", "partial", "miss")
 PRICE_STATES: Tuple[str, ...] = ("fresh", "asof", "stale_refused", "none")
+#: D16b (S81-G7): the clock-skew allowance; a last_seen / captured_at later than
+#: now + this many seconds is a future date: unknown, never the freshest offer.
+FUTURE_SKEW_SECONDS: int = 300
 KB_SOURCE = "kb"
 MAX_CAPABILITY_CHARS = 512
 
@@ -222,6 +226,14 @@ def _price_dict(product: Dict[str, Any], offer: Dict[str, Any], amount: float, s
     return price
 
 
+def beyond_skew(moment: datetime, now: datetime) -> bool:
+    """D16b: True iff the aware ``moment`` is later than ``now`` + FUTURE_SKEW_SECONDS.
+
+    The constant is read at call time through the module global, so exactly
+    ``now + 300 s`` is still accepted and ``now + 301 s`` is a future date."""
+    return moment > now + timedelta(seconds=FUTURE_SKEW_SECONDS)
+
+
 def classify(card: Any, *, category: Any, region: Any, now: datetime, accepts_asof: bool) -> Dict[str, Any]:
     """Pure: what the card can serve for one product slot (the 2.2 contract)."""
     if not isinstance(card, dict) or not isinstance(card.get("product"), dict):
@@ -253,6 +265,8 @@ def classify(card: Any, *, category: Any, region: Any, now: datetime, accepts_as
             continue
         amount = _amount(offer.get("amount"))
         seen = _ts(offer.get("last_seen"))
+        if seen is not None and beyond_skew(seen, now):
+            seen = None  # D16b: a future last_seen is unknown (skipped like an unreadable one)
         if (region != "bahrain" or offer.get("market") != "BH" or offer.get("observed_currency") != "BHD"
                 or amount is None or offer.get("in_stock") is False or seen is None
                 or not kb.kb_source_allowed(offer.get("canonical_url"))):

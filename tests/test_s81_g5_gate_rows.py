@@ -270,7 +270,8 @@ def test_g5_gr6_unclean_kb_field_name_screened(monkeypatch, tmp_path, caplog):
     stopped only by the de-identification screen inside _field_name (A11); the at-sign one
     is stopped by the shape first. Both map to the field `other`, so the cited kb_specs rows
     of the raw names never ground the cluster. The field-name screen maps, it does not drop
-    a candidate: learning.dropped.deidentify stays 0 here (the measured GREEN contract).
+    a candidate; D22d counts each unclean field-name row in learning.dropped.deidentify
+    (G5-GR6 amended, E2: six rows here).
     """
     red = _red()
     res = _shape_res()
@@ -283,7 +284,7 @@ def test_g5_gr6_unclean_kb_field_name_screened(monkeypatch, tmp_path, caplog):
         props = [p for p in run.report["proposals"] if p["bucket"] == "spec_wrong"]
         assert [(p["field"], p["grounding"], p["proposed_action"]) for p in props] == [
             ("other", [], "needs_operator")], props
-        assert run.report["dropped_deidentify"] == 0
+        assert run.report["dropped_deidentify"] == 6
         texts = [run.report_path.read_text(encoding="ascii")]
         if run.md_path.exists():
             texts.append(run.md_path.read_text(encoding="ascii"))
