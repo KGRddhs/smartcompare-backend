@@ -356,6 +356,9 @@ P02_ALLOWED = {
     ("app/services/kb_operator.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
     ("scripts/cron_kb_coverage.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
     ("scripts/cron_kb_coverage.py", 'KB_OFFERS_LATEST_VIEW = "kb_offers_latest"'),
+    #: S81-G5 E1: the D22 job's two relation constants.
+    ("scripts/cron_learning.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
+    ("scripts/cron_learning.py", 'KB_FEEDBACK_TABLE = "kb_feedback"'),
 }
 
 
