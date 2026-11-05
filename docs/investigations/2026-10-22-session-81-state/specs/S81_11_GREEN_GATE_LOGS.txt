@@ -1,0 +1,49 @@
+# S81-11 GREEN gate log lines (HEAD 5fcb9fba; base 6869a3e6)
+toolchain: node v24.11.1, jest 29.7.0, typescript 5.9.3, eslint v9.39.4 (by path through the junction)
+[jest] tag=s11green-red1 start=2026-11-05 10:21:30 end=2026-11-05 10:21:48 rc=0
+[jest] tag=s11green-comm-00 start=2026-11-05 10:22:25 end=2026-11-05 10:22:40 rc=0
+[jest] tag=s11green-comm-01 start=2026-11-05 10:22:44 end=2026-11-05 10:22:56 rc=0
+[jest] tag=s11green-comm-02 start=2026-11-05 10:23:00 end=2026-11-05 10:23:13 rc=0
+[jest] tag=s11green-comm-03 start=2026-11-05 10:23:17 end=2026-11-05 10:23:30 rc=1
+[jest] tag=s11green-comm-04 start=2026-11-05 10:23:33 end=2026-11-05 10:23:49 rc=1
+[jest] tag=s11green-comm-03 start=2026-11-05 10:24:21 end=2026-11-05 10:24:39 rc=0
+[jest] tag=s11green-comm-04 start=2026-11-05 10:24:43 end=2026-11-05 10:24:57 rc=0
+[jest] tag=s11green-comm-05 start=2026-11-05 10:25:01 end=2026-11-05 10:25:14 rc=0
+[jest] tag=s11green-comm-06 start=2026-11-05 10:25:18 end=2026-11-05 10:25:35 rc=1
+[jest] tag=s11green-comm-07 start=2026-11-05 10:25:39 end=2026-11-05 10:25:53 rc=0
+[jest] tag=s11green-comm-08 start=2026-11-05 10:26:04 end=2026-11-05 10:26:17 rc=0
+[jest] tag=s11green-comm-09 start=2026-11-05 10:26:22 end=2026-11-05 10:26:34 rc=0
+[jest] tag=s11green-comm-00 start=2026-11-05 10:26:38 end=2026-11-05 10:26:52 rc=0
+[jest] tag=s11green-comm-01 start=2026-11-05 10:26:56 end=2026-11-05 10:27:10 rc=0
+[jest] tag=s11green-comm-02 start=2026-11-05 10:27:14 end=2026-11-05 10:27:28 rc=0
+[jest] tag=s11green-pair-home-ab start=2026-11-05 10:29:30 end=2026-11-05 10:29:38 rc=0
+[jest] tag=s11green-pair-home-ba start=2026-11-05 10:29:42 end=2026-11-05 10:29:47 rc=0
+[jest] tag=s11green-pair-home2-ab start=2026-11-05 10:29:52 end=2026-11-05 10:29:57 rc=0
+[jest] tag=s11green-pair-home2-ba start=2026-11-05 10:30:01 end=2026-11-05 10:30:04 rc=0
+[jest] tag=s11green-pair-rc-ab start=2026-11-05 10:30:07 end=2026-11-05 10:30:11 rc=0
+[jest] tag=s11green-pair-rc-ba start=2026-11-05 10:30:14 end=2026-11-05 10:30:18 rc=0
+[jest] tag=s11green-pair-api-ab start=2026-11-05 10:30:22 end=2026-11-05 10:30:24 rc=0
+[jest] tag=s11green-pair-api-ba start=2026-11-05 10:30:28 end=2026-11-05 10:30:31 rc=0
+[jest] tag=s11green-pair-err-ab start=2026-11-05 10:30:34 end=2026-11-05 10:30:39 rc=0
+[jest] tag=s11green-pair-err-ba start=2026-11-05 10:30:43 end=2026-11-05 10:30:48 rc=0
+[jest] tag=s11green-pair-ver-ab start=2026-11-05 10:30:53 end=2026-11-05 10:30:59 rc=0
+[jest] tag=s11green-pair-ver-ba start=2026-11-05 10:31:02 end=2026-11-05 10:31:05 rc=0
+[jest] tag=s11green-pair-cam-ab start=2026-11-05 10:31:11 end=2026-11-05 10:31:16 rc=0
+[jest] tag=s11green-pair-cam-ba start=2026-11-05 10:31:19 end=2026-11-05 10:31:25 rc=0
+[jest] tag=s11green-inband-touched start=2026-11-05 10:31:43 end=2026-11-05 10:31:55 rc=0
+[tsc] tag=s11green-tsc start=2026-11-05 10:32:03 end=2026-11-05 10:32:12 rc=0
+[eslint] tag=s11green-eslint files=55 start=2026-11-05 10:32:22 end=2026-11-05 10:32:40 rc=0
+[tsc] tag=s11green-tsc2 start=2026-11-05 10:36:26 end=2026-11-05 10:36:34 rc=0
+[jest] tag=s11green-inband-touched2 start=2026-11-05 10:36:41 end=2026-11-05 10:36:53 rc=0
+[hermeticity] sentinel checked 1846 test(s)
+[netguard] blocked 39 attempt(s) from 29 node(s)
+========= 1846 passed, 4 deselected, 13 warnings in 69.41s (0:01:09) ==========
+[hermeticity] sentinel checked 458 test(s)
+[netguard] blocked 24 attempt(s) from 2 node(s)
+====================== 458 passed, 13 warnings in 13.75s ======================
+jest comm set: 239 suites (RED COMM_SET 240 jest entries minus the deleted CohortBadge.test) in 10 chunks of <= 25; head failures = the 4 config/nativeBundle.w37 drift nodes only; comm -13 EMPTY; comm -23 EMPTY
+head failed nodes:
+__tests__/config/nativeBundle.w37.test.ts :: W3-7 (d) runtime dependencies are imported, justified, or pending removal > d5 react-native-gesture-handler is removed from package.json, package-lock.json and node_modules
+__tests__/config/nativeBundle.w37.test.ts :: session 70 U4b ? Expo SDK 54 patch level with one deliberate exclusion > k2 package-lock.json and node_modules resolve the five packages at or above those patches
+__tests__/config/nativeBundle.w37.test.ts :: session 70 U4b ? Expo SDK 54 patch level with one deliberate exclusion > k4 eslint-config-expo is on the SDK-54 line (~10.0.x) in package.json, the lock and node_modules
+__tests__/config/nativeBundle.w37.test.ts :: session 70 U4b ? Expo SDK 54 patch level with one deliberate exclusion > k5 offline expo-install consistency: every declared package the installed expo bundles satisfies its bundled range, apart from expo.install.exclude
