@@ -45,6 +45,17 @@ import {
 import { clearSession } from '../services/authService';
 import { formatTimeAgo } from '../utils/formatDate';
 import { deriveTone } from '../utils/deriveTone';
+// S81-G6 CL2 -- the in-memory, per-user History cache (30 s focus throttle).
+import {
+  invalidateSwrPrefix,
+  shouldRefetchOnFocus,
+  swrRead,
+  swrWrite,
+} from '../services/swrCache';
+
+// S81-G6 CL2: one cached page per applied filter, key 'history:' + query.
+const HISTORY_SWR_PREFIX = 'history:';
+type HistoryCachedPage = { comparisons: any[]; total: number };
 
 interface HistoryItem {
   id: string;
@@ -646,17 +657,22 @@ interface HistoryScreenProps {
 
 export default function HistoryScreen({ navigation, onLogout }: HistoryScreenProps) {
   const { t } = useTranslation();
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  // S81-G6 CL2: a warm cache (same user, unfiltered list) paints its rows
+  // on the first render; the focus effect below decides whether to refetch.
+  const [warmPage] = useState(() => swrRead<HistoryCachedPage>(HISTORY_SWR_PREFIX));
+  const [history, setHistory] = useState<HistoryItem[]>(
+    () => (warmPage?.data.comparisons as HistoryItem[] | undefined) ?? []
+  );
   // A12 — `initialLoading` gates the FIRST paint only. It used to be a
   // single `loading` flag that submit ALSO set, and the full-screen early
   // return below then unmounted the header, the hero and the very search
   // field the user had just typed into — the whole screen blinked to a
   // centred spinner on every search. Refetches now use `searching`, which
   // renders an inline indicator beside the field and keeps the list mounted.
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(!warmPage);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(warmPage?.data.total ?? 0);
   const [searchQuery, setSearchQuery] = useState('');
   // A12 — the filter the CURRENT list was fetched with (set on submit /
   // clear, never on keystroke). Drives the zero-result copy so a search
@@ -694,6 +710,12 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
       const data = await getComparisonHistory(50, 0, query || undefined);
       setHistory(data.comparisons || []);
       setTotal(data.total || 0);
+      // S81-G6 CL2: only a successful load stamps the cache (a 401 or any
+      // other failure leaves the next focus to refetch).
+      swrWrite<HistoryCachedPage>(HISTORY_SWR_PREFIX + query, {
+        comparisons: data.comparisons || [],
+        total: data.total || 0,
+      });
     } catch (error) {
       const status = (error as any)?.response?.status;
       if (status === 401) {
@@ -718,7 +740,12 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
   // carries the filter that is actually on screen.
   useFocusEffect(
     useCallback(() => {
-      loadHistory(appliedQueryRef.current);
+      // S81-G6 CL2: a tab focus inside the 30 s window of a successful load
+      // of the same filter serves the cached list; pull-to-refresh, the
+      // search submit and retry always fetch.
+      if (shouldRefetchOnFocus(HISTORY_SWR_PREFIX + appliedQueryRef.current)) {
+        loadHistory(appliedQueryRef.current);
+      }
     }, [loadHistory])
   );
 
@@ -808,6 +835,8 @@ export default function HistoryScreen({ navigation, onLogout }: HistoryScreenPro
           onPress: async () => {
             try {
               await deleteComparison(item.id);
+              // S81-G6 CL2: every cached page may hold the deleted row.
+              invalidateSwrPrefix(HISTORY_SWR_PREFIX);
               setHistory((prev) => prev.filter((h) => h.id !== item.id));
               setTotal((prev) => prev - 1);
               // M21 MB-flows-08 — prune the mount-once hero marquee too.

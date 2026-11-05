@@ -97,6 +97,9 @@ import AiConsentSheet from '../components/AiConsentSheet';
 // / `user_tappable`. Aggregated info-level Sentry event surfaces in the
 // dashboard for the 88s wall-time gap diagnosis.
 import { getWallTimeTracker } from '../lib/performance/wallTimeInstrumentation';
+// S81-G6 CL2 -- the A17 300 / 400 floor rule and the product image prefetch.
+import { homeFloorDelayMs, HOME_FLOOR_SKIP_BELOW_MS } from '../utils/clientSpeed';
+import { prefetchProductImages } from '../services/imagePrefetch';
 
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
@@ -197,16 +200,23 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // the compare aborts on error before the floor expires.
   const loadingStartedAtRef = useRef<number | null>(null);
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const MIN_LOADING_MS = 1200;
+  // S81-G6 CL2: the floor is the A17 rule (clientSpeed.homeFloorDelayMs): a
+  // response within 300 ms renders now, a slower one waits for 400 ms from
+  // the compare start. Only a MEASURED response at or under 300 ms is a fast
+  // hit, which Results reads as fastHit: true to skip its 800 ms reveal.
   const navigateToResultsWithFloor = useCallback(
     (result: any) => {
-      const startedAt = loadingStartedAtRef.current ?? Date.now();
+      prefetchProductImages(result);
+      const measuredStart = loadingStartedAtRef.current;
+      const startedAt = measuredStart ?? Date.now();
       const elapsed = Date.now() - startedAt;
-      const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+      const remaining = homeFloorDelayMs(elapsed);
+      const fastHit =
+        measuredStart !== null && elapsed >= 0 && elapsed <= HOME_FLOOR_SKIP_BELOW_MS;
       const advance = () => {
         advanceTimerRef.current = null;
         loadingStartedAtRef.current = null;
-        navigation.navigate('Results' as any, { result });
+        navigation.navigate('Results' as any, fastHit ? { result, fastHit: true } : { result });
         // setLoading(false) fires AFTER navigate so the theatrical
         // loader stays mounted until the user is on the Results screen.
         // On cached/fast paths setLoading(false) at the caller would

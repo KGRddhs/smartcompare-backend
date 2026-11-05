@@ -118,6 +118,11 @@ import { emitSessionInvalid } from '../services/sessionEvents';
 // S69 U6 R3 (RT-12) — the one-time notifications pre-prompt.
 import { shouldShowPushPrePrompt } from '../services/pushPrePrompt';
 import { PushPrePrompt } from '../components/PushPrePrompt';
+// S81-G6 CL2 -- the reveal cut on a measured fast hit, the product image
+// prefetch and the History cache invalidation.
+import { revealDelayMs } from '../utils/clientSpeed';
+import { prefetchProductImages } from '../services/imagePrefetch';
+import { invalidateSwrPrefix } from '../services/swrCache';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -457,9 +462,25 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     tracker.mark('all_cards_visible');
   }, [loadingResult, products?.length]);
 
+  // S81-G6 CL2: warm the two product images as soon as a result is known
+  // (the Home path already started them; the module dedupes).
+  useEffect(() => {
+    prefetchProductImages(result);
+  }, [result]);
+
+  // S81-G6 CL2: any Results view may follow a saved comparison, so the
+  // History cache is dropped and the next History focus refetches.
+  useEffect(() => {
+    invalidateSwrPrefix('history:');
+  }, []);
+
   useEffect(() => {
     // Winner reveal with haptic feedback + Bundle B/C/D Task 3.3 spring.
+    // S81-G6 CL2: 0 ms only on a measured fast hit (Home passes
+    // fastHit: true for a response within 300 ms); history, camera and
+    // slower compares keep the 800 ms reveal.
     const tracker = getWallTimeTracker();
+    const delay = revealDelayMs(route?.params?.fastHit === true);
     const timer = setTimeout(async () => {
       setWinnerRevealed(true);
       winnerScale.value = withSpring(1, motion.springConfig.progress);
@@ -472,7 +493,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       // so the tag reflects "moment the user can actually interact"
       // rather than "moment the reveal began."
       setTimeout(() => tracker.mark('user_tappable'), 420);
-    }, 800);
+    }, delay);
 
     return () => {
       clearTimeout(timer);

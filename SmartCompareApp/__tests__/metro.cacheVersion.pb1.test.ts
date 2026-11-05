@@ -259,7 +259,11 @@ describe('P-B1-CACHE: metro.config.js keys the transform cache on babel.config.j
     // the stripper removed it while keeping the code.
     expect(raw).toContain('P-B1-CACHE');
     expect(src).not.toContain('P-B1-CACHE');
-    expect(src).toContain("require('expo/metro-config')");
+    // S81-G6 CL2 (E1): the config is built by Sentry's Expo wrapper (which
+    // calls the stock expo/metro-config getDefaultConfig inside) with the web
+    // replay packages resolved empty; the cache key below is unchanged.
+    expect(src).toContain("require('@sentry/react-native/metro')");
+    expect(src).toMatch(/getSentryExpoConfig\(\s*__dirname\s*,\s*\{\s*includeWebReplay:\s*false\s*\}\s*\)/);
 
     const assignments = src.match(/config\.cacheVersion\s*=\s*qarenCacheVersion\(/g) ?? [];
     expect(assignments.length).toBe(1);

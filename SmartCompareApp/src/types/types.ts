@@ -596,6 +596,9 @@ export type RootStackParamList = {
     result?: ComparisonResult;
     comparison_id?: string;
     vision_products?: string[];
+    // S81-G6 CL2: set by Home only on a measured fast hit (a response
+    // within 300 ms); Results then skips its 800 ms winner reveal.
+    fastHit?: boolean;
   };
   // F3.2/F3.3 — invitee landing flow (gradual commitment, no signup gate).
   ReferralLanding: { share_token: string; ref: string };

@@ -216,8 +216,20 @@ describe('Bundle B contract — paywall takeover on canCompare=false (R16)', () 
 // ---------------------------------------------------------------------
 
 describe('Bundle B contract — 1.2s min-display floor (R16)', () => {
-  it('MIN_LOADING_MS = 1200 constant defined in HomeScreen', () => {
-    expect(HOME_SRC).toMatch(/MIN_LOADING_MS\s*=\s*1200/);
+  // S81-G6 CL2 (E2): the Home floor moved from the 1200 ms constant to the
+  // A17 300 / 400 rule (src/utils/clientSpeed.ts homeFloorDelayMs: a response
+  // within 300 ms renders now, a slower one waits for 400 ms). The floor is
+  // still source-owned by HomeScreen through that one import.
+  it('HomeScreen floors through clientSpeed.homeFloorDelayMs (A17 300 / 400 rule)', () => {
+    expect(HOME_SRC).toMatch(
+      /import \{[^}]*\bhomeFloorDelayMs\b[^}]*\} from '\.\.\/utils\/clientSpeed';/
+    );
+    expect(HOME_SRC).toMatch(/const remaining = homeFloorDelayMs\(elapsed\);/);
+    const SPEED_SRC = fs
+      .readFileSync(path.resolve(__dirname, '../src/utils/clientSpeed.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    expect(SPEED_SRC).toMatch(/export const HOME_FLOOR_MS = 400;/);
+    expect(SPEED_SRC).toMatch(/export const HOME_FLOOR_SKIP_BELOW_MS = 300;/);
   });
 
   it('loadingStartedAtRef captures Date.now() at stream start', () => {

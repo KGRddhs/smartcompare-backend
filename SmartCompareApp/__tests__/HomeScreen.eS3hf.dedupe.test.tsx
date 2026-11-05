@@ -90,7 +90,9 @@ describe('HomeScreen — LoadingScreenVariants replaces the scary mini-toast', (
 
   it('navigateToResultsWithFloor still gates the navigation (1.2s min-display floor preserved)', () => {
     expect(HOME_SRC).toMatch(/navigateToResultsWithFloor/);
-    expect(HOME_SRC).toMatch(/MIN_LOADING_MS\s*=\s*1200/);
+    // S81-G6 CL2 (E3): the floor is now the A17 300 / 400 rule computed by
+    // clientSpeed.homeFloorDelayMs (the 1200 ms constant is gone).
+    expect(HOME_SRC).toMatch(/homeFloorDelayMs\(elapsed\)/);
   });
 
   it('contains no scary "Finding products..." raw string at the toast position', () => {
