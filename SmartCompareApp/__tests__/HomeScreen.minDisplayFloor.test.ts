@@ -154,8 +154,11 @@ describe('HomeScreen min-display floor — source-level wiring (Task #54)', () =
     const helperShapedCalls = SOURCE.match(
       /navigation\.navigate\(['"]Results['"] as any/g
     );
+    // S81-G6 CL2 (E7, RULINGS_S81_G6 R-G6-4): the floor's payload is
+    // `{ result }`, or `{ result, fastHit: true }` on a measured fast hit,
+    // written as ONE navigate with a conditional payload.
     const helperInternalNav = SOURCE.match(
-      /navigation\.navigate\(['"]Results['"] as any,\s*\{\s*result\s*\}/g
+      /navigation\.navigate\(['"]Results['"] as any,\s*(?:fastHit \? \{\s*result,\s*fastHit:\s*true\s*\} : )?\{\s*result\s*\}/g
     );
     // At least 1 helper-shaped call must exist (the floor closure itself).
     expect((helperShapedCalls ?? []).length).toBeGreaterThanOrEqual(1);

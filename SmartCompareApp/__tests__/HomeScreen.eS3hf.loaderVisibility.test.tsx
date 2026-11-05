@@ -240,24 +240,36 @@ describe('HomeScreen — theatrical loader visibility during 1.2s floor', () => 
     });
     expect(rendered.queryByTestId('mock-loading-screen-variants')).toBeTruthy();
 
-    // Cached response: backend resolves at t≈100ms (well below 1.2s floor).
+    // S81-G6 CL2 (E4): the floor is the A17 rule (a response within 300 ms
+    // renders now, which the cl2 homeFloor rows pin; a slower one waits for
+    // 400 ms from the start). The response therefore lands at t=350, inside
+    // the floored band, and the anti-regression intent stands: the loader
+    // stays mounted until navigate fires (no bare Home in between).
     expect(subscribeHandlers).not.toBeNull();
     await act(async () => {
-      jest.advanceTimersByTime(100);
+      jest.advanceTimersByTime(350);
       await subscribeHandlers.onComplete({ success: true, comparison: {} });
     });
 
-    // CRITICAL: loader MUST still be mounted because the 1.2s floor has
-    // not elapsed yet. The bug shape was: setLoading(false) fires here,
-    // loader unmounts, user sees bare HomeScreen for ~1.1s.
+    // CRITICAL: loader MUST still be mounted because the floor has not
+    // elapsed yet. The bug shape was: setLoading(false) fires here, loader
+    // unmounts, user sees bare HomeScreen until the floor expires.
     expect(
       rendered.queryByTestId('mock-loading-screen-variants'),
     ).toBeTruthy();
-
-    // Advance past the floor — navigate fires AND loader unmounts AFTER navigate.
     await act(async () => {
-      jest.advanceTimersByTime(1200);
+      jest.advanceTimersByTime(49);
     });
+    expect(
+      rendered.queryByTestId('mock-loading-screen-variants'),
+    ).toBeTruthy();
+    expect(props.navigation.navigate).not.toHaveBeenCalled();
+
+    // t=400: navigate fires AND the loader unmounts AFTER navigate.
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(rendered.queryByTestId('mock-loading-screen-variants')).toBeNull();
     expect(props.navigation.navigate).toHaveBeenCalledWith(
       'Results',
       expect.objectContaining({ result: expect.any(Object) }),
@@ -265,9 +277,16 @@ describe('HomeScreen — theatrical loader visibility during 1.2s floor', () => 
   });
 
   it('URL compare success keeps loader mounted until navigate fires (cached path)', async () => {
-    mockApiPost.mockResolvedValue({
-      data: { success: true, comparison: {} },
-    });
+    // S81-G6 CL2 (E5): under the A17 rule a response within 300 ms renders
+    // now, so the post is held by a deferred and released at t=350, inside
+    // the floored band (400 ms from the start).
+    let releasePost: (value: unknown) => void = () => undefined;
+    mockApiPost.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releasePost = resolve;
+        }),
+    );
 
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
@@ -283,6 +302,10 @@ describe('HomeScreen — theatrical loader visibility during 1.2s floor', () => 
     await act(async () => {
       shell.props.onSubmit('https://noon.com/a', 'https://amazon.com/b');
     });
+    await act(async () => {
+      jest.advanceTimersByTime(350);
+      releasePost({ data: { success: true, comparison: {} } });
+    });
     // Drain the promise chain so api.post resolves and the floor is
     // scheduled.
     await act(async () => {
@@ -296,9 +319,11 @@ describe('HomeScreen — theatrical loader visibility during 1.2s floor', () => 
       rendered.queryByTestId('mock-loading-screen-variants'),
     ).toBeTruthy();
 
-    // Advance past 1.2s floor → navigate fires.
+    expect(props.navigation.navigate).not.toHaveBeenCalled();
+
+    // Advance to the 400 ms floor -> navigate fires.
     await act(async () => {
-      jest.advanceTimersByTime(1200);
+      jest.advanceTimersByTime(50);
     });
     expect(props.navigation.navigate).toHaveBeenCalledWith(
       'Results',
