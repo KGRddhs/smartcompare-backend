@@ -1,0 +1,8 @@
+tests/test_s81_d16_operator_ingest.py::test_r10_runbook_names_only
+tests/test_s81_d17_coverage.py::test_r9_railway_config_and_hygiene
+tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[cron_feed_walker]
+tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[cron_pdp_discovery]
+tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[kb_seed_common]
+tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[seed_kb_batch]
+tests/test_s81_s16_kb_seed.py::test_s16_r27_hygiene_of_g2_files[seed_kb_brands_wikidata]
+tests/test_s81_s19_gap_queue.py::test_r15_hygiene

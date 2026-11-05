@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "id": "S81-G7",
+      "title": "G7 FOLLOWUPS (D16b OPERATOR-INGEST-DATES + D17b COVERAGE-PAGING + D22c PROFILE-SELECT + VARHINT-RETIRE + D22d LEARNING-HARDENING); the sixth SAFE group under LC-9, SAFE only while NO migration is added and no auth / quota / legal / consent / security-middleware / Lua / App-Review surface is touched (D16b tightens validation inside the dark operator route; D17b and D22d edit dark scripts; D22c (1) a NEW dark flag on the user_events select of _update_behavior_profile with a flag-OFF golden, D22c (2) an unflagged dead-code deletion proven byte-identical by the price_service corpus SHA gate); the comm set is D22c's (structured_comparison_service.py + price_service.py referencers, 600+ files) at HEAD vs the base record at 6869a3e6 by per-file reuse of the stored records; the fourteen client fences through the junction at GREEN",
+      "worktree": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g7",
+      "units": "D16b (RED file tests/test_s81_d16b_operator_dates.py): kb_operator.ingest refuses a future captured_at with the existing validation refusal shape; kb_serve.classify treats a negative age as not fresh. D17b (tests/test_s81_d17b_coverage_paging.py): cron_kb_coverage._paged ordered by the primary key; the exec / execute Redis pipeline fallback of the live_robots form. D22c (tests/test_s81_d22c_profile_select.py + tests/test_s81_d22c_varhint_retire.py): the user_events select event_type, metadata -> event_data under a NEW dark flag with a flag-OFF golden; _VARHINT_LEARNED_PATH + _varhint_append_learned + data/variant_hint_learned.json + the B3b test suppression deleted, byte-identical by the corpus gate. D22d (tests/test_s81_d22d_learning_hardening.py): the paged kb_specs grounding read; the dropped_deidentify count for an unclean kb_feedback field name (G5-GR6 amended as an E-row); control characters escaped on render",
+      "flags": "D16b: none new (rides ENABLE_OPERATOR_INGEST + ENABLE_KB_FIRST_SERVE, both OFF); D17b: none new (rides ENABLE_KB_COVERAGE_ROLLUP); D22c (1): ONE NEW name the spec proposes (e.g. ENABLE_BEHAVIOR_PROFILE_EVENT_DATA; default OFF; read per call as the first operand; flag OFF byte-identical incl. the raised except path, pinned by a golden); D22c (2): unflagged dead-code deletion; D22d: none new (rides ENABLE_LEARNING_JOB); flip preconditions stated, never built",
+      "brief": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/specs/S81_G7_BRIEF.md"
+    }
+  ],
+  "common": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/scripts/s81-common.txt",
+  "plan": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/PLAN_S81.md",
+  "r0": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md (section 1: R-A1..R-A15, binding where the pivot does not supersede them)",
+  "defectLedger": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/DEFECT_LEDGER.md",
+  "baseSha": "6869a3e655805afd3adbba43f99578dd79585934",
+  "pyt": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/03431011-0c7e-4ecd-b0ce-08ff47f4af10/scratchpad/harness/pyt.py",
+  "scratch": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/03431011-0c7e-4ecd-b0ce-08ff47f4af10/scratchpad"
+}

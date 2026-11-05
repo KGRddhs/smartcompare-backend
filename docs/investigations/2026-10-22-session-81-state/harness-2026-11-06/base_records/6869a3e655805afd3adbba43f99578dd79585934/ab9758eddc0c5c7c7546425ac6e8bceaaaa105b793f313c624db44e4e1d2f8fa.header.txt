@@ -1,0 +1,7 @@
+# base record 6869a3e655805afd3adbba43f99578dd79585934, set sha256 ab9758eddc0c5c7c7546425ac6e8bceaaaa105b793f313c624db44e4e1d2f8fa (691 files = the S81-G7 spec section 7 comm set, union rule at 6869a3e6; the four test_precommit_hook files excluded)
+# REUSED from the same-sha S81-20 record 97218ca8 (382 members)
+# REUSED per file under GC-9 from older records (272): see g7spec/comm_reuse_older.txt
+# RUN at 6869a3e6 in sc-s81-g7 by the G7 spec writer (37): two chunks
+# [pyt] tag=g7spec-comm-base-a elapsed=10s status=OK rc=0 (161 passed, 9 deselected)
+# [pyt] tag=g7spec-comm-base-b elapsed=27s status=OK rc=0 (511 passed, 3 skipped)
+# the .txt holds the sorted FAILED/ERROR node ids: 17

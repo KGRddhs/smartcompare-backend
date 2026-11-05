@@ -1,0 +1,2 @@
+tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence
+tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable

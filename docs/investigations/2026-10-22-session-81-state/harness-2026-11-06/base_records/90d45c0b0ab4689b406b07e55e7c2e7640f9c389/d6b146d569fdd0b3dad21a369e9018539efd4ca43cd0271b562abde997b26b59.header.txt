@@ -1,0 +1,10 @@
+# base record 90d45c0b0ab4689b406b07e55e7c2e7640f9c389, set sha256 d6b146d569fdd0b3dad21a369e9018539efd4ca43cd0271b562abde997b26b59 (74 files = the 73-file record 5032a609... at c6fb6533 + tests/test_s81_g2_gate_rows.py (the G2 gate-rows file, class: the unit's own new test file); four G2-only files ABSENT at base (tests/test_s81_s16_kb_seed.py, tests/test_s81_d09_feed_walker.py, tests/test_s81_d11_pdp_discovery.py, tests/test_s81_g2_gate_rows.py: no base nodes); the .txt holds the sorted FAILED node ids: EMPTY
+# ALL 70 present files RUN at base 90d45c0b (none reused from c6fb6533: 17 members reference the four S81-10b app modules, so the whole set was re-run; S81-G2 rebase agent 2026-11-04) in a detached scratch worktree S81-G2_rebase/b90, no junction, removed afterwards
+# [hermeticity] sentinel checked 951 test(s) | [netguard] blocked 22 attempt(s) from 21 node(s) | ================= 951 passed, 16 warnings in 69.95s (0:01:09) =================
+# [hermeticity] sentinel checked 3204 test(s) | [netguard] blocked 24 attempt(s) from 2 node(s) | ================ 3204 passed, 63 warnings in 135.00s (0:02:15) ================
+# [hermeticity] sentinel checked 1012 test(s) | [netguard] blocked 8 attempt(s) from 8 node(s) | ===================== 1012 passed, 16 warnings in 37.95s ======================
+# [hermeticity] sentinel checked 31 test(s) | [netguard] blocked 0 attempt(s) from 0 node(s) | ======================== 31 passed, 1 warning in 9.88s ========================
+# [pyt] tag=g2rb-base-c1 start=2026-11-04 10:02:04 end=2026-11-04 10:03:15 elapsed=72s bound=1200s status=OK rc=0
+# [pyt] tag=g2rb-base-c2 start=2026-11-04 10:03:22 end=2026-11-04 10:05:39 elapsed=137s bound=1200s status=OK rc=0
+# [pyt] tag=g2rb-base-c3 start=2026-11-04 10:05:41 end=2026-11-04 10:06:20 elapsed=39s bound=1200s status=OK rc=0
+# [pyt] tag=g2rb-base-secret start=2026-11-04 10:06:21 end=2026-11-04 10:06:31 elapsed=11s bound=1200s status=OK rc=0

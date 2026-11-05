@@ -1,0 +1,11 @@
+# base record c6fb65336deab4f48275b13d3847e0f42b298984, set sha256 74b84ef90fca0a48e8637aae74dc873063ce0d8645a5015b9bf5fc0770ae3a87 (68 files, union rule, S81-G2 RED round 2026-11-04); the .txt holds the sorted FAILED node ids: EMPTY
+# chunk1 (25 files): 951 passed, 16 warnings in 73.15s; [netguard] lines = the test_hermeticity_pins self-test nodes (base noise)
+# [pyt] tag=g2red-comm-base-c1 start=2026-11-04 06:17:28 end=2026-11-04 06:18:44 elapsed=76s bound=1200s status=OK rc=0
+# chunk2 (25 files): 3404 passed, 63 warnings in 145.13s; [netguard] the two S81-04 sentinel nodes (neutralized.supabase.invalid:443, base noise)
+# [pyt] tag=g2red-comm-base-c2 start=2026-11-04 06:35:15 end=2026-11-04 06:37:42 elapsed=147s bound=1200s status=OK rc=0
+# chunk3 (17 files): 750 passed, 16 warnings in 26.27s
+# [pyt] tag=g2red-comm-base-c3 start=2026-11-04 06:46:08 end=2026-11-04 06:46:35 elapsed=28s bound=1200s status=OK rc=0
+# secret scan alone: 31 passed, 1 warning in 4.18s; [hermeticity] sentinel checked 31 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)
+# [pyt] tag=g2red-comm-base-secret start=2026-11-04 06:46:35 end=2026-11-04 06:46:40 elapsed=5s bound=1200s status=OK rc=0
+# TOTAL: 5136 passed, 0 failed, 0 errors -> the sorted FAILED node-id set is EMPTY
+# [hermeticity]/[netguard] per chunk: c1 checked 951, blocked 22 attempt(s) from 21 node(s) (the test_hermeticity_pins self-test nodes); c2 checked 3404, blocked 24 from 2 node(s) (S81-04 test_r42 / test_p08 neutralized.supabase.invalid:443); c3 checked 750, blocked 8 from 8 node(s) (tests/test_w49_extraction_catch_redaction.py sentinel nodes, neutralized.supabase.invalid:443); secret checked 31, blocked 0. All base noise: record identically at head.

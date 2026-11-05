@@ -1,0 +1,1 @@
+tests/test_s81_s10_fragrance_gate.py::test_r06_production_lexicon_content

@@ -1,0 +1,4 @@
+# base record c6fb65336deab4f48275b13d3847e0f42b298984, set sha256 3535b18a469df1534121deb5c9edf2b793de28a8b2b0f4e7cbe8ecef79b8decf (69 files = the 68-file record 74b84ef9... + tests/test_s81_s23_bypass_retire.py, a CLAUDE.md reader added by the S81-G2 GREEN re-derivation 2026-11-04); the .txt holds the sorted FAILED node ids: EMPTY
+# the 68 files: reused from 74b84ef90fca0a48e8637aae74dc873063ce0d8645a5015b9bf5fc0770ae3a87.header.txt (LC-6)
+# added file at base (detached scratch worktree, no junction): 33 passed, 1 warning in 2.65s; [hermeticity] sentinel checked 33 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)
+# [pyt] tag=g2green-base-s23 start=2026-11-04 07:33:40 end=2026-11-04 07:33:44 elapsed=3s bound=600s status=OK rc=0

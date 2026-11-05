@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "id": "S81-G6",
+      "title": "G6 CLIENT-PERF (CL2 CLIENT-SPEED ALONE; SS1 + CL5 PROGRESSIVE PAINT wait for owner item 19, the #118 cert-pinning device check, as G6b); the first CLIENT group under LC-9, SAFE only while CL2 changes NO user-visible copy, flow, consent, paywall, legal text, permission or other App-Review-visible surface (a performance unit: timing floors, prefetch, in-memory SWR caches, deferred module evaluation, the Sentry Metro wrapper, parallel boot reads, freezeOnBlur) and NO package / app.json / native file; client units are NOT flag-gated (the #377 precedent; the OTA is the gate; CL2 adds no features.ts constant and never touches the SSE flags); the Geist runtime-load drop is EXCLUDED (CL2b after the TestFlight device check); the gates are jest / tsc / eslint by path through the junction the orchestrator created at sc-s81-g6/SmartCompareApp/node_modules (check node_modules/@babel/core and node_modules/.bin/jest first), the full jest suite ONCE in the last round (LC-7) at the 3,794-passed baseline (only the four config/nativeBundle.w37 drift nodes red), no jest -u, no .snap change unless assigned as an E-row, the P-B1 metro fence amended as an E-row, plus the SmartCompareApp-scanning BACKEND pins (pytest, through pyt.py) that read the touched files; expo-atlas is not installed so the atlas gate is NOT MEASURED unless an offline expo export gives a byte proxy",
+      "worktree": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g6",
+      "units": "CL2 CLIENT-SPEED (RED files under SmartCompareApp/__tests__/cl2/*.cl2.test.ts(x)): the Home floor rule (skip under 300 ms else 400 ms, the A17 history pattern), the 800 ms reveal cut on a fast hit, Image.prefetch of both product images at result arrival (bounded, never awaited), History / Home SWR in memory per user with a throttled focus refetch, cleared on sign-out through ONE call in the existing sign-out path, getSentryExpoConfig(__dirname, { includeWebReplay: false }) composed with qarenCacheVersion in metro.config.js, lazy-loaded Legal / Paywall / onboarding / ScanCamera / InviteeQuiz / ReferralLanding screens with sentryBootstrap first, parallel boot storage reads with the same order of effects, freezeOnBlur on the tab screens; every change proven behaviour-preserving (same screens, same strings, same order); PLAN_S81 :177 as re-cut by the brief",
+      "flags": "NONE (client units are not flag-gated: the S81-08 CLIENT-FIRST-OTA merge #377 added no features.ts constant; the OTA is the gate; CL2 ships in the OTA with the first KB-first canary, after the first review-safe OTA); the backend changes NOTHING in this unit (no new ENABLE_* name); the SSE flags ENABLE_EXPO_FETCH_SSE_DEFAULT / ENABLE_PREVERDICT_DISCONNECT_ABORT / ENABLE_FULL_STREAM_DEADLINE are untouched (G6b)",
+      "brief": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/specs/S81_G6_BRIEF.md"
+    }
+  ],
+  "common": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/scripts/s81-common.txt",
+  "plan": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/PLAN_S81.md",
+  "r0": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md (section 1: R-A1..R-A15, binding where the pivot does not supersede them)",
+  "defectLedger": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/DEFECT_LEDGER.md",
+  "baseSha": "ec747b496953869c0370e4f28bf025c6f694a97d",
+  "pyt": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/harness/pyt.py",
+  "scratch": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad"
+}

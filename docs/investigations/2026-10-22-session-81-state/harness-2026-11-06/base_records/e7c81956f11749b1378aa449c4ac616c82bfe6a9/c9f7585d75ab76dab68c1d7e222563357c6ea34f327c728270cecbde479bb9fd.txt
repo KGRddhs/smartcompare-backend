@@ -1,0 +1,20 @@
+# base record: S81-09 RED comm set at e7c81956f11749b1378aa449c4ac616c82bfe6a9
+set: C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fe82d828-54b9-4af1-9c1d-685173488382/scratchpad/S81-09_red/comm_files.txt (200 files, sha256 c9f7585d75ab76dab68c1d7e222563357c6ea34f327c728270cecbde479bb9fd); chunks under C:/Users/SYNACK~1/AppData/Local/Temp/claude/C--Users-SynAckITPC-Documents-AI/fe82d828-54b9-4af1-9c1d-685173488382/scratchpad/S81-09_red/comm_chunks (00 = spec Set A, 01 = spec Set B)
+unit flags ENABLE_DEVICE_DAILY_QUOTA / ENABLE_RIYADH_RESET removed from the child env; NETWORK_FLAKY_EXCLUDE: no member in the set
+totals: 11971 passed, 0 failed, 2 errors (below), 37 skipped, 36 xfailed
+## sorted FAILED/ERROR node ids
+tests/test_prompt_truth.py::test_render_digests_match_base_except_the_fence (ERROR, known cold-tiktoken base noise)
+tests/test_prompt_truth.py::test_truth_on_prefix_static_and_cacheable (ERROR, known cold-tiktoken base noise)
+## pyt lines
+[pyt] tag=s09red-comm-00 start=2026-10-29 15:06:07 end=2026-10-29 15:07:27 elapsed=80s bound=1200s status=OK rc=0 (899 passed)
+[pyt] tag=s09red-comm-01 start=2026-10-29 15:07:48 end=2026-10-29 15:11:06 elapsed=199s bound=1200s status=OK rc=0 (1352 passed)
+[pyt] tag=s09red-comm-02 start=2026-10-29 15:12:16 end=2026-10-29 15:15:11 elapsed=175s bound=1200s status=OK rc=0 (969 passed, 6 deselected)
+[pyt] tag=s09red-comm-03 start=2026-10-29 15:15:30 end=2026-10-29 15:18:19 elapsed=169s bound=1200s status=OK rc=0 (2284 passed)
+[pyt] tag=s09red-comm-04 start=2026-10-29 15:18:38 end=2026-10-29 15:28:23 elapsed=585s bound=1200s status=OK rc=0 (727 passed)
+[pyt] tag=s09red-comm-05 start=2026-10-29 15:28:38 end=2026-10-29 15:29:57 elapsed=78s bound=1200s status=FAIL rc=1 (969 passed, 27 skipped, 6 deselected, 1 xfailed, 2 errors)
+[pyt] tag=s09red-comm-06 start=2026-10-29 15:30:08 end=2026-10-29 15:32:41 elapsed=153s bound=1200s status=OK rc=0 (1041 passed)
+[pyt] tag=s09red-comm-07 start=2026-10-29 15:32:59 end=2026-10-29 15:40:26 elapsed=446s bound=1200s status=FAIL rc=1 (no summary: pytest-timeout 120s killed the process in tests/test_secret_scan_static.py::test_tracked_binaries_carry_the_magic_bytes_of_their_extension under box load; MEASUREMENT FAILURE, re-run as 09 + 10)
+[pyt] tag=s09red-comm-09 start=2026-10-29 15:42:11 end=2026-10-29 15:50:33 elapsed=503s bound=1200s status=OK rc=0 (chunk 07 minus the secret scan, 24 files: 2569 passed, 1 skipped, 8 deselected)
+[pyt] tag=s09red-comm-10 start=2026-10-29 15:52:18 end=2026-10-29 15:54:01 elapsed=103s bound=600s status=OK rc=0 (tests/test_secret_scan_static.py alone: 31 passed)
+[pyt] tag=s09red-comm-08 start=2026-10-29 15:58:19 end=2026-10-29 16:03:25 elapsed=306s bound=1200s status=OK rc=0 (1130 passed, 9 skipped, 2 deselected, 35 xfailed)
+NOTE: origin/main moved to 6c14ac95 (S81-08, SmartCompareApp + CLAUDE.md + docs; no app/ or tests/ change) at 15:42, during this record; LC-6: a changed sha recomputes.

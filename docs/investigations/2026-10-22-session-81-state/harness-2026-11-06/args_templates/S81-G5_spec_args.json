@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "id": "S81-G5",
+      "title": "G5 LEARN-SEARCH (D22 NIGHTLY-LEARNING ALONE; S81-21 WEB-SEARCH-CAPPED joins a later group spec once S81-07 lands); the fifth SAFE group under LC-9, SAFE only while NO migration is added (045 / 047 / 050 / 052 written and not applied; the proposals / exemplar tables = D22b FOCUS after S81-22) and while the unit stays SCRIPTS-ONLY (scripts/cron_learning.py + railway.learning.json + the RED file + the P01 / P02 E-rows + CLAUDE.md; NO app/ file: the plan's two app/ items are withdrawn into the follow-up D22c per the brief); DB-only (Supabase reads through the service-role client, no LLM, no Serper, no other network), the G2 mode idiom (unset / false OFF, true DRY, apply WRITE), the outputs = the de-identified run report + learning.* rows in kb_coverage_daily through build_coverage_row; the judge is absent at ec747b49 so the systematic rule degrades to user signals with judge_state pending; the comm set at HEAD vs the base record the RED builds at ec747b49 by per-file reuse of the stored e1491c97 / 0b19de5b records",
+      "worktree": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g5",
+      "units": "D22 NIGHTLY-LEARNING: the nightly DB-only learning job (RED file tests/test_s81_d22_nightly_learning.py): the six failure buckets over comparison_feedback / comparisons / user_events / search_logs / verdict_critiques / kb_gaps / kb_feedback (absent until 045 is applied: a counted skip), the category x source x field clusters, the systematic rule (>= LEARNING_MIN_CASES cases in LEARNING_WINDOW_DAYS from >= LEARNING_MIN_DEVICES distinct users / devices, proxy named), the KB correction proposals (never applied), the exemplar candidate sets (never written under data/; the refusal pin + the cron_few_shot_rotation.py decision), the candidate eval cases, the report, the learning.* coverage rows",
+      "flags": "ENABLE_LEARNING_JOB (a NEW name, default OFF, read per call as the FIRST statement of main through kb_seed_common.run_mode: unset / false = OFF with one INFO line and exit 0 before any I/O, true = DRY (the report, no write), apply = WRITE (the kb_coverage_daily rows only)) + the knobs LEARNING_WINDOW_DAYS (7; 1..30), LEARNING_MIN_CASES (3; 1..100), LEARNING_MIN_DEVICES (2; 1..10), LEARNING_MAX_ROWS (the per-table page cap), LEARNING_EXEMPLARS_PER_CATEGORY (5; 3..5), parsed through int_knob with defensive fallbacks (the spec may rename or add knobs with reasons); flip preconditions stated, never built: 045 applied, the Railway service created from railway.learning.json with the service-role names, ONE DRY run first",
+      "brief": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/specs/S81_G5_BRIEF.md"
+    }
+  ],
+  "common": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/scripts/s81-common.txt",
+  "plan": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/PLAN_S81.md",
+  "r0": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-19-session-80-state/PLAN_S80.md (section 1: R-A1..R-A15, binding where the pivot does not supersede them)",
+  "defectLedger": "C:/Users/SynAckITPC/Documents/AI/sc-docs-70/docs/investigations/2026-10-22-session-81-state/DEFECT_LEDGER.md",
+  "baseSha": "ec747b496953869c0370e4f28bf025c6f694a97d",
+  "pyt": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad/harness/pyt.py",
+  "scratch": "C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/bd48b535-2d58-47fc-9bbe-cf719f400b7b/scratchpad"
+}

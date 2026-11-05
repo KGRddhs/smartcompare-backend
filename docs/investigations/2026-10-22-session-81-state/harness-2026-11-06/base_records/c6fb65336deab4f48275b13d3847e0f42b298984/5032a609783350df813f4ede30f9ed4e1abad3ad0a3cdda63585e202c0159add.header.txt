@@ -1,0 +1,7 @@
+# base record c6fb65336deab4f48275b13d3847e0f42b298984, set sha256 5032a609783350df813f4ede30f9ed4e1abad3ad0a3cdda63585e202c0159add (73 files = the 69-file record 3535b18a... + the three G2 RED files tests/test_s81_s16_kb_seed.py, tests/test_s81_d09_feed_walker.py, tests/test_s81_d11_pdp_discovery.py (ABSENT at base: new files, no base nodes) + tests/test_s81_s08b_gate_rows.py, a CLAUDE.md reader added by RULINGS_FIX1_S81_G2 F1-2, 2026-11-04); the .txt holds the sorted FAILED node ids: EMPTY
+# the 69 files: reused from 3535b18a469df1534121deb5c9edf2b793de28a8b2b0f4e7cbe8ecef79b8decf.header.txt (LC-6)
+# added file at base (detached scratch worktree S81-G2_fix1/g2base, no junction, removed afterwards):
+# [hermeticity] sentinel checked 29 test(s)
+# [netguard] blocked 0 attempt(s) from 0 node(s)
+# ======================= 29 passed, 11 warnings in 3.08s =======================
+# [pyt] tag=g2fix1-base-s08b start=2026-11-04 08:18:04 end=2026-11-04 08:18:08 elapsed=4s bound=600s status=OK rc=0
