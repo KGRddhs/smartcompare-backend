@@ -55,7 +55,13 @@ import { useTranslation } from 'react-i18next';
 
 import { colors, spacing, radii } from '../../theme';
 import type { Product, ComparisonResult } from '../../types';
-import { CohortBadge } from '../CohortBadge';
+import {
+  formatAsOfDate,
+  priceProvenance,
+  productFieldStatus,
+  sectionNeedsHonestLine,
+  type PriceProvenance,
+} from '../../services/fieldStatusView';
 import FeedbackCard from '../FeedbackCard';
 import { TopMatchBadge } from './TopMatchBadge';
 import { DimensionBars } from './DimensionBars';
@@ -81,8 +87,11 @@ export interface ResultsContentProps {
   winnerIndex: 0 | 1;
   scoring_v2: any | undefined;
   comparisonId: string | undefined;
-  cohortPeerCount: number;
-  cohortGovernorate: string;
+  /** S81-11 (R-S11-31): the cohort badge is deleted; kept optional + unused for the test baseProps. */
+  cohortPeerCount?: number;
+  cohortGovernorate?: string;
+  /** S81-11 R-S11-13: 'stored' = a History / shared body (never aged out). */
+  resultOrigin?: 'live' | 'stored';
   isRTL: boolean;
 
   feedbackSubmitted: boolean;
@@ -116,8 +125,7 @@ export const ResultsContent = React.memo(function ResultsContent({
   winnerIndex,
   scoring_v2,
   comparisonId,
-  cohortPeerCount,
-  cohortGovernorate,
+  resultOrigin,
   isRTL,
   feedbackSubmitted,
   onFeedbackSubmitted,
@@ -130,7 +138,52 @@ export const ResultsContent = React.memo(function ResultsContent({
   onBack,
   onShare,
 }: ResultsContentProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // S81-11 D20: the as-of date language (gregorian in both, R-S11-24).
+  const lang: 'en' | 'ar' = i18n?.language === 'ar' || isRTL ? 'ar' : 'en';
+  const resultMetadata = result?.metadata;
+  const nowMs = Date.now();
+  // S81-11 D20 (R-S11-12 / 13 / 14 / 18): the price provenance of one card.
+  // 'none' (no field_status, no as_of: every body today) renders today's
+  // bytes; 'unknown' replaces the amount with the honest line.
+  const provenanceFor = (price: Product['price'], idx: number): PriceProvenance =>
+    priceProvenance(
+      price,
+      productFieldStatus(resultMetadata, idx === 1 ? 1 : 0)?.price,
+      nowMs,
+      resultOrigin === 'stored' ? 'stored' : 'live',
+    );
+  const renderProvenanceLine = (prov: PriceProvenance, idx: number) => {
+    if (prov.kind === 'staleNoDate') {
+      return (
+        <Text
+          testID={`results-product-checked-${idx}`}
+          style={styles.convertedCaption}
+          numberOfLines={1}
+        >
+          {t('results.price.checkedEarlier')}
+        </Text>
+      );
+    }
+    if (prov.kind !== 'fresh' && prov.kind !== 'stale' && prov.kind !== 'listed') return null;
+    const date = formatAsOfDate(prov.dateIso, lang);
+    const store = prov.store;
+    const KEYS = {
+      fresh: ['results.price.asOf', 'results.price.asOfNoStore', 'asof'],
+      stale: ['results.price.lastSeen', 'results.price.lastSeenNoStore', 'lastseen'],
+      listed: ['results.price.listedOn', 'results.price.listedOnNoStore', 'listed'],
+    } as const;
+    const [withStore, noStore, tid] = KEYS[prov.kind];
+    return (
+      <Text
+        testID={`results-product-${tid}-${idx}`}
+        style={styles.convertedCaption}
+        numberOfLines={1}
+      >
+        {store ? t(withStore, { store, date }) : t(noStore, { date })}
+      </Text>
+    );
+  };
 
   const formatPrice = (price?: Product['price']) => {
     // Phase 4.3 — price-pending: when the backend marks a price
@@ -259,6 +312,7 @@ export const ResultsContent = React.memo(function ResultsContent({
         >
           {products.map((product, idx) => {
             const isWinner = idx === winnerIndex;
+            const prov = provenanceFor(product.price, idx);
             const wrapperStyle = isWinner
               ? [styles.productCardWrapper, winnerScaleAnimStyle]
               : styles.productCardWrapper;
@@ -310,21 +364,34 @@ export const ResultsContent = React.memo(function ResultsContent({
                       {product.variant}
                     </Text>
                   ) : null}
-                  <Text
-                    style={[
-                      styles.productPrice,
-                      product.price?.unavailable
-                        ? styles.productPriceUnavailable
-                        : null,
-                    ]}
-                  >
-                    {formatPrice(product.price)}
-                  </Text>
+                  {prov.kind === 'unknown' ? (
+                    <Text
+                      testID={`results-product-price-honest-${idx}`}
+                      style={[styles.productPrice, styles.productPriceUnavailable]}
+                      numberOfLines={2}
+                    >
+                      {t('results.honest.notListed')}
+                    </Text>
+                  ) : (
+                    <Text
+                      style={[
+                        styles.productPrice,
+                        product.price?.unavailable
+                          ? styles.productPriceUnavailable
+                          : null,
+                      ]}
+                    >
+                      {formatPrice(product.price)}
+                    </Text>
+                  )}
+                  {renderProvenanceLine(prov, idx)}
                   {/* Display-honesty: a converted-from-USD price is a real
                       listing priced in USD then converted to BHD — flag it so
                       it isn't read as a genuine local BHD price. Suppressed
                       when the price is pending (no number is shown). */}
-                  {isConvertedUsd(product.price) && !product.price?.unavailable ? (
+                  {isConvertedUsd(product.price) &&
+                  !product.price?.unavailable &&
+                  prov.kind !== 'unknown' ? (
                     <Text
                       testID={`results-product-converted-${idx}`}
                       style={styles.convertedCaption}
@@ -530,17 +597,8 @@ export const ResultsContent = React.memo(function ResultsContent({
           </Animated.View>
         ) : null}
 
-        {/* ─── # 6 Cohort badge — single-line softened paragraph (JSX 367-377) ─── */}
-        <View
-          style={styles.cohortSlot}
-          testID="results-cohort-badge-slot"
-        >
-          <CohortBadge
-            peerCount={cohortPeerCount}
-            governorate={cohortGovernorate}
-            isRTL={isRTL}
-          />
-        </View>
+        {/* S81-11 (R-S11-31): the cohort badge slot (# 6) is removed with
+            the cohort badge component: a population claim with no measured source. */}
 
         {/* W1 walk-fix 2026-06-18 — CategoryProfile moved OUT of this standalone
             slot and INTO the "Dig deeper" accordion (first section). A standalone
@@ -586,6 +644,24 @@ export const ResultsContent = React.memo(function ResultsContent({
             specsComparison={specsComparison}
             winnerIndex={winnerIndex}
             hideProsCons={isDegraded}
+            honest={
+              // S81-11 (P1 / M21): only when the body carries D20 metadata;
+              // absent = ResultsAccordion's base render.
+              resultMetadata &&
+              (resultMetadata.section_status != null || resultMetadata.field_status != null)
+                ? {
+                    sections: {
+                      specs: sectionNeedsHonestLine(resultMetadata, 'specs'),
+                      reviews: sectionNeedsHonestLine(resultMetadata, 'reviews'),
+                      pros_cons: sectionNeedsHonestLine(resultMetadata, 'pros_cons'),
+                    },
+                    fields: [
+                      productFieldStatus(resultMetadata, 0),
+                      productFieldStatus(resultMetadata, 1),
+                    ],
+                  }
+                : undefined
+            }
             testID="results-content-accordion-inner"
           />
         </Animated.View>
@@ -787,10 +863,6 @@ const styles = StyleSheet.create({
   },
   // Task #24 — the inline runner-up caption styles (verdictCaption /
   // verdictRunnerUpEyebrow) moved into RunnerUpWinsCard.tsx.
-
-  cohortSlot: {
-    marginBottom: spacing.base,
-  },
 
   // Winner-reveal celebration overlay. Absolute-fills the dimension-bars
   // section card (its nearest positioned ancestor) so the emerald RevealBurst

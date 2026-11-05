@@ -7,14 +7,18 @@
  * a counter chip below ticking 0 → counterTarget over 2.4s ease-out-cubic
  * formatted with thousands separator.
  *
+ * S81-11 (R-S11-6 / R-S11-20): there is NO default counterTarget. The old
+ * default was a fabricated "comparisons made" number; the chip now renders
+ * only when a caller passes a real numeric target (Step14's cohort count),
+ * so the comparison loader shows the rings and no number.
+ *
  * Source of truth: docs/claude-design-handoff/ui_kits/mobile/LoadingScreen.jsx
  * + design doc § 3.2 LoadingRings.
  *
  * Contract: __tests__/hero/LoadingRings.test.tsx
- *   - default snapshot
  *   - custom counterTarget snapshot
- *   - animated={false} + counterTarget renders FINAL value formatted as
- *     `2,074` (thousands separator); NEVER raw `2074`
+ *   - animated={false} + counterTarget renders FINAL value formatted with
+ *     the thousands separator; NEVER the raw digits
  *
  * Animation uses motion.counterTick (2400ms ease-out-cubic) and ring loop
  * staggers via withDelay + withRepeat. useReducedMotion no-ops.
@@ -126,7 +130,7 @@ function Ring({ index, radius }: RingProps) {
 
 export function LoadingRings({
   size = 320,
-  counterTarget = 2074,
+  counterTarget,
   counterLabel,
   animated = true,
   showCounter = true,
@@ -139,11 +143,12 @@ export function LoadingRings({
   // Counter rendered as plain RN state (not a worklet) so the displayed
   // value is the source of truth for tests. requestAnimationFrame drives
   // the tick locally; we cap at counterTarget.
-  const [counter, setCounter] = useState<number>(animated ? 0 : counterTarget);
+  const target = typeof counterTarget === 'number' && Number.isFinite(counterTarget) ? counterTarget : 0;
+  const [counter, setCounter] = useState<number>(animated ? 0 : target);
 
   useEffect(() => {
     if (!animated) {
-      setCounter(counterTarget);
+      setCounter(target);
       return;
     }
     const drive = (sv: { value: number }, delayMs: number) => {
@@ -182,7 +187,7 @@ export function LoadingRings({
       const t = Math.min(1, elapsed / duration);
       // ease-out-cubic
       const eased = 1 - Math.pow(1 - t, 3);
-      setCounter(Math.round(eased * counterTarget));
+      setCounter(Math.round(eased * target));
       if (t < 1) {
         rafId = schedule(tick);
       }
@@ -191,7 +196,7 @@ export function LoadingRings({
     return () => {
       if (rafId !== undefined) cancel(rafId);
     };
-  }, [animated, counterTarget, ring0, ring1, ring2]);
+  }, [animated, target, ring0, ring1, ring2]);
 
   return (
     <View style={[styles.root, { width: size }]} testID={testID}>
@@ -208,7 +213,7 @@ export function LoadingRings({
           <QarenLogo size={Math.round(size * 0.22)} />
         </View>
       </View>
-      {showCounter ? (
+      {showCounter && typeof counterTarget === 'number' ? (
         <View style={styles.chip} testID="loading-rings-counter-chip">
           <Text style={styles.chipNumber}>{formatThousands(counter)}</Text>
           {counterLabel ? <Text style={styles.chipLabel}>{counterLabel}</Text> : null}

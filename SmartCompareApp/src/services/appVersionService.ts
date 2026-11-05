@@ -40,6 +40,7 @@ import * as Application from 'expo-application';
 import { API_BASE_URL } from './api';
 import { fetchWithDeadline } from './fetchWithDeadline';
 import { isBelowMinVersion } from '../utils/versionCompare';
+import { recordLaunchSurfaces } from './launchSurfaces';
 
 /** Path of the backend contract (`app/api/version_routes.py`). */
 export const VERSION_CHECK_PATH = '/api/v1/app/version';
@@ -149,6 +150,7 @@ export async function checkForcedUpdate(): Promise<ForcedUpdateGate | null> {
     if (!response || response.ok !== true) return null;
 
     const payload = await response.json();
+    recordLaunchSurfaces(payload);
     return decideForcedUpdate(payload, currentVersion, Platform.OS);
   } catch {
     // Offline, timeout, pinning failure, malformed JSON — none of these

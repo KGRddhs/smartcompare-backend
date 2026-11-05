@@ -69,12 +69,17 @@ describe('catfix D1 — selectedCategory defaults to null', () => {
 
 describe('catfix D1 — selected_category sent only when a chip is selected', () => {
   it('stream + url paths use the conditional spread guard', () => {
-    // `...(selectedCategory ? { selected_category: selectedCategory } : {})`
+    // S81-11 (E9, R-S11-15 / R-S11-3): re-pinned to the categoryToSend form,
+    // same count semantics: `...(sendCategory ? { selected_category: sendCategory } : {})`
+    // where sendCategory = categoryToSend(selectedCategory, launchSurfaces).
     const conditionalSpread =
-      /\.\.\.\(\s*selectedCategory\s*\?\s*\{\s*selected_category:\s*selectedCategory\s*\}\s*:\s*\{\}\s*\)/g;
+      /\.\.\.\(\s*sendCategory\s*\?\s*\{\s*selected_category:\s*sendCategory\s*\}\s*:\s*\{\}\s*\)/g;
     const matches = HOME_SRC.match(conditionalSpread) ?? [];
     // One for the streamComparison options arg, one for the url/compare body.
     expect(matches.length).toBeGreaterThanOrEqual(2);
+    const gated =
+      HOME_SRC.match(/const\s+sendCategory\s*=\s*categoryToSend\(\s*selectedCategory\s*,\s*launchSurfaces\s*\)/g) ?? [];
+    expect(gated.length).toBeGreaterThanOrEqual(2);
   });
 
   it('does NOT pass selected_category unconditionally (object-literal property)', () => {
@@ -108,26 +113,25 @@ describe('catfix D1 — selected_category sent only when a chip is selected', ()
 // Section 3 — non-blocking nudge, gated on selectedCategory == null
 // ---------------------------------------------------------------------
 
+// S81-11 (E9, C11): the nudge is replaced by the fragrance-only line, which
+// renders whatever the chip state (no selectedCategory gate).
 describe('catfix D1 — category nudge', () => {
-  it('renders the nudge only when no category is selected', () => {
-    // Gate: `canCompare && selectedCategory == null && (` followed shortly
-    // by the nudge testID.
-    expect(HOME_SRC).toMatch(
-      /selectedCategory == null &&[\s\S]{0,200}testID="home-category-nudge"/
-    );
+  it('renders the fragrance-only line whatever the chip state (S81-11)', () => {
+    expect(HOME_SRC).toMatch(/canCompare && \([\s\S]{0,200}testID="home-fragrance-only-line"/);
+    expect(HOME_SRC).not.toMatch(/selectedCategory == null &&[\s\S]{0,200}testID="home-fragrance-only-line"/);
+    expect(HOME_SRC).not.toMatch(/testID="home-category-nudge"/);
   });
 
-  it('uses the home.categories.nudge i18n key (with a safe defaultValue)', () => {
-    expect(HOME_SRC).toMatch(/t\(\s*['"]home\.categories\.nudge['"]/);
-    expect(HOME_SRC).toMatch(/defaultValue:\s*['"]Pick a category for the most accurate compare['"]/);
+  it('uses the home.categories.fragrancesOnly i18n key, not the nudge (S81-11)', () => {
+    expect(HOME_SRC).toMatch(/t\(\s*['"]home\.categories\.fragrancesOnly['"]/);
+    expect(HOME_SRC).not.toMatch(/['"]home\.categories\.nudge['"]/);
   });
 
-  it('en.json + ar.json both define home.categories.nudge', () => {
-    expect(typeof EN['home.categories.nudge']).toBe('string');
-    expect(EN['home.categories.nudge']).toBe(
-      'Pick a category for the most accurate compare'
-    );
-    expect(typeof AR['home.categories.nudge']).toBe('string');
-    expect(AR['home.categories.nudge'].length).toBeGreaterThan(0);
+  it('en.json + ar.json define home.categories.fragrancesOnly and drop the nudge (S81-11)', () => {
+    expect(EN['home.categories.fragrancesOnly']).toBe('Fragrances only for now');
+    expect(typeof AR['home.categories.fragrancesOnly']).toBe('string');
+    expect(AR['home.categories.fragrancesOnly'].length).toBeGreaterThan(0);
+    expect(EN['home.categories.nudge']).toBeUndefined();
+    expect(AR['home.categories.nudge']).toBeUndefined();
   });
 });

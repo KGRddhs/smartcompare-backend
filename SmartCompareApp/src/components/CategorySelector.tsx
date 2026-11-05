@@ -25,7 +25,12 @@ import { colors, spacing, radii, typography } from '../theme';
 interface CategorySelectorProps {
   value: string | null;
   onChange: (category: string) => void;
+  /** S81-11: coming-soon chips, only where /app/version `surfaces` says so. */
+  surfaces?: { skincare: boolean; makeup: boolean };
+  onComingSoon?: (key: 'skincare' | 'makeup') => void;
 }
+
+type Launch = 'live' | 'surface' | 'hidden';
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string }>;
 
@@ -33,24 +38,36 @@ interface Category {
   value: string;
   i18nKey: string;
   Icon: LucideIcon;
+  launch: Launch;
 }
 
 const CATEGORIES: Category[] = [
-  { value: 'electronics', i18nKey: 'home.categories.electronics', Icon: Smartphone },
-  { value: 'grocery', i18nKey: 'home.categories.grocery', Icon: ShoppingCart },
-  { value: 'supplements', i18nKey: 'home.categories.supplements', Icon: Pill },
+  { value: 'electronics', i18nKey: 'home.categories.electronics', Icon: Smartphone, launch: 'hidden' },
+  { value: 'grocery', i18nKey: 'home.categories.grocery', Icon: ShoppingCart, launch: 'hidden' },
+  { value: 'supplements', i18nKey: 'home.categories.supplements', Icon: Pill, launch: 'hidden' },
   // Lucide ships no Lipstick glyph at this version; Brush is the closest
   // makeup-applicator metaphor that's broadly recognized.
-  { value: 'makeup', i18nKey: 'home.categories.makeup', Icon: Brush },
-  { value: 'skincare', i18nKey: 'home.categories.skincare', Icon: Sparkles },
-  { value: 'haircare', i18nKey: 'home.categories.haircare', Icon: Scissors },
-  { value: 'fragrances', i18nKey: 'home.categories.fragrances', Icon: Flower },
-  { value: 'fashion', i18nKey: 'home.categories.fashion', Icon: ShoppingBag },
-  { value: 'other', i18nKey: 'home.categories.other', Icon: Package },
+  { value: 'makeup', i18nKey: 'home.categories.makeup', Icon: Brush, launch: 'surface' },
+  { value: 'skincare', i18nKey: 'home.categories.skincare', Icon: Sparkles, launch: 'surface' },
+  { value: 'haircare', i18nKey: 'home.categories.haircare', Icon: Scissors, launch: 'hidden' },
+  { value: 'fragrances', i18nKey: 'home.categories.fragrances', Icon: Flower, launch: 'live' },
+  { value: 'fashion', i18nKey: 'home.categories.fashion', Icon: ShoppingBag, launch: 'hidden' },
+  { value: 'other', i18nKey: 'home.categories.other', Icon: Package, launch: 'hidden' },
 ];
 
-export default function CategorySelector({ value, onChange }: CategorySelectorProps) {
+const SURFACE_CHIP_KEYS = ['skincare', 'makeup'] as const;
+
+export default function CategorySelector({
+  value,
+  onChange,
+  surfaces,
+  onComingSoon,
+}: CategorySelectorProps) {
   const { t } = useTranslation();
+  const live = CATEGORIES.filter((c) => c.launch === 'live');
+  const soon = SURFACE_CHIP_KEYS.filter((k) => surfaces?.[k] === true && !!onComingSoon)
+    .map((k) => CATEGORIES.find((c) => c.value === k))
+    .filter((c): c is Category => !!c);
 
   return (
     <View style={styles.container}>
@@ -59,7 +76,7 @@ export default function CategorySelector({ value, onChange }: CategorySelectorPr
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {CATEGORIES.map((cat) => {
+        {live.map((cat) => {
           const isSelected = value === cat.value;
           const iconColor = isSelected ? '#FFFFFF' : colors.text.primary;
           return (
@@ -85,6 +102,25 @@ export default function CategorySelector({ value, onChange }: CategorySelectorPr
             </TouchableOpacity>
           );
         })}
+        {soon.map((cat) => (
+          <TouchableOpacity
+            key={cat.value}
+            testID={`category-chip-${cat.value}`}
+            style={styles.chip}
+            onPress={() => onComingSoon?.(cat.value as 'skincare' | 'makeup')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: false, selected: false }}
+            accessibilityLabel={t(cat.i18nKey)}
+            accessibilityHint={t('home.categories.comingSoon')}
+          >
+            <cat.Icon size={16} color={colors.text.secondary} />
+            <Text style={styles.chipText}>{t(cat.i18nKey)}</Text>
+            <Text testID={`category-chip-${cat.value}-soon`} style={styles.chipText}>
+              {t('home.categories.comingSoon')}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </View>
   );

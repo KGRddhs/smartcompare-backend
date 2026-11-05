@@ -252,21 +252,22 @@ describe('HomeScreen S3 integration — initial render', () => {
   });
 });
 
+// S81-11 (E9, C11): the nudge is replaced by the fragrance-only line, which
+// renders whatever the chip state.
 describe('catfix D1 — category nudge visibility', () => {
-  it('shows the nudge on first render (no category selected by default)', () => {
+  it('shows the fragrance-only line on first render (no category selected by default)', () => {
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
-    // Default selectedCategory is null → the invitation nudge is present.
-    expect(rendered.getByTestId('home-category-nudge')).toBeTruthy();
+    expect(rendered.getByTestId('home-fragrance-only-line')).toBeTruthy();
+    expect(rendered.queryByTestId('home-category-nudge')).toBeNull();
   });
 
-  it('hides the nudge once a category chip is tapped', () => {
+  it('keeps the fragrance-only line once a category chip is tapped', () => {
     const props = makeProps();
     const rendered = render(<HomeScreen {...props} />);
-    // Present before any pick…
-    expect(rendered.getByTestId('home-category-nudge')).toBeTruthy();
-    // …gone after tapping a chip (selectedCategory != null).
-    fireEvent.press(rendered.getByTestId('category-chip-electronics'));
+    expect(rendered.getByTestId('home-fragrance-only-line')).toBeTruthy();
+    fireEvent.press(rendered.getByTestId('category-chip-fragrances'));
+    expect(rendered.getByTestId('home-fragrance-only-line')).toBeTruthy();
     expect(rendered.queryByTestId('home-category-nudge')).toBeNull();
   });
 });
@@ -379,7 +380,11 @@ describe('HomeScreen S3 integration — text compare flow via TwoInputShell', ()
     expect(subscribeFn).not.toBeNull();
   });
 
+  // S81-11 (E9, R-S11-15 / R-S11-3): two states. A chip tap with NO cached
+  // /app/version body sends no selected_category; with categories_live
+  // carrying fragrances the tap sends fragrances.
   it('catfix D1 — selected_category IS sent once a category chip is tapped', async () => {
+    const launch = require('../src/services/launchSurfaces');
     let subscribeFn: any = null;
     mockStreamComparison.mockReturnValue({
       subscribe: (handlers: any) => {
@@ -387,20 +392,35 @@ describe('HomeScreen S3 integration — text compare flow via TwoInputShell', ()
       },
       abort: jest.fn(),
     });
-    const props = makeProps();
-    const rendered = render(<HomeScreen {...props} />);
-    // Tap a category chip first, then switch to type mode and submit.
-    fireEvent.press(rendered.getByTestId('category-chip-fragrances'));
-    fireEvent.press(rendered.getByTestId('home-mode-type'));
-    const shell = await waitFor(() =>
-      rendered.getByTestId('mock-two-input-shell'),
-    );
-    shell.props.onSubmit('Dior Sauvage', 'Creed Aventus');
-    expect(mockStreamComparison).toHaveBeenCalledWith(
-      { product_a: 'Dior Sauvage', product_b: 'Creed Aventus' },
-      { selected_category: 'fragrances' },
-    );
-    expect(subscribeFn).not.toBeNull();
+    try {
+      launch.__resetLaunchSurfaces();
+      // State 1: no version body -> the chip tap sends nothing.
+      let rendered = render(<HomeScreen {...makeProps()} />);
+      fireEvent.press(rendered.getByTestId('category-chip-fragrances'));
+      fireEvent.press(rendered.getByTestId('home-mode-type'));
+      let shell = await waitFor(() => rendered.getByTestId('mock-two-input-shell'));
+      shell.props.onSubmit('Dior Sauvage', 'Creed Aventus');
+      expect(mockStreamComparison).toHaveBeenLastCalledWith(
+        { product_a: 'Dior Sauvage', product_b: 'Creed Aventus' },
+        {},
+      );
+      rendered.unmount();
+
+      // State 2: categories_live carries fragrances -> the tap sends it.
+      launch.recordLaunchSurfaces({ categories_live: ['fragrances'] });
+      rendered = render(<HomeScreen {...makeProps()} />);
+      fireEvent.press(rendered.getByTestId('category-chip-fragrances'));
+      fireEvent.press(rendered.getByTestId('home-mode-type'));
+      shell = await waitFor(() => rendered.getByTestId('mock-two-input-shell'));
+      shell.props.onSubmit('Dior Sauvage', 'Creed Aventus');
+      expect(mockStreamComparison).toHaveBeenLastCalledWith(
+        { product_a: 'Dior Sauvage', product_b: 'Creed Aventus' },
+        { selected_category: 'fragrances' },
+      );
+      expect(subscribeFn).not.toBeNull();
+    } finally {
+      launch.__resetLaunchSurfaces();
+    }
   });
 
   it('SSE onComplete success path navigates to Results', async () => {

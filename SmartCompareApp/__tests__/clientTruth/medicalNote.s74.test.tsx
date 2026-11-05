@@ -108,17 +108,7 @@ jest.mock('../../src/components/hero/RevealBurst', () => ({
     return <View testID="mock-reveal-burst" />;
   },
 }));
-jest.mock('../../src/components/CohortBadge', () => ({
-  CohortBadge: ({ peerCount, governorate }: any) => {
-    const { View, Text } = require('react-native');
-    if (!peerCount || !governorate) return null;
-    return (
-      <View testID="mock-cohort-badge">
-        <Text>{peerCount} - {governorate}</Text>
-      </View>
-    );
-  },
-}));
+// S81-11 (E1b, R-S11-31): the CohortBadge mock is removed with the deleted component.
 jest.mock('../../src/components/FeedbackCard', () => ({
   __esModule: true,
   default: ({ submitted, onSubmitted }: any) => {

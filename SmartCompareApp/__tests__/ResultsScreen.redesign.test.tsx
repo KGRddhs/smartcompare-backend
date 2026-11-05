@@ -77,13 +77,14 @@ describe('ResultsScreen redesign — Phase 3 Task 30 (source assertions)', () =>
     expect(SOURCE).toMatch(/specsExpanded.*useState[<>(\s\w]*\(\s*false\s*\)/s);
   });
 
-  it('renders the cohort badge slot below the verdict block', () => {
-    expect(SOURCE).toMatch(/results-cohort-badge-slot/);
-    expect(SOURCE).toMatch(/CohortBadge/);
+  // S81-11 (E1d, R-S11-31): CohortBadge is deleted; both rows pin the absence.
+  it('renders NO cohort badge slot below the verdict block (S81-11)', () => {
+    expect(SOURCE).not.toMatch(/results-cohort-badge-slot/);
+    expect(SOURCE).not.toMatch(/CohortBadge/);
   });
 
-  it('imports CohortBadge from the new component', () => {
-    expect(SOURCE).toMatch(
+  it('no longer imports CohortBadge (S81-11)', () => {
+    expect(SOURCE).not.toMatch(
       /import\s*\{\s*CohortBadge\s*\}\s*from\s*['"]\.\.\/components\/CohortBadge['"]/
     );
   });

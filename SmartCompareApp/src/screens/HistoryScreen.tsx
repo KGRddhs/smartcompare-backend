@@ -129,12 +129,13 @@ export const rowEntranceDelayMs = (index: number): number =>
 // F-S1.6-D1 — HistoryHeroStats: stat strip + horizontal MarqueeCard list.
 //
 // Always renders above the search field per JSX HistoryScreen.jsx:60-109.
-// Even on empty state shows zero values ("0 decisions this month / ~0 BHD
-// shopped smarter") and skips the marquee gracefully — Build Principle #4
-// calm guidance, no scary "you haven't compared anything" copy.
+// Even on empty state shows zero values ("0 decisions this month") and skips
+// the marquee gracefully — Build Principle #4 calm guidance, no scary "you
+// haven't compared anything" copy. S81-11: the savings line is removed (its
+// sum counted estimates and converted prices as savings).
 //
 // Data sources:
-//   - /profile/monthly-stats → decisions count + savings_bhd (stat strip)
+//   - /profile/monthly-stats → decisions count (stat strip)
 //   - /profile/recent-decisions → 3-4 most recent for the horizontal marquee
 // Silent-hide on network failure (UI never throws).
 // ---------------------------------------------------------------------------
@@ -169,7 +170,6 @@ const HistoryHeroStats = React.memo(function HistoryHeroStats({
   }, []);
 
   const decisionsCount = stats?.decisions_count ?? 0;
-  const savingsBhd = stats?.savings_bhd ?? 0;
   const visibleRecents = recents.filter(
     (it) => !excludeIds?.has(it.comparison_id)
   );
@@ -186,12 +186,6 @@ const HistoryHeroStats = React.memo(function HistoryHeroStats({
           {t('history.hero.count', {
             defaultValue: '{{count}} decisions this month',
             count: decisionsCount,
-          })}
-        </Text>
-        <Text style={historyHeroStyles.statSavings}>
-          {t('history.hero.savings', {
-            defaultValue: '~{{amount}} BHD shopped smarter',
-            amount: savingsBhd.toFixed(0),
           })}
         </Text>
       </View>
@@ -288,13 +282,6 @@ const historyHeroStyles = StyleSheet.create({
     lineHeight: 24 * 1.15,
     color: colors.text.primary,
     letterSpacing: -0.24,
-  },
-  statSavings: {
-    fontSize: 13,
-    fontWeight: '400',
-    lineHeight: 13 * 1.5,
-    color: colors.text.secondary,
-    marginTop: 2,
   },
   marquee: {
     flexGrow: 0,

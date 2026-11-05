@@ -68,6 +68,8 @@ export interface ProductPrice {
   note?: string;
   unavailable?: boolean;
   source_method?: SourceMethod;
+  /** S81-11 / R-G4-2: the KB-served as-of date (ISO). */
+  as_of?: string | null;
 }
 
 export interface Product {
@@ -303,6 +305,11 @@ export interface ComparisonResult {
   personalized_insights?: PersonalizedInsight[];
   scoring?: ScoringResult;
   metadata?: {
+    /** S81-11 D20 (R-G3-6 / B1): additive, absent until the flags flip. */
+    field_status?: Record<string, any>[];
+    section_status?: Partial<
+      Record<'specs' | 'reviews' | 'pros_cons' | 'price', 'available' | 'partial' | 'unavailable'>
+    >;
     query: string;
     region: string;
     elapsed_seconds: number;
@@ -328,6 +335,9 @@ export interface ComparisonResult {
   // W3-11 RTL-05: the backend's block layer on a CONTENT_UNAVAILABLE
   // envelope (e.g. "query_prefilter"), forwarded to the content-block event.
   layer?: string;
+  // S81-11 (R-S11-26): the additive INSUFFICIENT_DATA reason (S81-20) beside
+  // `code` on a success:false envelope; absent = today's copy.
+  reason?: string;
   // New structured response fields (optional for backward compat with history)
   overview?: OverviewSection;
   specs?: SpecsSection;
