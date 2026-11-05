@@ -11,9 +11,9 @@ rides beside it so production sizes the gap).
 
 Every function is total: a malformed input yields the conservative answer and never
 raises. Pure by contract: the standard library plus text_sanitize.dedup_brand_name,
-nothing that does I/O, nothing that reads a flag except result_status_metadata_enabled
-and stamp_camera_stage_timings (both read the flag per call, first). B2 (ENABLE_RESULT_GATE)
-enforces exactly what assess_result measures here.
+nothing that does I/O, nothing that reads a flag except result_status_metadata_enabled,
+stamp_camera_stage_timings, result_gate_enabled and result_gate_refusal (each reads its flag
+per call, first). B2 (ENABLE_RESULT_GATE) enforces exactly what assess_result measures here.
 """
 from __future__ import annotations
 
@@ -657,3 +657,212 @@ def stamp_camera_stage_timings(result: Any, *, vision_ms: Any, vision_moderation
             timings[key] = int(value)
             wrote = True
     return wrote
+
+
+# ----------------------------------------------------------------- the gate (S81-20, B2)
+# ENABLE_RESULT_GATE (default OFF, read per call): the route exits refuse a body the
+# assessment above does not support, as a non-delivery (R-A3). Pure, total, ASCII; the
+# decision functions read no flag; result_gate_refusal reads it FIRST.
+GATE_REASONS = ("placeholder_identity", "same_identity", "category_conflict", "no_evidence")
+CAMERA_GATE_REASONS = ("placeholder_identity", "low_confidence", "same_identity",
+                       "category_conflict")
+GATE_CODE = "INSUFFICIENT_DATA"
+# Byte-equal to the orchestrator's H6 sentence (the em dash built from its code point).
+GATE_REFUSAL_MESSAGE = "Comparison data was incomplete " + chr(0x2014) + " choose different products."
+CAMERA_GATE_MESSAGE = "Photograph each product in its own photo so we can tell them apart."
+GATE_LOG_PREFIX = "result_gate:"
+# assess_result reason -> gate reason; not_success never maps.
+_GATE_REASON_BY_ASSESS = {
+    "placeholder_identity": "placeholder_identity",
+    "same_identity": "same_identity",
+    "unsupported_category": "category_conflict",
+    "category_conflict": "category_conflict",
+    "no_evidence": "no_evidence",
+}
+# R-S20-1 / R-S20-36: a JSON-LD price or rating string, ASCII digits only.
+_URL_NUMBER_RE = re.compile(r"^\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$", re.ASCII)
+
+
+def result_gate_enabled() -> bool:
+    """ENABLE_RESULT_GATE, default OFF, read per call (the house idiom)."""
+    return os.getenv("ENABLE_RESULT_GATE", "false").strip().lower() in _TRUTHY
+
+
+def gate_reason(result: Any, *, product_categories: Any = None) -> Optional[str]:
+    """The first assess_result reason that maps to a gate reason. None on a supported body
+    and on anything that is not a success:True dict (a success body with no products maps
+    to placeholder_identity through the assessment, GC-8). No flag read."""
+    if not isinstance(result, dict) or result.get("success") is not True:
+        return None
+    assessment = assess_result(result, product_categories=product_categories)
+    reasons = assessment.get("reasons") if isinstance(assessment, dict) else None
+    for reason in reasons or ():
+        mapped = _GATE_REASON_BY_ASSESS.get(reason) if isinstance(reason, str) else None
+        if mapped is not None:
+            return mapped
+    return None
+
+
+def _url_number(value: Any) -> Optional[float]:
+    """A finite number from an int / float (never bool) or an ASCII numeric string."""
+    if _num(value):
+        return float(value) if _finite(value) else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not _URL_NUMBER_RE.match(text):
+        return None
+    try:
+        out = float(text.replace(",", ""))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return out if _finite(out) else None
+
+
+def _url_price(product: Dict[str, Any]) -> bool:
+    price = product.get("price")
+    if not isinstance(price, dict):
+        return False
+    if price.get("unavailable") is True or price.get("estimated") is True:
+        return False
+    amount = _url_number(price.get("amount"))
+    return amount is not None and amount > 0
+
+
+def _url_rating(product: Dict[str, Any]) -> bool:
+    reviews = product.get("reviews")
+    if isinstance(reviews, dict):
+        value = _url_number(reviews.get("rating"))
+        if value is not None and 0 < value <= 5:
+            return True
+    if rating_is_real(product):
+        value = _url_number(product.get("rating"))
+        return value is not None and 0 < value <= 5
+    return False
+
+
+def url_gate_reason(result: Any) -> Optional[str]:
+    """The URL reading (R-S20-1 / R-S20-3): placeholder, then same identity, then the
+    JSON-LD aware evidence count; never a category check. None under two products. No
+    flag read."""
+    if not isinstance(result, dict) or result.get("success") is not True:
+        return None
+    products = result.get("products")
+    if not isinstance(products, list) or len(products) < 2:
+        return None
+    p0, p1 = products[0], products[1]
+    if not isinstance(p0, dict) or not isinstance(p1, dict):
+        return None
+    if product_is_placeholder(p0) or product_is_placeholder(p1):
+        return "placeholder_identity"
+    if same_identity(p0, p1):
+        return "same_identity"
+    coverage = (int(_url_price(p0) and _url_price(p1))
+                + int(_url_rating(p0) and _url_rating(p1))
+                + int(real_spec_rows(p0.get("specs"), p1.get("specs")) >= 1))
+    if coverage == 0:
+        return "no_evidence"
+    return None
+
+
+def _camera_view(product: Any, identity: Any) -> Optional[Dict[str, Any]]:
+    """The identity view of one camera side: the pre-enrichment (brand, name) when given,
+    never the distinguishing features (R-S20-4); the size axis rides along."""
+    if not isinstance(product, dict):
+        return None
+    if isinstance(identity, (list, tuple)) and len(identity) == 2:
+        brand, name = identity[0], identity[1]
+    else:
+        brand, name = product.get("brand"), product.get("name")
+    return {"brand": brand, "name": name, "size_or_count": product.get("size_or_count")}
+
+
+def _camera_low(product: Any) -> bool:
+    """A V2 product (the _is_product marker, R-S20-25) whose confidence reads low."""
+    if not isinstance(product, dict) or product.get("_is_product") is not True:
+        return False
+    confidence = product.get("confidence")
+    return isinstance(confidence, str) and confidence.strip().casefold() == "low"
+
+
+def camera_gate_categories(p0: Any, p1: Any) -> List[Optional[str]]:
+    """The camera category pair (R-S20-39): the V2 _category of an _is_product dict when it
+    is one of the nine canonical keys, else None, so a V1 pair never carries a conflict."""
+    out: List[Optional[str]] = []
+    for product in (p0, p1):
+        category = None
+        if isinstance(product, dict) and product.get("_is_product") is True:
+            value = product.get("_category")
+            if isinstance(value, str) and value in CANONICAL_CATEGORIES:
+                category = value
+        out.append(category)
+    return out
+
+
+def camera_gate_reason(p0: Any, p1: Any, *, categories: Any = None,
+                       identities: Any = None) -> Optional[str]:
+    """The camera pre-compare reading (R-S20-2 / -4 / -5 / -39), on the pair the route
+    would compare. No flag read."""
+    ids: Tuple[Any, Any] = (None, None)
+    if isinstance(identities, (list, tuple)) and len(identities) == 2:
+        ids = (identities[0], identities[1])
+    view0, view1 = _camera_view(p0, ids[0]), _camera_view(p1, ids[1])
+    if (view0 is None or view1 is None
+            or product_is_placeholder(view0) or product_is_placeholder(view1)):
+        return "placeholder_identity"
+    if _camera_low(p0) or _camera_low(p1):
+        return "low_confidence"
+    if same_identity(view0, view1):
+        return "same_identity"
+    if not identity_coherence(categories):
+        return "category_conflict"
+    return None
+
+
+def _non_negative(value: Any) -> float:
+    return value if _finite(value) and value >= 0 else 0.0
+
+
+def gate_refusal_body(result: Any, reason: str) -> Dict[str, Any]:
+    """The refusal in the H6 key order, the additive reason last."""
+    metadata = result.get("metadata") if isinstance(result, dict) else None
+    metadata = metadata if isinstance(metadata, dict) else {}
+    calls = metadata.get("api_calls")
+    if not (isinstance(calls, int) and not isinstance(calls, bool) and calls >= 0):
+        calls = 0
+    return {
+        "success": False,
+        "error": GATE_REFUSAL_MESSAGE,
+        "code": GATE_CODE,
+        "elapsed_seconds": _non_negative(metadata.get("elapsed_seconds")),
+        "total_cost": _non_negative(metadata.get("total_cost")),
+        "api_calls": calls,
+        "reason": reason,
+    }
+
+
+def result_gate_refusal(result: Any, *, url_mode: bool = False) -> Optional[Dict[str, Any]]:
+    """The flag FIRST; then the refusal body of a success:True result the gate does not
+    support, else None. A raising reading delivers as OFF."""
+    if not result_gate_enabled():
+        return None
+    if not isinstance(result, dict) or result.get("success") is not True:
+        return None
+    try:
+        if url_mode:
+            reason = url_gate_reason(result)
+        else:
+            reason = gate_reason(result, product_categories=stamped_product_categories(result))
+    except Exception:  # noqa: BLE001 -- deliver as OFF
+        return None
+    if reason is None:
+        return None
+    return gate_refusal_body(result, reason)
+
+
+def gate_log_message(reason: Any) -> str:
+    """The search_logs error_message of a refusal: a closed set, never a value."""
+    for known in GATE_REASONS + CAMERA_GATE_REASONS:
+        if isinstance(reason, str) and reason == known:
+            return GATE_LOG_PREFIX + reason
+    return GATE_LOG_PREFIX + "unknown"

@@ -472,7 +472,7 @@ def test_s14_p05_every_migration_is_linted_by_sqlfluff():
 
 
 IDENTITY_NODES = {
-    "tests/test_s75_fanout_identity.py": "0fa707e2ba571a6c52cbddedd686585aba190a14efbc9774d2bef04268129942",
+    "tests/test_s75_fanout_identity.py": "93c59246ef6c1ee6a41f54aef6edd21ceaf448f6f6b92dcbfe47a27f9e87e4a1",
     "tests/fixtures/s75_fanout_identity_digests.json": "56c378bf05d5135b597367cb8aec9920193dcefd703be047c821df9b3814dc56",
     "tests/test_w4_13_flag_off_ledger.py": "4c051821da78517c0f17a7feaabffa24eaa0d7445737b67d3ace88f544b59993",
     "tests/fixtures/w4_13_flag_off_ledger.json": "9fbf73e177365f352b9243009d9552b5626d7cf7e618adaad5a1856d66231f40",
@@ -487,7 +487,8 @@ def _lf_sha(rel: str) -> str:
 def test_s14_p06_identity_nodes_untouched(rel):
     """The FY25 nine-digest node and the W4-13 ledger run unedited (LF sha at e1878dd8; the FY25 node
     at the rebase main ea3aef15, where S81-04 #372 added one UNIT_ENV entry).
-    S81-06 E10 (the seven ENABLE_ANTHROPIC_* / ENABLE_SONNET_ESCALATION / ENABLE_OPENAI_PRE_V3 names joined UNIT_ENV) moved the FY25 file digest; re-pinned per RULINGS_REBASE_S81_06 RB6-11 (the S81-14 D1 precedent)."""
+    S81-06 E10 (the seven ENABLE_ANTHROPIC_* / ENABLE_SONNET_ESCALATION / ENABLE_OPENAI_PRE_V3 names joined UNIT_ENV) moved the FY25 file digest; re-pinned per RULINGS_REBASE_S81_06 RB6-11 (the S81-14 D1 precedent).
+    S81-20 E8 (ENABLE_RESULT_GATE joined UNIT_ENV, the spec's E1) moved it again; re-pinned the same way."""
     assert _lf_sha(rel) == IDENTITY_NODES[rel], "%s changed: S81-14 edits no identity node" % rel
 
 

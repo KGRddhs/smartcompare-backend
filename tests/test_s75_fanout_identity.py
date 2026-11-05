@@ -62,6 +62,7 @@ UNIT_ENV = ("ENABLE_PARSE_PRESPLIT", "ENABLE_PARSE_BUDGET", "PARSE_TIMEOUT_SECON
             "ENABLE_PHASE2_RESIDUAL_GUARD", "PHASE2_MIN_RESIDUAL_SECONDS",
             "DEBUG_STAGE_TIMINGS", "ENABLE_FULL_STREAM_DEADLINE",
             "ENABLE_RESULT_STATUS_METADATA",  # B1 (S80) E1: a developer .env must not move the digests
+            "ENABLE_RESULT_GATE",  # S81-20 E1: a developer .env must not move the digests
             "ENABLE_LLM_LEDGER_V2",  # S81-03 E1: metadata.llm / the unclaimed add would move them
             "ENABLE_LLM_SPEND_BREAKER",  # S81-04 E2: a developer .env must not move the digests
             # S81-06 E10: the seven router flags (a developer .env must not route a site)

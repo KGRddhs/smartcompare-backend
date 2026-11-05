@@ -66,6 +66,9 @@ from app.services import llm_router as _llm_router
 # S81-10b LINKS-GATE: the fragrance-only gate, imported as a module alias only
 # (every gate function is read off the module at call time).
 from app.services import category_gate as _category_gate
+# S81-20 RESULT-GATE (ENABLE_RESULT_GATE): the URL gate (module attribute; the flag is
+# read inside result_gate_refusal, per call, first).
+from app.services import result_gate as _rg
 from app.services.structured_comparison_service import LLM_UNAVAILABLE_FRIENDLY_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -73,7 +76,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/url", tags=["url-comparison"])
 
 
-async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
+async def _reserve_comparison_credit(user: Optional[Dict], keys_out: Optional[Dict] = None) -> bool:
     """Consume ONE freemium credit for an authenticated caller, or 429.
 
     W2-1 (MB-RECONCILE-01): `/url/compare` has no user dependency at all
@@ -105,6 +108,9 @@ async def _reserve_comparison_credit(user: Optional[Dict]) -> bool:
                 **usage_limit_extras(usage_check),
             },
         )
+    # S81-20 (additive): the consume's keys for a keyed result-gate refund.
+    if isinstance(keys_out, dict) and isinstance(usage_check.get("consumed_keys"), dict):
+        keys_out.update(usage_check["consumed_keys"])
     return bool(usage_check.get("consumed", False))
 
 
@@ -270,7 +276,8 @@ async def _compare_urls_metered(
             detail={"code": "LLM_UNAVAILABLE", "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE},
         )
     _start = time.time()
-    usage_consumed = await _reserve_comparison_credit(user)
+    _s20_keys: Dict = {}
+    usage_consumed = await _reserve_comparison_credit(user, keys_out=_s20_keys)
     user_id = user.get("id") if user else None
     _truth = search_log_truth_enabled()
 
@@ -337,6 +344,29 @@ async def _compare_urls_metered(
             status_code=400,
             detail=result.get("error", "Comparison failed")
         )
+
+    # S81-20 (ENABLE_RESULT_GATE; D4 as amended by R-S20-1 / R-S20-3): a non-delivery
+    # like the failure exit above. Under the S81-10 gate (gate_route set) the refusal
+    # budget is read: spent keeps the credit (GC-6), else the keyed refund BEFORE the
+    # raise and the refusal counted once (R-S20-38); then one row in both W4-13 states,
+    # one INFO line, the 400 INSUFFICIENT_DATA + reason.
+    _refusal = _rg.result_gate_refusal(result, url_mode=True)
+    if _refusal is not None:
+        _s20_subject = None
+        _s20_spent = False
+        if gate_route is not None:
+            _s20_subject = _category_gate.budget_subject(user)
+            _s20_spent = (await _category_gate.budget_state_async(_s20_subject)) is not None
+        if not _s20_spent:
+            if usage_consumed and user_id:
+                fire_and_forget(refund_comparison_credit(user_id, _s20_keys or None),
+                                label="usage_refund.url.compare.result_gate")
+            if gate_route is not None:
+                await _category_gate.record_refusal_async(_s20_subject)
+        _url_row("log_search.url.result_gate", success=False,
+                 error_message=_rg.gate_log_message(_refusal.get("reason")))
+        logger.info("[RESULT_GATE] refused input=%s reason=%s", "url", _refusal.get("reason"))
+        _surface_comparison_failure(_refusal)
 
     if paid_route_metering_enabled() and user_id:
         fire_and_forget(

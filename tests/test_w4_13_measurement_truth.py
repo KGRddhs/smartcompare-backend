@@ -156,7 +156,8 @@ def _clean_flags(monkeypatch):
                  "ENABLE_CAMERA_FAILURE_ENVELOPE", "ENABLE_ANON_USAGE_GATE",
                  "ENABLE_COMPARISON_ID_ECHO", "ENABLE_LLM_PREFLIGHT_BREAKER",
                  "ENABLE_STRICT_OPTIONAL_AUTH", "ENABLE_SYNC_DB_OFFLOAD",
-                 "ENABLE_OFFLOOP_DNS_RESOLVE"):
+                 "ENABLE_OFFLOOP_DNS_RESOLVE",
+                 "ENABLE_RESULT_GATE"):  # S81-20 E5
         monkeypatch.delenv(name, raising=False)
 
 
