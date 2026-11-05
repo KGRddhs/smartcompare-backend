@@ -1,0 +1,76 @@
+{
+ "type": "result",
+ "key": "v2:7b08fc761abd5018796d808bcdc8e64235092c8fbc17f83015b0ec8051538a2c",
+ "agentId": "a34bdcfc8a3a1fd16",
+ "result": {
+  "group": "S81-G5 LEARN-SEARCH",
+  "units_covered": [
+   "D22 NIGHTLY-LEARNING"
+  ],
+  "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g5/.qa-s80/S81-G5_UNIT_SPEC.md",
+  "spec_sha256": "0b5c27f45869035aa17f9410158f579d6ca40c24ff95549d215939f2de1a9a74",
+  "summary": "One spec for G5 with one unit, D22 NIGHTLY-LEARNING. It is scripts-only and adds no migration and no app/ file. The new file scripts/cron_learning.py reads its flag as the first statement of main through kb_seed_common.run_mode. Unset or garbage means OFF: one INFO line and exit 0, with no client, no argparse and no kb_leaf. true means DRY: report only. The word apply means one upsert into kb_coverage_daily on (day, metric), with every row built by build_coverage_row, using D17's exact call shape. The job uses no LLM, no Serper and no other network. It reads with paged, id-ordered, capped reads over a window of whole UTC days ending at the previous midnight. The tables are comparison_feedback, verdict_critiques, user_events, search_logs, kb_gaps and kb_feedback. Before 045 is applied, a missing kb_* table is a counted skip. It then reads comparisons by id through PostgREST JSON paths and kb_specs by product_id for grounding. Measured facts the spec relies on: (1) comparisons has NO category_used column; the category lives at full_response.category_used (response_builder.py:2286). (2) No code writes kb_feedback, so identity_wrong stays 0. (3) user_events does carry comparison_id but names no field, so it feeds context metrics only. (4) The judge is absent and ENABLE_SELF_CRITIQUE has no ledger line, so it is treated as unknown and default OFF. verdict_unsupported fires when missing_citation or bias is below 7. (5) shadow_experiments has no $0 replay: its replay step calls OpenAI. The output contract covers: six buckets; clusters by category x source x field (source = the price source_method, mixed or unknown, or a fixed label); the systematic rule with user_id named as a proxy for a device; proposals with judge_state pending and a closed action vocabulary, never applied; exemplar candidates per category, versioned as day plus a base32 content hash; eval candidates; and a de-identification screen that drops any candidate carrying a uuid, 64-hex, @, +973 or 8-digit run. The metric list is closed: 16 learning.* names are always emitted, plus conditional skipped.* and capped.* rows, all disjoint from D17's names. Ruling (g) option (i): delete scripts/cron_few_shot_rotation.py and its test file. Their only importer is that test, and the script is the only code that writes feedback exemplars (each carrying a comparison uuid) under data/. ENABLE_FEWSHOT_ROTATION is also a legal fill-in flag; that machinery is left untouched. Base pass state was measured at ec747b49: 1 failed (the known d17 r9 CRLF baseline) and 604 passed; then 574 passed and 1 skipped.",
+  "change_list": [
+   "NEW scripts/cron_learning.py (the D22 job: mode via kb_seed_common.run_mode, five int_knob knobs, paged id-ordered capped reads, buckets / clusters / systematic rule / proposals / exemplar + eval candidates, de-identified report via common.write_report + optional --report-md, learning.* rows upserted only in apply)",
+   "NEW railway.learning.json (watchPatterns cron_learning.py + kb_seed_common.py + itself; startCommand python -m scripts.cron_learning; restartPolicyType NEVER)",
+   "NEW tests/test_s81_d22_nightly_learning.py (29 RED rows, about 45 nodes; 7 PIN rows, about 9 nodes)",
+   "EDIT tests/test_s81_kb_schema.py E1: P02_ALLOWED gains ('scripts/cron_learning.py', 'KB_COVERAGE_TABLE = \"kb_coverage_daily\"') and ('scripts/cron_learning.py', 'KB_FEEDBACK_TABLE = \"kb_feedback\"'); P01 unchanged",
+   "DELETE scripts/cron_few_shot_rotation.py (E2)",
+   "DELETE tests/test_cron_few_shot_rotation.py (E3, 12 tests)",
+   "EDIT tests/test_exemplar_contamination.py docstrings :19-20 and :159-161 only (E4, optional per Q3)",
+   "EDIT CLAUDE.md: the S81-G5 block after the S81-G4 owner-steps bullet (:565) + one clause in the Feature Flags pointer line (:341)"
+  ],
+  "red_files": [
+   "tests/test_s81_d22_nightly_learning.py"
+  ],
+  "red_rows": 29,
+  "pin_rows": 7,
+  "mutants": 15,
+  "comm_set_size": 44,
+  "focus_surfaces_found": [],
+  "open_questions": [
+   "Q1: on a client construction failure, exit 1 after one ERROR line (as the brief says) or exit 0 with a WARNING (D17's resolve_client)? The spec follows the brief.",
+   "Q2: products_found in search_logs is the list of identified product names, so search_logs feeds only learning.searches.failed and is not used as a spec_missing input. Confirm.",
+   "Q3: include E4 (the docstring-only edit to test_exemplar_contamination.py) or rule it out? If ruled out, R26 scans import statements only.",
+   "Q4: map kb_feedback rows with field identity and verdict wrong to identity_wrong instead of fixing the bucket at n = 0 with source unavailable? The counts are identical today.",
+   "Q5: the spec chose LEARNING_MAX_ROWS = 5000 per table, clamped to 100..50000. Confirm.",
+   "Q6: the PostgREST JSON-path selects with an array index (full_response->overview->products->0->price->>source_method) were never run against the live project; owner step 3 (the one DRY run) is their only proof, and a null path falls back to unknown. Accept?",
+   "Q7: SAFE confirmation. The job reads user tables with the service-role client but writes only de-identified aggregates; privacy_policy.md:59 already covers de-identified statistics, so no legal text changes."
+  ],
+  "base_measurements": [
+   "[pyt] tag=g5spec-base1 start=2026-11-05 03:06:45 end=2026-11-05 03:06:58 elapsed=13s bound=600s status=FAIL rc=1 (test_cron_few_shot_rotation, test_exemplar_contamination, test_s81_d17_coverage, test_s81_kb_schema, test_s81_g4_gate_rows, test_legal_s78: 1 failed, 604 passed; FAILED test_s81_d17_coverage.py::test_r9_railway_config_and_hygiene = known CRLF baseline; [hermeticity] sentinel checked 605; [netguard] blocked 0)",
+   "[pyt] tag=g5spec-base2 start=2026-11-05 03:07:22 end=2026-11-05 03:07:41 elapsed=20s bound=600s status=OK rc=0 (test_s81_s16b_kb_brands, test_s81_s05_request_context, test_s81_s08b_legacy_fingerprint, test_u3c_store_false_pin, test_retro_w1_2b, test_legal_disclosure_s77, test_exemplar_injection_content, test_verdict_exemplar_loader, test_shadow_experiments: 574 passed, 1 skipped; [netguard] blocked 1 = tiktoken egress in test_exemplar_injection_content::test_per_category_token_budget_held, test passed)",
+   "postgrest / supabase 2.31.0 on .venv-qaren: order(column, *, desc=False, ...), range(start, end), gte, lt, in_(column, values); APIError(dict).code == 'PGRST205'",
+   "base comm set: 44 files, sha256 803bde0ca1b911bb47e68c007228505b1b280a9c69a5d59c7828fab148598e96 (sorted LF path list)"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=g5spec-base1 start=2026-11-05 03:06:45 end=2026-11-05 03:06:58 elapsed=13s bound=600s status=FAIL rc=1",
+   "[pyt] tag=g5spec-base2 start=2026-11-05 03:07:22 end=2026-11-05 03:07:41 elapsed=20s bound=600s status=OK rc=0"
+  ],
+  "deliberate_pin_changes": [
+   "E1 tests/test_s81_kb_schema.py P02_ALLOWED + 2 rows (the two kb_* relation constants of cron_learning.py)",
+   "E2 delete scripts/cron_few_shot_rotation.py",
+   "E3 delete tests/test_cron_few_shot_rotation.py",
+   "E4 tests/test_exemplar_contamination.py docstring text only (optional)"
+  ],
+  "stated_limits": [
+   "L1 the judge is absent (S81-22), so every proposal has judge_state pending and the judge join is D22b",
+   "L2 user_id is a proxy for a device outside kb_feedback; anonymous rows add cases but no actor",
+   "L3 identity_wrong is 0 until SF1 / CL3 or a kb_feedback writer lands",
+   "L4 the report file is ephemeral on Railway; the log is the durable copy and carries names and counts but not the exemplar verdict text",
+   "L5 the kb_* tables exist only after 045 is applied: until then their reads are counted skips and the apply-mode upsert fails with one WARNING",
+   "L6 the specs source axis is the fixed label specs; price clusters use source_method, not the retailer host",
+   "L7 kb_gaps carries no actor, so spec_missing clusters are never systematic",
+   "L8 no $0 DB-only replay exists; the offline proof is D22b",
+   "L9 the window is whole UTC days ending at the previous midnight; a capped table is read in id order, not newest first",
+   "L10 a conditional learning.skipped.* or learning.capped.* row from an earlier run the same day is not removed by a later run that day",
+   "L11 the category comes from full_response.category_used; a row without it is unknown",
+   "L12 ENABLE_FEWSHOT_ROTATION stays in the legal fill-in flag list as a name with no code"
+  ]
+ },
+ "toolsUsed": [
+  "Bash",
+  "Write",
+  "StructuredOutput"
+ ]
+}

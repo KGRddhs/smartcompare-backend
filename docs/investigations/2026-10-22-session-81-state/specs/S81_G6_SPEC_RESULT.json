@@ -1,0 +1,90 @@
+{
+ "type": "result",
+ "key": "v2:a75e78cf7d0c6c8043cbd513efffa75af732833260fed0ef5cee58347222ff93",
+ "agentId": "a88e32e034136ad01",
+ "result": {
+  "group": "S81-G6 CLIENT-PERF (CL2 CLIENT-SPEED alone; SS1 + CL5 deferred to G6b)",
+  "units_covered": [
+   "CL2"
+  ],
+  "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-g6/.qa-s80/S81-G6_UNIT_SPEC.md",
+  "spec_sha256": "048029fd4030da2d9bc6101049c14097ce21b42012b5a0c5003341febfa0b5d1",
+  "summary": "I wrote one spec for the group, measured at ec747b49. It is 51,178 bytes, pure ASCII, LF line endings. It sits in the gitignored .qa-s80 folder, and git status of the worktree is still empty.\n\nThe unit has no flag and changes nothing in the backend, the packages or the native folders. It covers eight changes, two of them cut back from the plan:\n- C1 Home floor: a response under 300 ms goes straight to Results, otherwise the floor is 400 ms. The new leaf src/utils/clientSpeed.ts replaces HomeScreen.tsx:200 `MIN_LOADING_MS=1200`. The camera and history floors are unchanged.\n- C2 Reveal cut: the measured 800 ms reveal is the ResultsScreen.tsx:460-476 winner-reveal timer, not the LoadingScreenVariants reveal stages (Home uses the concentric variant). The delay drops to 0 when the result is already in the route params at mount; history and camera keep 800.\n- C3 Image prefetch: a new leaf src/services/imagePrefetch.ts prefetches at most 2 https URLs, fire-and-forget, with errors swallowed and repeats skipped. It guards the call because the jest react-native mock has no Image.prefetch.\n- C4 History cache: History only. A new leaf src/services/swrCache.ts holds data in memory per user, with a 30 s throttle on focus refetches. App.tsx clears it through one effect keyed on user?.id, which covers all five sign-out paths. Every Results mount and every delete invalidate it. With no user set, every focus refetches as today, so the A12 pin stays green. authService.ts is not touched.\n- Home cache cut: the Home focus refetch feeds the +bonus count on the quota pill, which is a quota surface, so it is not throttled.\n- C5 metro.config.js: getSentryExpoConfig(__dirname, {includeWebReplay:false}). I measured it on the installed 7.2.0. Against the stock config it changes resolver.resolveRequest (replay modules resolve to empty), symbolicator.customizeFrame and server.enhanceMiddleware, and it adds the debug-id plugin. The cacheVersion is identical.\n- C6 Lazy screens: one helper, src/navigation/lazyScreen.tsx (React.lazy plus Suspense with a null fallback), with the binding names kept so every route pin stays green. The 7 static imports it removes are Legal, Paywall, Onboarding, NewOnboardingHost, ScanCamera, InviteeQuiz and ReferralLanding.\n- C7 Parallel boot read: getStableId now starts before `await getSavedLanguage()`, with a catch attached, and is awaited where it was before. Every effect keeps its order, and the B5 pin stays green. This is the only independent pair in App's init; initializeAuth's reads are left alone (auth).\n- C8: freezeOnBlur on the tabs only.\n\nByte proxy: one offline expo export at base gave a single 6,594,787 B ios .hbc (2211 modules) that contains replay code. Dynamic imports stay in that one bundle on native, so lazy loading saves module evaluation time, not bytes.\n\nBase runs:\n- [jest] tag=g6spec-base-touched start=03:11:18 end=03:11:34 rc=0: 14 suites, 137 passed, 5 todo.\n- [pyt] tag=g6spec-be-pins start=2026-11-05 03:10:52 end=2026-11-05 03:11:06 elapsed=14s bound=1200s status=OK rc=0: 210 passed (netguard neutralised sentinel and egress calls in test_security_regression.py; no real egress).",
+  "change_list": [
+   "NEW SmartCompareApp/src/utils/clientSpeed.ts (HOME_FLOOR_MS 400, HOME_FLOOR_SKIP_BELOW_MS 300, REVEAL_DELAY_MS 800, homeFloorDelayMs, revealDelayMs)",
+   "NEW SmartCompareApp/src/services/swrCache.ts (in-memory per-user cache, no imports, SWR_FOCUS_THROTTLE_MS 30000)",
+   "NEW SmartCompareApp/src/services/imagePrefetch.ts (prefetchProductImages: at most 2 https URLs, fire-and-forget)",
+   "NEW SmartCompareApp/src/navigation/lazyScreen.tsx (React.lazy + Suspense, null fallback)",
+   "EDIT SmartCompareApp/metro.config.js (getSentryExpoConfig with includeWebReplay false + qarenCacheVersion)",
+   "EDIT SmartCompareApp/src/screens/HomeScreen.tsx (C1 floor helper at :200/:205; C3 prefetch at the start of navigateToResultsWithFloor)",
+   "EDIT SmartCompareApp/src/screens/ResultsScreen.tsx (C2 reveal delay at :460-476; C3 prefetch effect; history invalidation on mount)",
+   "EDIT SmartCompareApp/src/screens/HistoryScreen.tsx (C4: warm initial state, throttled focus refetch at :719-723, write on success, invalidate on delete)",
+   "EDIT SmartCompareApp/App.tsx (C6 seven lazy bindings; C7 getStableId started before await getSavedLanguage; one setSwrUser effect keyed on user?.id; C8 freezeOnBlur in the Tab screenOptions)",
+   "EDIT tests E1-E5: __tests__/metro.cacheVersion.pb1.test.ts:254, HomeScreen.bundleB.contract.test.tsx:219-221, HomeScreen.eS3hf.dedupe.test.tsx:91-94, HomeScreen.eS3hf.loaderVisibility.test.tsx:217-265 and :267-306",
+   "NEW 12 RED files SmartCompareApp/__tests__/cl2/*.cl2.test.ts(x)",
+   "EDIT CLAUDE.md: one block after the S81-G4 owner-steps bullet (:563)"
+  ],
+  "red_files": [
+   "SmartCompareApp/__tests__/cl2/clientSpeed.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/homeFloor.cl2.test.tsx",
+   "SmartCompareApp/__tests__/cl2/revealCut.cl2.test.tsx",
+   "SmartCompareApp/__tests__/cl2/imagePrefetch.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/swrCache.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/historySwr.cl2.test.tsx",
+   "SmartCompareApp/__tests__/cl2/sessionClear.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/metroSentry.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/lazyScreens.cl2.test.tsx",
+   "SmartCompareApp/__tests__/cl2/bootParallel.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/freezeOnBlur.cl2.test.ts",
+   "SmartCompareApp/__tests__/cl2/scope.cl2.test.ts"
+  ],
+  "red_rows": 34,
+  "pin_rows": 18,
+  "mutants": 24,
+  "comm_set_size": 142,
+  "focus_surfaces_found": [],
+  "open_questions": [
+   "OQ1 LC-1 class: Legal, Paywall, Onboarding and ScanCamera are App-Review-visible screens. Their content is unchanged, but the first open may show the null Suspense fallback for one commit, which jest cannot measure. The spec classifies the unit SAFE and adds owner step 3 (a device check). The conservative alternative is to keep Legal and Paywall loading eagerly.",
+   "OQ2 Sign-out clear: rule (c) asks for one call in the existing sign-out path. The spec uses one App.tsx effect keyed on user?.id instead, which covers all five sign-out paths and every user change without touching an auth file. The alternative is one line inside authService.clearSession() (:688-699).",
+   "OQ3 Home cache: cut from CL2 because the :167 focus refetch drives the quota pill's +bonus count (quota surface). Confirm the cut, or rule a separate FOCUS unit.",
+   "OQ4 Fast-hit definition: the spec follows the brief (the result is in the route params at Results mount), which covers every Home text and URL compare. The narrower option is the Home elapsed-time band.",
+   "OQ5 Confirm that the two behavioural rows of loaderVisibility are amended as E-rows (E4/E5), rather than replaced by new RED rows."
+  ],
+  "base_measurements": [
+   "Installed versions: react-native 0.81.5, react 19.1.0, react-native-screens 4.16.0, @react-navigation native 7.2.4 / native-stack 7.15.0 / bottom-tabs 7.16.0 / core 7.17.4, @sentry/react-native 7.2.0, expo 54.0.34 (package.json pins ~54.0.37: drift), expo-font 14.0.11, metro 0.83.3, jest 29.7.0, typescript 5.9.3, eslint 9.39.4; jest-expo is not installed",
+   "The jest react-native mock (__mocks__/react-native.ts:16) has no Image.prefetch; no ErrorBoundary exists in src; Sentry.wrap on 7.2.0 adds no error boundary",
+   "Sentry metro probe, stock vs Sentry config: only resolver.resolveRequest (null -> fn), server.enhanceMiddleware and symbolicator.customizeFrame differ; cacheVersion is 1.0 in both and the composed qarenCacheVersion is equal; @sentry-internal/replay resolves to {type:empty}",
+   "Stock transform options: experimentalImportSupport true, inlineRequires false",
+   "Offline expo export at base: rc=0 in 63 s, one ios .hbc of 6,594,787 B (sha256[:16] 1b56f83887b2611a), 2211 modules; replay strings present (rrweb 3, replayIntegration 1, ReplayContainer 1)",
+   "App.tsx init is serial: getSavedLanguage -> changeLanguage -> bootstrapRtl -> getStableId -> initializeAuth; none of the other listed boot readers are in App's mount chain",
+   "The 800 ms reveal is ResultsScreen.tsx:460-476; Home renders the concentric loader variant, so REVEAL_STAGE_MS at LoadingScreenVariants.tsx:427 is not on the Home path",
+   "[jest] tag=g6spec-base-touched start=03:11:18 end=03:11:34 rc=0: 14 suites passed, 137 tests passed, 5 todo",
+   "[pyt] tag=g6spec-be-pins start=2026-11-05 03:10:52 end=2026-11-05 03:11:06 elapsed=14s bound=1200s status=OK rc=0: 210 passed"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=g6spec-be-pins start=2026-11-05 03:10:52 end=2026-11-05 03:11:06 elapsed=14s bound=1200s status=OK rc=0 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\bd48b535-2d58-47fc-9bbe-cf719f400b7b\\scratchpad\\g6\\be_pins_base.log"
+  ],
+  "deliberate_pin_changes": [
+   "E1 __tests__/metro.cacheVersion.pb1.test.ts:254: require('expo/metro-config') becomes the @sentry/react-native/metro require plus the getSentryExpoConfig(__dirname, {includeWebReplay:false}) regex; every cacheVersion assertion is kept",
+   "E2 __tests__/HomeScreen.bundleB.contract.test.tsx:219-221: MIN_LOADING_MS=1200 becomes the clientSpeed HOME_FLOOR_MS 400 / SKIP 300 import check",
+   "E3 __tests__/HomeScreen.eS3hf.dedupe.test.tsx:91-94: same change as E2",
+   "E4 __tests__/HomeScreen.eS3hf.loaderVisibility.test.tsx:217-265: the SSE cached-path response moves from 100 ms to 350 ms, then +50 ms to navigate",
+   "E5 same file :267-306: the URL path response is deferred to 350 ms, then +50 ms to navigate"
+  ],
+  "stated_limits": [
+   "Nothing was measured on a device: the lazy-screen fallback duration, cold start and freezeOnBlur behaviour are NOT MEASURED",
+   "No bundle-size claim beyond the before/after export pair that GREEN measures; the atlas gate is NOT MEASURED (expo-atlas is not installed)",
+   "The 30 s throttle is a constant and the cache is memory only; History can be up to 30 s stale on a pure tab switch",
+   "The fast-hit definition covers every Home compare; the haptic and the ready_celebration / user_tappable wall-time tags fire earlier",
+   "Home focus refetches and initializeAuth's serial reads are unchanged",
+   "HomeScreen.minDisplayFloor.test.ts pins a local replica of the floor math, not the source (pre-existing)",
+   "The Sentry wrapper adds the debug-id plugin, so bundle bytes and the OTA hash change",
+   "The full jest suite and the 125-suite comm set were not run by the spec (LC-7: the full suite runs once, in the last round)"
+  ]
+ },
+ "toolsUsed": [
+  "Bash",
+  "Write",
+  "StructuredOutput"
+ ]
+}
