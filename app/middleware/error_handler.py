@@ -81,6 +81,18 @@ def _fragrance_gate_keys_enabled() -> bool:
     )
 
 
+_RESULT_GATE_REASONS = ("placeholder_identity", "same_identity", "category_conflict", "no_evidence")
+
+
+def _result_gate_keys_enabled() -> bool:
+    """ENABLE_RESULT_GATE (S81-20, default OFF), read PER CALL. A local one-liner (the
+    middleware never imports a service); it reads the SAME name as
+    result_gate.result_gate_enabled."""
+    return os.getenv("ENABLE_RESULT_GATE", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 def _get_request_id(request: Request) -> str:
     """Extract request ID from request state."""
     return getattr(request.state, "request_id", "unknown")
@@ -225,6 +237,12 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         resets_at = detail.get("resets_at")
         if isinstance(resets_at, str):
             content["resets_at"] = resets_at
+    # S81-20 (flag read FIRST, so OFF reads nothing more of the detail): an
+    # INSUFFICIENT_DATA gate refusal keeps its additive `reason` (one of four).
+    if (_result_gate_keys_enabled() and _is_structured_detail(detail)
+            and detail.get("code") == "INSUFFICIENT_DATA"
+            and detail.get("reason") in _RESULT_GATE_REASONS):
+        content["reason"] = detail["reason"]
     headers = None
     if retry_after is not None:
         content["retry_after_seconds"] = retry_after

@@ -23,6 +23,9 @@ from app.services.openai_service import (
 )
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): the camera timings stamp and the status message.
 from app.services.result_gate import stamp_camera_stage_timings
+# S81-20 RESULT-GATE (ENABLE_RESULT_GATE): the camera gate through the module attribute
+# (R-S20-30), so a recorder on result_gate.camera_gate_reason sees the route call.
+from app.services import result_gate as _rg
 from app.services.sentry_service import capture_result_status
 # B3 (ENABLE_VISION_IDENTITY_V2): the text route's preferences read, reused for
 # a signed-in scan under the flag.
@@ -291,9 +294,10 @@ async def identify_and_compare(
     # `_refund_reserved_credit` is a no-op, so the route is byte-identical.
     usage_user_id = user.get("id") if user else None
     usage_consumed = False
+    usage_consumed_keys = None  # S81-20: the consume's keys, exactly as returned
     _refund_state = {"done": False}
 
-    def _refund_reserved_credit(label: str) -> None:
+    def _refund_reserved_credit(label: str, consumed_keys=None) -> None:
         """Give the gate-reserved credit back, AT MOST ONCE per request.
 
         The double-charge trap this closes: the routine "one bottle in frame"
@@ -306,7 +310,11 @@ async def identify_and_compare(
         if not usage_consumed or not usage_user_id or _refund_state["done"]:
             return
         _refund_state["done"] = True
-        fire_and_forget(refund_comparison_credit(usage_user_id), label=label)
+        if consumed_keys is None:
+            fire_and_forget(refund_comparison_credit(usage_user_id), label=label)
+        else:
+            # S81-20: the keyed refund of a result-gate refusal (R-S20-22).
+            fire_and_forget(refund_comparison_credit(usage_user_id, consumed_keys), label=label)
 
     _anon_refund_state = {"done": False}
 
@@ -359,6 +367,7 @@ async def identify_and_compare(
                 },
             )
         usage_consumed = usage_check.get("consumed", False)
+        usage_consumed_keys = usage_check.get("consumed_keys")
 
     # Step 1: Vision identification (single GPT call for all images)
     # COST-METER (#66) CM9: identify runs BEFORE the compare binds its own
@@ -474,6 +483,13 @@ async def identify_and_compare(
     products = vision_result.get("products", [])
     vision_cost = vision_result.get("cost", 0)
 
+    # S81-20 (ENABLE_RESULT_GATE, ONE read per request, before the size enrichment
+    # below rewrites the names in place): the vision identities the placeholder rule
+    # reads (R-S20-2, R-S20-24). OFF: one env read, nothing else.
+    _rg_on = _rg.result_gate_enabled()
+    _rg_identities = ([(p.get("brand"), p.get("name")) if isinstance(p, dict) else (None, None)
+                       for p in products[:2]] if _rg_on else None)
+
     # Enrich product name with size_or_count if vision detected it
     # e.g., name="Vitamin D-3" + size_or_count="360 Softgels" → name="Vitamin D-3 360 Softgels"
     for p in products:
@@ -543,6 +559,36 @@ async def identify_and_compare(
 
     _truth = search_log_truth_enabled()
     _syn = _search_log_synthetic_kwargs(request)
+    # S81-20 (R-A6, R-S20-6): the camera refusal is decided AFTER the S81-10 pair gate
+    # (its CATEGORY_NOT_LIVE wins) and BEFORE the paid compare; always the action
+    # 'error' body (build 3: vision_failed), never comparison_failed. Categories come
+    # only from V2 _category (R-S20-39). Under the S81-10 gate the refusal is counted on
+    # its budget, and a spent budget keeps the credits (R-S20-38, GC-6).
+    if _rg_on:
+        _s20 = _rg.camera_gate_reason(p1, p2, categories=_rg.camera_gate_categories(p1, p2),
+                                      identities=_rg_identities)
+        if _s20 is not None:
+            _s20_spent = False
+            if _gate_on:
+                _s20_spent = (await _category_gate.budget_state_async(_gate_subject)) is not None
+            if not _s20_spent:
+                _refund_reserved_credit("usage_refund.image.result_gate",
+                                        consumed_keys=usage_consumed_keys)
+                _refund_anon_credit("usage_refund.image.anon.result_gate")
+                if _gate_on:
+                    await _category_gate.record_refusal_async(_gate_subject)
+            fire_and_forget(
+                log_search(query=query, input_type="camera",
+                           user_id=user.get("id") if user else None,
+                           products_found=product_names, success=False,
+                           error_message=_rg.gate_log_message(_s20),
+                           cost=round(_log_cost_value(vision_cost) or 0.0, 6),
+                           duration_ms=int((time.time() - start_time) * 1000), **_syn),
+                label="log_search.camera.result_gate",
+            )
+            logger.info("[RESULT_GATE] refused input=%s reason=%s", "camera", _s20)
+            return {"success": False, "action": "error", "error": _rg.CAMERA_GATE_MESSAGE,
+                    "vision_cost": vision_cost, "reason": _s20}
     try:
         service = StructuredComparisonService()
         # B3 (ENABLE_VISION_IDENTITY_V2, read here once per request): a

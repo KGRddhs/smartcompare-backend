@@ -18,7 +18,7 @@ from app.services.scoring_service import (
 )
 from app.services.text_sanitize import has_score_internals, strip_score_internals, scrub_review_summary
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): the pure predicates; the flag is read per call.
-from app.services.result_gate import STATUS_SUPPORTED, assess_result, result_status_metadata_enabled
+from app.services.result_gate import STATUS_SUPPORTED, assess_result, result_status_metadata_enabled, result_gate_enabled
 # S81-03 (ENABLE_LLM_LEDGER_V2): the leaf by module attribute (ruling BL4); the flag is read per call.
 from app.services import llm_pricing as _llm_pricing
 # D08 (ENABLE_JSONLD_RATING): the stdlib leaf by module attribute; the flag is read per call.
@@ -2324,6 +2324,14 @@ def build_comparison_response(
                 _b1_md["winner_index"] = None
         except Exception as _b1_exc:  # noqa: BLE001 -- the stamp never breaks a body
             logger.warning("[RESULT_STATUS] assess failed: %s", type(_b1_exc).__name__)
+    # S81-20 (ENABLE_RESULT_GATE; default OFF, read per call -- the FIRST operand, so OFF
+    # reads nothing more): the route-level gate re-assesses this body with the stamped
+    # categories, so the per-product pair rides the body even with B1 OFF. setdefault:
+    # under B1 the same value is already there. Additive key only; the crown never moves.
+    if (result_gate_enabled() and isinstance(product_categories, list)
+            and len(product_categories) == 2 and isinstance(result.get("metadata"), dict)):
+        result["metadata"].setdefault(
+            "product_categories", [c if isinstance(c, str) else None for c in product_categories])
 
     # D08 (ENABLE_JSONLD_RATING, the one read above): the additive channel-1
     # rating on reviews.products[i], only for a product that carries one; a

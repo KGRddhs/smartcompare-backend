@@ -100,6 +100,7 @@ CLEAN_ENV = (
     "ENABLE_COMPARE_AUTH_REQUIRED", "ENABLE_COMPARISON_ID_ECHO",
     "ENABLE_SEARCH_LOG_TRUTH", "ENABLE_RESULT_STATUS_METADATA",
     "ENABLE_PREVERDICT_DISCONNECT_ABORT", "ENABLE_FULL_STREAM_DEADLINE",
+    "ENABLE_RESULT_GATE",  # S81-20 E9: an exported result gate refuses these rows' thin compare bodies
 )
 
 OFF = (None, "false", "0", "off", "")  # the five OFF spellings (None = unset)
