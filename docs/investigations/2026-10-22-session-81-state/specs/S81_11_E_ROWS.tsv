@@ -1,0 +1,54 @@
+E-row	node
+E8b NEW (History hero savings row, C9; not named in spec 4.1)	__tests__/HistoryScreen.bundleE.s3.test.tsx :: Bundle E S3 ? HistoryScreen JSX element-order (HistoryScreen.jsx 1-388) > HistoryHeroStats renders stat strip: decisions count + savings BHD
+E9 + R-S11-15 (:382-401 two states)	__tests__/HomeScreen.bundleE.s3.integration.test.tsx :: HomeScreen S3 integration ? text compare flow via TwoInputShell > catfix D1 ? selected_category IS sent once a category chip is tapped
+E9 + R-S11-15 (:382-401 two states)	__tests__/HomeScreen.bundleE.s3.integration.test.tsx :: catfix D1 ? category nudge visibility > hides the nudge once a category chip is tapped
+E9 + R-S11-15 (:382-401 two states)	__tests__/HomeScreen.bundleE.s3.integration.test.tsx :: catfix D1 ? category nudge visibility > shows the nudge on first render (no category selected by default)
+E11	__tests__/HomeScreen.bundleE.s3.test.tsx :: HomeScreen S3 ? JSX:438-651 editorial sections render flat-sibling order > the 4 editorial sections render in the JSX order Smart?Quick?Savings?Trending
+E9 + R-S11-15 (:71-78 regex re-pinned to the categoryToSend form)	__tests__/HomeScreen.catfix.d1.test.tsx :: catfix D1 ? category nudge > en.json + ar.json both define home.categories.nudge
+E9 + R-S11-15 (:71-78 regex re-pinned to the categoryToSend form)	__tests__/HomeScreen.catfix.d1.test.tsx :: catfix D1 ? category nudge > renders the nudge only when no category is selected
+E9 + R-S11-15 (:71-78 regex re-pinned to the categoryToSend form)	__tests__/HomeScreen.catfix.d1.test.tsx :: catfix D1 ? category nudge > uses the home.categories.nudge i18n key (with a safe defaultValue)
+E9 + R-S11-15 (:71-78 regex re-pinned to the categoryToSend form)	__tests__/HomeScreen.catfix.d1.test.tsx :: catfix D1 ? selected_category sent only when a chip is selected > stream + url paths use the conditional spread guard
+E2	__tests__/InviteeQuizScreen.matchScore.m18.test.tsx :: InviteeQuizScreen ? match score reads the real scoring payload (M18 MB-contract-10) > keeps the 78 fallback ONLY when the payload carries no scores at all
+E1d	__tests__/ReferralLandingScreen.redesign.test.tsx :: ReferralLandingScreen redesign ? Phase 4 Task 38 > renders the cohort badge slot when cohort_match has data
+E1d	__tests__/ResultsScreen.bundleE.s3.test.tsx :: Bundle E S3 ? JSX element-order (ResultsScreen.jsx 1-410) > Cohort line renders via CohortBadge slot below the verdict (JSX 367-377)
+E1d	__tests__/ResultsScreen.bundleE.s3.test.tsx :: Bundle E S3 ? JSX top-down element ORDER (lexical) > all anchors appear in JSX top-down order
+E1d	__tests__/ResultsScreen.bundleE.s3.test.tsx :: Bundle E S3 ? JSX top-down element ORDER (lexical) > anchor #4 "results-cohort-badge-slot" appears in lexical order
+E15 NEW (HomeScreen Alert-shape source regex :105-113 counts 2 call sites of the exact friendlyErrorKey(parsed.code), {count} form)	__tests__/ResultsScreen.networkMatrix.m18.test.ts :: HomeScreen ? MB-perf-03/MB-contract-02 (source) > the terminal error fallback on BOTH compare paths resolves copy from the code
+E1d	__tests__/ResultsScreen.redesign.test.tsx :: ResultsScreen redesign ? Phase 3 Task 30 (source assertions) > imports CohortBadge from the new component
+E1d	__tests__/ResultsScreen.redesign.test.tsx :: ResultsScreen redesign ? Phase 3 Task 30 (source assertions) > renders the cohort badge slot below the verdict block
+E7	__tests__/ShareBottomSheet.redesign.test.tsx :: ShareBottomSheet ? i18n catalog > adds reward + toast keys EN + AR
+E7	__tests__/ShareBottomSheet.redesign.test.tsx :: ShareBottomSheet ? i18n catalog > uses the design ? 4e toast copy "Sent to {{name}}. We'll add 5 more if they sign up."
+E4 / E13 (r26); r31b = DEVIATION D-1 (AR copy, not an E-row)	__tests__/b3a/honestCopy.b3a.test.tsx :: B3-A honest copy (C4) > r26 the 12 changed values (and the A13 learning values) equal the fixture in EN and AR
+E4 / E13 (r26); r31b = DEVIATION D-1 (AR copy, not an E-row)	__tests__/b3a/honestCopy.b3a.test.tsx :: B3-A honest copy (C4) > r31b (A8 / MR11) new and changed AR values carry no harakat, shadda or tanween outside the brand
+E10 + R-S11-15 (:12 / :31 / :42 / :51)	__tests__/components/CategorySelector.test.tsx :: CategorySelector ? lucide glyphs > fires onChange with the category value when a chip is tapped
+E10 + R-S11-15 (:12 / :31 / :42 / :51)	__tests__/components/CategorySelector.test.tsx :: CategorySelector ? lucide glyphs > marks the active chip via accessibilityState.selected
+E10 + R-S11-15 (:12 / :31 / :42 / :51)	__tests__/components/CategorySelector.test.tsx :: CategorySelector ? lucide glyphs > renders a chip for each of the 9 categories
+E10 + R-S11-15 (:12 / :31 / :42 / :51)	__tests__/components/CategorySelector.test.tsx :: CategorySelector ? lucide glyphs > renders a lucide icon next to each chip label (mock-icon host element)
+E1c	__tests__/components/ResultsContent.render.test.tsx :: ResultsContent ? render coverage > renders cohort badge with peer count + governorate
+E1c	__tests__/components/ResultsContent.render.test.tsx :: ResultsContent ? render coverage > renders the JSX top-down element order anchors
+E1e NEW (not in spec 4.1: the cohort anchor in the rewrite-order rows)	__tests__/components/ResultsContent.rewriteOrder.test.tsx :: ResultsContent ? REWRITE element order per ResultsScreen.jsx > places cohort badge AFTER confidence pills (JSX 367-377)
+E1e NEW (not in spec 4.1: the cohort anchor in the rewrite-order rows)	__tests__/components/ResultsContent.rewriteOrder.test.tsx :: ResultsContent ? REWRITE element order per ResultsScreen.jsx > renders all 8 anchor sections in the JSX top-down order
+E5	__tests__/demographics.i18n.test.ts :: style profile i18n keys > basedOn includes {{count}} interpolation in BOTH languages
+E5	__tests__/demographics.i18n.test.ts :: style profile i18n keys > en + ar both define "profile.styleProfile.basedOn"
+E3	__tests__/hero/LoadingRings.test.tsx :: LoadingRings hero > renders default snapshot
+E6	__tests__/i18n/brand.myez.s69.test.ts :: S69 U-R T1 ? catalog brand fence (MYEZ / ????) > every renamed value carries the brand and none of the copy-policy banned vocabulary
+E6	__tests__/i18n/brand.myez.s69.test.ts :: S69 U-R T1 ? catalog brand fence (MYEZ / ????) > no blind replace: the other words containing ???? (??????, ?????????, ????? ?) are intact and ???? never sits inside a former ??????
+E6	__tests__/i18n/brand.myez.s69.test.ts :: S69 U-R T1 ? catalog brand fence (MYEZ / ????) > standalone Arabic ?????? survives ONLY on the 10 verb keys (the brand uses are gone)
+E6	__tests__/i18n/brand.myez.s69.test.ts :: S69 U-R T1 ? catalog brand fence (MYEZ / ????) > the ar values carrying standalone ?????? are exactly the same 27 brand keys (parity both ways)
+E6	__tests__/i18n/brand.myez.s69.test.ts :: S69 U-R T1 ? catalog brand fence (MYEZ / ????) > the en values carrying MYEZ are exactly the 27 brand keys
+E8	__tests__/i18n/priceDigits.crossScreen.w414.test.ts :: W4-14 price / count digits under lng=ar > PIN 13: Results price, History hero savings, History count and Home savings count carry one digit class (ASCII, no U+0660-0669/U+06F0-06F9)
+E1d	__tests__/screens/ResultsScreen.bundle_c_integration.test.tsx :: ResultsScreen Bundle C integration ? confidence pills + chip > does NOT remove CohortBadge (spec ? 7d ? stays separate from personalization chip)
+E1	__tests__/components/CohortBadge.test.tsx :: <whole file deleted by the prototype; base nodes in jest_base.json>
+E1b	__tests__/ResultsContent.confidenceSheet.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/ResultsContent.imageUrl.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/ResultsContent.partialNote.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/ResultsContent.perCategory.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/ResultsContent.scoreGuard.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/ResultsContent.specsComparisonShape.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/ResultsContent.v2Wiring.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/clientTruth/medicalNote.s74.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/components/ResultsContent.a11y.w311.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1c	__tests__/components/ResultsContent.render.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1e NEW (not in spec 4.1: the cohort anchor in the rewrite-order rows)	__tests__/components/ResultsContent.rewriteOrder.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/components/ResultsContent.runnerUp.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
+E1b	__tests__/screens/ResultsScreen.degraded.s69.test.tsx :: <SUITE LOAD FAILURE>  (masked at head before the E1b mock deletion; after it the suite loads, see the e1b run)
