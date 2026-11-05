@@ -15,7 +15,17 @@ five clean exemplar candidates, learning.dropped.deidentify 1; the eval candidat
 the same comparison is kept (its shape carries no winner_reason): seven eval
 candidates. The inverse edit (cut first, screen after) is killed: four candidates.
 
-Both rows drive scripts/cron_learning.py through the frozen RED file's fake client and
+G5-GR3..GR7 (RULINGS_REBASE_S81_G5 RB-G5-2, the adversary's MIN-2; each proven RED on a
+byte copy of scripts/cron_learning.py carrying the adversary's edit): GR3 a 64-hex run
+inside a longer token in a winner_reason drops the exemplar candidate (A4-anchored);
+GR4 a Bahrain dialling prefix in a winner_reason and an 8-digit run in a product name drop their
+candidates (A2-no973, A1-no8digit); GR5 a uuid shape with no 8-digit run in a
+winner_reason drops the candidate (A3-nouuid); GR6 unclean kb_feedback field names
+(an 8-digit run, an at sign) map to `other` and never reach a cluster, a grounding or
+any output (A11-fieldname-noscreen); GR7 m0 and m1 both in SOURCE_METHODS and
+different cluster under source `mixed`, never `unknown` (A12-mixed-unknown).
+
+Every row drives scripts/cron_learning.py through the frozen RED file's fake client and
 world builders (reached through ``tests.test_s81_d22_nightly_learning``); netguard on,
 no socket, synthetic names and ids built at run time; pure ASCII, LF.
 """
@@ -24,6 +34,7 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+import re
 
 import pytest
 
@@ -132,3 +143,167 @@ def test_g5_gr2_screen_before_cut(monkeypatch, tmp_path, caplog):
     evals = [tuple(e["product_names"]) for e in report["eval_candidates"]]
     assert evals == list(_PAIRS), evals
     assert _metric(report, "learning.eval_candidates") == (7, 7)
+
+
+# ---------------------------------------------------------------------------
+# G5-GR3..GR7 (RULINGS_REBASE_S81_G5 RB-G5-2): the screen shapes inside SELECTED
+# fields, the field-name screen and the mixed price source. Every sentinel is built
+# at run time (no shape literal in this file).
+# ---------------------------------------------------------------------------
+
+def _hex64_inside():
+    return "Lot" + ("f" * 64) + "z"
+
+
+def _bh_prefix():
+    return "Call " + "+97" + "3" + " desk"
+
+
+def _eight_run():
+    return "Sz" + "1234" + "5678" + "x"
+
+
+def _uuid_letters():
+    return "abcdefab" + "-cdef" + "-4abc" + "-8def" + "-" + ("abcdef" * 2)
+
+
+def _shape_res():
+    return {
+        "hex64": re.compile("[0-9a-fA-F]{" + "64}"),
+        "bh": re.compile(re.escape("+97" + "3")),
+        "eight": re.compile("[0-9]{" + "8}"),
+        "uuid": re.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE),
+        "at": re.compile(re.escape(chr(64))),
+    }
+
+
+def _confirmed_rows(rows):
+    """rows: (n, names, wr) -> a world of confirmed (useful + winner correct) comparisons."""
+    red = _red()
+    comparisons, feedback = [], []
+    for n, names, wr in rows:
+        comparisons.append(red._cmp(n, red._uid(2), "fragrances", names, "page_scrape", "page_scrape", wr=wr))
+        feedback.append(red._fb(300 + n, red._uid(3), n, useful=True, winner_correct="correct"))
+    return {red.T_COMPARISONS: comparisons, red.T_FEEDBACK: feedback}
+
+
+def _exemplar_pairs(report):
+    block = report["exemplar_candidates"].get("fragrances", {"exemplars": []})
+    return [tuple(e["product_names"]) for e in block["exemplars"]]
+
+
+def _eval_pairs(report):
+    return [tuple(e["product_names"]) for e in report["eval_candidates"]]
+
+
+_CLEAN = ("Anise Rose EDP", "Basil Oud EDT")
+
+
+def test_g5_gr3_hex64_inside_selected_field_drops(monkeypatch, tmp_path, caplog):
+    unclean = ("Birch Musk EDP", "Cedar Amber EDP")
+    sentinel = _hex64_inside()
+    assert _shape_res()["hex64"].search(sentinel) and not _shape_res()["eight"].search(sentinel)
+    world = _confirmed_rows([(60, _CLEAN, None), (61, unclean, "Batch " + sentinel + " sealed.")])
+    report = _run(monkeypatch, tmp_path, caplog, world, tag="gr3")
+    assert _exemplar_pairs(report) == [_CLEAN]
+    assert report["dropped_deidentify"] == 1
+    assert _metric(report, "learning.dropped.deidentify") == (1, 1)
+    assert _eval_pairs(report) == [_CLEAN, unclean]  # the eval shape carries no winner_reason (GC-4)
+    assert not _shape_res()["hex64"].search(json.dumps(report, sort_keys=True))
+
+
+def test_g5_gr4_bh_prefix_and_eight_digit_run_drop(monkeypatch, tmp_path, caplog):
+    res = _shape_res()
+    reason_pair = ("Cumin Smoke EDP", "Dill Leaf EDT")
+    name_pair = ("Rose " + _eight_run() + " EDP", "Elder Wood EDP")
+    assert res["bh"].search(_bh_prefix()) and not res["eight"].search(_bh_prefix())
+    assert res["eight"].search(name_pair[0]) and not res["hex64"].search(name_pair[0])
+    world = _confirmed_rows([(62, _CLEAN, None), (63, reason_pair, _bh_prefix() + " for the decant."),
+                             (64, name_pair, None)])
+    report = _run(monkeypatch, tmp_path, caplog, world, tag="gr4")
+    got = _exemplar_pairs(report)
+    assert reason_pair not in got and name_pair not in got
+    assert got == [_CLEAN]
+    # the winner_reason drop: 1 exemplar; the name drop: 1 exemplar + 1 eval candidate
+    assert report["dropped_deidentify"] == 3
+    assert _metric(report, "learning.dropped.deidentify") == (3, 3)
+    assert _eval_pairs(report) == [_CLEAN, reason_pair]
+    text = json.dumps(report, sort_keys=True)
+    assert not res["bh"].search(text) and not res["eight"].search(text)
+
+
+def test_g5_gr5_uuid_without_eight_digit_run_drops(monkeypatch, tmp_path, caplog):
+    res = _shape_res()
+    unclean = ("Daisy Bloom EDP", "Fig Vanilla EDP")
+    sentinel = _uuid_letters()
+    assert res["uuid"].search(sentinel)
+    assert not res["eight"].search(sentinel) and not res["hex64"].search(sentinel)
+    world = _confirmed_rows([(65, _CLEAN, None), (66, unclean, "Lot " + sentinel + " sealed.")])
+    report = _run(monkeypatch, tmp_path, caplog, world, tag="gr5")
+    assert _exemplar_pairs(report) == [_CLEAN]
+    assert report["dropped_deidentify"] == 1
+    assert _metric(report, "learning.dropped.deidentify") == (1, 1)
+    assert not res["uuid"].search(json.dumps(report, sort_keys=True))
+
+
+def _kb_field_world():
+    red = _red()
+    pid = "fragrances|x|y"
+    eight_field = "f" + "1234" + "5678"
+    at_field = "conc" + chr(64) + "x"
+    kbfb = []
+    for j, field in enumerate((eight_field, at_field)):
+        for i, ch in ((1, "a"), (2, "b"), (3, "c")):
+            kbfb.append({"id": "row-kf-%d-%d" % (j, i), "compare_request_id": red._rid(10 * j + i),
+                         "product_id": pid, "field": field, "verdict": "wrong", "device_key": red._dev(ch),
+                         "created_at": red.T_IN})
+    specs = [{"id": "row-ks-%d" % j, "product_id": pid, "field": field,
+              "source_url": "https://" + "store-a.example.com/p/ok-%d" % j, "cited": True}
+             for j, field in enumerate((eight_field, at_field))]
+    return {red.T_KBFB: kbfb, red.T_SPECS: specs}
+
+
+def test_g5_gr6_unclean_kb_field_name_screened(monkeypatch, tmp_path, caplog):
+    """An unclean kb_feedback field name never reaches a cluster, a grounding entry or any output.
+
+    The 8-digit field name passes the field-name shape (^[a-z][a-z0-9_]{0,63}$) and is
+    stopped only by the de-identification screen inside _field_name (A11); the at-sign one
+    is stopped by the shape first. Both map to the field `other`, so the cited kb_specs rows
+    of the raw names never ground the cluster. The field-name screen maps, it does not drop
+    a candidate: learning.dropped.deidentify stays 0 here (the measured GREEN contract).
+    """
+    red = _red()
+    res = _shape_res()
+    for flag in ("true", "apply"):
+        run = red._run(monkeypatch, tmp_path, caplog, flag, world=_kb_field_world(), md=True)
+        assert run.rc == 0
+        kb_spec = [c for c in run.report["clusters"] if c["bucket"] == "spec_wrong" and c["source"] == "kb"]
+        assert [c["field"] for c in kb_spec] == ["other"], kb_spec
+        assert (kb_spec[0]["cases"], kb_spec[0]["actors"]) == (6, 3)
+        props = [p for p in run.report["proposals"] if p["bucket"] == "spec_wrong"]
+        assert [(p["field"], p["grounding"], p["proposed_action"]) for p in props] == [
+            ("other", [], "needs_operator")], props
+        assert run.report["dropped_deidentify"] == 0
+        texts = [run.report_path.read_text(encoding="ascii")]
+        if run.md_path.exists():
+            texts.append(run.md_path.read_text(encoding="ascii"))
+        texts += [r.getMessage() for r in run.records]
+        for w in run.fake.writes():
+            texts += [json.dumps(r, sort_keys=True) for r in (w["payload"] or [])]
+        for text in texts:
+            assert not res["eight"].search(text), text[:300]
+            assert not res["at"].search(text), text[:300]
+
+
+def test_g5_gr7_mixed_price_source_clusters_as_mixed(monkeypatch, tmp_path, caplog):
+    red = _red()
+    mod = importlib.import_module("scripts.cron_learning")
+    assert "page_scrape" in mod.SOURCE_METHODS and "local_bhd" in mod.SOURCE_METHODS
+    world = {red.T_COMPARISONS: [red._cmp(67, red._uid(1), "fragrances", _CLEAN, "page_scrape", "local_bhd")],
+             red.T_FEEDBACK: [red._fb(267, red._uid(2), 67, price_correct="wrong")]}
+    report = _run(monkeypatch, tmp_path, caplog, world, env={"LEARNING_MIN_CASES": "1", "LEARNING_MIN_DEVICES": "1"},
+                  tag="gr7")
+    price = [c for c in report["clusters"] if c["bucket"] == "price_wrong"]
+    assert [(c["category"], c["source"], c["field"]) for c in price] == [("fragrances", "mixed", "price")], price
+    assert price[0]["systematic"] is True
+    assert [(p["source"], p["proposed_action"]) for p in report["proposals"]] == [("mixed", "needs_operator")]
