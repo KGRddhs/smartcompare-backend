@@ -56,11 +56,11 @@ function stripComments(src: string): string {
 }
 
 describe('W4-14 price / count digits under lng=ar', () => {
-  it('PIN 13: Results price, History hero savings, History count and Home savings count carry one digit class (ASCII, no U+0660-0669/U+06F0-06F9)', () => {
+  // S81-11 (E8): the History hero savings string is deleted (C9), so its clause leaves the row.
+  it('PIN 13: Results price, History count and Home savings count carry one digit class (ASCII, no U+0660-0669/U+06F0-06F9)', () => {
     const t = arT();
     const strings = {
       resultsPrice: formatPrice(12.345, 'BHD', t),
-      historySavings: t('history.hero.savings', { amount: (12.345).toFixed(0) }),
       historyCount: t('history.hero.count', { count: 12 }),
       homeSavings: t('home.savings.count', { count: 12 }),
     };

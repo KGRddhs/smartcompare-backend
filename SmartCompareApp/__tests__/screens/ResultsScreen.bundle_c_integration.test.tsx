@@ -65,10 +65,11 @@ describe('ResultsScreen Bundle C integration — confidence pills + chip', () =>
     expect(SOURCE).toMatch(/<PersonalizationChip\s+appliedShifts=\{scoring_v2[^}]*personalization[^}]*applied_shifts\}/);
   });
 
-  it('does NOT remove CohortBadge (spec § 7d — stays separate from personalization chip)', () => {
-    // CohortBadge is its own slot per spec; ensure we don't accidentally merge.
-    expect(SOURCE).toMatch(/<CohortBadge/);
-    expect(SOURCE).toMatch(/results-cohort-badge-slot/);
+  it('CohortBadge is removed and never merged into the personalization chip (S81-11)', () => {
+    // S81-11 (E1d, R-S11-31): the badge is deleted by plan (a population claim
+    // with no measured source); the PersonalizationChip row above stays.
+    expect(SOURCE).not.toMatch(/<CohortBadge/);
+    expect(SOURCE).not.toMatch(/results-cohort-badge-slot/);
   });
 
   it('FactualVerdict still wires line1 + line2 (spec § 1b backend contract)', () => {

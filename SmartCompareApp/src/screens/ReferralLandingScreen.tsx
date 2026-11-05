@@ -40,15 +40,12 @@ import {
   ReferralError,
   InviteResolution,
 } from '../services/referralService';
-import { CohortBadge } from '../components/CohortBadge';
 import { Button } from '../components/Button';
-import { useLanguage } from '../hooks/useLanguage';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReferralLanding'>;
 
 export default function ReferralLandingScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
-  const { isRTL } = useLanguage();
   const { share_token, ref } = route.params;
   const [resolution, setResolution] = useState<InviteResolution | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,11 +134,6 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
   // emotion (verdict + score) is gated behind the quiz/signup CTAs;
   // the information (products + cohort) is fully visible. winner_index
   // is intentionally unused on this screen.
-  const cohort: any = (resolution as any).cohort_match ?? null;
-  const cohortPeerCount: number =
-    cohort?.peers_count ?? cohort?.peer_count ?? 0;
-  const cohortGovernorate: string =
-    typeof cohort?.governorate === 'string' ? cohort.governorate : '';
 
   const handleQuizPath = () => {
     navigation.navigate('InviteeQuiz', {
@@ -216,16 +208,6 @@ export default function ReferralLandingScreen({ navigation, route }: Props) {
           </View>
         </Animated.View>
 
-        {/* Cohort badge — surfaces inline social proof per build
-            principle 6. CohortBadge guards on missing data so the slot
-            stays present (testID-only) when there's no match. */}
-        <View testID="referral-cohort-badge-slot" style={styles.cohortSlot}>
-          <CohortBadge
-            peerCount={cohortPeerCount}
-            governorate={cohortGovernorate}
-            isRTL={isRTL}
-          />
-        </View>
 
         {/* Two CTAs per § 4e — emerald hot-path + small text-link cool-path. */}
         <Animated.View
@@ -364,12 +346,6 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     textAlign: 'center',
     fontWeight: '500',
-  },
-  /** Slot for inline cohort social proof — sits between preview + CTAs. */
-  cohortSlot: {
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.lg,
-    alignItems: 'flex-start',
   },
   ctaContainer: {
     gap: spacing.md,

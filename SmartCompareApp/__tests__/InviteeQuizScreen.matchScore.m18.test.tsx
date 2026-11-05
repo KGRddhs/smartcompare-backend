@@ -162,8 +162,11 @@ describe('InviteeQuizScreen — match score reads the real scoring payload (M18 
     expect(queryByText('78%')).toBeNull();
   });
 
-  it('keeps the 78 fallback ONLY when the payload carries no scores at all', async () => {
-    const { findByText } = await walkToResult(RESULT_WITHOUT_SCORING);
-    expect(await findByText('78%')).toBeTruthy();
+  // S81-11 (E2, R-S11-6): the 78 fallback was a fabricated score; with no
+  // scores in the payload the match-score row is not rendered at all.
+  it('renders NO match score when the payload carries no scores at all (S81-11)', async () => {
+    const { queryByTestId, queryByText } = await walkToResult(RESULT_WITHOUT_SCORING);
+    expect(queryByTestId('quiz-match-score')).toBeNull();
+    expect(queryByText('78%')).toBeNull();
   });
 });

@@ -133,13 +133,16 @@ describe('ReferralLandingScreen redesign — Phase 4 Task 38', () => {
     });
   });
 
-  it('renders the cohort badge slot when cohort_match has data', async () => {
-    const { getByTestId } = render(
+  // S81-11 (E1d, R-S11-31): the cohort badge is removed; even with
+  // cohort_match data the slot does not render (the products still do).
+  it('renders NO cohort badge slot even when cohort_match has data (S81-11)', async () => {
+    const { getByTestId, queryByTestId } = render(
       <ReferralLandingScreen navigation={mockNavigation} route={baseRoute} />
     );
     await waitFor(() => {
-      expect(getByTestId('referral-cohort-badge-slot')).toBeTruthy();
+      expect(getByTestId('referral-product-pill-0')).toBeTruthy();
     });
+    expect(queryByTestId('referral-cohort-badge-slot')).toBeNull();
   });
 
   it('renders the EMERALD signature "See how it scores for YOU" CTA', async () => {

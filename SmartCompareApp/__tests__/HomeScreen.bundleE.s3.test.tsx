@@ -119,7 +119,9 @@ describe('HomeScreen S3 — JSX:438-651 editorial sections render flat-sibling o
     expect(editorialRenderIdx).toBeGreaterThan(ctaIdx);
   });
 
-  it('the 4 editorial sections render in the JSX order Smart→Quick→Savings→Trending', () => {
+  // S81-11 (E11, C7): the SavingsBanner is removed; the remaining three
+  // sections keep their order and the banner must not come back.
+  it('the editorial sections render in the JSX order Smart→Quick→Trending (S81-11: no Savings)', () => {
     // Source-of-truth file is HomeEditorialSections.tsx wrapper. The render
     // body of HomeEditorialSections must call the 4 sections in this order.
     // Anchor on the default-export function declaration (S3 keeps default
@@ -133,8 +135,8 @@ describe('HomeScreen S3 — JSX:438-651 editorial sections render flat-sibling o
     const trendingIdx = body.indexOf('TrendingNearYou');
     expect(smartIdx).toBeGreaterThan(0);
     expect(quickIdx).toBeGreaterThan(smartIdx);
-    expect(savingsIdx).toBeGreaterThan(quickIdx);
-    expect(trendingIdx).toBeGreaterThan(savingsIdx);
+    expect(savingsIdx).toBe(-1);
+    expect(trendingIdx).toBeGreaterThan(quickIdx);
   });
 });
 

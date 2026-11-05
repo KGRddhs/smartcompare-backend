@@ -848,7 +848,14 @@ export function streamComparison(
           const code = parsed.code || parsed?.metadata?.code || null;
           callbacks.onError?.(
             Object.assign(new Error('stream_incomplete'), {
-              response: { status: 503, data: { code, error: parsed.error } },
+              response: {
+                status: 503,
+                data: {
+                  code,
+                  error: parsed.error,
+                  ...(typeof parsed.reason === 'string' ? { reason: parsed.reason } : {}),
+                },
+              },
             })
           );
         } else {
@@ -893,7 +900,31 @@ export function streamComparison(
           { method: 'GET', headers, signal: controller.signal }
         );
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
+          // S81-11 (F1-14 / R-S11-19): a non-OK stream response whose JSON
+          // body carries CATEGORY_NOT_LIVE is terminal: no REST fallback
+          // (the REST GET would re-run the gate). Every other non-OK keeps
+          // today's path.
+          let body: any = null;
+          try {
+            body = await response.json();
+          } catch {
+            body = null;
+          }
+          const bodyCode = body?.code ?? body?.detail?.code;
+          if (bodyCode === 'CATEGORY_NOT_LIVE') {
+            sawTerminal = true;
+            clearWatchdog();
+            callbacks.onError?.(
+              Object.assign(new Error('category_not_live'), {
+                response: { status: response.status, data: body },
+              })
+            );
+            return;
+          }
+          throw new Error(`Stream failed: ${response.status}`);
+        }
+        if (!response.body) {
           throw new Error(`Stream failed: ${response.status}`);
         }
 
@@ -959,6 +990,7 @@ export function streamComparison(
                           code: parsed.code ?? null,
                           error: parsed.error,
                           layer: parsed.layer,
+                          ...(typeof parsed.reason === 'string' ? { reason: parsed.reason } : {}),
                         },
                       },
                     })
@@ -1096,6 +1128,23 @@ function withRetryAfter(
 }
 
 export function parseApiError(error: any): {
+  message: string;
+  code: string | null;
+  retryAfterSeconds?: number;
+  reason?: string;
+} {
+  const parsed = parseApiErrorBase(error);
+  // S81-11 (R-S11-26): the additive INSUFFICIENT_DATA `reason`, top-level
+  // first, string only; absent = today's object.
+  const d = error?.response?.data;
+  const reason =
+    (typeof d?.reason === 'string' && d.reason) ||
+    (typeof d?.detail?.reason === 'string' && d.detail.reason) ||
+    undefined;
+  return reason ? { ...parsed, reason } : parsed;
+}
+
+function parseApiErrorBase(error: any): {
   message: string;
   code: string | null;
   retryAfterSeconds?: number;

@@ -75,6 +75,11 @@ interface ResultsAccordionProps {
   /** S69 U7 R2 — a degraded result (verdict LLM call failed) carries empty
    *  pros/cons lists; drop the row rather than present it as if real. */
   hideProsCons?: boolean;
+  /** S81-11 D20: honest-unknown lines (absent = today's bytes). */
+  honest?: {
+    sections: { specs: boolean; reviews: boolean; pros_cons: boolean };
+    fields: [Record<string, any> | null, Record<string, any> | null];
+  };
   testID?: string;
 }
 
@@ -111,9 +116,45 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
   specsComparison,
   winnerIndex,
   hideProsCons,
+  honest,
   testID,
 }: ResultsAccordionProps) {
   const { t } = useTranslation();
+  const honestLine = (section: 'specs' | 'reviews' | 'proscons') => (
+    <Text testID={`results-accordion-honest-${section}`} style={styles.rowSub}>
+      {t('results.honest.notListed')}
+    </Text>
+  );
+  const hasSpecValue = (side: number, keys: string[]) => {
+    const specs: any = ((specsProducts ?? products)[side] as any)?.specs ?? {};
+    return keys.some((k) => {
+      const v = specs[k];
+      return v != null && typeof v !== 'object' && !NA_VALUES.has(String(v).toLowerCase().trim());
+    });
+  };
+  const fieldLines = () => {
+    if (!honest) return null;
+    const out: React.ReactNode[] = [];
+    ([0, 1] as const).forEach((i) => {
+      const fsEntry = honest.fields?.[i];
+      if (!fsEntry) return;
+      const rows: ['size' | 'concentration', string[], string][] = [
+        ['size', ['volume', 'size'], 'results.spec.size'],
+        ['concentration', ['concentration'], 'results.spec.concentration'],
+      ];
+      for (const [field, keys, labelKey] of rows) {
+        const e = fsEntry[field];
+        if (e && typeof e === 'object' && e.state === 'unknown' && !hasSpecValue(i, keys)) {
+          out.push(
+            <Text key={`${field}-${i}`} testID={`results-accordion-honest-field-${field}-${i}`} style={styles.rowSub}>
+              {`${t(labelKey)}: ${t('results.honest.notListed')}`}
+            </Text>,
+          );
+        }
+      }
+    });
+    return out;
+  };
   const [open, setOpen] = useState<AccordionKey | null>(null);
 
   const toggle = (k: AccordionKey) => {
@@ -338,6 +379,7 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
                   testID="results-accordion-body-reviews"
                   style={styles.body}
                 >
+                  {honest?.sections.reviews ? honestLine('reviews') : null}
                   {/*
                    * Faithful-results Phase 5.2 (Contract 2) — paraphrased
                    * praise, no citations. One synthesized praise line PER
@@ -429,6 +471,7 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
                   testID="results-accordion-body-proscons"
                   style={styles.body}
                 >
+                  {honest?.sections.pros_cons ? honestLine('proscons') : null}
                   <View style={styles.prosConsGrid}>
                     {/*
                      * Reference: ProsConsCol (ResultsScreen.jsx 238-263).
@@ -505,6 +548,8 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
                   testID="results-accordion-body-specs"
                   style={styles.body}
                 >
+                  {honest?.sections.specs ? honestLine('specs') : null}
+                  {fieldLines()}
                   {/* Phase 4.4 — comparison table per the "UI Kit — Mobile
                       Results" mockup (SpecRow, JSX 265-284): each row is
                       value · CENTERED-label · value (1fr / center / 1fr).

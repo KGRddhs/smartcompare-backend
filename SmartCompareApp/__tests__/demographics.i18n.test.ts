@@ -54,7 +54,7 @@ describe('demographics i18n keys', () => {
 describe('style profile i18n keys', () => {
   const REQUIRED_KEYS = [
     'profile.styleProfile.title',
-    'profile.styleProfile.basedOn',
+    // S81-11 (E5): profile.styleProfile.basedOn deleted (an orphan peer-count claim).
     'profile.styleProfile.priorities',
     'profile.styleProfile.budget',
     'profile.styleProfile.style',
@@ -68,10 +68,8 @@ describe('style profile i18n keys', () => {
     expect(arDict[key]).toBeDefined();
   });
 
-  it('basedOn includes {{count}} interpolation in BOTH languages', () => {
-    expect(enDict['profile.styleProfile.basedOn']).toContain('{{count}}');
-    expect(arDict['profile.styleProfile.basedOn']).toContain('{{count}}');
-  });
+  // S81-11 (E5): the basedOn {{count}} row is deleted with the key (no reader
+  // in src; "Based on {{count}} similar MYEZ users" was an unmeasured claim).
 
   it('Arabic strings are non-Latin (sanity check translations are real)', () => {
     const arabicTitle = arDict['profile.styleProfile.title'];

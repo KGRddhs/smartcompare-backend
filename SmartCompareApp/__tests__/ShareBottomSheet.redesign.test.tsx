@@ -56,15 +56,17 @@ describe('ShareBottomSheet — i18n catalog', () => {
     for (const key of [
       'referrals.share.reward.title',
       'referrals.share.reward.later',
-      'referrals.share.toast.confirm',
+      // S81-11 (E7, R-S11-33): referrals.share.toast.confirm deleted (no reader).
     ]) {
       expect(en).toContain(`"${key}"`);
       expect(ar).toContain(`"${key}"`);
     }
   });
 
-  it('uses the design § 4e toast copy "Sent to {{name}}. We\'ll add 5 more if they sign up."', () => {
-    // Per § 4g audit the confirm-toast copy is the brand contract.
-    expect(en).toMatch(/"✦ Sent to \{\{name\}\}\. We'll add 5 more if they sign up\."/);
+  // S81-11 (E7, R-S11-33): the confirm-toast exact-copy row is deleted with
+  // the key ("We'll add 5 more" had no reader; CL4 re-adds what its flow needs).
+  it('the deleted confirm-toast key is absent from both catalogs (S81-11)', () => {
+    expect(en).not.toContain('"referrals.share.toast.confirm"');
+    expect(ar).not.toContain('"referrals.share.toast.confirm"');
   });
 });

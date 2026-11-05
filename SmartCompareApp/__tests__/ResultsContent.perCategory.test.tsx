@@ -47,7 +47,7 @@ jest.mock('react-i18next', () => ({
 jest.mock('../src/components/results/TopMatchBadge', () => ({ TopMatchBadge: () => null }));
 jest.mock('../src/components/results/PersonalizationChip', () => ({ PersonalizationChip: () => null }));
 jest.mock('../src/components/hero/RevealBurst', () => ({ RevealBurst: () => null }));
-jest.mock('../src/components/CohortBadge', () => ({ CohortBadge: () => null }));
+// S81-11 (E1b, R-S11-31): the CohortBadge mock is removed with the deleted component.
 jest.mock('../src/components/FeedbackCard', () => ({ __esModule: true, default: () => null }));
 jest.mock('../src/components/results/ResultsAccordion', () => ({ ResultsAccordion: () => null }));
 

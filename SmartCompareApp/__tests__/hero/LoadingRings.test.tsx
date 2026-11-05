@@ -11,10 +11,9 @@ import { render } from '@testing-library/react-native';
 import { LoadingRings } from '../../src/components/hero/LoadingRings';
 
 describe('LoadingRings hero', () => {
-  it('renders default snapshot', () => {
-    const tree = render(<LoadingRings />).toJSON();
-    expect(tree).toMatchSnapshot();
-  });
+  // S81-11 (E3, R-S11-6): the 'renders default snapshot' row is deleted with
+  // the fabricated default counter (and its .snap block, hand-deleted); the
+  // no-target render is pinned by __tests__/s11/fabricated.s11 A3.
 
   it('renders with explicit counter target', () => {
     const tree = render(<LoadingRings counterTarget={2074} />).toJSON();
