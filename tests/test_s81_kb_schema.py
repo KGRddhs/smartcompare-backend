@@ -359,6 +359,10 @@ P02_ALLOWED = {
     #: S81-G5 E1: the D22 job's two relation constants.
     ("scripts/cron_learning.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
     ("scripts/cron_learning.py", 'KB_FEEDBACK_TABLE = "kb_feedback"'),
+    #: S81-22 E2: the judge's 365-day kb_feedback prune (045 header :23-26) and the
+    #: R-S22-32 DRY exact would-delete head count, which reads the table by name.
+    ("scripts/cron_compare_judge.py", 'KB_PRUNE_FEEDBACK_RPC = "kb_prune_feedback"'),
+    ("scripts/cron_compare_judge.py", 'KB_FEEDBACK_TABLE = "kb_feedback"'),
 }
 
 
@@ -526,7 +530,8 @@ def test_s14_r01_files_exist_once():
     assert sorted(p.name for p in RB.glob("047_*.sql")) == ["047_012_revoke.sql"]
     assert not list(MIG.glob("039_*")), "039 is reserved"
     # S81-SF1 (E2): 046 and 049 now exist; 048 / 051 stay reserved.
-    for n in ("048", "051"):
+    #: S81-22 E1: 048 is compare_runs (R-S22-2)
+    for n in ("051",):
         assert not list(MIG.glob(n + "_*.sql")), "%s belongs to another unit (R-S14-12)" % n
 
 

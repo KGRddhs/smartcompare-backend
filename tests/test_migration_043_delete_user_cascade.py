@@ -1193,7 +1193,8 @@ def test_fence_flags_each_dropped_delete():
     """U8b 5.4 M2 (generalised): removing any one DELETE from the latest
     definition makes that table a new gap."""
     _name, body, stmts = _latest()
-    dels = [s for s in stmts if s["kind"] == "delete"]
+    # S81-22 E3 (R-S22-23): every DELETE of a fence user table (048 adds a kb_feedback DELETE).
+    dels = [s for s in stmts if s["kind"] == "delete" and s["table"] in KNOWN_USER_TABLES]
     assert len(dels) >= 7, len(dels)
     for s in dels:
         new = _new_gaps([("999_m.sql", _redefinition(_replace_chunk(body, s["idx"], "\n")))])
@@ -1205,7 +1206,8 @@ def test_fence_flags_each_weakened_delete_predicate():
     """U8b C5 K / C5(e): `... AND consumed_at IS NULL` on any DELETE breaks the
     exact OR-chain shape and is a new gap."""
     _name, body, stmts = _latest()
-    for s in (x for x in stmts if x["kind"] == "delete"):
+    # S81-22 E3 (R-S22-23): every DELETE of a fence user table (048 adds a kb_feedback DELETE).
+    for s in (x for x in stmts if x["kind"] == "delete" and x["table"] in KNOWN_USER_TABLES):
         chunk = _body_chunks(body)[s["idx"]]
         new = _new_gaps([("999_m.sql", _redefinition(
             _replace_chunk(body, s["idx"], chunk + " AND consumed_at IS NULL")))])
