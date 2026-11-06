@@ -16,14 +16,27 @@ G-SF1-GR3  migration 046 writes the 'sf1_dropped_not_null' column comment inside
 G-SF1-GR4  the merchant_id value rule of the events filter is the KB host pattern
            (migration 045's kb_merchants host CHECK): feedback_routes pins it equal to
            the KB leaf's constant (feedback_routes may not import the leaf).
+G-SF1-GR5  database_service.postgrest_error_code returns None, never exception text, for a
+           ValueError, an httpx.ConnectError and a code-less / text-code APIError whose
+           str carries a synthetic failing-row marker; the three narrowed except-arm
+           records carry no marker, in both flag states (the final round, RB-SF1-2a).
+G-SF1-GR6  a 300-character host-shaped store_cta_tap merchant_id is DROPPED by the
+           unflagged property filter (the 253-character cap in use; a 253-character
+           host is kept), counted once in the INFO line (the final round, RB-SF1-2a).
 
 Pure ASCII, LF; reads files only, no network.
 """
 from __future__ import annotations
 
 import ast
+import asyncio
+import logging
 import re
+import uuid
 from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -147,3 +160,155 @@ def test_gr4_merchant_rule_is_the_kb_host_pattern():
 
     assert fr.MERCHANT_HOST_PATTERN == kb.KB_HOST_REGEX
     assert fr.MERCHANT_HOST_MAX_CHARS == 253
+
+
+# --------------------------------------------------------------- G-SF1-GR5 / GR6
+# The final round (RULINGS_REBASE_S81_SF1 RB-SF1-2a; the correctness adversary's m1 / m3).
+
+_FLAG_NAMES = ("ENABLE_FEEDBACK_V2", "ENABLE_SURFACES_FIELD", "APP_SURFACES_LIVE",
+               "ENABLE_SEARCH_LOG_SYNTHETIC_MARKER", "ENABLE_SYNC_DB_OFFLOAD")
+
+
+class _Records(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.DEBUG)
+        self.records = []
+
+    def emit(self, record):
+        if not any(r is record for r in self.records):
+            self.records.append(record)
+
+
+def _capture(loggers):
+    handler = _Records()
+    saved = []
+    for lg in loggers:
+        saved.append((lg, lg.level))
+        lg.setLevel(logging.DEBUG)
+        lg.addHandler(handler)
+
+    def _release():
+        for lg, level in saved:
+            lg.removeHandler(handler)
+            lg.setLevel(level)
+
+    return handler.records, _release
+
+
+def _formatted(record):
+    return logging.Formatter("%(name)s %(levelname)s %(message)s").format(record)
+
+
+def _marker():
+    return "sf1-gr5-row-" + uuid.uuid4().hex[:8]
+
+
+def _failures(marker):
+    """A ValueError, an httpx.ConnectError, a code-less APIError and a text-code APIError,
+    each carrying a synthetic failing-row marker in its str."""
+    import httpx
+    from postgrest.exceptions import APIError
+
+    row = "Failing row contains (sf1-row, " + marker + ")."
+    return [
+        ValueError(row),
+        httpx.ConnectError(row),
+        APIError({"message": row, "details": row, "hint": None}),
+        APIError({"message": row, "code": marker, "details": row, "hint": None}),
+    ]
+
+
+def _raising_client(exc):
+    client = MagicMock()
+    client.table.return_value.insert.return_value.execute.side_effect = exc
+    return client
+
+
+@pytest.mark.parametrize("state", [None, "true"])
+def test_gr5_postgrest_error_code_never_returns_exception_text(monkeypatch, state):
+    from app.main import app  # noqa: F401 - import first (the dotenv guard)
+    from app.services import database_service as ds
+    from app.services import feedback_service as fs
+
+    for name in _FLAG_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    if state is not None:
+        monkeypatch.setenv("ENABLE_FEEDBACK_V2", state)
+    marker = _marker()
+    for exc in _failures(marker):
+        assert ds.postgrest_error_code(exc) is None, (type(exc).__name__,)
+    records, release = _capture([logging.getLogger(), fs.logger, ds.logger,
+                                 logging.getLogger("app")])
+    try:
+        for exc in _failures(marker):
+            monkeypatch.setattr(fs, "get_supabase_client", lambda e=exc: _raising_client(e))
+            monkeypatch.setattr(ds, "get_supabase_client", lambda e=exc: _raising_client(e))
+            out = asyncio.run(fs.save_feedback(user_id=None, comparison_id=None, useful=True,
+                                               mattered_most=[], change_suggestion=None))
+            assert out["success"] is False
+            asyncio.run(fs.track_events_batch([{"event_type": "save", "event_data": {}}]))
+            asyncio.run(ds.log_search("sf1-gr5-query", user_id="sf1-gr5"))
+    finally:
+        release()
+    warn = [r.getMessage() for r in records if r.levelno >= logging.WARNING]
+    expected = []
+    for exc in _failures(marker):
+        cls = type(exc).__name__
+        expected += ["[FEEDBACK] save failed type=%s code=None" % cls,
+                     "[EVENTS] batch insert failed type=%s code=None" % cls,
+                     "[SEARCH_LOG] insert failed type=%s code=None" % cls]
+    assert warn == expected, warn
+    for r in records:
+        text = _formatted(r)
+        assert marker not in text, text[:300]
+        assert "Failing row" not in text, text[:300]
+
+
+def test_gr6_merchant_host_cap_in_use(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.api import feedback_routes as fr
+
+    for name in _FLAG_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    long_host = "m" * (300 - len(".com")) + ".com"
+    edge_host = "m" * (253 - len(".com")) + ".com"
+    assert len(long_host) == 300 and len(edge_host) == 253
+    pattern = re.compile(fr.MERCHANT_HOST_PATTERN)
+    assert pattern.fullmatch(long_host) and pattern.fullmatch(edge_host)
+    assert fr._filter_event_properties("store_cta_tap", {"merchant_id": long_host}) == ({}, 1)
+    assert fr._filter_event_properties("store_cta_tap", {"merchant_id": edge_host}) == (
+        {"merchant_id": edge_host}, 0)
+
+    calls = []
+
+    async def _noop():
+        return []
+
+    def _rec(events):
+        calls.append([dict(e) for e in events])
+        return _noop()
+
+    def _ff(coro, label=None, **_k):
+        coro.close()
+
+    monkeypatch.setattr(fr, "track_events_batch", _rec)
+    monkeypatch.setattr(fr, "fire_and_forget", _ff)
+    records, release = _capture([logging.getLogger(), fr.logger, logging.getLogger("app")])
+    try:
+        resp = TestClient(app).post("/api/v1/events", json={"events": [
+            {"event_type": "store_cta_tap", "event_data": {"merchant_id": long_host}},
+            {"event_type": "store_cta_tap", "event_data": {"merchant_id": edge_host}},
+        ]})
+    finally:
+        release()
+    assert resp.status_code == 200, resp.text[:300]
+    data = [e["event_data"] for e in calls[0]]
+    assert data == [{}, {"merchant_id": edge_host}], [sorted(d) for d in data]
+    lines = [r for r in records if r.getMessage().startswith("[EVENTS]")]
+    assert [r.getMessage() for r in lines] == [
+        "[EVENTS] properties dropped type=store_cta_tap n=1"], [r.getMessage() for r in lines]
+    assert all(r.levelno == logging.INFO for r in lines)
+    for r in records:
+        assert long_host not in _formatted(r) and edge_host not in _formatted(r)

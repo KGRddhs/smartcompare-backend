@@ -15,7 +15,10 @@
 --                      name: user text; never read by a prompt, an exemplar builder
 --                      or a store report)
 --   source             text NOT NULL DEFAULT 'result', CHECK in ('result', 'contact')
---                      (learning readers exclude contact; existing rows read result)
+--                      (contact rows are distinguishable by this column; no reader
+--                      filters on it yet: the D22b follow-up excludes
+--                      contact rows from the learning and judge readers; existing
+--                      rows read result)
 --   compare_request_id uuid (the per-compare request id) + the partial index
 --                      idx_comparison_feedback_request
 -- price_correct is NOT re-added (027 has it).
@@ -141,7 +144,7 @@ COMMENT ON COLUMN public.comparison_feedback.correction IS
 'S81-SF1: the optional correct product name (user text, at most 80 characters). Never read by a prompt, an exemplar builder or a store report.';
 
 COMMENT ON COLUMN public.comparison_feedback.source IS
-'S81-SF1: result = an answer on a comparison result; contact = a Contact Us submission. Learning readers exclude contact.';
+'S81-SF1: result = an answer on a comparison result; contact = a Contact Us submission. No reader filters on this column yet; the D22b follow-up excludes contact rows.';
 
 DO $$
 BEGIN
