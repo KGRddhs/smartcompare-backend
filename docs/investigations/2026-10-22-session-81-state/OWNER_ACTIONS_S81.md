@@ -10,7 +10,7 @@ Nothing below blocks the dark units now in flight (B4, D03, S81-03, ST1). FLIP-G
 
 ## B. Names-only reads (R-A15; each lands as a dated ledger line)
 5. Production flag STATES for: ENABLE_COMPARISON_ID_ECHO, ENABLE_SOCIAL_DEVICE_FINGERPRINT, ENABLE_LONGEST_HOST_MATCH, ENABLE_SYNC_DB_OFFLOAD, ENABLE_SITEMAP_INDEX, SERPER_IMAGE_DAILY_BUDGET (set or unset), OPENAI_MODEL_VISION (set or unset), STREAM_HARD_CAP_SECONDS (set or unset), ENABLE_SHOPPING_CURRENCY_TRUTH, ENABLE_BH_GCC_CATALOG_SOURCES, ENABLE_PROXY_AWARE_RATELIMIT, SCRAPEDO_SUPER (set or unset).
-6. Read-only SQL (S81-02 / M3; results as counts): 14-day search_logs daily volume, fragrance share, repeat-pair share within 7 days, Serper calls per compare (is_synthetic excluded); pg_policies on the three 012 tables; the column lists of user_events and comparisons; whether comparison_feedback.useful is NOT NULL.
+6. Read-only SQL (S81-02 / M3; results as counts): 14-day search_logs daily volume, fragrance share, repeat-pair share within 7 days, Serper calls per compare (is_synthetic excluded); pg_policies on the three 012 tables; the column lists of user_events and comparisons; whether comparison_feedback.useful is NOT NULL. DONE 2026-11-06 21:05 (the relay session 82 through execute_sql; the ledger line of 21:05: a two-row 14-day sample, every share 0 of 2; comparison_feedback.useful NOT NULL; the 012 policies in place until 047).
 7. Supabase: the key TYPE the backend uses (anon vs secret), the Auth rate-limit values, SMTP state (built-in vs custom).
 
 ## C. Supabase changes (owner-only)
