@@ -5,7 +5,7 @@ Nothing below blocks the dark units now in flight (B4, D03, S81-03, ST1). FLIP-G
 ## A. Anthropic (before S81-06 ANTHROPIC-ROUTER can be canaried; S81-07 needs the test key)
 1. Console: a dedicated MYEZ workspace; web search DISABLED at the organisation level until the registry allow-list exists (S81-21); the workspace spend limit at the current credit balance; confirm the usage tier and the credit expiry date (names and dates only).
 2. Railway web: create ANTHROPIC_API_KEY (name only here). The worker service gets its own copy later (S81-19).
-3. A separate TEST key for the S81-07 measurement spike (budget <= 15 USD, synthetic inputs only). RULING: confirm the spike budget [default 15 USD] and the seed budget [default 10 USD].
+3. A separate TEST key for the S81-07 measurement spike (budget <= 15 USD, synthetic inputs only). RULING: confirm the spike budget [default 15 USD] and the seed budget [default 10 USD]. RULED 2026-11-06 (owner, relayed by session 82): spike budget 15 USD, seed budget 10 USD CONFIRMED; the test key itself and ANTHROPIC_API_KEY on web (items 2-4) stay open, names only; S81-07 stays owner-blocked until the test key exists.
 4. Does ANTHROPIC_API_KEY already exist on web? Answer by name as a ledger line.
 
 ## B. Names-only reads (R-A15; each lands as a dated ledger line)
