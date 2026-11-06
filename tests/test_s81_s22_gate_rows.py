@@ -14,6 +14,9 @@ equal the CREATE TABLE column sets exactly, the raise sits behind
 G22-GR3 (E2): the two P02_ALLOWED entries for scripts/cron_compare_judge.py are present, every
 kb_* relation literal of the judge sits on exactly those two lines, and the judge reaches the
 KB layer only through kb_seed_common (no kb_service import anywhere in the file).
+G22-GR4 / GR5 (fix round 1, F1-5): the DRY resume writes nothing; the sample boundary.
+G22-GR6 / GR7 (final round, RB-S22-2a): the field_status 16,384-byte boundary; the
+escalation.answer_capped counter.
 
 Pure static reads of the repository files: hermetic, no network, no .env. Pure ASCII, LF.
 """
@@ -250,3 +253,54 @@ def test_g22_gr5_sample_boundary_not_sampled(monkeypatch):
         if seen >= 20:
             break
     assert seen == 20
+
+
+# =============================================================== FINAL ROUND: G22-GR6 / G22-GR7 (RB-S22-2a)
+
+def test_g22_gr6_field_status_boundary(monkeypatch):
+    """G22-GR6 (re-verifier m1, kills rv17): a field_status whose serialized form is exactly
+    16,384 bytes is kept; one byte more is replaced by {"truncated": true}."""
+    import json as _json
+
+    from app.services import compare_runs as cr
+
+    assert cr.FIELD_STATUS_MAX_BYTES == 16384
+
+    def _fs(n):
+        return [{"price": "v" * n}, {"price": "ok"}]
+
+    def _size(fs):
+        return len(_json.dumps(fs, ensure_ascii=True, sort_keys=True, default=str).encode("ascii"))
+
+    pad = 16384 - _size(_fs(0))
+    exact = _fs(pad)
+    over = _fs(pad + 1)
+    assert _size(exact) == 16384 and _size(over) == 16385
+    assert cr._field_status({"field_status": exact}) == exact
+    assert cr._field_status({"field_status": over}) == {"truncated": True}
+
+
+def test_g22_gr7_escalation_answer_capped_counted_once(monkeypatch):
+    """G22-GR7 (re-verifier m2, kills rv18): one escalation whose answer carries an over-long
+    note counts escalation.answer_capped exactly once (the batch counter stays 0)."""
+    import json as _json
+
+    tj, _mod = _judge_env(monkeypatch)
+    tj._apply(monkeypatch)
+    monkeypatch.setenv("JUDGE_SAMPLE_PCT", "0")
+    order = []
+    rr = tj.run_row(1)
+    fc = tj.FakeClient(tj._world([rr], judgements=[tj._haiku_prior(1, ok=False)]), order=order)
+    fa = tj.FakeAnthropic(order, sync_answer=lambda i: _json.dumps(tj._answer(note="m" * 450)))
+    tj.Breaker(monkeypatch, order)
+    rep = ROOT / ".pytest_s22_gr7.json"
+    try:
+        assert tj._run(fc, fa, report=rep) == 0
+        data = _json.loads(rep.read_text(encoding="ascii"))
+    finally:
+        if rep.exists():
+            rep.unlink()
+    assert len(fa.sync) == 1, fa.sync
+    assert data["escalation"]["sent"] == 1
+    assert data["escalation"]["answer_capped"] == 1
+    assert data["batch"]["answer_capped"] == 0
