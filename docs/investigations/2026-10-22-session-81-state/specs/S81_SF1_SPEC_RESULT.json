@@ -1,0 +1,165 @@
+[
+ {
+  "agentId": "a3942b0c9fb974080",
+  "key": "v2:43ea1591a3354d7974f12cfe5a9ca4e7ab0267408f211737e1bf9561efa73ded",
+  "result": {
+   "base_measurements": [
+    "feedback {} -> 422 'Validation error: body \u2192 useful: Field required' (code VALIDATION_ERROR)",
+    "feedback extras body (correction 500 chars, bad compare_request_id, bad source/identity) -> 200 Feedback received (extras ignored at base)",
+    "share_target sms/email/more/foo/5/null/WhatsApp -> 422 'Validation error: body \u2192 share_target: Input should be 'whatsapp', 'copy', 'x', 'telegram', 'snapchat' or 'other''",
+    "feedback [1] / 'x' -> 422 'Validation error: body: Input should be a valid dictionary or object to extract fields from'",
+    "unknown event_type 422 message embeds the whole VALID_EVENT_TYPES list (changes unflagged with the widening)",
+    "/app/version base keys: min_version, latest_version, force_update, update_url_ios, update_url_android; test_r51 pins categories_live LAST",
+    "T23 component closure = 7 schemas, none of the feedback/event/share models",
+    "test_s81_kb_schema r01 asserts no 046_/049_ migration file (E2)",
+    "test_s81_s05 p01 consumer census must admit database_service (E3)",
+    "PG18 prototype: 046/049 apply + re-apply rc 0; negatives refused; rollbacks refuse then succeed; guards RAISE; nullable-skip path rc 0",
+    "sqlfluff 4.3.0 on the four prototype SQL files: 0 violations"
+   ],
+   "change_list": [
+    "C1 NEW migrations/046_comparison_feedback_v2.sql (the 6 columns, 5 CHECKs, idx_comparison_feedback_request, guarded useful DROP NOT NULL, assert block)",
+    "C2 NEW migrations/rollback/046_comparison_feedback_v2.sql",
+    "C3 NEW migrations/049_share_target_and_request_ids.sql (live-name share_target CHECK re-create with 9 values; compare_request_id + partial index on user_events and search_logs)",
+    "C4 NEW migrations/rollback/049_share_target_and_request_ids.sql",
+    "C5 EDIT app/api/feedback_routes.py (constants, 4 event types appended, EVENT_PROPERTY_ALLOWLIST, _FeedbackRequestBase frozen OFF model, FeedbackRequest v2 with before model-validator, EventItem.compare_request_id, handlers)",
+    "C6 EDIT app/services/feedback_service.py (feedback_v2_enabled, save_feedback 6 kwargs + useful not-None write, track_events_batch compare_request_id)",
+    "C7 EDIT app/api/version_routes.py (surfaces_field_enabled, surfaces_live, surfaces before categories_live)",
+    "C8 EDIT app/api/referral_routes.py (ShareTargetV2 + OFF before-validator reproducing the base literal_error)",
+    "C9 EDIT app/services/referral_service.py (_share_targets widened under ON)",
+    "C10 EDIT app/services/database_service.py (request_context import, _feedback_v2_enabled, log_search compare_request_id under ON, no new parameter)",
+    "C11 EDIT SmartCompareApp/src/screens/HomeScreen.tsx (one trackEvent line in handleComingSoon)",
+    "C12 EDIT SmartCompareApp/__tests__/s11/categoryRow.s11.test.tsx (E4 B3 row)",
+    "C13 EDIT tests/test_s81_kb_schema.py (E2 reserved tuple)",
+    "C14 EDIT tests/test_s81_s05_request_context.py (E3 consumer census)",
+    "C15 NEW tests/test_s81_sf1_surfaces_be.py (RED)",
+    "C16 EDIT CLAUDE.md (block after S81-G7, :341 clause, :578 and :105 in place)",
+    "C17 EDIT docs/privacy-data-inventory.md rows 4/6/8 in place",
+    "C18 notes-folder APPLY_046_* and APPLY_049_* files for the docs state folder"
+   ],
+   "comm_set_size": 278,
+   "deliberate_pin_changes": [
+    "E2 tests/test_s81_kb_schema.py::test_s14_r01_files_exist_once (046/049 leave the reserved tuple)",
+    "E3 tests/test_s81_s05_request_context.py::test_s05_p01_no_consumer_in_app (database_service consumer {compare_request_id})",
+    "E4 SmartCompareApp/__tests__/s11/categoryRow.s11.test.tsx B3 node (toHaveLength(0) -> one category_coming_soon_tap call with {category: 'skincare'})",
+    "E1 none: T23 stays green, no fixture re-record (Q1)"
+   ],
+   "mutants": 26,
+   "open_questions": [
+    "Q1: T23 compares only the $ref closure of the ten U13 operations; FeedbackRequest/EventItem/EventBatchRequest/ShareRequest are outside it, so no re-record is needed (contradicts PLAN :169 / R-SF1-4); confirm no re-record",
+    "Q2: database_service cannot import feedback_service (cycle); spec uses a local one-liner reading the same env name (S81-09 precedent) vs a function-local import; rule",
+    "Q3: E3 the S81-05 consumer census gains database_service {compare_request_id}; S81-22 likely edits the same table (rebase union)",
+    "Q4: add a value-shape rule for store_cta_tap.merchant_id (keys-only filter lets a URL through as a value)?",
+    "Q5: backfill existing ContactUs rows to source='contact' in 046? spec does not",
+    "Q6: confirm the in-place rewrite of CLAUDE.md :105 FeedbackRequest sentence (not named in R-SF1-14)",
+    "Q7: vw_cohort_feedback_lift counts NULL useful in its denominator; fix the view in 046 or later, or leave as a limit?",
+    "Q8: privacy inventory rows are Apple data types; spec rewrites rows 4/6/8 in place instead of adding rows (a new type needs app.json / native 1.0.1); confirm, plus the App Privacy label wording",
+    "Q9: nothing found beyond FOCUS-by-migration-and-surface (no auth/consent/quota/security middleware change); the live column grants are the owner's PRECHECK",
+    "Q10: collisions with S81-22: CLAUDE.md anchor + :341 clause, privacy inventory rows, test_s81_kb_schema r01 tuple line, test_s81_s05 census; migrations do not collide",
+    "Q11: R27 is RED at base by message text (base 422s on event_type, head on size); confirm the row form"
+   ],
+   "pin_rows": 11,
+   "pyt_lines": [
+    "[pyt] tag=sf1-spec-probe start=2026-11-06 15:11:30 end=2026-11-06 15:11:40 elapsed=10s bound=600s status=OK rc=0",
+    "[pyt] tag=sf1-spec-base-a start=2026-11-06 15:16:59 end=2026-11-06 15:17:14 elapsed=15s bound=1200s status=OK rc=0 (248 passed, 1 skipped; [netguard] blocked 11 attempt(s) from 6 node(s); [hermeticity] sentinel checked 248 test(s))",
+    "[pyt] tag=sf1-spec-base-b start=2026-11-06 15:17:25 end=2026-11-06 15:18:19 elapsed=54s bound=1200s status=FAIL rc=1 (1023 passed, 1 failed = test_s81_s10_fragrance_gate.py::test_r06_production_lexicon_content CRLF working-copy noise; [netguard] blocked 0; [hermeticity] 1024)",
+    "[pyt] tag=sf1-spec-probe2 start=2026-11-06 15:21:44 end=2026-11-06 15:21:49 elapsed=5s bound=600s status=OK rc=0"
+   ],
+   "red_rows": 30,
+   "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-sf1/.qa-s80/S81-SF1_UNIT_SPEC.md",
+   "spec_sha256": "2621dd63953f8a103fa548dd1e3b93516c45ae2373e83d23ceb531f25b060b4d",
+   "stated_limits": [
+    "L1 existing event types unfiltered",
+    "L2 unknown-event_type 422 message grows by the four names in every state",
+    "L3 image_load_failed client emission deferred",
+    "L4 ContactUs routed by the source column only; historical rows stay 'result'",
+    "L5 malformed compare_request_id 422s the whole events batch under ON",
+    "L6 compare_request_id client-asserted; anonymous feedback/events forgeable",
+    "L7 useful nullable only after the live check; price_correct not re-added",
+    "L8 no per-user rate change",
+    "L9 rollback 046 restores NOT NULL even if useful was nullable pre-046 (owner skips per the PRECHECK)",
+    "L10 knob knows only skincare/makeup",
+    "L11 vw_cohort_feedback_lift useful_pct falls with NULL useful",
+    "L12 a flag flip mid-request can drop a v2 field (benign)",
+    "L13 store_cta_tap allowlist is keys-only",
+    "L14 T23 fixture not re-recorded",
+    "L15 an anonymous correction survives account deletion"
+   ],
+   "summary": "I wrote the spec for S81-SF1 against base 18cb9e04. The file is 82,950 bytes, pure ASCII and LF, and `git status --short` stays empty because .qa-s80/ is gitignored.\n\nWhat I measured:\n- **The 422 bytes at base.** I recorded them on the wire and at the model level: a missing `useful`, a null or bad `useful`, non-dict bodies, and a share_target outside the six-value set.\n- **How flag OFF reproduces them.**\n  - Feedback: a before-validator hands OFF dict bodies to a frozen copy of the base model. Its ValidationError comes through unchanged, so the 422s match.\n  - Share: a before-validator raises a custom literal_error carrying the exact base message. It gave identical errors on 36 inputs plus the missing-field case.\n- **T23 does not need a re-record.** It compares only the components reachable from the ten U13 operations. FeedbackRequest, EventItem and ShareRequest are not among them, so T23 stays green unedited. This contradicts PLAN :169 and R-SF1-4.\n- **categories_live is pinned last.** test_r51 pins it, so `surfaces` goes between the five keys and `categories_live`.\n- **Three pins change on purpose.**\n  - E2: test_s81_kb_schema r01 reserves 046 and 049.\n  - E3: the S81-05 request_context consumer census must admit database_service.\n  - E4: the s11 B3 node in the client tests.\n- **Import cycle.** database_service cannot import feedback_service at module top, so it gets a local reader of the same env name.\n- **vw_cohort_feedback_lift.** It counts NULL-`useful` rows in its denominator, so `useful_pct` will fall as Q1-only answers arrive.\n- **Migration prototypes.** The 046, 049 and rollback prototypes lint clean under sqlfluff. On a throwaway local PostgreSQL 18 cluster I checked them:\n  - apply and re-apply both work;\n  - every new CHECK refuses its bad value;\n  - both rollbacks refuse while blocking rows exist, then run once they are removed;\n  - both guards raise when their preconditions are missing;\n  - 046 skips the DROP NOT NULL when `useful` is already nullable.\n\nPass state at base:\n- Set A: 248 passed, 1 skipped.\n- Set B: 1023 passed and 1 failed. The failure is `test_r06` on the CRLF lexicon working copy, which is environment noise, not a defect.\n\nThe spec has 30 RED rows, 11 PIN rows and 26 mutants. The comm-set recipe measured 278 files before the named additions.",
+   "unit": "S81-SF1 SURFACES-BE"
+  },
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ],
+  "type": "result"
+ },
+ {
+  "agentId": "a059d245c7ace954c",
+  "key": "v2:e639a099197f6a91336a6f936793fbcd742257cb6bc604cdf1386b3b39e4d277",
+  "result": {
+   "blocking": [],
+   "contract_risks": [
+    "CL3/CL4 have no server signal for the flag state. If ENABLE_FEEDBACK_V2 flips after their OTA, the OFF identity itself becomes the refusal: Q1-only feedback is lost silently and sms/email/more shares get a 422 (PLAN :176 says use 'other' until 049, but the client cannot see 049).",
+    "Between merge and the flip, the four new event types are accepted with no filter, because the filter is flagged and the widening is not. The filter narrows only requests that 422 at base, so it could ship unflagged under R-A1.",
+    "A NULL useful lowers vw_cohort_feedback_lift.useful_pct after the flip (L11).",
+    "compare_request_id on feedback and events is client-asserted. 043 detaches cross-user rows by comparison_id only, so a forged id can join another user's run in S81-22 (a best-effort join).",
+    "The App-Review surface is only the surfaces key, and the only control is the owner step that keeps it OFF in every review window (R-S11-29 (b))."
+   ],
+   "corrections": [
+    "C-1 (MAJOR, privacy): under ENABLE_FEEDBACK_V2 the except arms of save_feedback, track_events_batch and log_search log only type names and the PostgREST code, never {e}. The OFF branch stays byte-identical. Add a RED row (an APIError whose details carry a synthetic correction; the text must not appear in any record) and a mutant.",
+    "C-2 (MAJOR, privacy, R-SF1-5): add value rules to the ON filter. merchant_id must match a closed id shape (for example ^[a-z0-9][a-z0-9._-]{0,63}$); category must be in {skincare, makeup}; share_target must be in WIDENED_SHARE_TARGETS; channel must be in a closed set. A value that fails its rule drops the key and counts in the INFO n. Add rows and a mutant, and delete L13.",
+    "C-3 (MAJOR, comm set): add b3a/nativeStrings.b3a.test.ts r37 to the GREEN client gate, run by path. C17 must say the appended text goes inside column 3 and contains no unescaped pipe.",
+    "C-4 (MAJOR, RED form): four rows would fail at base with something other than an AssertionError. R14 calls save_feedback with new kwargs (TypeError). R32's ON half: create_invite('sms') raises ValueError. R50-R53 read migration files that do not exist yet (FileNotFoundError). R54 reads ShareTargetV2 (AttributeError). Each row must assert existence or signature first, use getattr, or go through the route.",
+    "C-5 (MAJOR): add the share failure row (ON before 049: 500 plus a Sentry event) and the 23502 log consequence to 2.4. Reword owner step (3): ENABLE_FEEDBACK_V2 goes ON after 046 and 049 are applied and BEFORE (or with) the OTA that carries CL3/CL4. ON is safe for build 3. OFF with a CL3/CL4 client drops Q1-only answers with a 422 and refuses sms/email/more shares.",
+    "C-6: add NOTIFY pgrst, 'reload schema' to 046 and 049 (the 042 precedent at :128/:165). Under ON, source is written on every feedback insert, so a stale PostgREST cache means PGRST204 on every write. Pin it in R51/R52.",
+    "C-7: put SET LOCAL lock_timeout at the top of 046 and 049, and have the PRECHECKs report row counts for user_events, search_logs and referral_invites.",
+    "C-8: under ON, a body of {} stores a row holding only source (anonymous spam at 30/min that the CL3 answer rate and D22b would count). Require at least one answer field under ON or return a 422. That 422 is ON only, and build 3 always sends useful.",
+    "C-9: add a route row and mutant for: ENABLE_SURFACES_FIELD ON with the knob unset gives a surfaces key that is present, with both values false. R04 tests only the parser.",
+    "C-10: correction must reject control characters (U+0000 makes the insert fail with 22P05) and cap the raw input before strip.",
+    "C-11: add stated limit L16. With the flag OFF, the published OpenAPI changes: useful becomes optional, the new fields appear, and share_target shows nine values. This is the #55 OFF-path divergence class (test_flush_live_price_key.py:525-547). It is not visible in production.",
+    "C-12 (GREEN hygiene): the S81-05 census fails any app file outside the allowlist whose text contains request_context, x-compare-request-id or header_state. No comment in feedback_routes, feedback_service, referral_* or version_routes may name them.",
+    "C-13: write the pre-046 nullability where rollback 046 can read it (for example a column comment), so the rollback restores NOT NULL only when 046 actually dropped it. Today an owner has to skip a DO block by hand (L9)."
+   ],
+   "pin_collisions": [
+    "tests/test_s81_d22_nightly_learning.py::test_p6_field_and_event_vocabularies (ast.literal_eval of VALID_EVENT_TYPES: the list must stay one literal Assign) and ::test_p7_feedback_writer_columns (AST record keys; a superset is fine). Neither is listed in 4.1 or 4.2 with its constraint.",
+    "SmartCompareApp/__tests__/b3a/nativeStrings.b3a.test.ts r37 (the inventory table parser) is not in the fourteen fences.",
+    "tests/test_s81_s05_request_context.py::test_s05_p01 has needles beyond E3 (request_context, x-compare-request-id, header_state in any other app file).",
+    "Checked and clear: T23 (closure confirmed), FY25 (test_s75_fanout_identity drives scs only), IDENTITY_NODES (tests/test_s81_kb_schema.py:474-479, files not edited), W4-13 ledger, w4_11 and retro_w2_1."
+   ],
+   "pyt_lines": [
+    "[pyt] tag=sf1-rev-base start=2026-11-06 15:39:39 end=2026-11-06 15:39:45 elapsed=6s bound=600s status=OK rc=0 (8 passed: d22 p6/p7, s05 p01, events superset rows; [hermeticity] sentinel checked 8 test(s); [netguard] blocked 0 attempt(s) from 0 node(s))"
+   ],
+   "questions_for_orchestrator": [
+    "1. T23: confirmed by measurement that no re-record is needed. Rule it, and record the R-SF1-4 re-record sentence as superseded?",
+    "2. Owner step order (C-5): should ENABLE_FEEDBACK_V2 go ON after 046 + 049 and BEFORE the OTA carrying CL3/CL4, rather than 'after the first post-approval OTA'?",
+    "3. Should the property filter ship unflagged (it narrows only the types that 422 at base), or stay under the flag as R-SF1-5 says?",
+    "4. C-2 value rules versus the spec's keys-only default: what is the closed channel set for CL4's share builder?",
+    "5. C-8: adopt the at-least-one-answer rule under ON, and what is its recorded 422 literal?",
+    "6. C-1: what is the ON log template, and does the OFF arm keep {e} for byte identity or get narrowed unflagged as a log-only change?",
+    "7. Spec Q2: keep the local one-liner reader in database_service (the usage_service.py:179 precedent, plus R02 parity), or use a stdlib leaf? This review prefers the one-liner.",
+    "8. C-6/C-7: add NOTIFY pgrst and lock_timeout to both migrations?"
+   ],
+   "refuted_claims": [
+    "Section 7 item 6 and 4.2 say the fourteen backend-scanning client fences cover the docs edit. Measured: SmartCompareApp/__tests__/b3a/nativeStrings.b3a.test.ts:17 reads docs/privacy-data-inventory.md, and its r37 test (:141-164) parses every table row by splitting cells on unescaped pipes. That test is NOT in the fourteen, and C17 edits rows 4, 6 and 8.",
+    "The 2.4 failure table is incomplete for the share path. referral_service.create_invite does its referral_invites insert with no try around it. share_comparison (referral_routes.py:176-231) catches only WeeklyInviteCapExceeded and ValueError. So with the flag ON before 049 is applied, a share with 'sms' gets APIError 23514, which becomes a 500 INTERNAL_ERROR and a Sentry event carrying the PostgREST details.",
+    "The implied privacy claim (P61: no log record carries the correction) does not hold on the failure arms. feedback_service.py:250 logs f'Error saving feedback: {e}'. Measured: str(postgrest APIError) prints the whole dict, including details 'Failing row contains (...)'. So the 23502 row the spec itself expects (ON while useful is still NOT NULL) writes user_id, change_suggestion and correction to the Railway logs. Sentry LoggingIntegration is set to ERROR (sentry_service.py:736), so the WARNING stays out of Sentry.",
+    "Stated limit L13 (allowlist checks keys only, so a URL can ride in merchant_id) contradicts binding ruling R-SF1-5 ('a merchant id only: never a URL, a price or a product name'). It is a defect, not a limit.",
+    "The C3 header says the index build is 'instant'. That is not true: a non-CONCURRENT partial index still scans the whole table, and the ALTERs hold ACCESS EXCLUSIVE on user_events, search_logs and referral_invites until COMMIT. Nothing was measured at live table sizes.",
+    "4.2 lists test_s81_d22_nightly_learning as stay-green without naming its constraints. test_p6 (:1553-1556) runs ast.literal_eval on the VALID_EVENT_TYPES assignment in feedback_routes.py, so the list must stay one literal; test_p7 collects save_feedback's record keys by AST. This pin collision is not listed."
+   ],
+   "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-sf1/.qa-s80/S81-SF1_SPEC_REVIEW.md (sha256 491c10de6420377f4c8cc41607425150c2724d81a506938142a9048cbc8f8d7c, ASCII, LF; written through python from the scratch copy <scratchpad>/sf1rev/review.txt)",
+   "unit": "S81-SF1 SURFACES-BE",
+   "verdict": "APPROVE_WITH_CHANGES"
+  },
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "StructuredOutput"
+  ],
+  "type": "result"
+ }
+]

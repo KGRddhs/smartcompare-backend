@@ -1,0 +1,162 @@
+[
+ {
+  "agentId": "a072d97e53f3c00f5",
+  "key": "v2:99c206e6442895e9ebd9dd82cf8271c3ebce7a7ad229a7aef3af790b6d6fbea9",
+  "result": {
+   "base_measurements": [
+    "[pyt] tag=s22spec-base110 start=2026-11-06 15:15:23 end=2026-11-06 15:16:02 elapsed=39s bound=1200s status=OK rc=0 (817 passed, 4 deselected; [hermeticity] sentinel checked 817 test(s); [netguard] blocked 0 attempt(s) from 0 node(s)): test_s81_kb_schema, test_migration_043_delete_user_cascade, test_retro_w1_2d, test_migration_037_security_definer_grants, test_s81_s20_gate_rows, test_migration_index_predicate_immutability, test_sqlfluff_config, test_s81_s16b_kb_brands",
+    "[pyt] tag=s22spec-base110b start=2026-11-06 15:16:10 end=2026-11-06 15:17:01 elapsed=51s bound=1200s status=OK rc=0 (1058 passed; [hermeticity] sentinel checked 1058 test(s); [netguard] blocked 26 attempt(s) from 11 node(s), the neutralized.supabase.invalid sentinel in test_s81_s20_result_gate.py): test_s80_b1, test_w4_13_measurement_truth, test_paid_route_metering, test_s81_s20_result_gate, test_s81_s03_llm_ledger_v2, test_s81_s05_request_context, test_s81_g2_gate_rows, test_s81_d22_nightly_learning, test_openai_key_log_hygiene_s69",
+    "comm set union = 725 files (scratchpad s22/comm_union.txt, sha256 prefix d17a31609d25e6cd); 30 of them are outside the 05303c6f/a0bfab95 695-file record",
+    "venv: Python 3.12.9, anthropic 1.12.1",
+    "worktree HEAD 18cb9e04a36382fc417307500a092486f618d95e; git status --short empty before and after"
+   ],
+   "change_list": [
+    "migrations/048_compare_runs.sql NEW + migrations/rollback/048_compare_runs.sql NEW (compare_runs, compare_judgements, compare_runs_prune, the delete_user_cascade redefinition = 043 body + ONE alias-free kb_feedback DELETE before the first detach; REVOKE restated, no GRANT; NIL-uuid assert; rollback restores the 043 body first, then drops)",
+    "app/services/compare_runs.py NEW (compare_run_ledger_enabled, _query_hmac, pair_identity_text, build_run_row, record_compare_run, _insert; COMPARE_RUN_RETENTION_DAYS = 365 constant)",
+    "app/api/text_routes.py: 1 import + 3 lines (POST after :885, GET after :1090, stream inside the success block after :1482)",
+    "app/api/image_routes.py: 1 import + 1 line after :782 inside the success block",
+    "app/api/url_routes.py: 1 import + 1 line after :392",
+    "scripts/cron_compare_judge.py NEW",
+    "railway.judge.json NEW (railway.learning.json form)",
+    "tests/test_s81_kb_schema.py E1 (drop 048 from the r01 reservation tuple) + E2 (P02_ALLOWED gains the judge's KB_PRUNE_FEEDBACK_RPC line, conditional on Q3)",
+    "tests/test_s81_s22_compare_runs.py + tests/test_s81_s22_judge.py (RED, frozen) + tests/test_s81_s22_gate_rows.py at GREEN",
+    "CLAUDE.md: one block after the S81-G7 block + the :341 clause sentence",
+    "APPLY_048_1_PRECHECK / _2_ONE_PASTE / _3_POSTCHECK drafted into GREEN notes for the state folder",
+    "No other file (no docs/privacy-data-inventory.md, legal, client, orchestrator or requirements edit)"
+   ],
+   "comm_set_size": 725,
+   "deliberate_pin_changes": [
+    "E1 tests/test_s81_kb_schema.py::test_s14_r01_files_exist_once (:528): drop '048' from the reservation tuple (SF1 drops 046 / 049 in the same hunk, a known rebase)",
+    "E2 tests/test_s81_kb_schema.py P02_ALLOWED (:341-362): add ('scripts/cron_compare_judge.py', 'KB_PRUNE_FEEDBACK_RPC = \"kb_prune_feedback\"'), conditional on Q3"
+   ],
+   "mutants": 48,
+   "open_questions": [
+    "Q1: the R-S22-10 literal 'DELETE FROM public.kb_feedback AS f WHERE ...' cannot be parsed by tests/test_migration_043_delete_user_cascade.py _DEL_RX (:287-290), so it would be an 'unrecognised statement' fence gap that turns test_cascade_erases_or_keeps_every_user_referencing_table, test_s14_p07, test_s14_r08 and the 16b fence row red. The spec uses the same statement without the alias; rule the text.",
+    "Q2: R-S22-4 hashes the typed query for text but the identity text for camera/url, so the 2-device / re-compare rule cannot match across input types. I recommend hashing the pair identity text for every input type (the spec is written to the ruling as it stands).",
+    "Q3: the 045 header (:23-26) gives kb_prune_feedback(365) to S81-22's nightly job, and nothing calls it at base. The spec proposes that the judge's apply mode call it once, with the P02 E-row E2. Include or exclude?",
+    "Q4: kb_product_ids: the body carries only hit/miss marks, and computing an id needs kb_service (fenced by P01). NULL in this unit, with a follow-up?",
+    "Q5: gen_ai.usage.input_tokens: R-S22-6 maps input_tokens (cache excluded) while llm_pricing.OTEL_GENAI_ATTRIBUTES maps prompt_tokens (cache included). The spec follows R-S22-6; the names were not checked against the published OpenTelemetry docs.",
+    "Q6: the judge's poll constants JUDGE_POLL_SECONDS 30 / JUDGE_MAX_WAIT_SECONDS 3600 are its own, not the G2 KB_SEED_* knobs.",
+    "Q7: the user-'wrong' join uses comparison_id; compare_request_id is joined only once SF1 adds the column (a 42703 error is counted).",
+    "Q8: escalation runs only with ENABLE_LLM_SPEND_BREAKER ON, while the Haiku batch follows G2 and is bounded by JUDGE_MAX_USD.",
+    "Q9: 'ONE ledger row' is read as one per batch, plus ONE escalation row (lane escalation, mode sync) per script run, because spend_ledger_row refuses mixed models.",
+    "Q10: in DRY mode the prune counts are reported as null; rule null vs a count='exact' head read.",
+    "Q11: no docs/privacy-data-inventory.md edit (iOS manifest inventory, read by three client fences; no new collected data type).",
+    "Q12: nothing found that makes the unit larger than the FOCUS surfaces it was given: no legal, client or request-contract change, and the T23 fixture does not move."
+   ],
+   "pin_rows": 6,
+   "pyt_lines": [
+    "[pyt] tag=s22spec-base110 start=2026-11-06 15:15:23 end=2026-11-06 15:16:02 elapsed=39s bound=1200s status=OK rc=0",
+    "[pyt] tag=s22spec-base110b start=2026-11-06 15:16:10 end=2026-11-06 15:17:01 elapsed=51s bound=1200s status=OK rc=0"
+   ],
+   "red_rows": 71,
+   "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s22/.qa-s80/S81-22_UNIT_SPEC.md",
+   "spec_sha256": "730c5017f09c2accdf261e3318a8ff76fb4071c3fa164926ded725ec2a6ea78b",
+   "stated_limits": [
+    "L-LINK: comparison_id is set only on text exits with ENABLE_COMPARISON_ID_ECHO ON and a signed-in user, so the deletion hook reaches only kb_feedback rows linked through such runs",
+    "L-DELIVERY: only delivery exits write a row; refusals write none (S81-22b)",
+    "L-NULLCTX: with the headers flag OFF or no pepper, consent / request id / device_key / query_hmac are NULL and the judge skips the run",
+    "L-ESCAP: the escalation caps leave candidates pending",
+    "L-EST: the token count is an estimate (bytes / 4)",
+    "L-WEB: web search is INERT",
+    "L-SC: ENABLE_SELF_CRITIQUE is untouched",
+    "L-TRUST: the judge trusts the stored snapshot",
+    "L-IDTEXT: text and camera runs do not cross-match (Q2)",
+    "L-BATCH29: Anthropic keeps batch data up to 29 days",
+    "L-OTEL: the OpenTelemetry names are unverified",
+    "L-VERDICT: the verdict prose may reflect personalization in its wording",
+    "L-FORGE: forged feedback can only trigger a capped escalation",
+    "L-KBID: kb_product_ids is NULL",
+    "L-INLINE: with ENABLE_SYNC_DB_OFFLOAD OFF the insert's execute runs on the loop inside the background task"
+   ],
+   "summary": "The spec is written and measured at 18cb9e04: 114,387 bytes, pure ASCII, LF, and git status --short is still empty. It covers migration 048, which adds compare_runs (the closed column list of R-S22-2) and compare_judgements, compare_runs_prune, and the delete_user_cascade redefinition: the 043 body plus one kb_feedback DELETE inserted at chunk index 2, before the first detach UPDATE. It also covers the leaf app/services/compare_runs.py (the flag is read first; a pure 21-key row builder; one fire-and-forget run_db insert through the admin client, with one WARNING line on failure). Each of the five delivery exits gets one plain call: text_routes :885 / :1090 / :1482, image_routes :782 and url_routes :392. Last is scripts/cron_compare_judge.py with railway.judge.json: the re-compare flag, the programmatic checks, one Haiku batch per run in the G2 pattern on the offclock lane, a capped Sonnet escalation on the escalation lane, writes and prunes in apply mode only, and a counts-only report. Measurements that matter: (1) the comparison_id is on the body before the exit only on the three text exits, and only with ENABLE_COMPARISON_ID_ECHO ON and a signed-in user, which sets the L-LINK limit. (2) The R-S22-10 statement as written, with its 'AS f' alias, cannot be parsed by the 043 fence's _DEL_RX, which would turn four pins red; the spec drops the alias (Q1). (3) The 045 header gives kb_prune_feedback(365) to S81-22's nightly job, and nothing calls it today (Q3). (4) The body carries no KB product id, so kb_product_ids is NULL (Q4). (5) data_coverage is an integer from 0 to 4, typed smallint. (6) docs/privacy-data-inventory.md is the iOS manifest inventory read by client fences, so it is not edited (Q11). The base pass state was run twice through pyt.py, both OK: 817 passed and 1058 passed.",
+   "unit": "S81-22 COMPARE-RUNS + capped judge"
+  },
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "Edit",
+   "StructuredOutput"
+  ],
+  "type": "result"
+ },
+ {
+  "agentId": "a98397b2678d896e7",
+  "key": "v2:cfccbd3e6c988c40ead642f5665b98c658de9d566ada833a4b4053e42800b4f5",
+  "result": {
+   "blocking": [
+    "B1 (measured pin collision): add an E-row to tests/test_migration_043_delete_user_cascade.py that limits the two mutant rows (dropped DELETE :1192, weakened predicate :1204) to fence user tables. Add it to section 3, section 4.1 and gate 4, and remove the file from the 4.2 'unedited' list.",
+    "B2 (spend: double billing): a batch that does not end within JUDGE_MAX_WAIT_SECONDS is left pending with no --resume and no stored batch id. The next night submits the same runs in a new batch, while the first batch is still billed, never read or ledgered, and never deleted (its data persists 29 days). Rule cancel-on-timeout, a durable pending record that the next run resumes, or a G2-style --resume, and add a J row.",
+    "B3 (spend: repeat Haiku calls): runs left with judged_at NULL (escalation_capped, refused, breaker_off) are re-batched to Haiku every night inside JUDGE_WINDOW_DAYS, which can be up to 30 nights. Skip runs that already have a haiku judgement row."
+   ],
+   "contract_risks": [
+    "K1 (legal truth): R-S12-18 says kb_feedback is deleted with the account's compare records. The hook only reaches runs with a comparison_id, which needs ENABLE_COMPARISON_ID_ECHO ON (it is OFF in production), so the deletion part of that sentence would be false.",
+    "K2: The judge's Sonnet calls share LANE_ESCALATION, and its daily cap (default 1.0 USD), with the live router's escalations (llm_router :1120, :1129, :1213). A nightly run can starve live escalations for the rest of that Riyadh day.",
+    "K3: The verdict prose in the evidence snapshot can carry cohort- or profile-shaped text into the Anthropic batch, which conflicts with 'strip profile/cohort before any batch' (PLAN_S81 :114, R-S22-5).",
+    "K4: OpenTelemetry names are unverified. gen_ai.operation.name is an operation-kind enum, not a role, and the cache attribute spelling may differ in current semantic conventions.",
+    "K5: The refusal_reason CHECK ^[a-z_]{1,64}$ excludes the house's upper-case refusal codes, which S81-22b will need.",
+    "K6: The hook deletes every kb_feedback row sharing a linked compare_request_id, including forged or reused ids. That is safe for privacy, but the 7.3 story must be worded precisely.",
+    "K7: Confirmed with no change: response keys, request fields, refusal shapes, credits, T23, the FY25 / w4_11 digests, the s10 goldens, the W4-13 fixture and the camera envelope."
+   ],
+   "corrections": [
+    "C1: P01 contradicts itself. Replacing record_compare_run with a raising stub would make every flag-OFF request raise, because the route calls it unconditionally. Keep the real function; put raising stubs on build_run_row / _insert / _query_hmac and recorders on fire_and_forget / run_db / the admin client.",
+    "C2: R03 must say how a leading docstring is treated (skip it, or forbid one).",
+    "C3: Migration 050 (llm_spend_ledger) is written but not applied. Make it an apply precondition of ENABLE_BATCH_JUDGE, or the spend is recorded only as a WARNING line.",
+    "C4: common.log_counts calls int(v) on every value; the 2.12 report holds nested dicts, so it raises TypeError. Log a flattened counts dict.",
+    "C5: The self-produced routing checks any call in llm_calls, which is broader than R-S22-7's field-level rule. Once S81-06 is on, nearly every run is Haiku-produced, so the batch would be skipped and runs would pile up as escalation_capped.",
+    "C6: A run that leaves JUDGE_WINDOW_DAYS with judged_at NULL is never judged again. Name this state 'unjudged-expired' for D22b instead of 'pending'.",
+    "C7: JUDGE_ESCALATION_MAX_PER_RUN is per script run, while PLAN_S81 :114 / :168 ask for daily count caps. Make it per Riyadh day or state the limit.",
+    "C8: Spell out that the reserve happens only when the breaker is ON (the G2 form at :513-520). Add a breaker-OFF row asserting zero reserve / settle / record calls.",
+    "C9: The user-'wrong' trigger is inert in production (the echo is OFF, so comparison_id is NULL; no compare_request_id column exists at base). Pin the comparison_feedback select to (comparison_id, winner_correct) only.",
+    "C10: P04 / P05 / PJ1 hold 64-hex literals. Their constant names must avoid the gitleaks keywords; DEVICE_KEY_* would block the commit.",
+    "C11: The recorder that stands in for fire_and_forget should close the unscheduled coroutines (to avoid RuntimeWarning noise).",
+    "C12: Once 048 is applied, rolling back 045 alone breaks every account deletion with 42P01. State in the header and the APPLY files that 048 is rolled back before 045; any failure in the hook aborts the whole deletion.",
+    "C13: The alias-free hook text is correct for _DEL_RX, but no form of the statement leaves the 043 fence file unedited (see B1)."
+   ],
+   "pin_collisions": [
+    "tests/test_migration_043_delete_user_cascade.py::test_fence_flags_each_dropped_delete (measured red with a probe 048)",
+    "tests/test_migration_043_delete_user_cascade.py::test_fence_flags_each_weakened_delete_predicate (measured red with a probe 048)",
+    "tests/test_s81_kb_schema.py::test_s14_r01_files_exist_once (E1, measured red as the spec expects) and P02_ALLOWED (E2, as stated)"
+   ],
+   "pyt_lines": [
+    "[pyt] tag=s22rev-fencebase start=2026-11-06 15:30:20 end=2026-11-06 15:30:34 elapsed=14s bound=600s status=FAIL rc=1 (scratch copy without docs/: 7 docs-only failures, the baseline)",
+    "[pyt] tag=s22rev-fence048 start=2026-11-06 15:30:00 end=2026-11-06 15:30:13 elapsed=13s bound=600s status=FAIL rc=1 (with probe 048: the same 7 plus 2 branch-only-new fence failures)",
+    "[pyt] tag=s22rev-kb048 start=2026-11-06 15:30:41 end=2026-11-06 15:31:11 elapsed=30s bound=600s status=FAIL rc=1 (5 failed / 712 passed: r01 = E1; 4 sqlfluff_config failures because the scratch copy has no .githooks or requirements; p05 / p07 / r08 / r20 and s16b green)"
+   ],
+   "questions_for_orchestrator": [
+    "1. B1: approve the E-row on the 043 fence file?",
+    "2. B2: which rule for a pending batch: cancel on timeout, a durable pending record resumed next run, or --resume?",
+    "3. B3: skip runs that already have a haiku judgement row?",
+    "4. K1: make ENABLE_COMPARISON_ID_ECHO ON a precondition of any kb_feedback writer, or have S81-12 record only the 365-day TTL?",
+    "5. K2: accept the shared escalation-lane cap as a stated limit, or give the judge its own sub-budget?",
+    "6. K3: drop the verdict prose from the snapshot when the body is personalised?",
+    "7. C5: match the producing model at field level (verdict / critic roles), or on any call?",
+    "8. R6: data_coverage as smallint or text?",
+    "9. C7: escalation count cap per run or per Riyadh day?",
+    "10. R5: pass the camera's vision records into record_compare_run, or state the camera / URL llm_calls limits?",
+    "11. R2: fence the evidence inside <SEARCH_RESULTS>, or add a script-local <EVIDENCE> neutraliser?",
+    "12. C3: make 050 applied an explicit precondition of ENABLE_BATCH_JUDGE=apply?"
+   ],
+   "refuted_claims": [
+    "R1: Section 4.2 says the 043 fence pins (:1055-1300) stay green and unedited with 048 present. MEASURED false. With a probe 048 (the 043 body plus the alias-free kb_feedback DELETE), tests/test_migration_043_delete_user_cascade.py::test_fence_flags_each_dropped_delete (:1192) and ::test_fence_flags_each_weakened_delete_predicate (:1204) go red with AssertionError ('kb_feedback', []). Both rows walk every DELETE statement in the latest definition, and kb_feedback is not a fence user table, so a DELETE of it produces no gap. The alias form fails test_cascade_erases_or_keeps_every_user_referencing_table instead (the 'unrecognised statement' gap at :546). Either form needs an E-row.",
+    "R2: J27 says a snapshot carrying </EVIDENCE> is neutralised. False. sanitize_untrusted_block (prompt_sanitizer :55-72) only neutralises USER_INPUT and SEARCH_RESULTS tags (regex at :13), and json.dumps does not escape < or >.",
+    "R3: R26 (no gitleaks keyword in any new module-level name) fails on the spec's own names: ROW_KEYS, LLM_CALL_KEYS (2.2) and JUDGE_MAX_TOKENS (2.10).",
+    "R4: Mutant M21 (camera line moved before the envelope arm) is EQUIVALENT. The arm fires only when not success (image_routes :629, :772), and record_compare_run returns on success is not True, so no row can kill it.",
+    "R5: Section 1.6 says the ledger is visible at the exit for every input type. Not for URL: the URL path binds no OpenAI ledger (start_openai_ledger is called only at scs :4293 / :4954 and image_routes :376; compare_from_urls never reaches scs), so URL rows get llm_calls None. Camera rows lose the vision calls: the compare's own bind replaces the ContextVar, and the route keeps vision_ledger as a local (:376, :648, :679).",
+    "R6: Section 2.9.3 says the ruling left column types to the spec. R-S22-2 states data_coverage text NULL explicitly; the spec silently retypes it to smallint instead of raising a question.",
+    "R7: Citation drift in seed_kb_batch: _anthropic_factory is at :92 (spec :91), build_requests :249 (:248), anthropic_usage_record :479 (:478), breaker :513 (:510), reserve :517 (:514). Every other cited line re-measured correctly."
+   ],
+   "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s22/.qa-s80/S81-22_SPEC_REVIEW.md",
+   "unit": "S81-22 COMPARE-RUNS + capped judge",
+   "verdict": "APPROVE_WITH_CHANGES"
+  },
+  "toolsUsed": [
+   "Bash",
+   "Read",
+   "Write",
+   "StructuredOutput"
+  ],
+  "type": "result"
+ }
+]
