@@ -312,7 +312,7 @@ describe('S81-11 B2 / B3 / B4 -- coming-soon chips only under surfaces', () => {
     expect(String(soon.props.accessibilityHint ?? '')).not.toBe('');
   });
 
-  it('B3: a coming-soon tap -> the toast (+ iOS announcement), no event, no navigate, no compare', async () => {
+  it('B3: a coming-soon tap -> the toast (+ iOS announcement), one category_coming_soon_tap event, no navigate, no compare', async () => {
     const m = launch();
     expect(m).not.toBeNull();
     m?.recordLaunchSurfaces?.(versionBody({ surfaces: { skincare: true } }));
@@ -344,9 +344,10 @@ describe('S81-11 B2 / B3 / B4 -- coming-soon chips only under surfaces', () => {
     );
     expect(toast?.props.children).toBe(expected);
     expect(announce).toHaveBeenCalledWith(expected);
-    expect(
-      mockTrackEvent.mock.calls.filter((c) => c[0] === 'category_coming_soon_tap'),
-    ).toHaveLength(0);
+    // S81-SF1 (E4, R-SF1-7): the tap fires exactly one event with the chip key.
+    const soon = mockTrackEvent.mock.calls.filter((c) => c[0] === 'category_coming_soon_tap');
+    expect(soon).toHaveLength(1);
+    expect(soon[0]).toEqual(['category_coming_soon_tap', { category: 'skincare' }]);
     expect(props.navigation.navigate).not.toHaveBeenCalled();
     expect(mockStreamComparison).not.toHaveBeenCalled();
     // The tap never selects the inert chip.

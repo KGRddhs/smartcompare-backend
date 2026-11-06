@@ -22,6 +22,7 @@ from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.services.feedback_service import feedback_v2_enabled
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,15 @@ logger = logging.getLogger(__name__)
 _CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 _VALID_SHARE_TARGETS = {"whatsapp", "copy", "x", "telegram", "snapchat", "other"}
+# S81-SF1 (ENABLE_FEEDBACK_V2): + the share builder's sms / email / more (migration 049).
+_WIDENED_SHARE_TARGETS = frozenset(_VALID_SHARE_TARGETS | {"sms", "email", "more"})
+
+
+def _share_targets():
+    """The share_target set the defence-in-depth check reads: widened ON only."""
+    if feedback_v2_enabled():
+        return _WIDENED_SHARE_TARGETS
+    return _VALID_SHARE_TARGETS
 
 _WEEKLY_INVITE_CAP = 3
 
@@ -304,9 +314,10 @@ class ReferralService:
         # in the response so the FE can disable the share CTA at 3 lifetime.
 
         # 2. share_target validation (defence-in-depth before DB CHECK)
-        if share_target not in _VALID_SHARE_TARGETS:
+        allowed_targets = _share_targets()
+        if share_target not in allowed_targets:
             raise ValueError(
-                f"share_target {share_target!r} not in allowed set {sorted(_VALID_SHARE_TARGETS)}"
+                f"share_target {share_target!r} not in allowed set {sorted(allowed_targets)}"
             )
 
         # 3. Ensure referrer has a code

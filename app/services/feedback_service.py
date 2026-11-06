@@ -3,10 +3,15 @@ Feedback Service - Save comparison feedback and track user events
 """
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional
 
 from app.services.cache_service import delete_cached, _redis_offload_enabled
-from app.services.database_service import get_supabase_client, save_comparison
+from app.services.database_service import (
+    get_supabase_client,
+    postgrest_error_code,
+    save_comparison,
+)
 from app.services.model_config import critic_model
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
@@ -22,6 +27,17 @@ async def _delete_cached_async(key: str) -> bool:
     return delete_cached(key)
 
 logger = logging.getLogger(__name__)
+
+
+def feedback_v2_enabled() -> bool:
+    """S81-SF1 (`ENABLE_FEEDBACK_V2`, default OFF, read PER CALL; a new name). ON: the
+    migration 046 / 049 writes (the v2 feedback answers, `useful` optional, the
+    per-compare request id on feedback / events / search_logs, the three widened share
+    targets). HARD PRECONDITION: 046 and 049 APPLIED. database_service reads the SAME
+    name through its local `_feedback_v2_enabled` (it cannot import this module)."""
+    return os.getenv("ENABLE_FEEDBACK_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 def _without_verdict_critique(full_response: Dict) -> Dict:
@@ -197,13 +213,19 @@ async def _persist_verdict_critique(comparison_id: str, crit_meta: Dict) -> None
 async def save_feedback(
     user_id: Optional[str],
     comparison_id: Optional[str],
-    useful: bool,
+    useful: Optional[bool],
     mattered_most: List[str],
     change_suggestion: Optional[str] = None,
     access_token: Optional[str] = None,
     winner_correct: Optional[str] = None,
     price_correct: Optional[str] = None,
     specs_correct: Optional[str] = None,
+    identity_correct: Optional[str] = None,
+    wrong_side: Optional[str] = None,
+    preference: Optional[str] = None,
+    correction: Optional[str] = None,
+    source: Optional[str] = None,
+    compare_request_id: Optional[str] = None,
 ) -> dict:
     """
     Save comparison feedback to Supabase. Fire-and-forget safe.
@@ -216,17 +238,22 @@ async def save_feedback(
     load-bearing forgery control is the UUID validation on comparison_id at the
     route layer — migrations/010 INSERT policies do not constrain comparison_id,
     so the user client alone would not stop it (recorded follow-up).
+
+    S81-SF1 (ENABLE_FEEDBACK_V2, read first): ON, `useful` is written only when not
+    None and the six 046 columns only when not None. OFF, the record is the base
+    record whatever the caller passes (the new keyword arguments are ignored).
     """
+    v2 = feedback_v2_enabled()
     try:
         if user_id and access_token:
             from app.services.database_service import get_user_supabase_client
             client = get_user_supabase_client(access_token)
         else:
             client = get_supabase_client()
-        record: Dict = {
-            "useful": useful,
-            "mattered_most": mattered_most,
-        }
+        record: Dict = {}
+        if not v2 or useful is not None:
+            record["useful"] = useful
+        record["mattered_most"] = mattered_most
         if user_id:
             record["user_id"] = user_id
         if comparison_id:
@@ -241,13 +268,29 @@ async def save_feedback(
             record["price_correct"] = price_correct
         if specs_correct is not None:
             record["specs_correct"] = specs_correct
+        # S81-SF1 (ENABLE_FEEDBACK_V2): the six 046 columns, ON only, each when sent.
+        if v2:
+            for column, value in (
+                ("identity_correct", identity_correct),
+                ("wrong_side", wrong_side),
+                ("preference", preference),
+                ("correction", correction),
+                ("source", source),
+                ("compare_request_id", compare_request_id),
+            ):
+                if value is not None:
+                    record[column] = value
 
         # #115 — request-path write (POST /feedback); offload under
         # ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.
         response = await run_db(lambda: client.table("comparison_feedback").insert(record).execute())
         return {"success": True, "id": response.data[0]["id"] if response.data else None}
     except Exception as e:
-        logger.warning(f"Error saving feedback: {e}", exc_info=True)
+        # S81-SF1 (R-SF1-27, unflagged): constants only. The exception text and a
+        # traceback carry the PostgREST failing row (user text), so neither is logged.
+        logger.warning(
+            "[FEEDBACK] save failed type=%s code=%s", type(e).__name__, postgrest_error_code(e),
+        )
         return {"success": False, "error": str(e)}
 
 
@@ -294,7 +337,11 @@ async def track_events_batch(events: List[dict]) -> List[dict]:
     user_id, comparison_id, session_id.
 
     Returns list of result dicts. Never raises.
+
+    S81-SF1 (ENABLE_FEEDBACK_V2, read first): ON, an event's `compare_request_id`
+    is written when present (migration 049); OFF the records are the base records.
     """
+    v2 = feedback_v2_enabled()
     try:
         client = get_supabase_client()
         records = []
@@ -309,11 +356,18 @@ async def track_events_batch(events: List[dict]) -> List[dict]:
                 record["comparison_id"] = evt["comparison_id"]
             if evt.get("session_id"):
                 record["session_id"] = evt["session_id"]
+            if v2 and evt.get("compare_request_id"):
+                record["compare_request_id"] = evt["compare_request_id"]
             records.append(record)
 
         # #115 — request-path write (POST /events batch); same offload contract.
         response = await run_db(lambda: client.table("user_events").insert(records).execute())
         return [{"success": True, "id": r["id"]} for r in (response.data or [])]
     except Exception as e:
-        logger.warning(f"Error batch tracking events: {e}", exc_info=True)
+        # S81-SF1 (R-SF1-27, unflagged): constants only (the exception text carries
+        # the failing row).
+        logger.warning(
+            "[EVENTS] batch insert failed type=%s code=%s",
+            type(e).__name__, postgrest_error_code(e),
+        )
         return [{"success": False, "error": str(e)}]

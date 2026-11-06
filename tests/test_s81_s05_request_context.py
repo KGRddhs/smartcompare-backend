@@ -1328,6 +1328,9 @@ _ALLOWED_CTX_FILES = {
     # S81-10 (R-S10-2, the S81-06 E9 form): the refusal-budget subject; the import
     # shape and the attribute uses are pinned below; no needle string in the file.
     "app/services/category_gate.py",
+    # S81-SF1 (E3 / R-SF1-9): log_search writes search_logs.compare_request_id; the
+    # import shape and the attribute uses are pinned below; no needle string in the file.
+    "app/services/database_service.py",
 }
 # S81-06 (E9): the router's only reads of the leaf.
 _ROUTER_CTX_ATTRS = {"consent_version", "header_state"}
@@ -1342,10 +1345,13 @@ _USAGE_CTX_ATTRS = {
 }
 # S81-10 (R-S10-2): the fragrance gate's only reads of the leaf.
 _GATE_CTX_ATTRS = {"device_fingerprint", "device_key"}
+# S81-SF1 (R-SF1-9): log_search reads only compare_request_id.
+_LOG_SEARCH_CTX_ATTRS = {"compare_request_id"}
 _CTX_CONSUMER_ATTRS = {
     "app/services/llm_router.py": _ROUTER_CTX_ATTRS,
     "app/services/usage_service.py": _USAGE_CTX_ATTRS,
     "app/services/category_gate.py": _GATE_CTX_ATTRS,
+    "app/services/database_service.py": _LOG_SEARCH_CTX_ATTRS,
 }
 
 
