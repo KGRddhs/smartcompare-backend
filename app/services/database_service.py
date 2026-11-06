@@ -22,8 +22,31 @@ import httpx
 from supabase import create_client, Client, ClientOptions
 
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
+# S81-SF1 (R-SF1-9): log_search reads the per-compare request id of the S81-05 leaf.
+from app.utils import request_context as _request_context
 
 logger = logging.getLogger(__name__)
+
+
+def _feedback_v2_enabled() -> bool:
+    """S81-SF1 (R-SF1-18): `ENABLE_FEEDBACK_V2`, the SAME name as
+    feedback_service.feedback_v2_enabled (which imports this module, so this local
+    one-liner avoids the cycle; parity pinned by the RED file's r02). Read PER CALL."""
+    return os.getenv("ENABLE_FEEDBACK_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def postgrest_error_code(exc: BaseException) -> Optional[str]:
+    """S81-SF1 (R-SF1-27): the short PostgREST / SQLSTATE code of a failed write (for
+    example 23502), for a constants-only log line; None when absent or not a short
+    alphanumeric code. Never the message, details or hint (they carry the failing row)."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and not isinstance(code, bool):
+        code = str(code)
+    if isinstance(code, str) and 0 < len(code) <= 16 and code.isascii() and code.isalnum():
+        return code
+    return None
 
 # Initialize Supabase credentials
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -792,14 +815,26 @@ async def log_search(
             record["error_message"] = error_message
         if is_synthetic is not None and search_log_synthetic_marker_enabled():
             record["is_synthetic"] = bool(is_synthetic)
+        # S81-SF1 (ENABLE_FEEDBACK_V2, read FIRST, so OFF reads no request state): the
+        # bound per-compare request id, written only when bound (migration 049). No new
+        # parameter: the id comes from the request ContextVars, which a task created on
+        # the request path inherits.
+        if _feedback_v2_enabled():
+            compare_request_id = _request_context.compare_request_id()
+            if compare_request_id is not None:
+                record["compare_request_id"] = compare_request_id
 
         # #115 — fire-and-forget but still loop-stalling: this is one of the two
         # highest-frequency request-path writes. run_db offloads under
         # ENABLE_SYNC_DB_OFFLOAD; inline (byte-identical) when OFF.
         await run_db(lambda: client.table("search_logs").insert(record).execute())
     except Exception as e:
-        # Never fail the request for logging
-        logger.warning(f"Error logging search: {e}", exc_info=True)
+        # Never fail the request for logging. S81-SF1 (R-SF1-27, unflagged): constants
+        # only (the exception text carries the failing row).
+        logger.warning(
+            "[SEARCH_LOG] insert failed type=%s code=%s",
+            type(e).__name__, postgrest_error_code(e),
+        )
 
 
 # ============================================

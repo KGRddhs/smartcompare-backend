@@ -525,7 +525,8 @@ def test_s14_r01_files_exist_once():
     assert sorted(p.name for p in RB.glob("045_*.sql")) == ["045_kb_core.sql"]
     assert sorted(p.name for p in RB.glob("047_*.sql")) == ["047_012_revoke.sql"]
     assert not list(MIG.glob("039_*")), "039 is reserved"
-    for n in ("046", "048", "049", "051"):
+    # S81-SF1 (E2): 046 and 049 now exist; 048 / 051 stay reserved.
+    for n in ("048", "051"):
         assert not list(MIG.glob(n + "_*.sql")), "%s belongs to another unit (R-S14-12)" % n
 
 

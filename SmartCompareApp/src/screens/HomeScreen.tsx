@@ -153,6 +153,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       category: t(`home.categories.${key}`),
     });
     if (Platform.OS === 'ios') AccessibilityInfo?.announceForAccessibility?.(msg);
+    trackEvent('category_coming_soon_tap', { category: key });
     comingSoonTimerRef.current = setTimeout(() => {
       comingSoonTimerRef.current = null;
       setComingSoonKey(null);
