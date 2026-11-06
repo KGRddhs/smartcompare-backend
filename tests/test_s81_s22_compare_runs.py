@@ -1404,3 +1404,18 @@ def test_p05_device_key_unchanged(monkeypatch):
     monkeypatch.setenv(PEPPER, PEPPER_VALUE_SYN)
     got = [rc.device_key(_hex("dk%d" % i)) for i in range(3)]
     assert base64.b64encode(hashlib.sha256("|".join(got).encode("ascii")).digest()).decode("ascii") == SYN_DEVICE_DIGEST_B64
+
+
+# =============================================================== FIX ROUND 1 (RULINGS_FIX1_S81_22)
+
+def test_rf1_4_field_status_capped():
+    """F1-4: field_status serialized over 16,384 bytes is replaced by {"truncated": true}."""
+    b = body_frag()
+    big = "v" * 100011
+    b["metadata"]["field_status"] = [{"price": big}, {"price": "ok"}]
+    row = _row(b, "text")
+    assert row["field_status"] == {"truncated": True}
+    assert big not in json.dumps(row, default=str)
+    b2 = body_frag()
+    b2["metadata"]["field_status"] = [{"price": "ok"}, {"price": "missing"}]
+    assert _row(b2, "text")["field_status"] == [{"price": "ok"}, {"price": "missing"}]

@@ -277,10 +277,17 @@ def _llm_calls(extra_records: Any) -> Optional[Dict[str, Any]]:
     return {"v": 1, "calls": calls[:LLM_CALLS_MAX], "llm_calls_dropped": max(0, len(calls) - LLM_CALLS_MAX)}
 
 
-def _field_status(meta: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+FIELD_STATUS_MAX_BYTES = 16384  # F1-4: a larger serialized field_status is replaced
+
+
+def _field_status(meta: Dict[str, Any]) -> Optional[Any]:
     fs = meta.get("field_status")
     if isinstance(fs, list) and len(fs) <= 2 and all(isinstance(x, dict) for x in fs):
-        return fs
+        try:
+            size = len(json.dumps(fs, ensure_ascii=True, sort_keys=True, default=str).encode("ascii"))
+        except (TypeError, ValueError):
+            return {"truncated": True}
+        return {"truncated": True} if size > FIELD_STATUS_MAX_BYTES else fs
     return None
 
 

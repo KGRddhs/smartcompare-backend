@@ -83,10 +83,11 @@ JUDGE_SCHEMA = {
         "price_ok": {"type": "boolean"},
         "specs_ok": {"type": "boolean"},
         "verdict_supported": {"type": "boolean"},
-        "flags": {"type": "array", "maxItems": 8, "items": {"type": "string", "pattern": "^[a-z_]{1,32}$"}},
-        "note": {"type": "string", "maxLength": NOTE_MAX},
+        "flags": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string"},
     },
 }
+FLAGS_MAX = 8  # F1-2: the flags / note caps live in code (_valid_answer), never in the schema
 
 
 # --- mode, knobs, seams -------------------------------------------------------------------
@@ -163,9 +164,10 @@ def _sampled(run_id: Any, pct: int) -> bool:
     return int(digest[:8], 16) % 100 < pct
 
 
-def custom_id(i: int) -> str:
-    """Positional batch ids r0001..: the run id never leaves the box."""
-    return "r%04d" % (i + 1)
+def custom_id(run_id: Any) -> str:
+    """F1-3: "r" + the first 16 hex of sha256(run id): ASCII, one-way (the run id never leaves
+    the box); the resume maps results by recomputing it, never by position."""
+    return "r" + hashlib.sha256(str(run_id).encode("utf-8")).hexdigest()[:16]
 
 
 def _finite_positive(v: Any) -> bool:
@@ -225,18 +227,21 @@ def _render(text: str) -> str:
     return "".join(" " if (ch in "<>&\"'" or ord(ch) > 126 or ord(ch) < 32) else ch for ch in text)
 
 
-def _valid_answer(obj: Any) -> Optional[Tuple[Dict[str, bool], List[str], str]]:
+def _valid_answer(obj: Any) -> Optional[Tuple[Dict[str, bool], List[str], str, bool]]:
+    """(verdicts, flags, note, capped?): over FLAGS_MAX flags / NOTE_MAX note chars are cut
+    here (F1-2: the schema carries no such constraint); a flag off _FLAG_RX is unparsed."""
     if not isinstance(obj, dict) or set(obj) != set(LLM_CHECKS) | {"flags", "note"}:
         return None
     if not all(isinstance(obj[k], bool) for k in LLM_CHECKS):
         return None
     flags = obj["flags"]
-    if not isinstance(flags, list) or len(flags) > 8 or not all(
-            isinstance(f, str) and _FLAG_RX.match(f) for f in flags):
+    if not isinstance(flags, list) or not all(isinstance(f, str) and _FLAG_RX.match(f) for f in flags):
         return None
     if not isinstance(obj["note"], str):
         return None
-    return {k: obj[k] for k in LLM_CHECKS}, list(flags), _render(obj["note"][:NOTE_MAX])
+    capped = len(flags) > FLAGS_MAX or len(obj["note"]) > NOTE_MAX
+    return ({k: obj[k] for k in LLM_CHECKS}, list(flags[:FLAGS_MAX]), _render(obj["note"][:NOTE_MAX]),
+            capped)
 
 
 def _answer(msg: Any) -> Any:
@@ -256,13 +261,14 @@ def _judged(answer: Dict[str, Any]) -> Dict[str, Any]:
     return {"verdicts": parsed[0], "flags": parsed[1], "note": parsed[2], "cost_usd": answer.get("cost_usd")}
 
 
-def build_request(i: int, evidence: Any, model: str) -> Dict[str, Any]:
-    """THE request body: the fixed instructions + the snapshot inside the SEARCH_RESULTS fence."""
+def build_request(run_id: Any, evidence: Any, model: str) -> Dict[str, Any]:
+    """THE request body: the fixed instructions + the snapshot inside the SEARCH_RESULTS fence;
+    the scripts/seed_kb_batch.py build_requests form (F1-2: no temperature key)."""
     from app.utils import prompt_sanitizer as ps
 
     body = ps.sanitize_untrusted_block(json.dumps(evidence, ensure_ascii=True, sort_keys=True))
-    return {"custom_id": custom_id(i), "params": {
-        "model": model, "max_tokens": JUDGE_ANSWER_MAX_OUT, "temperature": 0, "system": JUDGE_SYSTEM,
+    return {"custom_id": custom_id(run_id), "params": {
+        "model": model, "max_tokens": JUDGE_ANSWER_MAX_OUT, "system": JUDGE_SYSTEM,
         "messages": [{"role": "user", "content": "<SEARCH_RESULTS>\n" + body + "\n</SEARCH_RESULTS>"}],
         "thinking": {"type": "disabled"},
         "output_config": {"format": {"type": "json_schema", "schema": JUDGE_SCHEMA}},
@@ -307,10 +313,12 @@ def _new_report(mode: str, web: bool) -> Dict[str, Any]:
         "programmatic_fail": dict.fromkeys(PROGRAMMATIC_CHECKS + ("no_evidence",), 0),
         "self_produced": 0, "no_independent_judge": 0,
         "batch": dict.fromkeys(("requests", "usd_capped", "submitted", "ended", "pending", "refused",
-                                "succeeded", "errored", "parsed", "unparsed"), 0),
-        "resume": dict.fromkeys(("batches", "filled", "still_pending", "lost"), 0),
+                                "succeeded", "errored", "parsed", "unparsed", "markers_written",
+                                "markers_failed", "cancelled", "unmatched", "answer_capped"), 0),
+        "resume": dict.fromkeys(("batches", "filled", "still_pending", "lost", "unmatched"), 0),
         "escalation": dict.fromkeys(("candidates", "user_wrong", "haiku_flag", "sampled", "self_produced",
-                                     "sent", "capped", "refused", "breaker_off", "day_count"), 0),
+                                     "sent", "capped", "refused", "breaker_off", "day_count",
+                                     "answer_capped"), 0),
         "judgements_written": 0, "judged_at_set": 0, "unjudged_expired": 0,
         "pruned": {"compare_runs": None, KB_FEEDBACK_TABLE: None},
         "evidence_bytes": {"p50": 0, "p95": 0, "max": 0, "n": 0}, "estimated_input_tokens": 0,
@@ -389,9 +397,11 @@ def _wait_ended(ac: Any, batch_id: Any) -> bool:
         waited += JUDGE_POLL_SECONDS
 
 
-def _read_results(ac: Any, batch_id: Any, model: str, by_cid: Dict[str, Any],
-                  report: Dict[str, Any]) -> Tuple[Dict[Any, Dict[str, Any]], List[Dict[str, Any]], bool]:
-    """(answers by run id, the usage records, complete?); a partial read is never ledgered."""
+def _read_results(ac: Any, batch_id: Any, model: str, by_cid: Dict[str, Any], report: Dict[str, Any],
+                  where: str = "batch") -> Tuple[Dict[Any, Dict[str, Any]], List[Dict[str, Any]], bool]:
+    """(answers by run id, the usage records, complete?); a partial read is never ledgered.
+    by_cid maps the RECOMPUTED custom ids (F1-3); an id matching no row is counted
+    (``<where>.unmatched``) and ignored, never shifted onto another run."""
     from app.services import llm_pricing as lp
 
     answers: Dict[Any, Dict[str, Any]] = {}
@@ -408,9 +418,12 @@ def _read_results(ac: Any, batch_id: Any, model: str, by_cid: Dict[str, Any],
             report["batch"]["succeeded"] += 1
             run_id = by_cid.get(_g(item, "custom_id"))
             if run_id is None:
+                report[where]["unmatched"] += 1
                 continue
             parsed = _valid_answer(_answer(msg))
             report["batch"]["parsed" if parsed is not None else "unparsed"] += 1
+            if parsed is not None and parsed[3]:
+                report["batch"]["answer_capped"] += 1
             answers[run_id] = _judged({"parsed": parsed, "cost_usd": rec.get("cost_usd")})
     except Exception as exc:  # noqa: BLE001 - a partial read: no ledger row, no delete
         logger.warning("%s results read failed (%s)", PREFIX, type(exc).__name__)
@@ -440,6 +453,23 @@ def _upsert(client: Any, rows: List[Dict[str, Any]], report: Dict[str, Any]) -> 
             _err(report, exc)
             ok = False
     return ok
+
+
+def _write_markers(client: Any, rows: List[Dict[str, Any]], report: Dict[str, Any]) -> int:
+    """F1-3: the batch_pending markers, upserted right after batches.create (before any poll);
+    returns the rows written; a failed chunk is an ERROR line + batch.markers_failed."""
+    written = 0
+    for i in range(0, len(rows), common.WRITE_BATCH):
+        chunk = rows[i:i + common.WRITE_BATCH]
+        try:
+            client.table(JUDGEMENTS_TABLE).upsert(chunk, on_conflict="run_id,judge").execute()
+            written += len(chunk)
+            report["batch"]["markers_written"] += len(chunk)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("%s batch marker write failed (%s)", PREFIX, type(exc).__name__)
+            _err(report, exc)
+            report["batch"]["markers_failed"] += len(chunk)
+    return written
 
 
 def _set_judged(client: Any, ids: List[Any], now: datetime, report: Dict[str, Any]) -> None:
@@ -494,9 +524,9 @@ def _resume(client: Any, ac: Any, apply: bool, now: datetime, report: Dict[str, 
         if status != "ended":
             report["resume"]["still_pending"] += 1
             continue
-        # the submission order: positional ids over the batch's runs sorted by id
-        by_cid = {custom_id(i): r["run_id"] for i, r in enumerate(group)}
-        answers, records, complete = _read_results(ac, batch_id, model, by_cid, report)
+        # F1-3: the ids RECOMPUTED over the pending rows' run ids, never by position
+        by_cid = {custom_id(r["run_id"]): r["run_id"] for r in group}
+        answers, records, complete = _read_results(ac, batch_id, model, by_cid, report, "resume")
         if not complete:
             continue
         report["resume"]["filled"] += len(answers)
@@ -609,6 +639,7 @@ def _escalate(client: Any, ac: Any, apply: bool, cands: List[Dict[str, Any]], mo
     (the sonnet-row head count), the USD sub-budget and, with the breaker ON, the lane."""
     from app.services import api_budget_service as abs_
     from app.services import llm_pricing as lp
+    from app.services import llm_router as lr
     from app.services import llm_spend_breaker as br
 
     esc = report["escalation"]
@@ -630,8 +661,11 @@ def _escalate(client: Any, ac: Any, apply: bool, cands: List[Dict[str, Any]], mo
         esc["breaker_off"] = len(cands)
     records: List[Dict[str, Any]] = []
     stop = False
-    for i, run in enumerate(cands):
-        req = build_request(i, run.get("evidence"), model)
+    for run in cands:
+        req = build_request(run["id"], run.get("evidence"), model)
+        # F1-1: the router's escalation form (the escalation model, thinking between_tools, no
+        # temperature; system / messages / max_tokens / output_config as the batch request)
+        req["params"] = lr._escalation_request(req["params"])
         bound_i = request_bound([req], model)
         if stop or remaining <= 0 or spent_bound + bound_i > budget or not apply or ac is None:
             capped.append(run["id"])
@@ -663,7 +697,10 @@ def _escalate(client: Any, ac: Any, apply: bool, cands: List[Dict[str, Any]], mo
         remaining -= 1
         spent_bound += bound_i
         esc["sent"] += 1
-        answered[run["id"]] = _judged({"parsed": _valid_answer(_answer(msg)), "cost_usd": rec.get("cost_usd")})
+        parsed = _valid_answer(_answer(msg))
+        if parsed is not None and parsed[3]:
+            esc["answer_capped"] += 1
+        answered[run["id"]] = _judged({"parsed": parsed, "cost_usd": rec.get("cost_usd")})
     esc["capped"] = len(capped)
     if apply and records:
         _ledger_write(client, lp.spend_ledger_row(job=JOB, lane="escalation", mode="sync", provider="anthropic",
@@ -680,7 +717,7 @@ def _haiku_batch(client: Any, ac: Any, apply: bool, runs: List[Dict[str, Any]], 
     from app.services import llm_spend_breaker as br
 
     runs = sorted(runs, key=lambda r: str(r["id"]))
-    requests = [build_request(i, r.get("evidence"), model) for i, r in enumerate(runs)]
+    requests = [build_request(r["id"], r.get("evidence"), model) for r in runs]
     cap = max_usd()
     while requests and request_bound(requests, model) > cap:
         requests.pop()
@@ -704,11 +741,23 @@ def _haiku_batch(client: Any, ac: Any, apply: bool, runs: List[Dict[str, Any]], 
         batch_id = _g(batch, "id")
         report["batch"]["submitted"] += 1
         _say("submitted batch_id=%s", batch_id)
-        by_cid = {custom_id(i): r["id"] for i, r in enumerate(batch_runs)}
+        by_cid = {custom_id(r["id"]): r["id"] for r in batch_runs}
+        # F1-3: the durable pending record (R-S22-33) BEFORE any poll; the resume fills it
+        markers = [_marker_row(r["id"], model, batch_id, "batch_pending") for r in batch_runs]
+        if _write_markers(client, markers, report) == 0:
+            # no marker at all: nothing could resume this batch -> the ONLY cancel in the script
+            try:
+                ac.messages.batches.cancel(batch_id)
+                report["batch"]["cancelled"] += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.error("%s batch cancel failed (%s)", PREFIX, type(exc).__name__)
+                _err(report, exc)
+            if breaker and ticket is not None:
+                br.settle(ticket, None)
+            return {}, batch_runs, None, 0
         if not _wait_ended(ac, batch_id):
-            # the durable pending record (R-S22-33): resumed by the next run's step 0
+            # the markers written above are resumed by the next run's step 0
             report["batch"]["pending"] += 1
-            rows.extend(_marker_row(r["id"], model, batch_id, "batch_pending") for r in batch_runs)
             if breaker:
                 if ticket is not None:
                     br.settle(ticket, 0.0)

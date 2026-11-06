@@ -623,7 +623,8 @@ def test_j09_batch_body_deidentified(monkeypatch):
     Breaker(monkeypatch, order)
     assert _run(fc, fa) == 0
     reqs = fa.created[0]
-    assert [r["custom_id"] for r in reqs] == ["r0001", "r0002"]
+    assert [r["custom_id"] for r in reqs] == ["r" + hashlib.sha256(x.encode("utf-8")).hexdigest()[:16]
+                                            for x in sorted([_rid(1), _rid(2)])]  # F1-3: hashed ids
     text = json.dumps(reqs, sort_keys=True)
     for slot in t22.SENTINEL_SLOTS:
         assert t22._sentinel(slot) not in text, slot
@@ -632,8 +633,8 @@ def test_j09_batch_body_deidentified(monkeypatch):
     for r in reqs:
         assert set(r) == {"custom_id", "params"}
         p = r["params"]
-        assert set(p) == {"model", "max_tokens", "temperature", "system", "messages", "thinking", "output_config"}
-        assert p["thinking"] == {"type": "disabled"} and p["max_tokens"] == 400 and p["temperature"] == 0
+        assert set(p) == {"model", "max_tokens", "system", "messages", "thinking", "output_config"}  # F1-2
+        assert p["thinking"] == {"type": "disabled"} and p["max_tokens"] == 400 and "temperature" not in p
         assert p["model"] == mc.anthropic_model("critic") == HAIKU
         assert len(p["messages"]) == 1 and p["messages"][0]["role"] == "user"
 
@@ -663,7 +664,8 @@ def test_j11_g2_spend_sequence(monkeypatch):
     assert _run(fc, fa) == 0
     seq = [e for e in order if e[0] in ("reserve", "batches.create", "batches.retrieve", "batches.results",
                                         "db.insert", "settle", "record", "db.upsert", "batches.delete")]
-    want = [("reserve", "offclock"), ("batches.create", 3), ("batches.retrieve", "msgbatch_s22"),
+    want = [("reserve", "offclock"), ("batches.create", 3), ("db.upsert", "compare_judgements"),  # F1-3 markers
+            ("batches.retrieve", "msgbatch_s22"),
             ("batches.results", "msgbatch_s22"), ("db.insert", "llm_spend_ledger"), ("settle", "offclock"),
             ("db.upsert", "compare_judgements"), ("batches.delete", "msgbatch_s22")]
     assert seq == want, seq
@@ -734,7 +736,7 @@ def test_j14_partial_read_no_ledger_no_delete(monkeypatch):
     _run(fc, fa)
     assert b.of("settle") == [("settle", "offclock", None)]
     assert _ledger_rows(fc) == [] and fa.deleted == []
-    assert _upserts(fc, "haiku") == []
+    assert [r for r in _upserts(fc, "haiku") if r["flags"] != ["batch_pending"]] == []  # F1-3 markers stay
 
 
 def test_j14b_pending_on_timeout(monkeypatch):
@@ -777,7 +779,8 @@ def test_j14c_resume_first(monkeypatch, state):
     lost = type("NotFoundError", (Exception,), {"status_code": 404})
     fa = FakeAnthropic(order, status="ended" if state == "ended" else "in_progress",
                        retrieve_raise=lost("gone") if state == "lost" else None, batch_id="msgbatch_new")
-    fa.created.append([{"custom_id": "r0001"}, {"custom_id": "r0002"}])
+    fa.created.append([{"custom_id": "r" + hashlib.sha256(_rid(n).encode("utf-8")).hexdigest()[:16]}
+                       for n in (11, 12)])  # F1-3: hashed ids
     Breaker(monkeypatch, order)
     monkeypatch.setenv("JUDGE_SAMPLE_PCT", "0")
     _run(fc, fa)
@@ -848,7 +851,7 @@ def test_j15_parse_failure(monkeypatch, bad):
     Breaker(monkeypatch, order)
     monkeypatch.setenv("JUDGE_ESCALATION_MAX_PER_DAY", "0")
     _run(fc, fa)
-    h = _upserts(fc, "haiku")
+    h = [r for r in _upserts(fc, "haiku") if r["flags"] != ["batch_pending"]]  # F1-3 markers
     assert len(h) == 1 and h[0]["verdicts"] == {} and h[0]["flags"] == ["unparsed"]
 
 
@@ -860,7 +863,7 @@ def test_j15b_note_cut_and_escaped(monkeypatch):
     fa = FakeAnthropic(order, answer=lambda _c: json.dumps(_answer(note=note)))
     Breaker(monkeypatch, order)
     _run(fc, fa)
-    h = _upserts(fc, "haiku")[0]
+    h = [r for r in _upserts(fc, "haiku") if r["flags"] != ["batch_pending"]][0]  # F1-3 markers
     assert len(h["note"]) == 300 and "<" not in h["note"] and ">" not in h["note"]
 
 
@@ -1187,3 +1190,194 @@ def _git_blob(path):
 def test_pj1_g2_script_untouched():
     for rel, blob in G2_BLOBS.items():
         assert base64.b64encode(bytes.fromhex(_git_blob(ROOT / rel))).decode("ascii") == blob, rel
+
+
+# =============================================================== FIX ROUND 1 (RULINGS_FIX1_S81_22)
+
+def _hcid(run_id):
+    """F1-3: the batch custom id of a run, "r" + the first 16 hex of sha256(run_id)."""
+    return "r" + hashlib.sha256(str(run_id).encode("utf-8")).hexdigest()[:16]
+
+
+def _schema_keys(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield k
+            yield from _schema_keys(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _schema_keys(v)
+
+
+def test_jf1_1_escalation_params_mirror_router(monkeypatch):
+    """F1-1: the escalation create = llm_router._escalation_request over the batch params:
+    the escalation model, thinking between_tools, no temperature, the rest unchanged."""
+    cj = _cj()
+    _apply(monkeypatch)
+    monkeypatch.setenv("JUDGE_SAMPLE_PCT", "0")
+    order = []
+    rr = run_row(1)
+    fc = FakeClient(_world([rr], judgements=[_haiku_prior(1, ok=False)]), order=order)
+    fa = FakeAnthropic(order)
+    Breaker(monkeypatch, order)
+    _run(fc, fa)
+    assert len(fa.sync) == 1, fa.sync
+    p = json.loads(json.dumps(fa.sync[0]))
+    assert "temperature" not in p, sorted(p)
+    assert p["thinking"] == {"type": "between_tools"}
+    assert p["model"] == mc.anthropic_escalation_model() == SONNET
+    want = lr._escalation_request(cj.build_request(rr["id"], rr["evidence"], HAIKU)["params"])
+    assert p == json.loads(json.dumps(want))
+
+
+def test_jf1_2_batch_params_follow_g2_and_caps_in_code(monkeypatch):
+    """F1-2: the G2 build_requests form (no temperature, thinking disabled, json_schema output);
+    JUDGE_SCHEMA carries no maxItems / maxLength / pattern; the caps are enforced in code."""
+    cj = _cj()
+    assert not {"maxItems", "maxLength", "pattern"} & set(_schema_keys(cj.JUDGE_SCHEMA))
+    _apply(monkeypatch)
+    monkeypatch.setenv("JUDGE_ESCALATION_MAX_PER_DAY", "0")
+    order = []
+    fc = FakeClient(_world([run_row(1), run_row(2)]), order=order)
+    flags10 = ["flag_%s" % c for c in "abcdefghij"]
+    first = sorted([_rid(1), _rid(2)])[0]
+
+    def _ans(cid):
+        if cid == _hcid(first):
+            return json.dumps(_answer(flags=flags10))
+        return json.dumps(_answer(note="m" * 450))
+
+    fa = FakeAnthropic(order, answer=_ans)
+    Breaker(monkeypatch, order)
+    rep = ROOT / ".pytest_s22_jf12.json"
+    try:
+        _run(fc, fa, report=rep)
+        data = json.loads(rep.read_text(encoding="ascii"))
+    finally:
+        if rep.exists():
+            rep.unlink()
+    for r in fa.created[0]:
+        p = r["params"]
+        assert set(p) == {"model", "max_tokens", "system", "messages", "thinking", "output_config"}
+        assert "temperature" not in p and p["thinking"] == {"type": "disabled"}
+        assert p["output_config"] == {"format": {"type": "json_schema", "schema": cj.JUDGE_SCHEMA}}
+    h = {r["run_id"]: r for r in _upserts(fc, "haiku") if r["flags"] != ["batch_pending"]}
+    assert h[first]["flags"] == flags10[:8]
+    other = [k for k in h if k != first][0]
+    assert len(h[other]["note"]) == 300
+    assert data["batch"]["answer_capped"] == 2
+
+
+def test_jf1_3a_resume_maps_by_hashed_id(monkeypatch):
+    """F1-3: a missing pending row shifts nothing; the orphan answer is counted and ignored."""
+    _apply(monkeypatch)
+    order = []
+    pending = [{"run_id": _rid(n), "judge": "haiku", "model": HAIKU, "batch_id": "msgbatch_old", "verdicts": {},
+                "flags": ["batch_pending"], "note": None, "cost_usd": None,
+                "created_at": (NOW - timedelta(days=1)).isoformat()} for n in (11, 13)]
+    fc = FakeClient(_world([], judgements=pending), order=order)
+    fa = FakeAnthropic(order, answer=lambda cid: json.dumps(_answer(note="for " + cid)))
+    fa.created.append([{"custom_id": _hcid(_rid(n))} for n in (11, 12, 13)])
+    Breaker(monkeypatch, order)
+    rep = ROOT / ".pytest_s22_jf13a.json"
+    try:
+        _run(fc, fa, report=rep)
+        data = json.loads(rep.read_text(encoding="ascii"))
+    finally:
+        if rep.exists():
+            rep.unlink()
+    h = {r["run_id"]: r for r in _upserts(fc, "haiku")}
+    assert sorted(h) == sorted([_rid(11), _rid(13)]), sorted(h)
+    for n in (11, 13):
+        assert h[_rid(n)]["note"] == "for " + _hcid(_rid(n)) and h[_rid(n)]["flags"] == []
+    assert data["resume"]["unmatched"] == 1 and data["resume"]["filled"] == 2
+    assert sorted(_judged_ids(fc)) == sorted([_rid(11), _rid(13)])
+
+
+def test_jf1_3b_markers_right_after_create(monkeypatch):
+    """F1-3: the batch_pending markers are upserted after create and BEFORE the first poll;
+    a batch that ends within the wait fills the same (run_id, judge) rows."""
+    _apply(monkeypatch)
+    order = []
+    fc = FakeClient(_world([run_row(1), run_row(2)]), order=order)
+    fa = FakeAnthropic(order)
+    Breaker(monkeypatch, order)
+    monkeypatch.setenv("JUDGE_SAMPLE_PCT", "0")
+    _run(fc, fa)
+    i_create = order.index(("batches.create", 2))
+    i_poll = order.index(("batches.retrieve", "msgbatch_s22"))
+    upserts = [i for i, e in enumerate(order) if e == ("db.upsert", "compare_judgements")]
+    assert upserts and i_create < upserts[0] < i_poll, order
+    first = next(ops for t, ops in fc.calls if t == "compare_judgements" and any(o[0] == "upsert" for o in ops))
+    rows = next(o for o in first if o[0] == "upsert")[1][0]
+    assert sorted(r["run_id"] for r in rows) == sorted([_rid(1), _rid(2)])
+    for r in rows:
+        assert (r["judge"], r["flags"], r["verdicts"], r["batch_id"], r["model"]) == (
+            "haiku", ["batch_pending"], {}, "msgbatch_s22", HAIKU)
+    final = [r for r in fc.world["compare_judgements"] if r["judge"] == "haiku"]
+    assert sorted(r["run_id"] for r in final) == sorted([_rid(1), _rid(2)])
+    assert all(r["flags"] == [] and r["verdicts"] for r in final)
+
+
+class _OnceRaise(dict):
+    """raise_on double: the FIRST compare_judgements upsert raises, every later one succeeds."""
+
+    def __init__(self):
+        super().__init__()
+        self.fired = False
+
+    def get(self, key, default=None):
+        if key == ("compare_judgements", "upsert") and not self.fired:
+            self.fired = True
+            return RuntimeError("s22 one marker chunk")
+        return default
+
+
+def test_jf1_3c_cancel_only_on_total_marker_failure(monkeypatch, caplog):
+    """F1-3: no marker written at all -> ERROR + markers_failed + batches.cancel, never polled;
+    a partial marker write keeps the batch (no cancel)."""
+    _apply(monkeypatch)
+    order = []
+    fc = FakeClient(_world([run_row(1), run_row(2)]), order=order)
+    fc.raise_on[("compare_judgements", "upsert")] = RuntimeError("s22 marker write")
+    fa = FakeAnthropic(order)
+    cancelled = []
+
+    def _cancel(bid):
+        cancelled.append(bid)
+        order.append(("batches.cancel", bid))
+
+    fa.messages.batches.cancel = _cancel
+    b = Breaker(monkeypatch, order)
+    rep = ROOT / ".pytest_s22_jf13c.json"
+    try:
+        with caplog.at_level(logging.INFO):
+            _run(fc, fa, report=rep)
+        data = json.loads(rep.read_text(encoding="ascii"))
+    finally:
+        if rep.exists():
+            rep.unlink()
+    assert cancelled == ["msgbatch_s22"], order
+    assert ("batches.retrieve", "msgbatch_s22") not in order
+    assert data["batch"]["markers_failed"] == 2 and data["batch"]["markers_written"] == 0
+    assert any(r.levelno == logging.ERROR and "marker" in r.getMessage() for r in caplog.records)
+    assert _ledger_rows(fc) == [] and fa.deleted == []
+    assert b.of("settle", "offclock") == [("settle", "offclock", None)]
+    # a partial marker write (one chunk of two fails) keeps the batch
+    order2 = []
+    fc2 = FakeClient(_world([run_row(1), run_row(2)]), order=order2)
+    fc2.raise_on = _OnceRaise()
+    monkeypatch.setattr(common, "WRITE_BATCH", 1)
+    fa2 = FakeAnthropic(order2)
+    cancelled2 = []
+    fa2.messages.batches.cancel = cancelled2.append
+    Breaker(monkeypatch, order2)
+    rep2 = ROOT / ".pytest_s22_jf13c2.json"
+    try:
+        _run(fc2, fa2, report=rep2)
+        data2 = json.loads(rep2.read_text(encoding="ascii"))
+    finally:
+        if rep2.exists():
+            rep2.unlink()
+    assert cancelled2 == [] and ("batches.retrieve", "msgbatch_s22") in order2
+    assert data2["batch"]["markers_failed"] == 1 and data2["batch"]["markers_written"] == 1

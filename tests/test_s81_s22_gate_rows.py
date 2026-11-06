@@ -177,3 +177,76 @@ def test_g22_gr3_judge_kb_literals_only_on_the_e2_lines():
     top = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
     assert [n.module for n in top if isinstance(n, ast.ImportFrom) and n.module.startswith(("app", "scripts"))] \
         == ["scripts"], "only kb_seed_common at module top"
+
+
+# =============================================================== FIX ROUND 1: G22-GR4 / G22-GR5 (F1-5)
+
+def _judge_env(monkeypatch):
+    """The judge test file's autouse isolation, applied here (no credential, no admin client)."""
+    import importlib
+
+    from scripts import kb_seed_common as common
+    from tests import test_s81_s22_judge as tj
+
+    for name in tj.CLEAR:
+        monkeypatch.delenv(name, raising=False)
+    mod = importlib.import_module(tj.MOD)
+    monkeypatch.setattr(mod, "_now", lambda: tj.NOW)
+    monkeypatch.setattr(mod, "_sleep", lambda _s: None)
+    monkeypatch.setattr(common, "_now", lambda: tj.NOW)
+
+    def _no_admin():
+        raise AssertionError("the service-role client was built")
+
+    monkeypatch.setattr(common, "_admin_client", _no_admin)
+    return tj, mod
+
+
+def test_g22_gr4_dry_resume_writes_nothing(monkeypatch):
+    """G22-GR4 (kills O07): a DRY run that resumes an ENDED pending batch reads its results
+    (resume.filled counts them) but writes NO judgement, NO ledger row and deletes nothing."""
+    import hashlib
+    import json as _json
+    from datetime import timedelta
+
+    tj, _mod = _judge_env(monkeypatch)
+    monkeypatch.setenv(tj.FLAG, "true")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", tj.SYN_VALUE)
+    order = []
+    pending = [{"run_id": tj._rid(n), "judge": "haiku", "model": tj.HAIKU, "batch_id": "msgbatch_old",
+                "verdicts": {}, "flags": ["batch_pending"], "note": None, "cost_usd": None,
+                "created_at": (tj.NOW - timedelta(days=1)).isoformat()} for n in (11, 12)]
+    fc = tj.FakeClient(tj._world([], judgements=pending), order=order)
+    fa = tj.FakeAnthropic(order)
+    fa.created.append([{"custom_id": "r" + hashlib.sha256(tj._rid(n).encode("utf-8")).hexdigest()[:16]}
+                       for n in (11, 12)])
+    tj.Breaker(monkeypatch, order)
+    rep = ROOT / ".pytest_s22_gr4.json"
+    try:
+        assert tj._run(fc, fa, report=rep) == 0
+        data = _json.loads(rep.read_text(encoding="ascii"))
+    finally:
+        if rep.exists():
+            rep.unlink()
+    assert ("batches.results", "msgbatch_old") in order
+    assert data["mode"] == "dry" and data["resume"]["filled"] == 2
+    assert fc.writes() == [] and fc.rpcs == [] and tj._ledger_rows(fc) == []
+    assert fa.deleted == [] and len(fa.created) == 1 and fa.sync == []
+
+
+def test_g22_gr5_sample_boundary_not_sampled(monkeypatch):
+    """G22-GR5 (kills O09): a run whose seeded value equals JUDGE_SAMPLE_PCT is NOT sampled."""
+    import hashlib
+
+    tj, mod = _judge_env(monkeypatch)
+    seen = 0
+    for n in range(2000):
+        rid = tj._rid(n)
+        v = int(hashlib.sha256(("sample:" + rid).encode("utf-8")).hexdigest()[:8], 16) % 100
+        if 0 < v < 99:
+            assert mod._sampled(rid, v) is False, (n, v)
+            assert mod._sampled(rid, v + 1) is True, (n, v)
+            seen += 1
+        if seen >= 20:
+            break
+    assert seen == 20
