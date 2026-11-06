@@ -49,6 +49,7 @@ from app.utils.async_utils import fire_and_forget
 from app.services.extraction_service import normalize_output_lang
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit.
 from app.services.sentry_service import capture_result_status
+from app.services import compare_runs as _compare_runs  # S81-22: ENABLE_COMPARE_RUN_LEDGER, read inside per call
 # S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the pre-consume gate of the
 # three compare routes, reached through the module attribute (a stdlib-only module).
 from app.services import category_gate as _category_gate
@@ -883,6 +884,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         )
 
     capture_result_status(result, "text")  # B1 (S80): flag read inside, per call
+    _compare_runs.record_compare_run(result, "text")  # S81-22: flag read inside, per call
     return result
 
 
@@ -1088,6 +1090,7 @@ async def text_compare_get(
         )
 
     capture_result_status(result, "text")  # B1 (S80): flag read inside, per call
+    _compare_runs.record_compare_run(result, "text")  # S81-22: flag read inside, per call
     return result
 
 
@@ -1480,6 +1483,7 @@ async def text_compare_stream(
                 # terminal. Synchronous; no fire_and_forget label.
                 if isinstance(complete_response, dict) and complete_response.get("success") is True:
                     capture_result_status(complete_response, "text_stream")
+                    _compare_runs.record_compare_run(complete_response, "text_stream")  # S81-22: plain call, no await
             elif had_error:
                 # Bundle D 2.B.6 WRAP: failure-path log on streaming.
                 if not _truth:

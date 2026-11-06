@@ -1331,6 +1331,10 @@ _ALLOWED_CTX_FILES = {
     # S81-SF1 (E3 / R-SF1-9): log_search writes search_logs.compare_request_id; the
     # import shape and the attribute uses are pinned below; no needle string in the file.
     "app/services/database_service.py",
+    # S81-22 (E4, the S81-06 E9 form): the compare-run row reads the consent version,
+    # the compare request id, the device key and the pepper NAME; the import shape and
+    # the attribute uses are pinned below; no needle string in the file.
+    "app/services/compare_runs.py",
 }
 # S81-06 (E9): the router's only reads of the leaf.
 _ROUTER_CTX_ATTRS = {"consent_version", "header_state"}
@@ -1347,11 +1351,20 @@ _USAGE_CTX_ATTRS = {
 _GATE_CTX_ATTRS = {"device_fingerprint", "device_key"}
 # S81-SF1 (R-SF1-9): log_search reads only compare_request_id.
 _LOG_SEARCH_CTX_ATTRS = {"compare_request_id"}
+# S81-22 (E4): the compare-run row's only reads of the leaf.
+_RUNS_CTX_ATTRS = {
+    "consent_version",
+    "compare_request_id",
+    "device_fingerprint",
+    "device_key",
+    "PEPPER_ENV",
+}
 _CTX_CONSUMER_ATTRS = {
     "app/services/llm_router.py": _ROUTER_CTX_ATTRS,
     "app/services/usage_service.py": _USAGE_CTX_ATTRS,
     "app/services/category_gate.py": _GATE_CTX_ATTRS,
     "app/services/database_service.py": _LOG_SEARCH_CTX_ATTRS,
+    "app/services/compare_runs.py": _RUNS_CTX_ATTRS,
 }
 
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "watchPatterns": [
+      "scripts/cron_compare_judge.py",
+      "scripts/kb_seed_common.py",
+      "app/services/compare_runs.py",
+      "railway.judge.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -m scripts.cron_compare_judge",
+    "restartPolicyType": "NEVER"
+  }
+}

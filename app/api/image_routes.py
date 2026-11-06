@@ -27,6 +27,7 @@ from app.services.result_gate import stamp_camera_stage_timings
 # (R-S20-30), so a recorder on result_gate.camera_gate_reason sees the route call.
 from app.services import result_gate as _rg
 from app.services.sentry_service import capture_result_status
+from app.services import compare_runs as _compare_runs  # S81-22: ENABLE_COMPARE_RUN_LEDGER, read inside per call
 # B3 (ENABLE_VISION_IDENTITY_V2): the text route's preferences read, reused for
 # a signed-in scan under the flag.
 from app.services.auth_service import get_user_preferences
@@ -780,6 +781,7 @@ async def identify_and_compare(
         # body served here with metering and the envelope both OFF is not a delivery.
         if result.get("success") is True:
             capture_result_status(result, "camera", vision_ms=vision_ms, compare_ms=compare_ms)
+            _compare_runs.record_compare_run(result, "camera", vision_ms=vision_ms, compare_ms=compare_ms, extra_records=vision_ledger)
         return result
 
     except Exception as e:

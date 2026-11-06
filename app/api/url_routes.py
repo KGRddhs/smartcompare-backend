@@ -37,6 +37,7 @@ from app.api.auth_routes import get_optional_user
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit (telemetry
 # only: the URL envelope carries no metadata and is never stamped, R0-1 / B4).
 from app.services.sentry_service import capture_result_status
+from app.services import compare_runs as _compare_runs  # S81-22: ENABLE_COMPARE_RUN_LEDGER, read inside per call
 # W2-1: ONE definition of the flag for the whole unit (see the helper's
 # docstring in text_routes). url_routes deliberately does not re-parse the env.
 from app.api.text_routes import paid_route_metering_enabled
@@ -390,6 +391,7 @@ async def _compare_urls_metered(
 
     # B1 (S80): the route's own wall as compare_ms (the envelope has no elapsed_ms).
     capture_result_status(result, "url", compare_ms=int((time.time() - _start) * 1000))
+    _compare_runs.record_compare_run(result, "url", compare_ms=int((time.time() - _start) * 1000))  # S81-22
     return result
 
 
