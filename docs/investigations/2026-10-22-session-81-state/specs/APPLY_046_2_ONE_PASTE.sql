@@ -1,3 +1,4 @@
+-- STALE (marked 2026-11-07 by the session-88 orchestrator, the 10:27 S87 note): this draft carries the pre-final header sha cf5ea566... and the pre-final comment wording; the MERGED blob of migrations/046_comparison_feedback_v2.sql (sha256 6d46025a...) is what was applied in production on 2026-11-07 (the ops lane, the owner SQL editor; the 12:05 ops ledger line). Historical only; never paste this file.
 -- APPLY_046_2_ONE_PASTE (S81-SF1 SURFACES-BE): the FINAL migrations/046_comparison_feedback_v2.sql, verbatim
 -- below this header (sha256 of the migration bytes cf5ea56667f3...). Paste whole; one transaction.
 -- Migration 046: comparison_feedback v2 answer columns (S81-SF1 SURFACES-BE)
