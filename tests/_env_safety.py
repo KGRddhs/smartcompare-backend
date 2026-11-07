@@ -134,6 +134,8 @@ CREDENTIALS_UNSET = (
     "APPLE_SIWA_PRIVATE_KEY",
     # Device-key HMAC pepper (S81-05); absence = device keys disabled (fail closed).
     "DEVICE_KEY_PEPPER",
+    # Auth-throttle key HMAC pepper (S81-24); absence = the V2 throttle inactive (fail open).
+    "AUTH_THROTTLE_PEPPER",
     # Anthropic (S81-06): the SDK reads all three from the environment; absence =
     # every anthropic role fails closed. A test sets them only AFTER `import app.main`
     # (the DOTENV GUARD rule).

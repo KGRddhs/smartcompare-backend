@@ -22,6 +22,7 @@ from app.services.consent_service import (
     consent_rejection,
     consent_required_enabled,
 )
+from app.services import auth_throttle  # S81-24 ENABLE_AUTH_THROTTLE_V2 (dark)
 
 # Bundle A §1.1 — invite-code format. QR-XXXXXX with unambiguous alphabet
 # matching app/services/referral_service.py::_CODE_ALPHABET (no 0/1/I/L/O).
@@ -707,6 +708,8 @@ async def register(request: Request, body: RegisterRequest):
     consent = consent_from_fields(body.terms_accepted, body.terms_version, body.age_attested)
     if consent is None and consent_required_enabled():
         raise consent_rejection()
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.gate("register", body.email)
 
     result = await register_user(body.email, body.password, consent=consent)
 
@@ -804,6 +807,8 @@ async def login(request: Request, body: LoginRequest):
 
     Returns access_token and refresh_token on success.
     """
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.gate("login", body.email)
     # Check brute-force lockout BEFORE attempting login
     lockout = await check_account_locked(body.email)
     if lockout["locked"]:
@@ -830,6 +835,8 @@ async def login(request: Request, body: LoginRequest):
 
     if not result["success"]:
         await track_failed_login(body.email)
+        if auth_throttle.auth_throttle_v2_enabled():
+            await auth_throttle.record_login_failure(body.email, result)
         # Bundle D 2.B.6 WRAP: failed-login audit feeds the brute-force detector.
         fire_and_forget(
             log_audit_event(
@@ -847,6 +854,8 @@ async def login(request: Request, body: LoginRequest):
 
     # Success — clear lockout counter
     await clear_failed_logins(body.email)
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.record_login_success(body.email)
     # Bundle D 2.B.6 WRAP: login-success audit feeds compliance reporting.
     fire_and_forget(
         log_audit_event(
@@ -1129,6 +1138,8 @@ async def password_reset(request: Request, body: PasswordResetRequest):
     """
     Request password reset email.
     """
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.gate("password_reset", body.email)
     result = await request_password_reset(body.email)
     
     # Always return success to prevent email enumeration
@@ -1219,6 +1230,8 @@ async def update_email(
     success), plus a tight explicit 5/min limit — otherwise a token-bearing
     attacker could guess the password at network speed.
     """
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.gate("update_email", current_user["id"])
     email = current_user.get("email") or ""
     lockout = await check_account_locked(email)
     if lockout["locked"]:
@@ -1250,6 +1263,8 @@ async def change_password(
     M13-01: same brute-force lockout treatment + tight 5/min limit as PUT
     /email — this route checks `current_password` and previously had neither.
     """
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.gate("change_password", current_user["id"])
     email = current_user.get("email") or ""
     lockout = await check_account_locked(email)
     if lockout["locked"]:
@@ -1320,6 +1335,8 @@ async def delete_account(
 @limiter.limit("3/minute")
 async def resend_verification(request: Request, body: PasswordResetRequest):
     """Resend email verification link."""
+    if auth_throttle.auth_throttle_v2_enabled():
+        await auth_throttle.gate("resend_verification", body.email)
     try:
         await resend_verification_email(body.email)
         return {"success": True, "message": "Verification email sent if account exists"}
