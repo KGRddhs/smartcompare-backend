@@ -325,17 +325,48 @@ def _eval(client: Any, script: str, keys: List[str], args: List[str]) -> Any:
     return client.eval(script, len(keys), *keys, *args)
 
 
-async def _run(script: str, keys: List[str], args: List[str], durable: bool = False) -> Any:
+def _durable_done(endpoint: str, abandoned: List[bool]) -> Any:
+    """The done-callback of a durable write's INNER future (F1-1): it always
+    retrieves the exception, so a job that fails after its caller stopped
+    waiting never reaches the loop's 'never retrieved' ERROR; when the caller
+    had stopped waiting (a timeout or a cancel), it logs ONE constants-only
+    WARNING (the type name only; no message text, no traceback, no key)."""
+
+    def _done(fut: "asyncio.Future[Any]") -> None:
+        if fut.cancelled():
+            return
+        exc = fut.exception()
+        if exc is not None and abandoned[0]:
+            logger.warning(
+                "[AUTH_THROTTLE] record failed endpoint=%s type=%s",
+                endpoint, type(exc).__name__,
+            )
+
+    return _done
+
+
+async def _run(
+    script: str, keys: List[str], args: List[str], durable: bool = False,
+    endpoint: str = "record",
+) -> Any:
     """One EVAL on the pool under the timeout knob; the loop thread never runs
     the command. durable: shielded, so a timeout or a cancellation of the
-    caller never cancels the write (it lands when a pool thread takes it)."""
+    caller never cancels the write (it lands when a pool thread takes it);
+    the inner future carries _durable_done. The gate read is never shielded
+    (cancellable)."""
     client = _cache_service.redis_client
     if client is None:
         raise RedisUnconfigured()
     job = asyncio.wrap_future(_pool().submit(_eval, client, script, keys, args))
-    return await asyncio.wait_for(
-        asyncio.shield(job) if durable else job, redis_timeout_seconds()
-    )
+    if not durable:
+        return await asyncio.wait_for(job, redis_timeout_seconds())
+    abandoned = [False]
+    job.add_done_callback(_durable_done(endpoint, abandoned))
+    try:
+        return await asyncio.wait_for(asyncio.shield(job), redis_timeout_seconds())
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        abandoned[0] = True
+        raise
 
 
 def _parse_reply(raw: Any) -> Tuple[bool, int, int]:
@@ -445,7 +476,7 @@ async def record_login_failure(email: object, result: object) -> None:
         ttl = max(knob("AUTH_THROTTLE_TTL_SECONDS"), cap)
         await _run(
             LOGIN_FAIL_SCRIPT, [key], [str(_now_ms()), str(cap * 1000), str(ttl)],
-            durable=True,
+            durable=True, endpoint="login_fail",
         )
     except Exception as exc:  # noqa: BLE001 -- fail open, the type name only
         _log_skipped("login_fail", exc)
@@ -458,7 +489,7 @@ async def record_login_success(email: object) -> None:
     if key is None:
         return None
     try:
-        await _run(LOGIN_CLEAR_SCRIPT, [key], [], durable=True)
+        await _run(LOGIN_CLEAR_SCRIPT, [key], [], durable=True, endpoint="login_clear")
     except Exception as exc:  # noqa: BLE001 -- fail open, the type name only
         _log_skipped("login_clear", exc)
     return None
