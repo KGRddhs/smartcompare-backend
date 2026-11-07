@@ -1828,6 +1828,7 @@ def test_r108_hop_probe_client_none_and_raising_request(monkeypatch, logs):
 # PIN rows (green at base): the flag-OFF identity with the FULL configuration
 # ===========================================================================
 OFF_SPELLINGS = [None, "", "false", "0", "off", " FALSE "]
+LIFESPAN_HEALTH_FIELDS = frozenset({"adapter_executor", "price_parse_pool", "redis_offloop_pool"})
 
 LOGIN_CASES = {
     "fail": (BAD_RESULT, 401, LOGIN_401, HDR_200,
@@ -2000,8 +2001,10 @@ def test_p73_hop_probe_off_silent(monkeypatch, logs, spelling, v2):
     h = c.get("/health", headers=forged)
     v = c.get("/api/v1/app/version", headers=forged)
     assert h.status_code == 200 and v.status_code == 200
-    # the TestClient runs no lifespan here, so /health carries no adapter_executor key
-    assert sorted(h.json()) == ["loop_lag_max_60s_ms", "loop_lag_max_ms", "loop_lag_ms", "message", "status"]
+    # /health carries the three pool keys only once an earlier in-process lifespan built them (app.main
+    # price_parse_pool_snapshot / redis_offloop_pool_snapshot / adapter_executor_snapshot): tolerated, never
+    # asserted; the five base keys stay exact (the ruled pin-fix PF-1 of RULINGS_PINFIX_S81_24)
+    assert sorted(set(h.json()) - LIFESPAN_HEALTH_FIELDS) == ["loop_lag_max_60s_ms", "loop_lag_max_ms", "loop_lag_ms", "message", "status"]
     assert sorted(v.json()) == ["force_update", "latest_version", "min_version", "update_url_android",
                                 "update_url_ios"]
     assert _names(h) == HDR_200
