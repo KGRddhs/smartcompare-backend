@@ -23,6 +23,10 @@ from app.services.result_gate import STATUS_SUPPORTED, assess_result, result_sta
 from app.services import llm_pricing as _llm_pricing
 # D08 (ENABLE_JSONLD_RATING): the stdlib leaf by module attribute; the flag is read per call.
 from app.services import jsonld_widen as _jsonld_widen
+# S81-11b (ENABLE_RESULT_AGGREGATES): the stdlib-only leaf by module attribute; the flag is read per call.
+from app.services import kb_serve as _kb_serve
+# S81-18b (ENABLE_STORE_LABEL): the label-table leaf by module attribute; the flag is read per call.
+from app.services import store_labels as _store_labels
 
 logger = logging.getLogger(__name__)
 
@@ -1481,6 +1485,8 @@ def build_comparison_response(
     openai_usage: Optional[Dict[str, Any]] = None,
     _single_margin: Optional[bool] = None,
     product_categories: Optional[List[Optional[str]]] = None,
+    kb_views: Optional[List[Any]] = None,
+    output_lang: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the full structured comparison response.
 
@@ -1521,6 +1527,13 @@ def build_comparison_response(
     and the body is byte-identical. The stamp writes additive `metadata` keys only
     and never moves the crown (`winner_index`, `overview.winner.product_index`,
     `scoring_v2.overall_score`); B2 (ENABLE_RESULT_GATE) decides refusals.
+
+    S81-11b -- `kb_views` is the per-slot KB view pair the orchestrator's KB-first
+    hook already holds; it is read only under ENABLE_RESULT_AGGREGATES (default OFF,
+    read per call at the stamp) for the additive `metadata.aggregates`.
+    S81-18b -- `output_lang` is the request's language; it is read only under
+    ENABLE_STORE_LABEL (default OFF, read per call at the price-dict pass) for the
+    additive `price.store_label` (ar -> the AR label, else EN).
     """
     # Resolve product_data / products alias
     if products is not None and product_data is None:
@@ -2332,6 +2345,14 @@ def build_comparison_response(
             and len(product_categories) == 2 and isinstance(result.get("metadata"), dict)):
         result["metadata"].setdefault(
             "product_categories", [c if isinstance(c, str) else None for c in product_categories])
+    # S81-11b (ENABLE_RESULT_AGGREGATES; default OFF, read per call -- the FIRST statement,
+    # so OFF never touches kb_views): the additive metadata.aggregates from the per-slot KB
+    # views. A failure leaves the body exactly as with the flag OFF.
+    if _kb_serve.result_aggregates_enabled():
+        try:
+            result["metadata"]["aggregates"] = _kb_serve.result_aggregates(kb_views)
+        except Exception as _agg_exc:  # noqa: BLE001 -- the stamp never breaks a body
+            logger.warning("[RESULT_AGGREGATES] stamp skipped: %s", type(_agg_exc).__name__)
 
     # D08 (ENABLE_JSONLD_RATING, the one read above): the additive channel-1
     # rating on reviews.products[i], only for a product that carries one; a
@@ -2344,6 +2365,16 @@ def build_comparison_response(
                 if (isinstance(_d08_ch1, dict) and _d08_ch1 and _d08_i < len(_d08_reviews)
                         and isinstance(_d08_reviews[_d08_i], dict)):
                     _d08_reviews[_d08_i]["jsonld_rating"] = dict(_d08_ch1)
+
+    # S81-18b (ENABLE_STORE_LABEL; default OFF, read per call -- the FIRST statement, so OFF
+    # never reads the label table): the additive price.store_label on products[i].price and
+    # overview.products[i].price (new dicts; a price object is never mutated). A failure
+    # leaves the body exactly as with the flag OFF.
+    if _store_labels.store_label_enabled():
+        try:
+            _store_labels.label_prices(result, output_lang)
+        except Exception as _sl_exc:  # noqa: BLE001 -- the pass never breaks a body
+            logger.warning("[STORE_LABEL] pass skipped: %s", type(_sl_exc).__name__)
 
     # M18 CD-ci-truth-11 — final serialization walk: the internal
     # fabrication-provenance marker (inference_source="model_knowledge",

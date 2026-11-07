@@ -675,7 +675,8 @@ def capture_result_status(result, input_type, *, vision_ms=None, compare_ms=None
     (F1-1: the tags equal the stamp); partial, partial_stage (whitelisted) and the elapsed_ms
     fallback are read from metadata (a non-finite wall is absent, F1-5). Flag first; a
     non-success body is never a delivery; synchronous, never raises, never a fire_and_forget
-    label."""
+    label. B1b (S81-G8): a URL delivery's assessment reads the URL evidence (url_mode=True,
+    passed only for input_type url, so every other call shape is unchanged)."""
     if not result_status_metadata_enabled():
         return
     try:
@@ -684,7 +685,8 @@ def capture_result_status(result, input_type, *, vision_ms=None, compare_ms=None
         if compare_ms is None:
             metadata = result.get("metadata")
             compare_ms = metadata.get("elapsed_ms") if isinstance(metadata, dict) else None
-        assessment = assess_result(result, product_categories=stamped_product_categories(result))
+        assessment = assess_result(result, product_categories=stamped_product_categories(result),
+                                   **({"url_mode": True} if input_type == "url" else {}))
         tags = telemetry_tags(result, input_type, assessment=assessment,
                               vision_ms=vision_ms, compare_ms=compare_ms)
         extras = telemetry_extras(vision_ms=vision_ms, compare_ms=compare_ms)

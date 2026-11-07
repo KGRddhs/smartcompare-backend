@@ -15,6 +15,9 @@ Flags (new names, default OFF, read PER CALL, the house boolean idiom; independe
   explicit preferences, no cohort and no behaviour profile; :func:`seed_verdict_key`
   seeds the per-process LRU after a successful verdict only. Nothing is cached and
   nothing is served from it.
+* ``ENABLE_RESULT_AGGREGATES`` (S81-11b) - :func:`result_aggregates_enabled` gates the
+  response builder's additive ``metadata.aggregates`` stamp, computed by the pure
+  :func:`result_aggregates` from the per-slot views :func:`classify` returned.
 
 Knobs (unset / blank / garbage / inf / nan / <= 0 -> the default, else clamped):
 ``KB_FIRST_SERVE_TIMEOUT_SECONDS`` (1.0, 0.2..3.0), ``KB_FIRST_SERVE_MAX_ASOF_DAYS``
@@ -72,6 +75,11 @@ def kb_first_serve_enabled() -> bool:
 def verdict_cache_log_enabled() -> bool:
     """True iff ``ENABLE_VERDICT_CACHE_LOG`` is truthy. Read PER CALL."""
     return os.getenv("ENABLE_VERDICT_CACHE_LOG", "false").strip().lower() in _TRUTHY
+
+
+def result_aggregates_enabled() -> bool:
+    """True iff ``ENABLE_RESULT_AGGREGATES`` is truthy (S81-11b). Read PER CALL."""
+    return os.getenv("ENABLE_RESULT_AGGREGATES", "false").strip().lower() in _TRUTHY
 
 
 def _knob(name: str, default: float, low: float, high: float) -> float:
@@ -338,6 +346,42 @@ async def served(value: Any) -> Any:
     """The coroutine a Phase-1 slot awaits in place of a live leg (same shapes for
     ``_timed_task`` / ``wait_for`` / the done callbacks)."""
     return value
+
+
+# --------------------------------------------------------------------------- result aggregates (S81-11b)
+AGGREGATE_FIELDS: Tuple[str, ...] = ("compare_count", "store_count", "price_checked_at")
+
+
+def _slot_aggregate(view: Any) -> Dict[str, Any]:
+    out: Dict[str, Any] = dict.fromkeys(AGGREGATE_FIELDS)
+    if not isinstance(view, dict) or view.get("hit") not in ("full", "partial"):
+        return out
+    candidates = view.get("candidates")
+    hosts = set()
+    newest: Optional[datetime] = None
+    for cand in candidates if isinstance(candidates, list) else []:
+        if not isinstance(cand, dict):
+            continue
+        retailer = cand.get("retailer")
+        if isinstance(retailer, str) and retailer.strip():
+            hosts.add(retailer.strip().lower())
+        seen = _ts(cand.get("as_of"))
+        if seen is not None and (newest is None or seen > newest):
+            newest = seen
+    out["store_count"] = len(hosts)
+    out["price_checked_at"] = _iso_z(newest) if newest is not None else None
+    return out
+
+
+def result_aggregates(views: Any) -> List[Dict[str, Any]]:
+    """PURE and total (S81-11b): two entries in product order, each
+    ``{compare_count, store_count, price_checked_at}``. A slot without a card view
+    (KB OFF, a miss) is all null; else store_count = the distinct retailer hosts over
+    the view's servable candidates and price_checked_at = their newest as_of (ISO-8601
+    Z, null when none parses). compare_count is null in this unit (S81-11c)."""
+    slots = list(views[:2]) if isinstance(views, (list, tuple)) else []
+    slots += [None] * (2 - len(slots))
+    return [_slot_aggregate(view) for view in slots]
 
 
 # --------------------------------------------------------------------------- the verdict-cache key

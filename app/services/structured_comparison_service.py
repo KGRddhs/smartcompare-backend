@@ -3920,6 +3920,8 @@ class StructuredComparisonService:
             openai_usage=summarize_openai_ledger(self._openai_ledger),
             # B1 (S80): the per-product categories (None before the pair resolution).
             product_categories=ctx.get("product_categories"),
+            kb_views=getattr(self, "_kb_views", None),  # S81-11b
+            output_lang=ctx.get("output_lang"),  # S81-18b
         )
         # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
         result = attach_data_freshness_notice(result)
@@ -4348,6 +4350,8 @@ class StructuredComparisonService:
             "category_used": _seed_category,
             "category_switched": False,
             "original_category": None,
+            # S81-18b: the request's language for the partial build (absent -> base bytes).
+            **({"output_lang": output_lang} if output_lang else {}),
         }
         self._partial_product_data = None
         self._partial_scoring_result = None
@@ -4820,6 +4824,8 @@ class StructuredComparisonService:
                 # COST-METER (#66): the per-request OpenAI usage summary.
                 openai_usage=summarize_openai_ledger(self._openai_ledger),
                 product_categories=product_categories,  # B1 (S80)
+                kb_views=getattr(self, "_kb_views", None),  # S81-11b
+                output_lang=output_lang,  # S81-18b
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             result = attach_data_freshness_notice(result)
@@ -5220,6 +5226,8 @@ class StructuredComparisonService:
                 "product_categories": product_categories,  # B1 (S80)
                 # FANOUT-STARVE FS-R3 m9: the Step-1 marks ({} with the flags OFF).
                 **_parse_marks(parsed),
+                # S81-18b: the request's language for the partial build (absent -> base bytes).
+                **({"output_lang": output_lang} if output_lang else {}),
             }
 
             # Step 2: Fetch product data
@@ -5743,6 +5751,8 @@ class StructuredComparisonService:
                 openai_usage=summarize_openai_ledger(self._openai_ledger),
                 product_categories=product_categories,  # B1 (S80)
                 _single_margin=_single_margin_on,  # W4-12 (K12) — read once above
+                kb_views=getattr(self, "_kb_views", None),  # S81-11b
+                output_lang=output_lang,  # S81-18b
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             complete_response = attach_data_freshness_notice(complete_response)

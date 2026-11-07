@@ -14,6 +14,9 @@ raises. Pure by contract: the standard library plus text_sanitize.dedup_brand_na
 nothing that does I/O, nothing that reads a flag except result_status_metadata_enabled,
 stamp_camera_stage_timings, result_gate_enabled and result_gate_refusal (each reads its flag
 per call, first). B2 (ENABLE_RESULT_GATE) enforces exactly what assess_result measures here.
+B1b (S81-G8): assess_result(url_mode=True) reads the price / rating facts and the per-side
+corroboration through the URL readers (_url_price / _url_rating); the default False keeps
+every existing caller byte-identical.
 """
 from __future__ import annotations
 
@@ -384,16 +387,21 @@ def _prose(result: Dict[str, Any]) -> Any:
 _NO_FACTS = {"price": False, "ratings": False, "specs": False, "dims": False}
 
 
-def _facts(result: Any, *, strict: bool) -> Dict[str, bool]:
+def _facts(result: Any, *, strict: bool, url_mode: bool = False) -> Dict[str, bool]:
     if not isinstance(result, dict):
         return dict(_NO_FACTS)
     products = _raw_products(result)
     if len(products) < 2:
         return dict(_NO_FACTS)
     p0, p1 = _product_at(products, 0), _product_at(products, 1)
-    price_fact = price_is_showable if strict else price_is_present_literal
-    price = price_fact(p0.get("price")) and price_fact(p1.get("price"))
-    ratings = rating_is_real(p0) and rating_is_real(p1)
+    if url_mode:
+        # B1b: the URL reading (S81-20) in BOTH the strict and the literal reading.
+        price = _url_price(p0) and _url_price(p1)
+        ratings = _url_rating(p0) and _url_rating(p1)
+    else:
+        price_fact = price_is_showable if strict else price_is_present_literal
+        price = price_fact(p0.get("price")) and price_fact(p1.get("price"))
+        ratings = rating_is_real(p0) and rating_is_real(p1)
     if strict:
         specs = real_spec_rows(_specs_of(result, 0), _specs_of(result, 1)) >= 1
     else:
@@ -486,9 +494,13 @@ def identity_confidence(products: Sequence[Any], *, same: bool, coherent: bool,
     return "high"
 
 
-def _corroborated(result: Dict[str, Any], i: int) -> bool:
-    """One real signal on this product's own side: a showable price, a real rating or a real spec."""
+def _corroborated(result: Dict[str, Any], i: int, url_mode: bool = False) -> bool:
+    """One real signal on this product's own side: a showable price, a real rating or a real spec
+    (under url_mode the price / rating through the URL readers, B1b)."""
     product = _product_at(_raw_products(result), i)
+    if url_mode:
+        return _url_price(product) or _url_rating(product) \
+            or real_spec_rows_one_side(_specs_of(result, i)) >= 1
     return price_is_showable(product.get("price")) or rating_is_real(product) \
         or real_spec_rows_one_side(_specs_of(result, i)) >= 1
 
@@ -502,10 +514,12 @@ def _category_used(result: Dict[str, Any]) -> Optional[str]:
 
 
 def assess_result(result: Any, *, product_categories: Any = None,
-                  vision_confidences: Any = None) -> Dict[str, Any]:
+                  vision_confidences: Any = None, url_mode: bool = False) -> Dict[str, Any]:
     """The honest status of a built body: every applicable reason in REASONS order, the status
     of the first one (supported_result when none applies = R-A4's minimum evidence to crown:
-    coverage >= 1, identity not unresolved, not the same identity, no category conflict)."""
+    coverage >= 1, identity not unresolved, not the same identity, no category conflict).
+    url_mode (B1b, default False): the price / rating facts and the per-side corroboration
+    read the URL evidence; everything else is unchanged."""
     body = result if isinstance(result, dict) else {}
     products = _raw_products(body)
     p0 = products[0] if len(products) > 0 else None
@@ -525,14 +539,15 @@ def assess_result(result: Any, *, product_categories: Any = None,
     coherent = identity_coherence(product_categories, category)
     if not coherent:
         reasons.append("category_conflict")
-    facts, facts_literal = evidence_facts(body), evidence_facts_literal(body)
+    facts = _facts(body, strict=True, url_mode=url_mode)
+    facts_literal = _facts(body, strict=False, url_mode=url_mode)
     coverage, coverage_literal = sum(facts.values()), sum(facts_literal.values())
     if coverage == 0:
         reasons.append("no_evidence")
     status = _STATUS_BY_REASON[reasons[0]] if reasons else STATUS_SUPPORTED
     confidence = identity_confidence(
         [p0, p1], same=same, coherent=coherent, vision_confidences=vision_confidences,
-        facts_per_product=[_corroborated(body, 0), _corroborated(body, 1)])
+        facts_per_product=[_corroborated(body, 0, url_mode), _corroborated(body, 1, url_mode)])
     return {
         "status": status,
         "reasons": reasons,
