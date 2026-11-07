@@ -435,7 +435,8 @@ def build_run_row(result: Any, input_type: Any, *, vision_ms: Any = None, compar
         return None
     body = result
     prods = _products(body)
-    assessment = _rg.assess_result(body, product_categories=_rg.stamped_product_categories(body))
+    assessment = _rg.assess_result(body, product_categories=_rg.stamped_product_categories(body),
+                                   **({"url_mode": True} if input_type == "url" else {}))  # B1b
     supported = assessment["status"] == _rg.STATUS_SUPPORTED
     used = _rg._category_used(body)
     category = used if isinstance(used, str) and _CATEGORY_RX.match(used) else None
