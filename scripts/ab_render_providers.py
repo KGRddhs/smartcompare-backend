@@ -1,8 +1,8 @@
-"""A/B: Zyte vs Scrape.do(super+geoCode=bh) as the luxury render provider.
+"""A/B: Zyte vs Scrape.do (plain render; super retired, S81-23b) as the luxury render provider.
 
 For each luxury product it (1) runs the NEW Zyte key's productList search on
 sephora.me (structured BHD price), then (2) renders the SAME sephora PDP via
-Scrape.do super+geoCode=bh and extracts a price from the HTML (JSON-LD/OG). It
+Scrape.do plain render (super retired, S81-23b) and extracts a price from the HTML (JSON-LD/OG). It
 reports, per product and provider: success / price / latency / cost / whether the
 Akamai wall blocked it — so we can decide which provider the render-tier uses.
 
@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import os
 
-# Render config (off-clock): enable Zyte, enable Scrape.do super+BH geo, raise timeouts.
+# Render config (off-clock): enable Zyte, set the Scrape.do geoCode, raise timeouts
+# (super mode is retired: this script never sets ENABLE_SCRAPEDO_SUPER, S81-23b).
 os.environ["ENABLE_ZYTE_RENDER"] = "true"
 os.environ.setdefault("ZYTE_TIMEOUT", "100")
-os.environ["SCRAPEDO_SUPER"] = "true"
 os.environ["SCRAPEDO_GEOCODE"] = "bh"
 os.environ["SCRAPEDO_TIMEOUT"] = os.getenv("AB_SCRAPEDO_TIMEOUT", "70")
 
@@ -30,7 +30,7 @@ import app.services.zyte_service as Z
 from app.services import scrapedo_service as SD
 from app.services.price_service import extract_price_from_html
 
-SD.reset_super_flags_cache()  # re-read SCRAPEDO_SUPER/geoCode set above
+SD.reset_super_flags_cache()  # re-read geoCode set above
 
 # (brand, full query) — sephora-carried designer luxury.
 PRODUCTS = [

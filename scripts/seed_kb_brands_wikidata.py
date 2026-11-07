@@ -13,6 +13,11 @@ writes, and only public.kb_brands (migration 052) through KbWriter.brands:
 insert-ignore on qid, then one update of the label and host columns of each
 'wikidata' row the insert did not return. It never writes kb_merchants and
 never deletes. Wikidata structured data is CC0.
+
+S81-16c: the WDQS SPARQL URL is exempt from the query service's robots Disallow
+only for the exact rule set ruled in docs/policies/2026-11-07-wdqs-robots-exemption.md
+(wdqs_exemption_check; any other rule, a named group or another URL refuses, and
+an unreadable robots.txt stays fail-closed); one bounded retry on 429 / 503.
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import json
 import logging
 import re
 import sys
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, urlsplit
 
@@ -49,12 +55,104 @@ SPARQL = ("SELECT DISTINCT ?brand ?site ?label_en ?label_mul ?label_ar WHERE { "
           'OPTIONAL { ?brand rdfs:label ?label_ar . FILTER(LANG(?label_ar) = "ar") } '
           '} ORDER BY xsd:integer(STRAFTER(STR(?brand), "/entity/Q")) ?site LIMIT %d' % SPARQL_LIMIT)
 MAX_BRAND_HOSTS = 300
+# S81-16c WDQS-EXEMPTION (owner ruling 2026-11-07, "Document exemption"; the record
+# is WDQS_RULING_DOC): the ONE SPARQL URL proceeds past the query service's robots
+# Disallow only when the rules addressed to the named agent and to '*' are exactly
+# these two (order-insensitive) and no group names the agent. Rules use the
+# (is_allow, pattern) form of robots_eval.parse_groups.
+WDQS_EXEMPT_RULES = ((False, "/sparql"), (False, "/bigdata"))
+WDQS_EXEMPT_URL_PARTS = ("https", "query.wikidata.org", "/sparql")
+WDQS_RULING_DATE = "2026-11-07"
+WDQS_RULING_DOC = "docs/policies/2026-11-07-wdqs-robots-exemption.md"
+# One bounded retry of the SPARQL GET on these statuses: the wait comes from
+# Retry-After (seconds, or an HTTP date in the future), else the body's
+# "retry in N seconds", else the cap; a hint above the cap gives up (no retry).
+WDQS_RETRY_STATUSES = (429, 503)
+WDQS_RETRY_CAP_SECONDS = 120.0
+WDQS_RETRY_BODY_SCAN_CHARS = 2000
+_RETRY_IN_RE = re.compile(r"retry in (\d{1,6}) seconds?", re.I)
+_RETRY_SECONDS_RE = re.compile(r"\d{1,6}")
 #: The report fields of one brand row (the report never carries source / updated_at).
 REPORT_BRAND_KEYS = ("qid", "label_en", "label_ar", "official_host")
 
 
 def sparql_url() -> str:
     return SPARQL_ENDPOINT + "?format=json&query=" + quote(SPARQL, safe="")
+
+
+def wdqs_exemption_check(robots_body: str, url: str) -> Optional[str]:
+    """S81-16c: None = the exemption applies; else the FIRST check that refused:
+    "url" (not exactly the SPARQL endpoint), "named_group" (a group whose token
+    occurs in the production agent string, the token rule rules_for_agent
+    applies) or "rule_set" (the rules for the agent or for '*' differ from
+    WDQS_EXEMPT_RULES as a multiset; any error fails closed here)."""
+    try:
+        parts = urlsplit(url)
+        if (parts.scheme, parts.netloc, parts.path) != WDQS_EXEMPT_URL_PARTS or parts.fragment:
+            return "url"
+    except Exception:  # noqa: BLE001 - fail closed
+        return "url"
+    try:
+        from app.services import robots_eval as re_
+
+        groups = re_.parse_groups(robots_body)
+        agent = re_.QARENBOT_UA.lower()
+        for tokens, _rules in groups:
+            if any(tok != "*" and tok in agent for tok in tokens):
+                return "named_group"
+        want = sorted(WDQS_EXEMPT_RULES)
+        for who in (re_.QARENBOT_UA, "*"):
+            got = sorted((bool(a), str(p)) for a, p in re_.rules_for_agent(groups, who))
+            if got != want:
+                return "rule_set"
+    except Exception:  # noqa: BLE001 - fail closed
+        return "rule_set"
+    return None
+
+
+def _retry_after_seconds(headers: Any) -> Optional[float]:
+    """The Retry-After header as seconds (digits, or a future HTTP date); None =
+    absent, unparseable or not in the future."""
+    try:
+        items = dict(headers or {}).items()
+    except Exception:  # noqa: BLE001
+        return None
+    for key, value in items:
+        if str(key).strip().lower() != "retry-after":
+            continue
+        text = str(value).strip()
+        if _RETRY_SECONDS_RE.fullmatch(text):
+            return float(int(text))
+        try:
+            when = parsedate_to_datetime(text)
+            delta = (when - common._now()).total_seconds()
+        except Exception:  # noqa: BLE001
+            return None
+        return float(delta) if delta > 0 else None
+    return None
+
+
+def _retry_wait(res: Any) -> Optional[float]:
+    """The wait before the ONE retry of the SPARQL GET; None = the hint is above
+    WDQS_RETRY_CAP_SECONDS (give up, never wait beyond the cap)."""
+    wait = _retry_after_seconds(getattr(res, "headers", None))
+    if wait is None:
+        match = _RETRY_IN_RE.search(str(getattr(res, "body", "") or "")[:WDQS_RETRY_BODY_SCAN_CHARS])
+        if match:
+            wait = float(int(match.group(1)))
+    if wait is None:
+        return WDQS_RETRY_CAP_SECONDS
+    if wait > WDQS_RETRY_CAP_SECONDS:
+        return None
+    return wait
+
+
+async def _pause(fetcher: Any, seconds: float) -> None:
+    """Wait through the fetcher's injected politeness sleep (asyncio.sleep in
+    production, the recorder in tests); kb_seed_common is not edited."""
+    from app.services import robots_registry as rr
+
+    await rr._maybe_await(fetcher._polite._sleep(seconds))
 
 
 def brands_max() -> int:
@@ -244,9 +342,24 @@ async def _run(args: argparse.Namespace, client: Any, mode: str = common.MODE_DR
         return 0
     url = sparql_url()
     if not (re_.can_fetch(body, re_.QARENBOT_UA, url) and re_.can_fetch(body, "*", url)):
-        logger.info("%s robots disallow the query endpoint; nothing read", PREFIX)
-        return 0
+        check = wdqs_exemption_check(body, url)
+        if check is not None:
+            logger.info("%s robots disallow the query endpoint; nothing read check=%s", PREFIX, check)
+            return 0
+        logger.info("%s robots exemption applied ruling=%s doc=%s", PREFIX, WDQS_RULING_DATE, WDQS_RULING_DOC)
     res = await fetcher.get(url, gate=False, timeout=60.0)
+    if res.status in WDQS_RETRY_STATUSES:
+        status = int(res.status)
+        wait = _retry_wait(res)
+        if wait is None:
+            logger.info("%s query status=%d; hint above the cap; giving up retries=0", PREFIX, status)
+            return 0
+        logger.info("%s query status=%d; one retry after %ds", PREFIX, status, int(wait))
+        await _pause(fetcher, wait)
+        res = await fetcher.get(url, gate=False, timeout=60.0)
+        if not common.ok_status(res.status):
+            logger.info("%s query failed status=%d retries=1", PREFIX, int(res.status or 0))
+            return 0
     if not common.ok_status(res.status):
         logger.info("%s query failed status=%d", PREFIX, int(res.status or 0))
         return 0

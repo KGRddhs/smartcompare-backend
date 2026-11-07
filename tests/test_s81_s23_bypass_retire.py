@@ -1,11 +1,11 @@
 """S81-G1 unit S81-23 BYPASS-RETIRE -- the frozen RED file.
 
 Flag ``ENABLE_SCRAPEDO_SUPER`` (new name, read PER CALL by
-``app.services.scrapedo_service.scrapedo_super_enabled``), with the TRI-STATE
-transition of RULINGS_S81_G1 R-G1-6: the new name UNSET -> the legacy
-``SCRAPEDO_SUPER`` read exactly as the base expression (``.lower() == "true"``,
-no strip; "TRUE" ON, "1" / " true" OFF), now per call; the new name SET -> it
-wins in both directions (``false`` is a kill switch even with the legacy on).
+``app.services.scrapedo_service.scrapedo_super_enabled``); the TRI-STATE
+transition of RULINGS_S81_G1 R-G1-6 ended with S81-23b (S81-G9 E-row EK2): the
+new name UNSET -> OFF for every value of the legacy ``SCRAPEDO_SUPER`` (no
+longer read); the new name SET -> it wins in both directions (``false`` is a
+kill switch).
 R-G1-7: ``scripts/seed_zyte_luxury.py`` keeps its scaffold with both seed lists
 emptied (sephora.me retired). Spec: ``.qa-s80/S81-G1_UNIT_SPEC.md`` (unit S81-23,
 sections 2, 5 and 6).
@@ -180,7 +180,7 @@ def test_s23_r3_per_call_no_reset(monkeypatch):
     """R3 (2.1): read per call -- flipping the env takes effect on the NEXT call
     WITHOUT the reset hook (the base cached the first read for the process)."""
     sd = _sd()
-    monkeypatch.setenv(LEGACY, "true")
+    monkeypatch.setenv(NEW_FLAG, "true")
     monkeypatch.setenv(GEO, "ae")
     assert sd._super_params() == {"super": "true", "geoCode": "ae"}
     monkeypatch.setenv(NEW_FLAG, "false")
@@ -329,17 +329,17 @@ def test_s23_r9_docstring_neutral():
 
 
 # ===========================================================================
-# PIN rows (green at base; the new name UNSET = today's legacy behaviour)
+# PIN rows (the new name UNSET = OFF for every legacy value since S81-23b, EK2)
 # ===========================================================================
-P1_CASES = [(None, False), ("false", False), ("true", True), ("TRUE", True), ("1", False),
+P1_CASES = [(None, False), ("false", False), ("true", False), ("TRUE", False), ("1", False),
             (" true", False)]
 
 
 @pytest.mark.parametrize("legacy,super_on", P1_CASES, ids=[_vid(c[0]) for c in P1_CASES])
 def test_s23_p1_unset_matches_base_params(legacy, super_on, monkeypatch):
-    """P1 (2.3): new name unset -> the params of both render functions equal the
-    base literal for every legacy value (super + geoCode exactly for
-    "true"/"TRUE"; no strip, "1" stays OFF)."""
+    """P1 (2.3, S81-23b EK2): new name unset -> the params of both render
+    functions equal the plain base literal for every legacy value (the legacy
+    name is no longer read)."""
     _set(monkeypatch, LEGACY, legacy)
     monkeypatch.setenv(GEO, "ae")
     assert _render_params(monkeypatch) == [_base_params(super_on), _base_params(super_on)]
@@ -406,9 +406,9 @@ P2_ROUTED = {'off': {'fragrances': ['gcc.luluhypermarket.com',
 
 @pytest.mark.parametrize("legacy,super_on", P1_CASES, ids=[_vid(c[0]) for c in P1_CASES])
 def test_s23_p2_unset_matches_base_routing(legacy, super_on, monkeypatch):
-    """P2 (2.3): new name unset -> the bahrain-tier routed domains for the four
-    beauty categories equal the base literal lists (sephora.me only when the
-    legacy flag is exactly true after lower)."""
+    """P2 (2.3, S81-23b EK2): new name unset -> the bahrain-tier routed domains
+    for the four beauty categories equal the base "off" lists for every legacy
+    value (sephora.me never routed)."""
     _set(monkeypatch, LEGACY, legacy)
     monkeypatch.setenv(GEO, "ae")
     for cat in CATEGORIES:
@@ -419,7 +419,7 @@ def test_s23_p3_reset_hook_callable(monkeypatch):
     """P3 (2.1): reset_super_flags_cache() stays callable, returns None and
     changes no outcome."""
     sd = _sd()
-    monkeypatch.setenv(LEGACY, "true")
+    monkeypatch.setenv(NEW_FLAG, "true")
     monkeypatch.setenv(GEO, "ae")
     before = sd._super_params()
     assert sd.reset_super_flags_cache() is None
@@ -428,7 +428,7 @@ def test_s23_p3_reset_hook_callable(monkeypatch):
 
 
 def test_s23_p4_geocode_default(monkeypatch):
-    """P4 (2.1): legacy true with SCRAPEDO_GEOCODE unset -> geoCode "bh"."""
-    monkeypatch.setenv(LEGACY, "true")
+    """P4 (2.1): the new name true with SCRAPEDO_GEOCODE unset -> geoCode "bh"."""
+    monkeypatch.setenv(NEW_FLAG, "true")
     monkeypatch.delenv(GEO, raising=False)
     assert _render_params(monkeypatch) == [_base_params(True, "bh"), _base_params(True, "bh")]

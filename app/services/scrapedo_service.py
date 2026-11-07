@@ -3,8 +3,8 @@
 Scrape.do renders JavaScript pages (Tier 1.5d) for render-only SPA pages when curl
 fetched HTML with no price. Its super / residential-proxy mode is retired under the
 robots policy (challenge = stop; owner decision 12): it runs only when
-ENABLE_SCRAPEDO_SUPER is true, or, while that name is unset, when the legacy
-SCRAPEDO_SUPER=true is still set (S81-23 transition).
+ENABLE_SCRAPEDO_SUPER is true; an unset name means OFF (S81-23b; the legacy
+name is no longer read).
 """
 import os
 import logging
@@ -45,13 +45,13 @@ def _diag_enabled() -> bool:
 # never a target; owner decision 12; S81-23). OFF, a request carries exactly
 # {token, url, render: "true"}; ON adds super=true + geoCode (billed about 10-25
 # credits per request against about 5; A7 meters it against the 900/mo budget).
-# S81-23 transition (tri-state, read PER CALL by scrapedo_super_enabled()):
-# ENABLE_SCRAPEDO_SUPER SET wins in both directions (false is a kill switch);
-# UNSET falls back to the legacy SCRAPEDO_SUPER read exactly as before S81-23
-# (.lower() == "true", no strip). The legacy branch is deleted by S81-23b after
-# the owner's dated "SCRAPEDO_SUPER unset on web" ledger line, so that an unset
-# name then means OFF. _SUPER_FLAGS is no longer a cache; it stays declared for
-# the reset_super_flags_cache() hook that tests and scripts still call.
+# Read PER CALL by scrapedo_super_enabled(): ENABLE_SCRAPEDO_SUPER set uses the
+# house idiom (strip + lower, truthy set; "false" is a kill switch); UNSET means
+# OFF. S81-23b (2026-11-07, after the owner's dated unset line of the legacy name
+# on web and price-warmer) deleted the S81-23 transition branch that read the
+# legacy name while the new one was unset. _SUPER_FLAGS is no longer a cache; it
+# stays declared for the reset_super_flags_cache() hook that tests and scripts
+# still call.
 _SUPER_FLAGS = None
 
 _SCRAPEDO_SUPER_TRUTHY = ("true", "1", "yes", "on")
@@ -61,13 +61,11 @@ def scrapedo_super_enabled() -> bool:
     """S81-23: the Scrape.do super-mode gate, read PER CALL (never cached).
 
     ENABLE_SCRAPEDO_SUPER set: the house idiom (strip + lower, truthy set), so
-    "false" / "0" / "off" / "" turn super mode off even while the legacy
-    SCRAPEDO_SUPER=true is still set. ENABLE_SCRAPEDO_SUPER unset: exactly the
-    pre-S81-23 expression over the legacy name, so production keeps whatever
-    SCRAPEDO_SUPER holds until the owner unsets it."""
+    "false" / "0" / "off" / "" turn super mode off. ENABLE_SCRAPEDO_SUPER unset:
+    OFF (S81-23b; the legacy name is no longer read)."""
     raw = os.getenv("ENABLE_SCRAPEDO_SUPER")
     if raw is None:
-        return os.environ.get("SCRAPEDO_SUPER", "false").lower() == "true"
+        return False
     return raw.strip().lower() in _SCRAPEDO_SUPER_TRUTHY
 
 
