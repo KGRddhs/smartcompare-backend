@@ -238,3 +238,5 @@ means a test asserts the fail-closed behaviour on an unreadable robots.
 not a surface. `scripts/resolve_search_descriptors.py` itself has no robots branch of
 its own; it delegates to `probe_search_descriptor` and inherits its fail-closed
 behaviour (an unreadable host prints `SKIP` and stays unresolved in the store).
+
+Exemption (owner ruling 2026-11-07): docs/policies/2026-11-07-wdqs-robots-exemption.md carves out the Wikidata Query Service SPARQL endpoint for scripts/seed_kb_brands_wikidata.py only, under an exact robots rule set; every other host and path keeps this ruling.

@@ -127,7 +127,7 @@ _CF_INTERSTITIAL_MARKERS = (
     # _detect_cf_interstitial flag detected_cf=True in metadata.source_trace for
     # an Akamai block (today a 403 Akamai page records cf_block only via the
     # status branch, with detected_cf=False on the body axis). Harmless when
-    # SCRAPEDO_SUPER is OFF (the default) — the sephora.me requires_super row is
+    # ENABLE_SCRAPEDO_SUPER is OFF (the default) — the sephora.me requires_super row is
     # filtered out of routing, so no Akamai render is attempted; this is purely
     # observability for the gated super-render path.
     "akamaighost",

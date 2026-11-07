@@ -15,6 +15,12 @@ the query text or an error message); the per-host D14 counters are read with
 ONE pipeline of HGETALL over the live + blocked registry hosts, and a host
 whose hash is absent or empty emits nothing (absent is never zero). A family
 whose read raises is omitted with one WARNING naming the exception type.
+
+D17c (S81-G9): zero live / blocked hosts skip the host pipeline (one INFO line,
+no pipeline call: an empty pipeline is a whole-request error at the Upstash REST
+endpoint, which the pinned SDK surfaces as an AttributeError on the error
+object; that signature is labelled pipeline_refused), and EVERY family whose
+read fails counts once in the totals not_built.
 """
 from __future__ import annotations
 
@@ -47,6 +53,13 @@ HINT_PREFIX = "pdp_"
 FRESH_DAYS = 7
 METRIC_MAX_LEN = 128
 SHARE_PLACES = 4
+#: D17c: the WARNING label of a whole-request pipeline error (the pinned
+#: upstash-redis 1.7.0 raises AttributeError on the error object it iterates).
+PIPELINE_REFUSED = "pipeline_refused"
+
+
+class _PipelineRefused(RuntimeError):
+    """D17c: the REST endpoint refused the whole host pipeline request."""
 
 
 def coverage_mode() -> str:
@@ -138,16 +151,22 @@ class _Rollup:
         self.client, self.redis, self.day, self.now = client, redis, day, now
         self.out: List[Tuple[str, Any, int]] = []
         self.redis_read = 0
+        #: D17c: the read families that failed (each counted once in not_built).
+        self.families_not_built = 0
 
     def add(self, name: str, value: Any, n: int) -> None:
         self.out.append((name, value, int(n)))
 
     def guarded(self, label: str, fn: Callable[[], Any]) -> Any:
-        """Run one read family; a raise omits it with ONE WARNING (type name)."""
+        """Run one read family; a raise omits it with ONE WARNING (type name, or
+        PIPELINE_REFUSED for the SDK's whole-request signature) and counts the
+        family once in not_built (D17c)."""
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001 - one family omitted, the rest kept
-            logger.warning("%s family=%s read failed (%s)", PREFIX, label, type(exc).__name__)
+            self.families_not_built += 1
+            name = PIPELINE_REFUSED if isinstance(exc, _PipelineRefused) else type(exc).__name__
+            logger.warning("%s family=%s read failed (%s)", PREFIX, label, name)
             return None
 
     # -- reads ---------------------------------------------------------------
@@ -286,6 +305,10 @@ class _Rollup:
             return
         hosts = sorted({str(r["host"]) for r in rows
                         if r.get("status") in ("live", "blocked") and r.get("host")})[:max_hosts()]
+        if not hosts:
+            # D17c: no pipeline call for zero hosts (a skip, not a failure).
+            logger.info("%s family=hosts skipped hosts=0", PREFIX)
+            return
         stamp = self.day.strftime("%Y%m%d")
 
         def read() -> List[Any]:
@@ -295,7 +318,12 @@ class _Rollup:
             # D17b: the live_robots form: upstash-redis 1.7.0 runs the queue with
             # exec() (its one-argument execute only queues); redis-py has execute().
             run = getattr(pipe, "exec", None) or getattr(pipe, "execute")
-            return list(run() or [])
+            try:
+                answer = run()
+            except AttributeError:
+                # D17c: the SDK's signature of a whole-request error body.
+                raise _PipelineRefused() from None
+            return list(answer or [])
 
         result = self.guarded("hosts", read)
         if result is None:
@@ -378,6 +406,7 @@ def main(argv: Optional[List[str]] = None, client: Any = None, redis: Any = None
             not_built += 1
             continue
         rows.append(row)
+    not_built += rollup.families_not_built
     _write_report(args.report, day, rollup.out)
     if mode == common.MODE_APPLY and rows:
         try:
