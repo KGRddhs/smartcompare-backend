@@ -48,7 +48,6 @@ import app.services.image_service as imgsvc  # noqa: E402
 import app.services.openai_service as osvc  # noqa: E402
 import app.services.structured_comparison_service as scs  # noqa: E402
 import app.services.url_extraction_service as urlsvc  # noqa: E402
-import app.services.verdict_critique_service as vcs  # noqa: E402
 from app.services import api_budget_service as abs_  # noqa: E402
 from app.services import llm_pricing  # noqa: E402
 
@@ -531,7 +530,6 @@ REPLIES = {
     "disambiguate": ('{"distinct_product": false, "confidence": "high"}',
                      '{"distinct_product": "false", "confidence": "high"}'),
     "url_extract": ('{"name": "iPhone 17"}', '{"name": "iPhone 17"}'),
-    "critique": (CRITIQUE_JSON, CRITIQUE_JSON),
 }
 REAL_SITES = tuple(sorted(REPLIES))
 
@@ -552,6 +550,7 @@ BASE_KW = {
     "specs_synthesized": {"model": "gpt-4o", "max_tokens": 300, "temperature": 0.1, "response_format": JSON_OBJ},
     "disambiguate": {"model": "gpt-4o-mini", "max_tokens": 60, "temperature": 0, "response_format": JSON_OBJ},
     "url_extract": {"model": "gpt-4o-mini", "max_tokens": 800, "temperature": 0.1},
+    # S81-22b: no OpenAI critique call remains; the kept `critique` SiteSpec rows dispatch with these.
     "critique": {"model": "gpt-4o-mini", "max_tokens": 150, "temperature": 0.0, "response_format": JSON_OBJ},
 }
 
@@ -627,10 +626,6 @@ async def run_site(site, mp, *, oai_content=None, oai_exc=None, usage_calls=None
         mp.setattr(urlsvc, "get_client", getc)
         res = await urlsvc.extract_with_ai("https://www.example-retailer.test/p/iphone-17", HTML,
                                            {"key": "generic", "name": "Example"})
-    elif site == "critique":
-        mp.setattr(vcs, "get_client", getc)
-        res = await vcs.critique_verdict(comparison={"winner_index": 0, "winner_reason": "Longer battery life"},
-                                         product_names=["Apple iPhone 17", "Samsung Galaxy S25"])
     else:  # pragma: no cover
         raise AssertionError(site)
     return oai, res
@@ -1542,7 +1537,7 @@ def test_r13c_vision_v1_array_unwrap(monkeypatch, consent):
 # ===========================================================================
 # R14: the real readers parse a Claude result
 # ===========================================================================
-@pytest.mark.parametrize("site", ["classify", "parse", "verdict", "critique", "disambiguate", "image_tier3",
+@pytest.mark.parametrize("site", ["classify", "parse", "verdict", "disambiguate", "image_tier3",
                                   "vision_v2", "specs_targeted"])
 def test_r14_real_readers_parse_claude_result(monkeypatch, consent, site):
     """R14 RED: the site's own parser returns the expected value from the Claude reply."""
@@ -1559,8 +1554,6 @@ def test_r14_real_readers_parse_claude_result(monkeypatch, consent, site):
         assert len(parsed.get("products") or []) == 2
     elif site == "verdict":
         assert isinstance(res, tuple) and res[0].get("winner_index") == 1 and "error" not in res[0]
-    elif site == "critique":
-        assert res is not None and getattr(res, "needs_regen", None) is False, res
     elif site == "disambiguate":
         assert isinstance(res, dict) and res.get("distinct_product") is False, res
     elif site == "image_tier3":
@@ -2245,7 +2238,7 @@ def test_r31_model_config_anthropic(monkeypatch):
 def test_p10_resolved_models_unchanged():
     """P10 PIN: resolved_models() and the gpt sampling rows are unchanged."""
     from app.services.model_config import resolved_models, sampling_kwargs
-    assert resolved_models() == {"critic": "gpt-4o-mini", "moderation": "omni-moderation-latest",
+    assert resolved_models() == {"moderation": "omni-moderation-latest",
                                  "standard": "gpt-4o-mini", "verdict": "gpt-4o", "vision": "gpt-4o-mini"}
     assert sampling_kwargs("gpt-4o", 0) == {"temperature": 0}
     assert sampling_kwargs("gpt-4o-mini", 0.1) == {"temperature": 0.1}
@@ -2524,7 +2517,6 @@ SITE_FUNCS = {
     ("app/services/openai_service.py", "extract_specs_synthesized"): ["specs_synthesized"],
     ("app/services/openai_service.py", "disambiguate_variant_line"): ["disambiguate"],
     ("app/services/url_extraction_service.py", "extract_with_ai"): ["url_extract"],
-    ("app/services/verdict_critique_service.py", "critique_verdict"): ["critique"],
 }
 
 
@@ -2685,8 +2677,8 @@ def test_p07_pre_v3_or_escalation_alone_identical(monkeypatch, consent):
         monkeypatch.delenv(PRE_FLAG, raising=False)
         monkeypatch.delenv(ESC_FLAG, raising=False)
         monkeypatch.setenv(alone, "true")
-        oai, _ = _run(run_site("critique", monkeypatch))
-        assert _no_messages(oai[0]) == {**BASE_KW["critique"], "store": False}
+        oai, _ = _run(run_site("disambiguate", monkeypatch))  # S81-22b: was the retired critique site
+        assert _no_messages(oai[0]) == {**BASE_KW["disambiguate"], "store": False}
         impl = _ImplRec()
         monkeypatch.setattr(scs.StructuredComparisonService, "_compare_from_text_impl", impl)
         _run(_capture(scs.StructuredComparisonService().compare_from_text("a vs b")))
@@ -2746,6 +2738,6 @@ def test_p13_flag_off_no_new_log_lines(monkeypatch, consent, caplog):
     _full_config(monkeypatch, consent)
     caplog.set_level(logging.DEBUG)
     _run(run_site("parse", monkeypatch))
-    _run(run_site("critique", monkeypatch))
+    _run(run_site("classify", monkeypatch))  # S81-22b: was the retired critique site
     assert not [r for r in caplog.records if "[ROUTER]" in r.getMessage()]
     assert ANTH.calls == [] and consent.reads == []

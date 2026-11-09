@@ -498,8 +498,9 @@ def _resume(client: Any, ac: Any, apply: bool, now: datetime, report: Dict[str, 
     from app.services import llm_pricing as lp
     from app.services import llm_spend_breaker as br
 
+    # D-S22-J1: `cs` on the jsonb flags column takes a JSON operand (a list renders as {...}: 400).
     rows = _paged(lambda: client.table(JUDGEMENTS_TABLE).select("run_id,batch_id,model,flags")
-                  .eq("judge", "haiku").contains("flags", ["batch_pending"]), 100000)
+                  .eq("judge", "haiku").contains("flags", json.dumps(["batch_pending"])), 100000)
     by_batch: Dict[str, List[Dict[str, Any]]] = {}
     for row in rows:
         if row.get("batch_id"):

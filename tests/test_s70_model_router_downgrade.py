@@ -18,7 +18,7 @@ OQ1, OQ4):
        the failure tuple is byte-identical.
   R2.5-R2.7 the marker reaches ``$.metadata.model_downgraded`` on the sync body
        and the SSE ``settle_complete`` + ``complete`` events, absent-unless-true.
-  R2.6 the self-critique regen: the served verdict's marker wins.
+  R2.6 the self-critique regen: retired by S81-22b (its rows deleted).
   R2.8 the admin gauge reports the cap the router uses.
 
 BASE = 4bd5a09f (OR14; app/ and tests/ are byte-identical to 94c097cd).
@@ -38,7 +38,6 @@ no ``[netguard]`` line may name a tests/test_s70_ node): the routes'
 ``log_search`` (a ``search_logs`` insert that otherwise reaches the
 neutralised Supabase sentinel host).
 """
-import asyncio
 import json
 import logging
 import socket
@@ -568,82 +567,6 @@ def test_no_marker_key_when_verdict_model_used(client, monkeypatch, surface):
     for payload in payloads:
         assert payload.get("success") is True, payload.get("error")
         assert "model_downgraded" not in payload["metadata"], sorted(payload["metadata"])
-
-
-# ===========================================================================
-# R2.6 -- the self-critique regeneration (ENABLE_SELF_CRITIQUE, default OFF)
-# ===========================================================================
-
-_REGEN_CASES = {
-    # id: (original marker, regen usage marker, regenerated, timeout, expected)
-    "regen_on_mini_served": (False, True, True, False, True),        # RED at base
-    "regen_on_verdict_model_served": (True, None, True, False, False),  # RED at base
-    "regen_rejected_keeps_original_false": (False, True, False, False, False),  # PIN
-    "regen_rejected_keeps_original_true": (True, None, False, False, True),     # PIN
-    "critique_timeout_keeps_original": (False, True, True, True, False),        # PIN
-}
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("case", list(_REGEN_CASES))
-async def test_self_critique_regen_marker(monkeypatch, case):
-    """R2.6: when the regenerated verdict is SERVED (outcome.regenerated True)
-    the marker becomes the regen's own value; a rejected regen or the 8 s
-    critique timeout keeps the original verdict's value. Driven directly
-    through ``_apply_self_critique`` with ``critique_and_maybe_regenerate``
-    patched to call the real ``_regenerate`` closure. RED at base on the two
-    'served' cases; the other three are PINs."""
-    from app.services import verdict_critique_service as vcs
-
-    original, regen_marker, regenerated, timeout, expected = _REGEN_CASES[case]
-    monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
-
-    original_cmp = {"winner_index": 0, "winner_reason": "original"}
-    regen_cmp = {"winner_index": 0, "winner_reason": "regenerated"}
-    regen_usage = {"prompt_tokens": 5, "completion_tokens": 7}
-    if regen_marker is not None:
-        regen_usage["model_downgraded"] = regen_marker
-    regen_calls = {"n": 0}
-
-    async def _fake_generate(*args, **kwargs):
-        regen_calls["n"] += 1
-        return dict(regen_cmp), dict(regen_usage)
-
-    monkeypatch.setattr(scs, "generate_comparison", _fake_generate)
-
-    critique = vcs.CritiqueResult(
-        axis_scores={"specificity": 3}, needs_regen=True, low_axes=["specificity"],
-        regen_reason="specificity", critic_model="gpt-4o-mini",
-        usage={"prompt_tokens": 1, "completion_tokens": 1},
-    )
-
-    async def _fake_critique(*, comparison, product_names, regenerate,
-                             pain_workflow_context=None, comparison_quality="normal"):
-        new_cmp = await regenerate(critique)
-        if timeout:
-            raise asyncio.TimeoutError()
-        return vcs.CritiqueOutcome(
-            final_comparison=new_cmp if regenerated else comparison,
-            critique=critique, regenerated=regenerated,
-            critique_usage={"prompt_tokens": 1, "completion_tokens": 1},
-        )
-
-    monkeypatch.setattr(vcs, "critique_and_maybe_regenerate", _fake_critique)
-
-    svc = scs.StructuredComparisonService()
-    svc._verdict_model_downgraded = original
-    served = await svc._apply_self_critique(
-        comparison=dict(original_cmp), product_names=["A", "B"],
-        regen_args={"product1": {"name": "A"}, "product2": {"name": "B"},
-                    "region": "bahrain"},
-    )
-    assert regen_calls["n"] == 1, "the regenerate closure never ran"
-    if regenerated and not timeout:
-        assert served == regen_cmp
-    else:
-        assert served == original_cmp
-    assert getattr(svc, "_verdict_model_downgraded", False) is expected, (
-        case, getattr(svc, "_verdict_model_downgraded", "<absent>"))
 
 
 # ===========================================================================

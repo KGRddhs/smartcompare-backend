@@ -26,7 +26,6 @@ import app.services.extraction_service as es  # noqa: E402  (R13: module-top imp
 import app.services.image_service as imgsvc  # noqa: E402
 import app.services.openai_service as osvc  # noqa: E402
 import app.services.url_extraction_service as urlsvc  # noqa: E402
-import app.services.verdict_critique_service as vcs  # noqa: E402
 from tests.w4_11_prompt_digest_recorder import BENIGN_HTML, BENIGN_ORGANIC, fake_client  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -141,11 +140,12 @@ def _chat_sites():
 def test_no_call_site_passes_raw_sampling_kwargs():
     """M1 RED: AST over app/**/*.py, callee ending `completions.create` OR `guarded_llm_create`
     OR `llm_router.route` (S81-06, E1; minus the wrapper's two `**kwargs` pass-throughs):
-    >= 16 sites (so a matcher that stops matching cannot pass vacuously) and NO literal
+    >= 15 sites (so a matcher that stops matching cannot pass vacuously) and NO literal
     `temperature=` / `max_tokens=` keyword. Base: 15 sites, 12 raw temperature, 6 raw
-    max_tokens; since S81-06 the 16 `route` calls."""
+    max_tokens; since S81-06 the 16 `route` calls; since S81-22b 15 (the critique
+    dispatch retired)."""
     sites = _chat_sites()
-    assert len(sites) >= 16, f"only {len(sites)} chat-completion sites matched (matcher narrowed?)"
+    assert len(sites) >= 15, f"only {len(sites)} chat-completion sites matched (matcher narrowed?)"
     raw = [(where, kw.arg) for where, _c, node in sites for kw in node.keywords
            if kw.arg in ("temperature", "max_tokens")]
     assert not raw, f"{len(raw)} literal sampling/token kwargs bypass model_config: {raw}"
@@ -178,7 +178,7 @@ def test_image_tier3_dispatches_through_the_breaker_chokepoint(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# M2 / M3 -- the twelve routed sites, captured through fake clients
+# M2 / M3 -- the routed sites (eleven since S81-22b), captured through fake clients
 # ---------------------------------------------------------------------------
 async def _call(monkeypatch, site):
     calls = []
@@ -222,10 +222,6 @@ async def _call(monkeypatch, site):
         monkeypatch.setattr(urlsvc, "get_client", _client('{"name": "iPhone 17"}'))
         await urlsvc.extract_with_ai("https://www.example-retailer.com/p/iphone-17", BENIGN_HTML,
                                      {"key": "generic", "name": "Example"})
-    elif site == "critique_verdict":
-        monkeypatch.setattr(vcs, "get_client", _client("{}"))
-        await vcs.critique_verdict(comparison={"winner_index": 0, "winner_reason": "Longer battery life"},
-                                   product_names=["Apple iPhone 17", "Samsung Galaxy S25"])
     else:  # pragma: no cover
         raise AssertionError(site)
     assert calls, f"{site} made no OpenAI call"
@@ -245,7 +241,6 @@ SHIPPED = {
     "disambiguate_variant_line": {"model": "gpt-4o-mini", "max_tokens": 60, "temperature": 0, "response_format": JSON},
     "extract_image_via_gpt": {"model": "gpt-4o-mini", "max_tokens": 120, "temperature": 0.1},
     "extract_with_ai": {"model": "gpt-4o-mini", "max_tokens": 800, "temperature": 0.1},
-    "critique_verdict": {"model": "gpt-4o-mini", "max_tokens": 150, "temperature": 0.0, "response_format": JSON},
 }
 SITES = sorted(SHIPPED)
 
@@ -253,7 +248,7 @@ SITES = sorted(SHIPPED)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("site", SITES)
 async def test_gpt5_ids_emit_no_rejected_kwargs(monkeypatch, site):
-    """M2 RED (C7: all twelve routed sites): with GPT-5-family ids configured, no call sends
+    """M2 RED (C7: every routed site): with GPT-5-family ids configured, no call sends
     `temperature` (a non-default temperature is a 400 on GPT-5) or `max_tokens` (GPT-5 needs
     `max_completion_tokens`). Base: every site still sends a literal temperature."""
     monkeypatch.setenv("OPENAI_MODEL_STANDARD", "gpt-5-mini")
@@ -267,7 +262,7 @@ async def test_gpt5_ids_emit_no_rejected_kwargs(monkeypatch, site):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("site", SITES)
 async def test_shipped_ids_kwargs_unchanged(monkeypatch, site):
-    """M3 PIN (C7): with every OPENAI_MODEL_* unset each of the twelve sites sends exactly the
+    """M3 PIN (C7): with every OPENAI_MODEL_* unset each routed site sends exactly the
     kwargs it sends today (routing through sampling_kwargs/token_limit_kwargs is
     byte-identical on the ids that resolve today)."""
     kw = await _call(monkeypatch, site)
@@ -279,5 +274,5 @@ def test_resolved_models_unchanged():
     """M4 PIN: resolved_models() with every OPENAI_MODEL_* unset."""
     from app.services.model_config import resolved_models
 
-    assert resolved_models() == {"critic": "gpt-4o-mini", "moderation": "omni-moderation-latest",
+    assert resolved_models() == {"moderation": "omni-moderation-latest",
                                  "standard": "gpt-4o-mini", "verdict": "gpt-4o", "vision": "gpt-4o-mini"}

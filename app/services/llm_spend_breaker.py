@@ -859,11 +859,24 @@ def _run_bounded_sync(fn: Any, *args: Any, on_cancelled: Any = None) -> Any:
         raise TimeoutError("llm spend redis call timed out") from None
 
 
+def _retrieve_quietly(fut: "asyncio.Future[Any]") -> None:
+    """S81-04d: retrieve a durable job's outcome (the house form of
+    app/utils/redis_offloop.py; a local twin, as this leaf imports no app module
+    beyond its four) so a job that fails after its awaiter gave up (the bound or
+    a cancel) never reaches the loop's "never retrieved" ERROR. The breaker's own
+    accounting of that failure is unchanged and no line is added; a cancelled
+    future is left alone."""
+    if not fut.cancelled():
+        fut.exception()
+
+
 async def _run_bounded_async(fn: Any, *args: Any, durable: bool = False) -> Any:
     """Await ``fn`` on the pool under ``asyncio.wait_for``; the loop thread never
     runs the command. ``durable``: the job is shielded, so a timeout or a
     cancellation never cancels a write that already started."""
     future = asyncio.wrap_future(_get_llm_spend_pool().submit(fn, *args))
+    if durable:
+        future.add_done_callback(_retrieve_quietly)
     awaitable = asyncio.shield(future) if durable else future
     return await asyncio.wait_for(awaitable, redis_timeout_seconds())
 
