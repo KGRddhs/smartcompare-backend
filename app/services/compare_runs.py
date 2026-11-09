@@ -191,7 +191,10 @@ def _product_categories(body: Dict[str, Any]) -> Optional[List[Optional[str]]]:
 
 def _sources_used(body: Dict[str, Any], prods: List[Dict[str, Any]]) -> Dict[str, Any]:
     marks = _dict(body.get("metadata")).get("kb_hit")
-    if not (isinstance(marks, list) and len(marks) == 2 and all(m in ("hit", "miss") for m in marks)):
+    # D-S22-K1: the producer marks are full / partial / miss (kb_serve.classify);
+    # "hit" stays accepted for the frozen synthetic rows.
+    if not (isinstance(marks, list) and len(marks) == 2
+            and all(m in ("full", "partial", "miss", "hit") for m in marks)):
         marks = None
     return {
         "v": 1,
@@ -200,6 +203,17 @@ def _sources_used(body: Dict[str, Any], prods: List[Dict[str, Any]]) -> Dict[str
         "rating_method": [_enum(_dict(p.get("rating_source")).get("extract_method")) for p in prods],
         "kb_hit": list(marks) if marks is not None else None,
     }
+
+
+def _kb_product_ids(meta: Dict[str, Any]) -> Optional[List[Optional[str]]]:
+    """S81-22c: the two KB card product ids of metadata.kb_product_ids (catalogue
+    ids, not personal data); an element that is not a str of 1..256 characters is
+    nulled; NULL when the key is absent or malformed or no element survives."""
+    ids = meta.get("kb_product_ids")
+    if not (isinstance(ids, list) and len(ids) == 2):
+        return None
+    out = [i if isinstance(i, str) and 0 < len(i) <= 256 else None for i in ids]
+    return out if any(out) else None
 
 
 def _cache_hits(body: Dict[str, Any], prods: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -451,7 +465,7 @@ def build_run_row(result: Any, input_type: Any, *, vision_ms: Any = None, compar
         "product_categories": _product_categories(body),
         "refusal_reason": None,
         "query_hmac": _query_hmac(pair_identity_text(body)),
-        "kb_product_ids": None,
+        "kb_product_ids": _kb_product_ids(meta),
         "sources_used": _sources_used(body, prods),
         "cache_hits": _cache_hits(body, prods),
         "llm_calls": _llm_calls(extra_records),

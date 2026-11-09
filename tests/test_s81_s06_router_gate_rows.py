@@ -283,8 +283,8 @@ def _preflight(
         (({"moderation"}, False, False, False), False),
         (
             ({"text", "verdict"}, True, False, True),
-            True,
-        ),  # critic enabled, still on OpenAI
+            False,
+        ),  # S81-22b: ENABLE_SELF_CRITIQUE is inert (no critic leg): OpenAI unused
         (
             ({"text", "verdict"}, True, False, False),
             False,
@@ -296,8 +296,9 @@ def _preflight(
 def test_g05_preflight_and_covers_moderation_and_critic(
     monkeypatch, consent, redis_fake, cell
 ):
-    """GC-1 RED: moderation routed to Claude adds the anthropic breaker; the critic adds
-    its provider when ENABLE_SELF_CRITIQUE is ON."""
+    """GC-1 RED: moderation routed to Claude adds the anthropic breaker; since S81-22b
+    ENABLE_SELF_CRITIQUE is inert (the preflight's critic leg is retired), so it adds no
+    provider (cell 4)."""
     _knobs(monkeypatch)
     consent.set(3)
     (roles, openai_open, anth_open, self_critique), want = cell
@@ -797,7 +798,6 @@ G13_SITE_KEYS = frozenset(
         "specs_synthesized",
         "disambiguate",
         "url_extract",
-        "critique",
     }
 )
 
@@ -824,9 +824,9 @@ def test_g13_every_llm_site_dispatches_through_the_router():
     """F1-14: an AST census over app/ finds NO call to guarded_llm_create( outside
     app/services/llm_router.py and app/services/api_budget_service.py; RB6-5
     (m-RV5, mutant RV15): the _llm_router.route(<site>, <x>.guarded_llm_create, ...)
-    calls carry EXACTLY the 16 pinned site keys (a frozenset of names, not a floor
-    >= 16), each routed once; self-checks: a direct call, a routed call and its
-    site key are each recognised."""
+    calls carry EXACTLY the 15 pinned site keys (a frozenset of names, not a floor
+    >= 15; 16 until S81-22b retired the critique dispatch), each routed once;
+    self-checks: a direct call, a routed call and its site key are each recognised."""
     direct_src = (
         "async def f(c):\n    await _llm_breaker.guarded_llm_create(c, model='m')\n"
     )
@@ -849,7 +849,7 @@ def test_g13_every_llm_site_dispatches_through_the_router():
         direct += ["%s:%d" % (rel, ln) for ln in _direct_guarded_calls(tree)]
         keys += _routed_site_keys(tree)
     assert direct == [], "guarded_llm_create called outside the router: %s" % direct
-    assert len(G13_SITE_KEYS) == 16
+    assert len(G13_SITE_KEYS) == 15  # S81-22b: the critique dispatch retired
     assert frozenset(keys) == G13_SITE_KEYS, "routed site keys: missing %s, new %s" % (
         sorted(G13_SITE_KEYS - set(keys)),
         sorted(set(keys) - G13_SITE_KEYS),

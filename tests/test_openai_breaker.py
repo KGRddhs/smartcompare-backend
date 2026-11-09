@@ -78,7 +78,6 @@ from app.services import openai_service as oai
 from app.services import serper_service as ss
 from app.services import structured_comparison_service as scs
 from app.services import url_extraction_service as url_extraction_mod
-from app.services import verdict_critique_service as vc_mod
 
 
 FLAG = "ENABLE_LLM_PREFLIGHT_BREAKER"
@@ -887,30 +886,3 @@ def test_insufficient_data_still_surfaces_as_400():
             {"code": "INSUFFICIENT_DATA", "error": "x"}
         )
     assert excinfo.value.status_code == 400
-
-
-# ---------------------------------------------------------------------------
-# MINOR 6 — the compare-path caller that was left unwired
-# ---------------------------------------------------------------------------
-@pytest.mark.asyncio
-async def test_verdict_critique_dispatch_feeds_the_breaker(monkeypatch):
-    """`verdict_critique_service.critique_verdict` IS on the compare path
-    (`_apply_self_critique`, gated by ENABLE_SELF_CRITIQUE) and was not wired to
-    the breaker. With the breaker OPEN it must not dispatch; the function's own
-    contract (serve the original verdict on any failure) is preserved."""
-    monkeypatch.setenv(FLAG, "true")
-    store, ops, _get, _set, _incr, _expire = _dict_breaker_redis(seed=_open_breaker_seed())
-    client = _mock_openai_client()
-
-    with _all(*_patch_breaker_redis(_get, _set, _incr, _expire),
-              patch.object(vc_mod, "get_client", return_value=client)):
-        result = await vc_mod.critique_verdict(
-            comparison={"winner_index": 0, "winner_reason": "cheaper"},
-            product_names=["Acme Widget", "Globex Gadget"],
-        )
-
-    assert client.chat.completions.create.await_count == 0, (
-        "the self-critique pass dispatched to OpenAI with the breaker OPEN — it "
-        "is on the compare path and must feed the breaker like the others"
-    )
-    assert result is None, "critique_verdict must degrade to the original verdict"

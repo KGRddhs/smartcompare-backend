@@ -97,7 +97,7 @@ ABANDON_EVENTS = ("result_abandon", "compare_cancelled", "scan_failed")
 CONFIRM_EVENTS = ("save", "share_completed", "screenshot")
 GAP_OPEN_STATES = ("open", "queued", "needs_operator")
 HINT_PREFIX = "pdp_"
-CRITIQUE_THRESHOLD = 7  # mirrors verdict_critique_service.CRITIQUE_THRESHOLD (PIN P5)
+CRITIQUE_THRESHOLD = 7  # the retired self-critique pass's threshold (S81-22b); PIN P5 holds the literal
 MISSING_TABLE_CODES = ("42P01", "PGRST205")
 IN_CHUNK = 100
 

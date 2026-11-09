@@ -26,7 +26,7 @@ ROWS = ("test_i2_camera_flag_off_no_metadata_llm", "test_i6_off_camera_real_comp
 NODES = [(ROWS[0], "false"), (ROWS[0], None), (ROWS[1], None), (ROWS[1], "false")]
 S22_LF_SHA = {
     "tests/test_s81_s22_compare_runs.py": "db13c005e04f3e9986190a538f6baa77ddaa587178ab1677f8399360922000eb",
-    "tests/test_s81_s22_judge.py": "b7c2c377e4c6b8c5b0db77dc16a746963b16f6f765910275c60df436577d8430",
+    "tests/test_s81_s22_judge.py": "86614fb4998b981b08adca3b20c01224ad8b927da9dccaa5c1d39099abacc99e",
     "tests/test_s81_s22_gate_rows.py": "fc22cc7e1313694520409605f3e31ba8f6760e69100c53540ce32011ae6e61b2",
 }
 

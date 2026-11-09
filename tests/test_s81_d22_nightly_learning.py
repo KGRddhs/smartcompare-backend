@@ -1544,10 +1544,15 @@ def _module_assign(path, name):
 
 
 def test_p5_critique_threshold_mirror():
-    path = ROOT / "app" / "services" / "verdict_critique_service.py"
+    # S81-22b: the critique module (the threshold's old mirror) is retired; the job keeps
+    # the literal and reads the kept verdict_critiques score columns of migration 030.
+    path = ROOT / "scripts" / "cron_learning.py"
     assert ast.literal_eval(_module_assign(path, "CRITIQUE_THRESHOLD")) == 7
-    axes = ast.literal_eval(_module_assign(path, "CRITIQUE_AXES"))
-    assert "bias_score" in axes and "missing_citation_score" in axes
+    cols = ast.literal_eval(_module_assign(path, "CRITIQUE_COLUMNS")).split(",")
+    scored = [c for c in cols if c.endswith("_score")]
+    assert scored == ["bias_score", "missing_citation_score"], cols
+    sql = " ".join((ROOT / "migrations" / "030_verdict_critiques.sql").read_text(encoding="utf-8").split())
+    assert all("%s integer NULL" % c in sql for c in scored), scored
 
 
 def test_p6_field_and_event_vocabularies():

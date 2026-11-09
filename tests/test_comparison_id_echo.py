@@ -10,8 +10,8 @@ response the EXISTING runtime already produces -- a body key, an SSE terminal
 event, a wall-clock delta -- never on an ImportError or an AttributeError for a
 symbol that does not exist yet. Nothing here imports ``persist_comparison`` or
 ``track_after_persist``: the seam every test drives is
-``feedback_service.save_comparison`` (the insert) and the four follow-up leaves,
-all of which exist today and must still exist after the split.
+``feedback_service.save_comparison`` (the insert) and the follow-up leaves
+(four at W3-2; three since S81-22b retired the critique persist).
 
 --------------------------------------------------------------------------
 WHAT IS WRONG TODAY -- MEASURED ON THIS TREE AT eecd8bf9
@@ -66,13 +66,14 @@ THE CONTRACT
    carry ``comparison_id`` == the id the insert returned.
 2. An insert FAILURE must not fail the compare: 200, ``success: true``,
    ``comparison_id: null`` (the KEY IS PRESENT, the value is null -- an honest
-   null, not a silent omission), and NONE of the four follow-ups run, because
+   null, not a silent omission), and NONE of the follow-ups run, because
    there is no id to track against.
-3. The four follow-ups (savings-cache bust, ``track_event``, critique persist,
-   referral Loop 2) stay FIRE-AND-FORGET: the response must not wait on them.
+3. The follow-ups (savings-cache bust, ``track_event``, referral Loop 2; the
+   critique persist was retired by S81-22b) stay FIRE-AND-FORGET: the response
+   must not wait on them.
 4. Every NON-text caller of ``save_comparison_and_track_cohort``
    (``image_routes.py:340``, ``url_routes.py:122``) keeps today's composed
-   behaviour byte-for-byte -- same insert call, same four follow-ups, same
+   behaviour byte-for-byte -- same insert call, same follow-ups, same
    order, same falsy-id gate.
 5. An UNAUTHENTICATED compare keeps today's shape exactly: no ``comparison_id``
    key at all (nothing was persisted, so there is nothing honest to report).
@@ -118,9 +119,9 @@ from app.services import feedback_service, referral_service
 # harness
 # ---------------------------------------------------------------------------
 def _base_result() -> dict:
-    """A minimal renderable-looking compare payload. Fresh dict per call:
-    `save_comparison_and_track_cohort` POPS `metadata._verdict_critique`, so a
-    shared module-level literal would leak state between nodes."""
+    """A minimal renderable-looking compare payload. Fresh dict per call, so a
+    shared module-level literal cannot leak state between nodes (the route's
+    comparison_id echo mutates the payload it returns)."""
     return {
         "success": True,
         "products": [
@@ -130,12 +131,6 @@ def _base_result() -> dict:
         "metadata": {
             "total_cost": 0.011,
             "cohort_injected": True,
-            "_verdict_critique": {
-                "axis_scores": {"clarity": 4},
-                "needs_regen": False,
-                "low_axes": [],
-                "critic_tokens_used": 17,
-            },
         },
     }
 
@@ -154,10 +149,14 @@ class Insert:
         self.raises = raises
         self.delay = delay
         self.calls: list[dict] = []
+        # S81-22b: the payload as the insert serializes it (a call-time snapshot):
+        # with no sanitizing copy left, the route's later echo mutates the object.
+        self.snapshots: list[dict] = []
 
     def install(self, monkeypatch) -> "Insert":
         async def _save(**kwargs):
             self.calls.append(kwargs)
+            self.snapshots.append(json.loads(json.dumps(kwargs.get("full_response"), default=str)))
             if self.delay:
                 await asyncio.sleep(self.delay)
             if self.raises:
@@ -169,11 +168,11 @@ class Insert:
 
 
 class FollowUps:
-    """Records the four post-insert follow-ups AT CALL TIME.
+    """Records the post-insert follow-ups AT CALL TIME.
 
     Order is recorded too: today's sequence is savings-cache bust ->
-    track_event -> critique persist -> referral Loop 2, and the split must not
-    reorder it for the non-text callers.
+    track_event -> referral Loop 2 (the critique persist was retired by
+    S81-22b), and the split must not reorder it for the non-text callers.
     """
 
     def __init__(self) -> None:
@@ -211,17 +210,6 @@ class FollowUps:
             return _result()
 
         monkeypatch.setattr(feedback_service, "track_event", _track_event)
-
-        def _persist_critique(comparison_id, crit_meta):
-            fu.calls.append(("persist_critique", comparison_id))
-
-            async def _result():
-                return None
-
-            return _result()
-
-        monkeypatch.setattr(feedback_service, "_persist_verdict_critique",
-                            _persist_critique)
 
         class _FakeReferralService:
             async def try_trigger_loop2(self, **kwargs):
@@ -588,7 +576,8 @@ async def test_composition_still_fires_the_insert_and_all_four_follow_ups(
 ):
     """`save_comparison_and_track_cohort` is what `image_routes.py:340` and
     `url_routes.py:122` call. After the split it must still be the same
-    composition: one insert, then the four follow-ups, in this order."""
+    composition: one insert, then the follow-ups (three since S81-22b), in this
+    order."""
     insert = Insert(row_id).install(monkeypatch)
 
     returned = await feedback_service.save_comparison_and_track_cohort(
@@ -603,11 +592,11 @@ async def test_composition_still_fires_the_insert_and_all_four_follow_ups(
     assert insert.calls[0]["input_type"] == "camera"
     assert insert.calls[0]["user_id"] == "w3-2-nontext"
     assert follow_ups.names == [
-        "cache_bust", "track_event", "persist_critique", "loop2",
+        "cache_bust", "track_event", "loop2",
     ], f"follow-up set/order changed: {follow_ups.names}"
     assert follow_ups.calls[0][1] == "home:savings:w3-2-nontext"
     assert follow_ups.calls[1][1] == row_id
-    assert follow_ups.calls[3][1] == row_id
+    assert follow_ups.calls[2][1] == row_id
     assert follow_ups.track_event_kwargs[0]["event_type"] == "comparison_completed"
     assert follow_ups.track_event_kwargs[0]["event_data"] == {"cohort_injected": True}
 
@@ -853,6 +842,7 @@ async def test_postverdict_disconnect_still_persists_exactly_once(
 #      returned None).  -> pin 8a
 #   4b. The `not had_error` half of the stream persist gate.  -> pin 8b
 #   4c. The G6 `_verdict_critique` exclusion from the DB payload.  -> pin 8c
+#       (S81-22b: no producer remains; 8c now pins the row = the response.)
 #
 # Each was verified to survive its mutation before this section existed:
 # `persisted = comparison_id is not None`, dropping `not had_error`, and
@@ -950,7 +940,7 @@ def test_flag_off_post_compare_takes_todays_fire_and_forget_path(
     # ...and the composition still does the whole job when it runs.
     captured_fire_and_forget.drain()
     assert len(insert.calls) == 1
-    assert follow_ups.names == ["cache_bust", "track_event", "persist_critique", "loop2"]
+    assert follow_ups.names == ["cache_bust", "track_event", "loop2"]
 
 
 def test_flag_off_get_compare_takes_todays_fire_and_forget_path(
@@ -977,7 +967,7 @@ def test_flag_off_get_compare_takes_todays_fire_and_forget_path(
 
     captured_fire_and_forget.drain()
     assert len(insert.calls) == 1
-    assert follow_ups.names == ["cache_bust", "track_event", "persist_critique", "loop2"]
+    assert follow_ups.names == ["cache_bust", "track_event", "loop2"]
 
 
 def test_flag_off_stream_takes_todays_finally_path(
@@ -1020,7 +1010,7 @@ def test_flag_off_stream_takes_todays_finally_path(
     captured_fire_and_forget.drain()
     assert len(insert.calls) == 1
     assert insert.calls[0]["input_type"] == "text_stream"
-    assert follow_ups.names == ["cache_bust", "track_event", "persist_critique", "loop2"]
+    assert follow_ups.names == ["cache_bust", "track_event", "loop2"]
 
 
 # ---------------------------------------------------------------------------
@@ -1032,7 +1022,7 @@ def test_stream_terminal_events_carry_an_honest_null_when_the_insert_gives_no_id
     """REWORK 4a / revised-ruling condition 4. `save_comparison` returns None
     for an unrenderable payload or a failed write. The stream must then echo
     `comparison_id: null` with the KEY PRESENT -- the same honest null the sync
-    path gives -- and fire none of the four follow-ups.
+    path gives -- and fire none of the follow-ups.
 
     MUTATION that this exists to catch: `persisted = comparison_id is not None`
     omits the key entirely, which is indistinguishable on the wire from an
@@ -1129,14 +1119,14 @@ def test_stream_error_before_the_terminal_payload_persists_nothing(
 def test_db_payload_drops_the_verdict_critique_while_the_response_keeps_it(
     monkeypatch, client, authed, follow_ups, row_id
 ):
-    """REWORK 4c. `metadata._verdict_critique` is an INTERNAL key: history and
+    """REWORK 4c. `metadata._verdict_critique` was an INTERNAL key: history and
     the public share read `full_response` verbatim, so it must never reach the
     `comparisons` row. W3-2 rewrote that mechanism from an in-place
-    `metadata.pop` into `_without_verdict_critique`, which sanitizes a COPY --
-    necessary now that the insert is awaited BEFORE the route serializes its
-    response, where an in-place pop would strip the key from what the user gets.
-
-    Both halves are asserted: gone from the DB payload, still on the wire.
+    `metadata.pop` into `_without_verdict_critique`, which sanitized a COPY.
+    S81-22b retired the self-critique pass, its producer, and the stripper with
+    it: the row (snapshotted at insert time, before the route's comparison_id
+    echo mutates the same object) now carries the response's own metadata, and
+    still no `_verdict_critique` and no echoed id.
 
     MUTATION: `_without_verdict_critique(full_response)` -> `full_response`
     writes critique internals into the row and left 14/14 green. Nothing else in
@@ -1149,14 +1139,14 @@ def test_db_payload_drops_the_verdict_critique_while_the_response_keeps_it(
     assert response.status_code == 200
 
     assert len(insert.calls) == 1
-    db_payload = insert.calls[0]["full_response"]
+    db_payload = insert.snapshots[0]
     db_metadata = db_payload.get("metadata") or {}
     assert "_verdict_critique" not in db_metadata, (
-        "the comparisons row carried critique internals; history and the public "
-        f"share serve this verbatim. DB metadata keys: {sorted(db_metadata)}"
+        "the comparisons row carried critique internals (no producer since S81-22b); "
+        f"DB metadata keys: {sorted(db_metadata)}"
     )
     assert db_metadata.get("cohort_injected") is True, (
-        "sanitizing must remove ONLY `_verdict_critique`: "
+        "the row must keep the response metadata: "
         f"{sorted(db_metadata)}"
     )
     assert "comparison_id" not in db_payload, (
@@ -1164,12 +1154,9 @@ def test_db_payload_drops_the_verdict_critique_while_the_response_keeps_it(
         f"row's full_response. DB payload keys: {sorted(db_payload)}"
     )
 
-    # ...and the live payload keeps it, deterministically now that the insert is
-    # awaited (pre-W3-2 the in-place pop raced serialization).
-    assert "_verdict_critique" in (body.get("metadata") or {}), (
-        "the route's own response must be untouched by the DB sanitization. "
-        f"Response metadata keys: {sorted(body.get('metadata') or {})}"
-    )
+    # S81-22b: no stripper is left, so the row's metadata IS the response's metadata.
+    assert db_metadata == (body.get("metadata") or {}), (
+        sorted(db_metadata), sorted(body.get("metadata") or {}))
     assert body["comparison_id"] == row_id
 
 

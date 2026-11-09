@@ -181,7 +181,9 @@ class _Q:
             elif name == "in_":
                 rows = [r for r in rows if r.get(a[0]) in a[1]]
             elif name == "contains":
-                rows = [r for r in rows if all(x in (r.get(a[0]) or []) for x in a[1])]
+                # D-S22-J1: the judge sends the jsonb operand as JSON text (PostgREST's form)
+                vals = json.loads(a[1]) if isinstance(a[1], str) else a[1]
+                rows = [r for r in rows if all(x in (r.get(a[0]) or []) for x in vals)]
         if sel[2].get("head"):
             return _Resp([], count=len(rows))
         for name, a, _k in self.ops:

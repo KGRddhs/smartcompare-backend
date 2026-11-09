@@ -37,7 +37,6 @@ _RESET_FLAGS = (
     "ENABLE_GPT_WINNER",
     "ENABLE_REVIEW_SOURCE_CONSULT",
     "ENABLE_YOUTUBE_SOURCE",
-    "ENABLE_SELF_CRITIQUE",
     "ENABLE_FULL_STREAM_DEADLINE",
 )
 _ABSENT = object()
@@ -401,7 +400,8 @@ def _sync_harness(monkeypatch):
     """Drive compare_from_text fully mocked to the verdict stage: explicit pair,
     mocked _fetch_product_data, fairness no-op, the real scoring service (a private
     instance). generate_comparison is replaced by a recorder that returns a verdict;
-    _apply_self_critique by a recorder of regen_args that stops the run."""
+    trust_validation_service.validate_verdict (the first call after the verdict on
+    both paths since S81-22b) by a recorder that stops the run."""
     import app.services.structured_comparison_service as scs
     from app.services import scoring_service as _ss
 
@@ -432,20 +432,23 @@ def _sync_harness(monkeypatch):
 
 def _install_recorders(monkeypatch, service):
     import app.services.structured_comparison_service as scs
+    from app.services import trust_validation_service as _tvs
 
-    holder = {"gen": [], "regen_args": []}
+    holder = {"gen": [], "stopped": []}
 
     async def _gen(*a, **k):
         holder["gen"].append(dict(k))
         return ({"winner_index": 0, "winner_declaration": "A", "winner_reason": "x"},
                 {"prompt_tokens": 1, "completion_tokens": 1})
 
-    async def _critique(*a, **k):
-        holder["regen_args"].append(dict(k.get("regen_args") or {}))
-        raise _Stop("W4-14: regen_args recorded")
+    def _validate(*a, **k):
+        # S81-22b: the stop point that replaced the retired self-critique pass,
+        # imported at call time on both paths.
+        holder["stopped"].append("validate_verdict")
+        raise _Stop("W4-14: the post-verdict stage reached")
 
     monkeypatch.setattr(scs, "generate_comparison", _gen)
-    monkeypatch.setattr(service, "_apply_self_critique", _critique)
+    monkeypatch.setattr(_tvs, "validate_verdict", _validate)
     return holder
 
 
@@ -517,8 +520,9 @@ def _run_stream(monkeypatch, **extra):
 
 def test_29_red_compare_from_text_threads_output_lang(monkeypatch):
     """RED (sync). compare_from_text(output_lang='ar') hands output_lang='ar' to
-    generate_comparison AND puts it in the self-critique regen_args (kills M16 on
-    the sync builder). HEAD: the service has no output_lang parameter."""
+    generate_comparison (kills M16 on the sync builder; the self-critique
+    regen_args leg retired with the pass, S81-22b). HEAD: the service has no
+    output_lang parameter."""
     import app.services.structured_comparison_service as scs
 
     _require_param(scs.StructuredComparisonService.compare_from_text, "output_lang",
@@ -526,15 +530,14 @@ def test_29_red_compare_from_text_threads_output_lang(monkeypatch):
     holder = _run_sync(monkeypatch, output_lang="ar")
     assert holder["gen"], "generate_comparison was never reached"
     assert holder["gen"][0].get("output_lang") == "ar", sorted(holder["gen"][0])
-    assert holder["regen_args"], "_apply_self_critique was never reached"
-    assert holder["regen_args"][0].get("output_lang") == "ar", sorted(holder["regen_args"][0])
+    assert holder["stopped"] == ["validate_verdict"], holder["stopped"]
 
 
 def test_29b_red_compare_from_text_streaming_threads_output_lang(monkeypatch):
     """RED (SSE). compare_from_text_streaming(output_lang='ar') hands it to
-    generate_comparison and to the regen_args (kills M13 - the streaming threading
-    dropped - while the sync node stays green, and M16 on the stream builder).
-    HEAD: no output_lang parameter."""
+    generate_comparison (kills M13 - the streaming threading dropped - while the
+    sync node stays green, and M16 on the stream builder; the regen_args leg
+    retired with the self-critique pass, S81-22b). HEAD: no output_lang parameter."""
     import app.services.structured_comparison_service as scs
 
     _require_param(scs.StructuredComparisonService.compare_from_text_streaming,
@@ -542,20 +545,18 @@ def test_29b_red_compare_from_text_streaming_threads_output_lang(monkeypatch):
     holder = _run_stream(monkeypatch, output_lang="ar")
     assert holder["gen"], "generate_comparison was never reached on the stream path"
     assert holder["gen"][0].get("output_lang") == "ar", sorted(holder["gen"][0])
-    assert holder["regen_args"], "_apply_self_critique was never reached (stream)"
-    assert holder["regen_args"][0].get("output_lang") == "ar", sorted(holder["regen_args"][0])
+    assert holder["stopped"] == ["validate_verdict"], holder["stopped"]
 
 
 @pytest.mark.parametrize("path", ["sync", "stream"])
 def test_29c_pin_no_output_lang_is_kwarg_identical(monkeypatch, path):
-    """PIN (green at HEAD). Without output_lang the verdict call and the regen_args
-    carry NO output_lang key - the no-lang path is kwarg-identical to HEAD (the
-    conditional-kwargs form of B3)."""
+    """PIN (green at HEAD). Without output_lang the verdict call carries NO
+    output_lang key - the no-lang path is kwarg-identical to HEAD (the
+    conditional-kwargs form of B3; the regen_args leg retired, S81-22b)."""
     holder = _run_sync(monkeypatch) if path == "sync" else _run_stream(monkeypatch)
     assert holder["gen"], "generate_comparison was never reached"
     assert "output_lang" not in holder["gen"][0], sorted(holder["gen"][0])
-    assert holder["regen_args"], "_apply_self_critique was never reached"
-    assert "output_lang" not in holder["regen_args"][0], sorted(holder["regen_args"][0])
+    assert holder["stopped"] == ["validate_verdict"], holder["stopped"]
 
 
 # ------------------------------------------------------------ B4 the one fork
@@ -693,69 +694,6 @@ def test_32_red_flag_on_non_arabic_output_lang_is_byte_identical(monkeypatch, ce
     cat, prefs, q, demo = _cell_args(cell, monkeypatch)
     got = _capture(cat, prefs, q, demographics=demo, output_lang=lang)
     assert got == base
-
-
-def test_33_red_self_critique_regen_keeps_the_directive(monkeypatch):
-    """RED. ENABLE_SELF_CRITIQUE on, flag ON, regen_args carrying output_lang='ar',
-    a low critique score forces ONE regeneration through the REAL
-    generate_comparison: the regen's system message also ends with the directive.
-    HEAD: the regen call drops output_lang (and no directive exists)."""
-    directive = _directive()
-    es = _es()
-    _require_param(es.generate_comparison, "output_lang", "generate_comparison")
-    import app.services.structured_comparison_service as scs
-    from app.services import verdict_critique_service as vcs
-
-    monkeypatch.setenv("ENABLE_SELF_CRITIQUE", "true")
-    monkeypatch.setenv(_FLAG, "true")
-    crit = {"bias_score": 9, "vagueness_score": 4, "hedging_score": 9,
-            "missing_citation_score": 9, "pain_workflow_align_score": 9}
-    msg = MagicMock()
-    msg.content = json.dumps(crit)
-    choice = MagicMock()
-    choice.message = msg
-    cresp = MagicMock()
-    cresp.choices = [choice]
-    cresp.usage = MagicMock(prompt_tokens=900, completion_tokens=50)
-    critique_client = MagicMock()
-    critique_client.chat.completions.create = AsyncMock(return_value=cresp)
-
-    systems = []
-
-    async def fake_create(*args, **kwargs):
-        for m in kwargs.get("messages") or []:
-            if m["role"] == "system":
-                systems.append(m["content"])
-        resp = MagicMock()
-        ch = MagicMock()
-        ch.message.content = '{"winner_index": 0, "winner_reason": "regen"}'
-        resp.choices = [ch]
-        resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-        return resp
-
-    verdict_client = MagicMock()
-    verdict_client.chat.completions.create = AsyncMock(side_effect=fake_create)
-    fake_router = MagicMock()
-    fake_router.get_model = AsyncMock(return_value="gpt-4o-mini")
-    fake_router.record_usage = AsyncMock(return_value=None)
-
-    regen_args = dict(
-        product1={"name": "A", "category_used": "fragrances"},
-        product2={"name": "B", "category_used": "fragrances"},
-        region="bahrain", concern="value", user_preferences=None,
-        scores_summary="A leads on price.", category="fragrances",
-        demographics_profile=None, comparison_quality="normal", output_lang="ar",
-    )
-    svc = scs.StructuredComparisonService()
-    with patch.object(vcs, "get_client", return_value=critique_client), \
-         patch.object(es, "get_client", return_value=verdict_client), \
-         patch("app.services.model_router_service.model_router", fake_router):
-        asyncio.run(svc._apply_self_critique(
-            comparison={"winner_index": 0, "winner_declaration": "A", "winner_reason": "x"},
-            product_names=["A", "B"], regen_args=regen_args,
-        ))
-    assert systems, "no regeneration ran (critique did not force one)"
-    assert systems[-1].endswith(directive), "the self-critique regen lost the directive"
 
 
 def test_34_pin_cohort_user_context_line_is_unchanged(monkeypatch):

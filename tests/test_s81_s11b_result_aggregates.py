@@ -238,6 +238,34 @@ def _truth_key(truth):
     return "truth_unset" if truth is None else "truth_" + truth
 
 
+def _set_aside_kb_product_ids(got):
+    """S81-22c (EC1, R-G10-6): metadata.kb_product_ids is the S81-22c additive key under
+    ENABLE_KB_FIRST_SERVE (not a G8 flag). Pop it from every payload's metadata and assert
+    its value (the card id of each full or partial slot, else null; absent when no slot
+    holds one), so the shared G8 golden (not re-recorded) keeps pinning the G8 flags."""
+    ids = [s18._pid(s18.P0), s18._pid(s18.P1)]
+    seen = []
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            meta = obj.get("metadata")
+            if isinstance(meta, dict) and isinstance(meta.get("kb_hit"), list):
+                marks = meta["kb_hit"]
+                want = [ids[i] if m in ("full", "partial") else None for i, m in enumerate(marks)]
+                popped = meta.pop("kb_product_ids", None)
+                assert popped == (want if any(want) else None), (marks, popped)
+                seen.append(marks)
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+
+    walk(got)
+    assert ["full", "full"] in seen, seen
+    return got
+
+
 # =============================================================== RED rows
 
 def test_r1_flag_reader_house_boolean(monkeypatch):
@@ -345,7 +373,7 @@ def test_p1_flag_off_golden_full_config(monkeypatch):
             _set(monkeypatch, LABEL_FLAG, value)
             fired = []
             _raising_g8_recorders(monkeypatch, fired)
-            got = _g8_snapshot(monkeypatch, truth)
+            got = _set_aside_kb_product_ids(_g8_snapshot(monkeypatch, truth))
             exp = want[_truth_key(truth)]
             moved = sorted(n for n in SCENARIOS if got.get(n) != exp.get(n))
             assert moved == [], (truth, value, moved)
