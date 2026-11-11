@@ -388,9 +388,13 @@ async def identify_and_compare(
         vision_result = await identify_products(image_data_list)
         vision_ms = int((time.perf_counter() - _t_vision) * 1000)
     except Exception as e:
-        # S81-06 (GC-3): under a role flag ON a dispatch-level refusal logs at
-        # WARNING by type; flags OFF the base line, byte-unchanged.
+        # S81-06 (GC-3) + S81-04c (R-04C-1): an LLMUnavailableError (or a subclass) logs at
+        # WARNING by type in every flag state; any other exception keeps the base ERROR line.
+        # The elif duplicates the WARNING body on purpose: the any_role_enabled() read stays
+        # the arm's first statement (R-04C-4 / R-04C-13, stated limit L3).
         if _llm_router.any_role_enabled() and isinstance(e, LLMUnavailableError):
+            logger.warning("[IMAGE] Vision call failed: %s", type(e).__name__)
+        elif isinstance(e, LLMUnavailableError):
             logger.warning("[IMAGE] Vision call failed: %s", type(e).__name__)
         else:
             logger.error(f"[IMAGE] Vision call failed: {e}")

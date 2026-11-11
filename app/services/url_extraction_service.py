@@ -990,7 +990,11 @@ async def extract_with_ai(url: str, html: str, retailer: Dict,
             raise
         # RULINGS_FIX4_B4 F4-5 (unflagged, log-only, R-A1 b): the exception TYPE
         # only, never its text (the U8d class); the return value is unchanged.
-        logger.error("AI extraction error: %s", type(e).__name__)
+        # S81-04c: the class logs at WARNING by type in every flag state.
+        if isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("AI extraction error: %s", type(e).__name__)
+        else:
+            logger.error("AI extraction error: %s", type(e).__name__)
         return {"error": str(e)}
 
 
