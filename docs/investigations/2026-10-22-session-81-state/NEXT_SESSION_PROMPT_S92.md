@@ -39,3 +39,9 @@ Invoke `/synack-build-orchestrator` for MYEZ session 92: continue the session-81
 - Friday 2026-11-13: item 26 (OpenAI data sharing OFF), the #378 merge window, the second OTA on the owner's go; before it the native read of the consent v3 Arabic copy.
 - For CL3's OTA: the ENABLE_FEEDBACK_V2 flip line, the App Privacy label wording for the correction text, the native read of the new AR strings.
 - From before, unchanged: the device check, the Sentry source maps from sc-ota-main (then the relay removes that worktree), the 1.0.1 listing wording, the 42 over-cap brands, the native read of the Arabic lexicon before the fragrance gate, everything else per the S88-S91 prompts' lists.
+
+## ADDENDUM (the ledger line of 2026-11-11 18:28; read it)
+- THE OWNER'S PROOF STANDARD (verbatim, through the relay): "we should also ensure the issue is fixed before being positive so it should be backed with proof not just fake tests, we should see it on the app". Report a merged unit as MERGED, never as fixed or done in production; a user-visible unit counts as done only after the owner's phone shows it, with the saved row and the log. Gates and suites stay necessary; they are not proof of a production fix.
+- The nine open owner's calls are PARKED by the relay until the OpenAI-key incident is fixed and proven on the owner's phone; no lane waits on them. Owner's call 2 is ruled twice ("Confirm" here, "Yes, pause them" through the relay).
+- The owner's "run review agents of fable if needed" changes no setting: the pin forces Opus for every workflow agent; this lane edits no setting.
+- The relay's incident diagnosis (wf_fc6c5004-996) will send a report; expect follow-up units (MON1, the server's English fallback sentences on the Arabic result page, the cohort line "+53 shoppers", the image and price timeouts, an honest result page when the AI text is missing). Start none before the report and the owner's word.
