@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="ar" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Result Page Mock</title>
+<style>
+:root{
+  --bg:#f3f1ec; --card:#ffffff; --ink:#1d1f1e; --ink2:#5d625f; --ink3:#8b908c;
+  --line:#e2dfd8; --accent:#0f7a5c; --accent-soft:#dcefe7; --other:#9aa19d;
+  --tile:#e6e3dc; --tile-ink:#9a968c; --warn-bg:#fff3d6; --warn-ink:#6b4e00;
+  --note-bg:#eef1f7; --note-ink:#33415c; --chip:#f0eee8; --skel:#e4e1da;
+  --q-bg:#fbfaf7;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121413; --card:#1c1f1e; --ink:#eceeed; --ink2:#a9afab; --ink3:#7d847f;
+    --line:#2d3230; --accent:#3ccf9f; --accent-soft:#183a2f; --other:#5f6762;
+    --tile:#2a2e2c; --tile-ink:#7d847f; --warn-bg:#3a2f10; --warn-ink:#f3d58a;
+    --note-bg:#1d2433; --note-ink:#c3cde3; --chip:#262a28; --skel:#2c312e;
+    --q-bg:#181b1a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121413; --card:#1c1f1e; --ink:#eceeed; --ink2:#a9afab; --ink3:#7d847f;
+  --line:#2d3230; --accent:#3ccf9f; --accent-soft:#183a2f; --other:#5f6762;
+  --tile:#2a2e2c; --tile-ink:#7d847f; --warn-bg:#3a2f10; --warn-ink:#f3d58a;
+  --note-bg:#1d2433; --note-ink:#c3cde3; --chip:#262a28; --skel:#2c312e;
+  --q-bg:#181b1a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","Noto Sans Arabic",Tahoma,Arial,sans-serif;font-size:15px;line-height:1.45;overflow-x:hidden}
+.wrap{max-width:440px;margin:0 auto;padding:12px 16px 40px}
+.banner{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:10px}
+.banner b{display:block;font-size:14px;letter-spacing:.02em}
+.ctl{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.ctl .lbl{font-size:12px;color:var(--ink2)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{flex:1 1 auto;min-width:0;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.statenote{background:var(--note-bg);color:var(--note-ink);border-radius:10px;padding:8px 10px;font-size:13px;margin-bottom:12px}
+.page{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 12px 12px;position:relative}
+.num{position:absolute;top:8px;inset-inline-end:10px;font-size:11px;color:var(--ink3);border:1px solid var(--line);border-radius:999px;padding:0 6px}
+.eyebrow{font-size:12px;font-weight:600;color:var(--ink2);text-transform:none;margin:0 0 6px}
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.badge{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600}
+.muted{color:var(--ink2)}
+.small{font-size:13px}
+.tiny{font-size:12px;color:var(--ink3)}
+.prods{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.prod{min-width:0}
+.tile{aspect-ratio:1/1;border-radius:12px;background:var(--tile);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--tile-ink);font-size:12px;text-align:center;padding:6px}
+.tile.found{background:linear-gradient(160deg,var(--accent-soft),var(--tile))}
+.bottle{width:34px;height:52px;border:2px solid currentColor;border-radius:8px 8px 10px 10px;position:relative;opacity:.7}
+.bottle:before{content:"";position:absolute;top:-10px;left:50%;width:14px;height:8px;margin-left:-7px;border:2px solid currentColor;border-radius:3px}
+.pname{font-weight:600;margin-top:8px;font-size:14px;overflow-wrap:anywhere}
+.pline{font-size:13px;margin-top:2px}
+.price{font-weight:600;margin-top:6px;font-size:14px}
+.honest{color:var(--ink2);font-style:italic}
+.diffsize{font-size:12px;color:var(--warn-ink);background:var(--warn-bg);border-radius:8px;padding:4px 6px;margin-top:4px}
+.fact{margin:6px 0 0}
+.fact2{margin:2px 0 0;font-style:italic;color:var(--ink2)}
+.dnote{margin-top:8px;font-size:12px;border:1px dashed var(--line);border-radius:8px;padding:5px 8px;color:var(--ink2)}
+.skel{display:block;height:10px;border-radius:6px;background:var(--skel);margin:6px 0}
+.skel.s2{width:85%}.skel.s3{width:65%}
+.ex{font-size:11px;color:var(--ink3)}
+table.kd{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+table.kd th,table.kd td{padding:6px 4px;border-top:1px solid var(--line);text-align:start;vertical-align:top;overflow-wrap:anywhere}
+table.kd th{font-weight:500;color:var(--ink2);width:30%}
+td.hl{color:var(--accent);font-weight:600}
+.legend{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink2);margin-bottom:4px}
+.legend span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{padding:8px 0;border-top:1px solid var(--line)}
+.bar:first-of-type{border-top:0}
+.brow{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.blabel{font-weight:600;font-size:14px}
+.bcap{font-size:12px;color:var(--ink2);text-align:end}
+.tracks{display:flex;gap:6px;margin-top:6px}
+.track{flex:1;height:8px;border-radius:6px;background:var(--line);overflow:hidden}
+.fill{height:100%;background:var(--other);border-radius:6px}
+.fill.win{background:var(--accent)}
+.state{font-size:13px;color:var(--ink2);margin-top:4px}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{background:var(--chip);border-radius:999px;padding:4px 10px;font-size:12px}
+.pill b{font-weight:600}
+.acc{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+.acc:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.acch{font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.cols>div{min-width:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--ink2)}
+.qs{background:var(--q-bg);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:16px}
+.qs h2{font-size:16px;margin:0 0 6px}
+.qs ol{margin:0;padding-inline-start:22px}
+.qs li{margin:6px 0;font-size:14px}
+.qs .rec{color:var(--accent);font-weight:600}
+.ruled{font-size:13px;color:var(--ink2);margin:6px 0 0}
+bdi{unicode-bidi:isolate}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="banner" lang="en" dir="ltr"><b>DESIGN PROPOSAL - NOT THE LIVE APP</b>A drawing of the planned perfume result page. Nothing here is built or switched on. Every Arabic line is a draft for your native read. Placeholder tiles stand in for photos.</div>
+  <div class="ctl" lang="en" dir="ltr">
+    <div class="lbl">Language</div>
+    <div class="seg" id="langSeg">
+      <button type="button" data-lang="ar" aria-pressed="true">العربية</button>
+      <button type="button" data-lang="en" aria-pressed="false">English</button>
+    </div>
+    <div class="lbl">What the page knows</div>
+    <div class="seg" id="stateSeg">
+      <button type="button" data-state="1" aria-pressed="true">1. The coming days: no AI text</button>
+      <button type="button" data-state="2" aria-pressed="false">2. After the AI switch: everything known</button>
+      <button type="button" data-state="3" aria-pressed="false">3. Almost nothing known</button>
+    </div>
+  </div>
+  <div class="statenote" id="stateNote" lang="en" dir="ltr"></div>
+  <div class="page" id="page"></div>
+  <div class="qs" lang="en" dir="ltr">
+    <h2>Questions for you</h2>
+    <p class="ruled">Already ruled by you on 2026-11-11, not asked again: show each found price with its bottle size and a price per ml, with no cheaper claim when the sizes differ; the shoppers line is removed; wait for Claude (no AI text until the Claude switch).</p>
+    <ol id="qList"></ol>
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var S = {
+ ar: {
+  topMatch:"الأفضل تطابقاً", share:"مشاركة", back:"‹",
+  whyWePicked:"لماذا اخترنا هذا", keyDifferences:"الفروقات الرئيسية",
+  dPrice:"السعر", dReviews:"التقييمات", dLongevity:"الثبات", dProjection:"الانتشار", dValue:"القيمة",
+  limited:"بيانات محدودة", whatWeKnow:"ما الذي نعرفه",
+  pPrice:"السعر", pReviews:"التقييمات", pSpecs:"المواصفات",
+  lHigh:"عالية", lMedium:"متوسطة", lLow:"منخفضة",
+  digDeeper:"تعمّق أكثر", accReviews:"التقييمات", accPros:"الإيجابيات والسلبيات", accSpecs:"المواصفات",
+  notListed:"غير مذكور بعد لدى المتاجر التي نتابعها", pending:"لا يوجد سعر مؤكد بعد.", noRating:"لا يوجد تقييم متاح",
+  fbTitle:"هل كان هذا مفيداً؟", fb1:"دقيق", fb2:"مفصّل", fb3:"سريع",
+  kPrice:"السعر", kSize:"الحجم", kConc:"التركيز", kRating:"التقييمات", kLong:"ثبات العطر", kSill:"انتشار العطر", kFam:"عائلة العطر",
+  spec:["التركيز","الحجم","عائلة العطر","النفحات العليا","نفحات القلب","النفحات الأساسية","ثبات العطر","انتشار العطر","الموسم","المناسبة"],
+  noPhoto:"لا توجد صورة بعد", sizeUnknown:"الحجم غير مذكور بعد", notKnownYet:"غير معروف بعد",
+  withSize:"{{price}} · {{size}} مل", perMl:"{{price}} لكل مل",
+  differentSizes:"حجما العبوتين مختلفان، لذا لا نقارن السعرين.",
+  noWriteUp:"الشرح المكتوب غير متاح هذه المرة. ما يلي هو ما استطعنا تأكيده.",
+  kdNone:"لا تتوفر حقائق مؤكدة كافية لعرض الفروقات بعد.", kdPerMl:"السعر لكل مل",
+  knownForOne:"معروف لعطر واحد فقط", unconfirmed:"غير مؤكد",
+  textUnavailable:"خلاصة الآراء غير متاحة هذه المرة.",
+  prosNeeds:"الإيجابيات والسلبيات تأتي من الشرح المكتوب، وهو غير متاح هذه المرة.",
+  fv1_edges_overall:"{{name}} يتقدم قليلاً في الصورة العامة.",
+  fv2_close_alternative:"{{name}} يبقى بديلاً قريباً.",
+  fv1_leads_on:"{{name}} يتقدم في {{dim}}.",
+  fv2_lighter_wallet:"{{name}} أخف على الجيب بنسبة {{pct}}%.",
+  dim_price_less:"أقل بـ {{price}}",
+  dim_reviews_stars_higher:"أعلى بـ {{stars}} نجمة",
+  dim_longevity_hours:"{{hi}} ساعة مقابل {{lo}} ساعة",
+  dim_projection_stronger:"انتشار أقوى",
+  dim_value_noticeably_more_b:"قيمة أكبر بوضوح لكل دينار لدى الآخر",
+  cur:"د.ب"
+ },
+ en: {
+  topMatch:"Top match", share:"Share", back:"‹",
+  whyWePicked:"Why this fits you", keyDifferences:"Key Differences",
+  dPrice:"Price", dReviews:"Reviews", dLongevity:"Longevity", dProjection:"Projection", dValue:"Value",
+  limited:"Limited data", whatWeKnow:"What we know",
+  pPrice:"Price", pReviews:"Reviews", pSpecs:"Specs",
+  lHigh:"High", lMedium:"Medium", lLow:"Low",
+  digDeeper:"Dig deeper", accReviews:"Reviews", accPros:"Pros & Cons", accSpecs:"Specs",
+  notListed:"Not listed by the stores we can read yet", pending:"No confirmed price yet.", noRating:"No rating available",
+  fbTitle:"Was this helpful?", fb1:"Accurate", fb2:"Detailed", fb3:"Fast",
+  kPrice:"Price", kSize:"Size", kConc:"Concentration", kRating:"Reviews", kLong:"Longevity", kSill:"Sillage", kFam:"Scent family",
+  spec:["Concentration","Size","Scent family","Top notes","Heart notes","Base notes","Longevity","Sillage","Season","Occasion"],
+  noPhoto:"No photo found yet", sizeUnknown:"Size not listed yet", notKnownYet:"Not known yet",
+  withSize:"{{price}} · {{size}} ml", perMl:"{{price}} per ml",
+  differentSizes:"Different bottle sizes, so we do not compare the prices.",
+  noWriteUp:"The written explanation is unavailable this time. The facts below are what we could confirm.",
+  kdNone:"Not enough confirmed facts to list differences yet.", kdPerMl:"Price per ml",
+  knownForOne:"Known for one perfume only", unconfirmed:"Not confirmed",
+  textUnavailable:"Review highlights are unavailable this time.",
+  prosNeeds:"Pros and cons come from the written explanation, which is unavailable this time.",
+  fv1_edges_overall:"{{name}} edges ahead on the overall picture.",
+  fv2_close_alternative:"{{name}} stays in the conversation as a close alternative.",
+  fv1_leads_on:"{{name}} leads on {{dim}}.",
+  fv2_lighter_wallet:"{{name}} stays {{pct}}% lighter on the wallet.",
+  dim_price_less:"{{price}} less",
+  dim_reviews_stars_higher:"{{stars}} stars higher",
+  dim_longevity_hours:"{{hi}}h vs {{lo}}h",
+  dim_projection_stronger:"Stronger projection",
+  dim_value_noticeably_more_b:"Noticeably more per dinar on the other side",
+  cur:"BHD"
+ }
+};
+S.ar.back = "›";
+var STATES = {
+ "1": {
+  note: "<b>1. The coming days, before the Claude switch.</b> This is the shape of the real result \"Creed Aventus EDP vs Parfums de Marly Layton EDP\" of 2026-11-11. With no AI text, the explanation, the pros and cons, the review highlights and the specs show their honest lines. Prices, photos and the two short fact lines show what the search found. Layton's 125 ml is an illustration: the real listing size has not been read yet.",
+  names: ["Creed Aventus EDP", "Parfums de Marly Layton EDP"],
+  photos: [true, true],
+  details: [{conc:"EDP", size:100}, {conc:"EDP"}],
+  prices: [{amount:133.460, size:100, perMl:1.335}, {amount:85.000, size:125, perMl:0.680, other:true}],
+  ai: false,
+  facts: [{id:"fv1_edges_overall", p:0}, {id:"fv2_close_alternative", p:1}],
+  q5: true,
+  kd: [
+   {k:"kPrice", v:[{price:133.460,size:100},{price:85.000,size:125}], hl:null},
+   {k:"kdPerMl", v:[{money:1.335},{money:0.680}], hl:null},
+   {k:"kSize", v:[{size:100}, null], hl:null}
+  ],
+  bars: [
+   {k:"dPrice", st:"partial", cap:"differentSizes"},
+   {k:"dReviews", st:"unknown"},
+   {k:"dLongevity", st:"unknown"},
+   {k:"dProjection", st:"unknown"},
+   {k:"dValue", st:"unknown"}
+  ],
+  pills: [["pPrice","unconfirmed"],["pReviews","lLow"],["pSpecs","lLow"]],
+  ratings: [null, null]
+ },
+ "2": {
+  note: "<b>2. After the AI switch: everything known.</b> EXAMPLE values, made up to show the layout; this is not a real result. Grey lines stand for AI-written text. Prices and ratings do not come from the AI: this example assumes both bottles were found at 100 ml and real star ratings were found.",
+  names: ["Creed Aventus EDP", "Parfums de Marly Layton EDP"],
+  photos: [true, true],
+  details: [{conc:"EDP", size:100}, {conc:"EDP", size:100}],
+  prices: [{amount:133.460, size:100, perMl:1.335}, {amount:98.000, size:100, perMl:0.980}],
+  ai: true,
+  facts: [{id:"fv1_leads_on", p:0, dim:"dLongevity"}, {id:"fv2_lighter_wallet", p:1, pct:27}],
+  q5: false,
+  kd: [
+   {k:"kPrice", v:[{price:133.460,size:100},{price:98.000,size:100}], hl:1},
+   {k:"kdPerMl", v:[{money:1.335},{money:0.980}], hl:1},
+   {k:"kRating", v:[{rating:4.4,count:1200},{rating:4.5,count:900}], hl:1},
+   {k:"kLong", v:[{skel:1},{skel:1}], hl:null},
+   {k:"kSill", v:[{skel:1},{skel:1}], hl:null},
+   {k:"kFam", v:[{skel:1},{skel:1}], hl:null}
+  ],
+  bars: [
+   {k:"dPrice", st:"known", a:58, b:80, win:1, cap:{id:"dim_price_less", price:35.460}},
+   {k:"dReviews", st:"known", a:88, b:90, win:1, cap:{id:"dim_reviews_stars_higher", stars:"0.1"}},
+   {k:"dLongevity", st:"known", a:86, b:70, win:0, cap:{id:"dim_longevity_hours", hi:10, lo:8}},
+   {k:"dProjection", st:"known", a:80, b:60, win:0, cap:{id:"dim_projection_stronger"}},
+   {k:"dValue", st:"known", a:62, b:84, win:1, cap:{id:"dim_value_noticeably_more_b"}}
+  ],
+  pills: [["pPrice","lHigh"],["pReviews","lHigh"],["pSpecs","lMedium"]],
+  ratings: [{r:4.4,c:1200},{r:4.5,c:900}]
+ },
+ "3": {
+  note: "<b>3. Almost nothing known.</b> This is the shape of the real result \"Armani Acqua di Gio Profumo vs Versace Eros EDP\" of 2026-11-11. The same ten sections appear in the same order as in states 1 and 2; every unknown field shows an honest line instead of vanishing. Whether the Versace listing is the right bottle is a separate fix.",
+  names: ["Armani Acqua di Gio Profumo", "Versace Eros EDP"],
+  photos: [false, false],
+  details: [{}, {conc:"EDP", size:100}],
+  prices: [{pending:true}, {amount:25.000, size:100, perMl:0.250}],
+  ai: false,
+  facts: [{id:"fv1_edges_overall", p:0}, {id:"fv2_close_alternative", p:1}],
+  q5: true,
+  kd: [
+   {k:"kPrice", v:[null,{price:25.000,size:100}], hl:null},
+   {k:"kdPerMl", v:[null,{money:0.250}], hl:null},
+   {k:"kSize", v:[null,{size:100}], hl:null},
+   {k:"kConc", v:[null,{text:"EDP"}], hl:null}
+  ],
+  bars: [
+   {k:"dPrice", st:"partial", cap:"knownForOne"},
+   {k:"dReviews", st:"unknown"},
+   {k:"dLongevity", st:"unknown"},
+   {k:"dProjection", st:"unknown"},
+   {k:"dValue", st:"unknown"}
+  ],
+  pills: [["pPrice","unconfirmed"],["pReviews","lLow"],["pSpecs","lLow"]],
+  ratings: [null, null]
+ }
+};
+var QUESTIONS = [
+ ["Drop the character, versatility and presentation bars for perfumes?", "Yes"],
+ ["Show the same five perfume bars every time (Price, Reviews, Longevity, Projection, Value)?", "Yes"],
+ ["On today's apps, show \"Limited data\" for an unknown bar instead of hiding it?", "Yes"],
+ ["Stop the runner-up sentence and the AI's notes from using guessed values too?", "Yes"],
+ ["Name a winner when the scores rest on missing data?", "No; fix it as its own piece after the honest bars"],
+ ["Remove the \"where the runner-up wins\" card from the new page?", "Yes"],
+ ["Remove the \"At a glance\" row?", "Yes"],
+ ["Use the new honest line when the explanation is missing?", "Yes"],
+ ["Keep perfume details as the stores wrote them, possibly in English, for now?", "Yes"],
+ ["Show the details line (for example \"100ml · EDP\") under the names on today's apps too? It comes from the name or an accepted listing, never from a price for another bottle size.", "Yes"],
+ ["On the Arabic page, hide an English sentence we have no Arabic for, even on old saved results?", "Yes"],
+ ["Accept that the Home smart-pick caption of an old result keeps its old sentence?", "Yes"],
+ ["Build your earlier ruling that the server writes these sentences in Arabic for Arabic users?", "Yes, after the codes"],
+ ["Keep non-perfume results on today's bars until the perfume-only switch is on?", "Yes"],
+ ["Show link comparisons on the same fixed page?", "Yes"],
+ ["Keep the honest-bars switch paused until the Claude switch works?", "Yes"]
+];
+var cur = {lang:"ar", state:"1"};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+function fill(tpl, args){return tpl.replace(/\{\{(\w+)\}\}/g,function(m,k){return (args && k in args) ? args[k] : m;});}
+function money(n, t){return n.toFixed(3) + " " + t.cur;}
+function sizeTxt(n, t){return n + " " + (cur.lang === "ar" ? "مل" : "ml");}
+function bdi(s){return "<bdi>" + esc(s) + "</bdi>";}
+function card(n, inner){return "<section class=\"card\"><span class=\"num\" aria-label=\"section " + n + "\">" + n + "</span>" + inner + "</section>";}
+function skel(k){var h=""; for(var i=0;i<k;i++){h+="<span class=\"skel s" + (i%3+1) + "\"></span>";} return h;}
+function exampleTag(){return "<div class=\"ex\" lang=\"en\" dir=\"ltr\">(example: AI-written text appears here)</div>";}
+function priceBlock(p, t){
+ if (p.pending) return "<div class=\"price honest\">" + esc(t.pending) + "</div>";
+ var h = "<div class=\"price\">" + esc(p.size ? fill(t.withSize, {price: money(p.amount, t), size: p.size}) : money(p.amount, t)) + "</div>";
+ if (p.perMl != null) h += "<div class=\"pline muted\">" + esc(fill(t.perMl, {price: money(p.perMl, t)})) + "</div>";
+ if (p.other) h += "<div class=\"diffsize\">" + esc(t.differentSizes) + "</div>";
+ return h;
+}
+function detailsLine(d, t){
+ if (d.conc && d.size) return esc(sizeTxt(d.size, t) + " · " + d.conc);
+ if (d.conc) return esc(d.conc);
+ if (d.size) return esc(sizeTxt(d.size, t));
+ return "<span class=\"honest\">" + esc(t.sizeUnknown) + "</span>";
+}
+function kdCell(v, t){
+ if (v == null) return "—";
+ if (v.skel) return "<span class=\"skel s2\"></span>";
+ if (v.price != null) return esc(v.size ? fill(t.withSize, {price: money(v.price, t), size: v.size}) : money(v.price, t));
+ if (v.money != null) return esc(money(v.money, t));
+ if (v.size != null) return esc(sizeTxt(v.size, t));
+ if (v.rating != null) return esc(v.rating.toFixed(1) + " ★ · " + v.count.toLocaleString("en-US"));
+ if (v.text) return esc(v.text);
+ return "—";
+}
+function capText(c, t, st){
+ if (!c) return "";
+ var a = {};
+ for (var k in c){ if (k !== "id") a[k] = c[k]; }
+ if (a.price != null) a.price = money(a.price, t);
+ return fill(t[c.id], a);
+}
+function render(){
+ var t = S[cur.lang], d = STATES[cur.state];
+ var page = document.getElementById("page");
+ page.setAttribute("dir", cur.lang === "ar" ? "rtl" : "ltr");
+ page.setAttribute("lang", cur.lang);
+ document.documentElement.setAttribute("lang", cur.lang);
+ document.getElementById("stateNote").innerHTML = d.note;
+ var h = "";
+ h += card(1, "<div class=\"hdr\"><span aria-hidden=\"true\" style=\"font-size:22px\">" + esc(t.back) + "</span><span class=\"badge\">" + esc(t.topMatch) + "</span><span class=\"small muted\">" + esc(t.share) + "</span></div>");
+ var prods = "";
+ for (var i = 0; i < 2; i++){
+  var tile = d.photos[i]
+   ? "<div class=\"tile found\" aria-label=\"photo placeholder\"><span class=\"bottle\"></span></div>"
+   : "<div class=\"tile\"><span class=\"bottle\"></span><span>" + esc(t.noPhoto) + "</span></div>";
+  prods += "<div class=\"prod\">" + tile + "<div class=\"pname\">" + bdi(d.names[i]) + "</div><div class=\"pline\">" + detailsLine(d.details[i], t) + "</div>" + priceBlock(d.prices[i], t) + "</div>";
+ }
+ h += card(2, "<div class=\"prods\">" + prods + "</div>");
+ var why = "<p class=\"eyebrow\">" + esc(t.whyWePicked) + "</p>";
+ why += d.ai ? (skel(4) + exampleTag()) : ("<div class=\"honest small\">" + esc(t.noWriteUp) + "</div>");
+ for (var f = 0; f < d.facts.length; f++){
+  var fa = d.facts[f], args = {name: bdi(d.names[fa.p])};
+  if (fa.dim) args.dim = esc(t[fa.dim]);
+  if (fa.pct != null) args.pct = fa.pct;
+  why += "<p class=\"" + (f === 0 ? "fact" : "fact2") + "\">" + fill(esc(t[fa.id]), args) + "</p>";
+ }
+ if (d.q5) why += "<div class=\"dnote\" lang=\"en\" dir=\"ltr\">Design note: this line still names a leader although the scores rest on missing data. See question 5.</div>";
+ h += card(3, why);
+ var kd = "<p class=\"eyebrow\">" + esc(t.keyDifferences) + "</p>";
+ if (d.kd.length){
+  kd += "<table class=\"kd\"><tr><th></th><td class=\"tiny\">" + bdi(d.names[0]) + "</td><td class=\"tiny\">" + bdi(d.names[1]) + "</td></tr>";
+  for (var r = 0; r < d.kd.length; r++){
+   var row = d.kd[r];
+   kd += "<tr><th>" + esc(t[row.k]) + "</th>";
+   for (var j = 0; j < 2; j++){ kd += "<td" + (row.hl === j ? " class=\"hl\"" : "") + ">" + kdCell(row.v[j], t) + "</td>"; }
+   kd += "</tr>";
+  }
+  kd += "</table>";
+  if (d.ai) kd += exampleTag();
+ } else { kd += "<div class=\"honest small\">" + esc(t.kdNone) + "</div>"; }
+ h += card(4, kd);
+ var bars = "<div class=\"legend\"><span>" + bdi(d.names[0]) + "</span><span>" + bdi(d.names[1]) + "</span></div>";
+ for (var b = 0; b < d.bars.length; b++){
+  var br = d.bars[b];
+  bars += "<div class=\"bar\"><div class=\"brow\"><span class=\"blabel\">" + esc(t[br.k]) + "</span>";
+  if (br.st === "known"){
+   bars += "<span class=\"bcap\">" + esc(capText(br.cap, t)) + "</span></div>";
+   bars += "<div class=\"tracks\"><div class=\"track\"><div class=\"fill" + (br.win === 0 ? " win" : "") + "\" style=\"width:" + br.a + "%\"></div></div><div class=\"track\"><div class=\"fill" + (br.win === 1 ? " win" : "") + "\" style=\"width:" + br.b + "%\"></div></div></div>";
+  } else if (br.st === "partial"){
+   bars += "</div><div class=\"state\">" + esc(t[br.cap]) + "</div>";
+  } else {
+   bars += "</div><div class=\"state\">" + esc(t.limited) + "</div>";
+  }
+  bars += "</div>";
+ }
+ h += card(5, bars);
+ var pills = "<p class=\"eyebrow\">" + esc(t.whatWeKnow) + "</p><div class=\"pills\">";
+ for (var p = 0; p < d.pills.length; p++){
+  pills += "<span class=\"pill\">" + esc(t[d.pills[p][0]]) + ": <b>" + esc(t[d.pills[p][1]]) + "</b></span>";
+ }
+ h += card(6, pills + "</div>");
+ h += "<p class=\"eyebrow\" style=\"margin:6px 4px 0\">" + esc(t.digDeeper) + "</p>";
+ var rv = "<div class=\"acch\">" + esc(t.accReviews) + "</div><div class=\"cols\">";
+ for (var q = 0; q < 2; q++){
+  var rt = d.ratings[q];
+  rv += "<div><div class=\"small\"><b>" + bdi(d.names[q]) + "</b></div><div class=\"small" + (rt ? "" : " honest") + "\">" + (rt ? esc("★ " + rt.r.toFixed(1) + " · " + rt.c.toLocaleString("en-US")) : esc(t.noRating)) + "</div>" + (d.ai ? skel(3) : "") + "</div>";
+ }
+ rv += "</div>";
+ rv += d.ai ? exampleTag() : ("<div class=\"honest small\" style=\"margin-top:6px\">" + esc(t.textUnavailable) + "</div>");
+ h += card(7, rv);
+ var pc = "<div class=\"acch\">" + esc(t.accPros) + "</div>";
+ if (d.ai){
+  pc += "<div class=\"cols\"><div><div class=\"small\"><b>" + bdi(d.names[0]) + "</b></div>" + skel(4) + "</div><div><div class=\"small\"><b>" + bdi(d.names[1]) + "</b></div>" + skel(4) + "</div></div>" + exampleTag();
+ } else { pc += "<div class=\"honest small\" style=\"margin-top:6px\">" + esc(t.prosNeeds) + "</div>"; }
+ h += card(8, pc);
+ var sp = "<div class=\"acch\">" + esc(t.accSpecs) + "</div>";
+ if (d.ai){
+  sp += "<table class=\"kd\"><tr><th></th><td class=\"tiny\">" + bdi(d.names[0]) + "</td><td class=\"tiny\">" + bdi(d.names[1]) + "</td></tr>";
+  for (var s = 0; s < t.spec.length; s++){
+   sp += "<tr><th>" + esc(t.spec[s]) + "</th><td><span class=\"skel s2\"></span></td><td><span class=\"skel s2\"></span></td></tr>";
+  }
+  sp += "</table>" + exampleTag();
+ } else { sp += "<div class=\"honest small\" style=\"margin-top:6px\">" + esc(t.notListed) + "</div>"; }
+ h += card(9, sp);
+ h += card(10, "<div class=\"small\"><b>" + esc(t.fbTitle) + "</b></div><div class=\"chips\"><span class=\"chip\">" + esc(t.fb1) + "</span><span class=\"chip\">" + esc(t.fb2) + "</span><span class=\"chip\">" + esc(t.fb3) + "</span></div><div class=\"ex\" lang=\"en\" dir=\"ltr\">(existing card, owned by another session; drawn as it is today)</div>");
+ page.innerHTML = h;
+}
+function setPressed(segId, attr, val){
+ var bs = document.getElementById(segId).querySelectorAll("button");
+ for (var i = 0; i < bs.length; i++){ bs[i].setAttribute("aria-pressed", bs[i].getAttribute(attr) === val ? "true" : "false"); }
+}
+document.getElementById("langSeg").addEventListener("click", function(e){
+ var b = e.target.closest("button"); if (!b) return;
+ cur.lang = b.getAttribute("data-lang"); setPressed("langSeg", "data-lang", cur.lang); render();
+});
+document.getElementById("stateSeg").addEventListener("click", function(e){
+ var b = e.target.closest("button"); if (!b) return;
+ cur.state = b.getAttribute("data-state"); setPressed("stateSeg", "data-state", cur.state); render();
+});
+var ql = "";
+for (var i = 0; i < QUESTIONS.length; i++){ ql += "<li>" + esc(QUESTIONS[i][0]) + " <span class=\"rec\">Recommended: " + esc(QUESTIONS[i][1]) + "</span></li>"; }
+document.getElementById("qList").innerHTML = ql;
+render();
+})();
+</script>
+</body>
+</html>
