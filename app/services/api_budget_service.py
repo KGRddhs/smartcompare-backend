@@ -19,6 +19,9 @@ from app.services.openai_pricing import record_openai_response
 # reached through the module attribute so a test patch sees every call (no cycle:
 # the leaf imports this module only inside its refusal arm).
 from app.services import llm_spend_breaker as _llm_spend_breaker
+# MON1 LLM-CREDENTIAL-HEALTH (unflagged observer): the stdlib-only credential-state
+# leaf. Its note_* calls never raise, never await and never touch gating.
+from app.services import llm_credential_health as _cred_health
 
 logger = logging.getLogger(__name__)
 
@@ -999,7 +1002,12 @@ async def guarded_llm_create(client, **kwargs):
             kwargs.get("max_completion_tokens"), kwargs.get("response_format"), kwargs.get("tools"),
         )
     if not llm_preflight_breaker_enabled():
-        response = await client.chat.completions.create(**kwargs)
+        try:
+            response = await client.chat.completions.create(**kwargs)
+        except Exception as e:  # noqa: BLE001 -- MON1: note, re-raise unchanged
+            _cred_health.note_failure("openai", e, "dispatch")
+            raise
+        _cred_health.note_success("openai", "dispatch")
         record_openai_response(kwargs.get("model"), response)
         if spend_ticket is not None:
             _llm_spend_breaker.record_openai_response_soon(spend_ticket, kwargs.get("model"), response)
@@ -1029,6 +1037,7 @@ async def guarded_llm_create(client, **kwargs):
             openai_release_half_open_probe()
         raise
     except Exception as e:  # noqa: BLE001 — classify, record, re-raise unchanged
+        _cred_health.note_failure("openai", e, "dispatch")
         if _openai_failure_is_transient(e):
             openai_record_failure()
         elif probe:
@@ -1048,6 +1057,7 @@ async def guarded_llm_create(client, **kwargs):
         if probe:
             openai_release_half_open_probe()
         raise
+    _cred_health.note_success("openai", "dispatch")
     record_openai_response(kwargs.get("model"), response)
     if spend_ticket is not None:
         _llm_spend_breaker.record_openai_response_soon(spend_ticket, kwargs.get("model"), response)

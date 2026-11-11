@@ -17,6 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+# MON1 LLM-CREDENTIAL-HEALTH: the stdlib-only credential-state leaf (never raises).
+from app.services import llm_credential_health as _cred_health
+
 logger = logging.getLogger(__name__)
 
 _BLOCKLIST_PATH = Path(__file__).resolve().parent.parent / "data" / "content_blocklist.json"
@@ -257,6 +260,7 @@ class ContentSafetyService:
             from app.services.openai_service import get_client
             client = get_client()
             resp = await client.moderations.create(model=moderation_model(), input=text)
+            _cred_health.note_success("openai", "moderation")
             r = resp.results[0]
             if r.flagged:
                 scores = r.category_scores.model_dump() if hasattr(r.category_scores, "model_dump") else dict(r.category_scores)
@@ -266,6 +270,9 @@ class ContentSafetyService:
                 )
                 return SafetyResult(allowed=False, reason=top)
         except Exception as e:
+            # MON1: a non-openai exception (the Claude branch, a parse error) classifies
+            # to no verdict, so only a credential answer of the moderation call moves it.
+            _cred_health.note_failure("openai", e, "moderation")
             logger.warning("[content_safety] L3 moderation API failed (fail-open): %s", e)
         return SafetyResult(allowed=True)
 
