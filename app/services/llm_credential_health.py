@@ -17,8 +17,14 @@ Rules (spec .qa-s80/MON1_UNIT_SPEC.md 2.2, amended by R-MON1-16..22):
 - a probe-sourced rejection needs the structured invalid-credential signal
   (R-MON1-18); a probe success never clears a quota state or a dispatch-sourced 403
   (R-MON1-17);
+- a moderation success proves authentication only, like a probe success (fix
+  round 1, F1-3): it never clears a quota state or a dispatch-sourced 403;
 - every transition INTO rejected / quota and every recovery to ok emits one event,
-  at most one per (kind, provider, state) per ALERT_COOLDOWN_SECONDS (R-MON1-21).
+  at most one per (kind, provider, state) per ALERT_COOLDOWN_SECONDS (R-MON1-21), a
+  FIXED window from the last event emitted (F1-2);
+- a transition whose event the cool-down suppressed is never lost (F1-1): it is
+  marked pending, and the first outcome that confirms the held state after the
+  cool-down emits it once; a transition out of that state clears the mark.
 
 Stdlib only at module top (no `app.` import): the SDKs are reached through
 importlib at call time, and the sender through sys.modules. Log lines carry
@@ -71,6 +77,8 @@ _ANTHROPIC_PROBE_REJECT_TYPE = "authentication_error"
 _LOCK = threading.Lock()
 _STATE: Dict[str, Dict[str, Any]] = {}
 _LAST_ALERT: Dict[Tuple[str, str, str], float] = {}
+# F1-1: (provider, state) -> the status of a transition whose event was suppressed.
+_PENDING: Dict[Tuple[str, str], Optional[int]] = {}
 
 
 def _monotonic() -> float:
@@ -183,17 +191,35 @@ def _probe_may_clear(prev: Dict[str, Any]) -> bool:
     return True
 
 
+def _moderation_may_clear(prev: Dict[str, Any]) -> bool:
+    """F1-3: a moderation success proves authentication only. It clears a
+    `rejected` state that carried a 401 or that moderation itself raised; never a
+    quota state, never a dispatch / probe 403."""
+    if prev.get("state") == "quota":
+        return False
+    if prev.get("state") == "rejected":
+        return prev.get("source") == "moderation" or prev.get("last_status") == 401
+    return True
+
+
+def _cooled(key: Tuple[str, str, str], now: float) -> bool:
+    """True when no event of `key` was emitted inside the cool-down (the caller
+    holds _LOCK). The window is FIXED: only an emitted event stamps it (F1-2)."""
+    last = _LAST_ALERT.get(key)
+    return last is None or now - last >= ALERT_COOLDOWN_SECONDS
+
+
 def _transition(provider: str, state: str, status: Optional[int], source: str) -> None:
     at = _utc_now()
+    now = _monotonic()
+    late = False
     with _LOCK:
         prev = _STATE.get(provider)
-        if (
-            state == "ok"
-            and source == "probe"
-            and prev is not None
-            and not _probe_may_clear(prev)
-        ):
-            return
+        if state == "ok" and prev is not None:
+            if source == "probe" and not _probe_may_clear(prev):
+                return
+            if source == "moderation" and not _moderation_may_clear(prev):
+                return
         prev_state = prev.get("state") if prev else None
         count = int(prev.get("count", 0)) + 1 if prev_state == state else 1
         _STATE[provider] = {
@@ -203,7 +229,20 @@ def _transition(provider: str, state: str, status: Optional[int], source: str) -
             "source": source,
             "count": count,
         }
+        if prev_state == state:
+            key = (ALERT_LLM, provider, state)
+            if (provider, state) in _PENDING and _cooled(key, now):
+                # F1-1: a confirming outcome after the cool-down emits the held event.
+                del _PENDING[(provider, state)]
+                _LAST_ALERT[key] = now
+                late = True
+        else:
+            # F1-1: a transition out of a state clears that state's pending mark.
+            for held in STATES:
+                _PENDING.pop((provider, held), None)
     if prev_state == state:
+        if late:
+            _send(ALERT_LLM, provider, state, status)
         return
     logger.warning(
         "[LLM_CREDENTIAL] provider=%s state=%s status=%s source=%s",
@@ -213,20 +252,40 @@ def _transition(provider: str, state: str, status: Optional[int], source: str) -
         source,
     )
     if state in ("rejected", "quota") or prev_state in ("rejected", "quota"):
-        emit_alert(ALERT_LLM, provider, state, status)
+        if not emit_alert(ALERT_LLM, provider, state, status):
+            with _LOCK:
+                # F1-1: mark the suppressed transition pending while it is still held.
+                held = _STATE.get(provider)
+                if held is not None and held.get("state") == state:
+                    _PENDING[(provider, state)] = status
 
 
-def emit_alert(kind: str, provider: str, state: str, status: Optional[int]) -> None:
+def _send(kind: str, provider: str, state: str, status: Optional[int]) -> None:
+    """Hand one event to sentry_service.capture_credential_alert, looked up through
+    sys.modules at call time (no import); every exception is swallowed."""
+    try:
+        sender = getattr(
+            sys.modules.get("app.services.sentry_service"),
+            "capture_credential_alert",
+            None,
+        )
+        if sender is not None:
+            sender(kind, provider, state, status)
+    except Exception:  # noqa: BLE001 -- an alert never breaks the caller
+        pass
+
+
+def emit_alert(kind: str, provider: str, state: str, status: Optional[int]) -> bool:
     """Send one alert event through sentry_service.capture_credential_alert, at most
-    once per (kind, provider, state) per ALERT_COOLDOWN_SECONDS. A suppressed send
-    logs one WARNING. The sender is looked up through sys.modules at call time (no
-    import); every exception is swallowed."""
+    once per (kind, provider, state) per ALERT_COOLDOWN_SECONDS (a fixed window from
+    the last event emitted). A suppressed send logs one WARNING and returns False;
+    otherwise True. Every exception is swallowed."""
     try:
         key = (kind, provider, state)
         now = _monotonic()
         with _LOCK:
             last = _LAST_ALERT.get(key)
-            if last is not None and now - last < ALERT_COOLDOWN_SECONDS:
+            if not _cooled(key, now):
                 remaining = int(ALERT_COOLDOWN_SECONDS - (now - last))
                 admitted = False
             else:
@@ -239,16 +298,11 @@ def emit_alert(kind: str, provider: str, state: str, status: Optional[int]) -> N
                 state,
                 remaining,
             )
-            return
-        sender = getattr(
-            sys.modules.get("app.services.sentry_service"),
-            "capture_credential_alert",
-            None,
-        )
-        if sender is not None:
-            sender(kind, provider, state, status)
+            return False
+        _send(kind, provider, state, status)
+        return True
     except Exception:  # noqa: BLE001 -- an alert never breaks the caller
-        pass
+        return True
 
 
 def health_snapshot() -> Dict[str, Any]:
@@ -329,3 +383,4 @@ def _reset_credential_health_state() -> None:
     with _LOCK:
         _STATE.clear()
         _LAST_ALERT.clear()
+        _PENDING.clear()

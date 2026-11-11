@@ -154,3 +154,288 @@ def test_g4_per_provider_independence(
     st = _state("openai")
     assert st["state"] == "rejected" and st["count"] == 5
     assert _state("anthropic")["state"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 (RULINGS_FIX1_MON1 F1-6): G5-G9 pin behaviour the GREEN bytes have;
+# G10 pins the fixed cool-down window (F1-2); G11-G12 the pending rule (F1-1);
+# G13-G14 the moderation rule (F1-3).
+# ---------------------------------------------------------------------------
+import asyncio  # noqa: E402
+import sys  # noqa: E402
+import types  # noqa: E402
+
+from tests.test_inc_mon1_credential_health import (  # noqa: E402,F401
+    LEAF,
+    _client,
+    _main,
+    oa_err,
+    quota_err,
+)
+
+MONITOR_FALLBACK = {"status": "ok", "providers": {}}
+
+
+def test_g5_monitor_path_fails_open(monkeypatch):
+    """GC-13 named check: the monitor path is never a bare 503. The leaf's view
+    raising, or the leaf absent, answers the documented 200 fallback."""
+    leaf = _leaf()
+
+    def boom():
+        raise RuntimeError("view")
+
+    monkeypatch.setattr(leaf, "monitor_view", boom)
+    r = _client().get("/health/llm")
+    assert r.status_code == 200, r.status_code
+    assert r.json() == MONITOR_FALLBACK
+    monkeypatch.setitem(sys.modules, LEAF, None)
+    r = _client().get("/health/llm")
+    assert r.status_code == 200, r.status_code
+    assert r.json() == MONITOR_FALLBACK
+
+
+def test_g6_shutdown_cancels_and_awaits_the_probe_task(monkeypatch):
+    """GC-13 named check: after the shutdown handler returns, the probe task is
+    done AND cancelled (the handler awaited it) and the pointer is cleared."""
+    main = _main()
+    _need(main, "_stop_llm_credential_probe")
+    seen = {}
+
+    async def scenario():
+        task = asyncio.ensure_future(asyncio.sleep(3600))
+        await asyncio.sleep(0)
+        monkeypatch.setattr(main, "_llm_probe_task", task)
+        await main._stop_llm_credential_probe()
+        seen["done"] = task.done()
+        seen["cancelled"] = task.cancelled()
+        seen["pointer"] = main._llm_probe_task
+        if not task.done():
+            task.cancel()
+
+    asyncio.run(scenario())
+    assert seen == {"done": True, "cancelled": True, "pointer": None}, seen
+
+
+class _ScopeWithProcessors:
+    def __init__(self):
+        self._event_processors = [lambda event, hint: event]
+
+    def clear(self):
+        return None
+
+
+@contextlib.contextmanager
+def _scope_ok():
+    yield _ScopeWithProcessors()
+
+
+@contextlib.contextmanager
+def _scope_exit_raises():
+    yield _ScopeWithProcessors()
+    raise RuntimeError("scope exit")
+
+
+def test_g7_scope_exit_raising_after_the_send_is_one_event(monkeypatch, caplog):
+    """GC-5: a scope exit that raises AFTER the send still yields exactly ONE event
+    (the fail-safe never resends) and no fallback WARNING."""
+    fn = _need(_sentry(), "capture_credential_alert")
+    calls = _capture_recorder(monkeypatch)
+    monkeypatch.setattr(sentry_sdk, "isolation_scope", _scope_ok)
+    monkeypatch.setattr(sentry_sdk, "new_scope", _scope_exit_raises)
+    with caplog.at_level(logging.INFO):
+        assert fn("llm_credential", "openai", "rejected", 401) is None
+    assert len(calls) == 1, calls
+    assert not [r for r in caplog.records if r.getMessage() == FALLBACK_TEXT]
+
+
+def test_g8_closed_set_guard_sends_nothing(monkeypatch):
+    """GREEN deviation 5: a kind, provider or state outside the closed sets sends
+    nothing."""
+    fn = _need(_sentry(), "capture_credential_alert")
+    calls = _capture_recorder(monkeypatch)
+    for args in (
+        ("other_kind", "openai", "rejected", 401),
+        ("llm_credential", "other_provider", "rejected", 401),
+        ("llm_credential", "openai", "other_state", 401),
+    ):
+        assert fn(*args) is None
+    assert calls == []
+
+
+def test_g9_health_snapshot_returns_copies(alert_rec):  # noqa: F811
+    """A caller mutating the /health snapshot never changes the recorder."""
+    leaf = _leaf()
+    leaf.note_failure("openai", auth401(), "dispatch")
+    snap = leaf.health_snapshot()
+    snap["llm_credential"]["openai"]["state"] = "ok"
+    snap["llm_credential"]["openai"]["count"] = 99
+    snap["llm_credential"]["anthropic"] = {"state": "ok"}
+    again = leaf.health_snapshot()["llm_credential"]
+    assert set(again) == {"openai"}
+    assert again["openai"]["state"] == "rejected" and again["openai"]["count"] == 1
+
+
+def _clocked(monkeypatch, start):
+    leaf = _leaf()
+    _need(leaf, "_monotonic")
+    t = [start]
+    monkeypatch.setattr(leaf, "_monotonic", lambda: t[0])
+    return leaf, t
+
+
+def _states(rec):
+    return [c[2] for c in _alerts(rec)]
+
+
+def test_g10_cooldown_is_a_fixed_window(monkeypatch, alert_rec):  # noqa: F811
+    """F1-2: the cool-down runs from the last event actually EMITTED for that
+    (kind, provider, state); a suppressed transition does not extend it."""
+    leaf, t = _clocked(monkeypatch, 50000.0)
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=0 rejected emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=5 ok emitted
+    t[0] += 595
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=600 suppressed
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=605 suppressed
+    assert _states(alert_rec) == ["rejected", "ok"]
+    t[0] = 50000.0 + 950
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=950: 950 s after t=0
+    assert _states(alert_rec) == ["rejected", "ok", "rejected"]
+
+
+def test_g11_a_suppressed_rejection_is_never_lost(monkeypatch, alert_rec):  # noqa: F811
+    """F1-1: rejected, ok, rejected inside the cool-down (suppressed), then hours of
+    failures: the held rejection is emitted ONCE by the first confirming failure
+    after the cool-down, never before it, never twice."""
+    leaf, t = _clocked(monkeypatch, 60000.0)
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=0 emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=5 emitted
+    t[0] += 5
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=10 suppressed, pending
+    t[0] += 90
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=100 inside: nothing
+    assert _states(alert_rec) == ["rejected", "ok"]
+    t[0] = 60000.0 + 950
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=950 cooled: emitted once
+    assert _alerts(alert_rec)[-1] == ("llm_credential", "openai", "rejected", 401)
+    for _ in range(10):
+        t[0] += 3600
+        leaf.note_failure("openai", auth401(), "dispatch")
+    assert _states(alert_rec) == ["rejected", "ok", "rejected"]
+    assert _state()["state"] == "rejected"
+
+
+def test_g11_a_transition_out_clears_the_pending_mark(
+    monkeypatch, alert_rec  # noqa: F811
+):
+    """F1-1: a transition out of the held state clears its pending mark without
+    emitting; a later return to that state emits normally, and the cleared mark
+    never fires a second event."""
+    leaf, t = _clocked(monkeypatch, 70000.0)
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=0 rejected emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=5 ok emitted
+    t[0] += 5
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=10 suppressed, pending
+    t[0] += 10
+    leaf.note_success("openai", "dispatch")  # t=20 out of rejected: mark cleared
+    assert _states(alert_rec) == ["rejected", "ok"]
+    t[0] = 70000.0 + 950
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=950 a new transition
+    assert _states(alert_rec) == ["rejected", "ok", "rejected"]
+    t[0] += 1900
+    leaf.note_failure("openai", auth401(), "dispatch")  # a confirming failure
+    assert _states(alert_rec) == ["rejected", "ok", "rejected"]
+
+
+def test_g12_a_suppressed_recovery_is_never_lost(monkeypatch, alert_rec):  # noqa: F811
+    """F1-1: a recovery suppressed by the ok cool-down is emitted once by the first
+    served call after that cool-down, so the newest event agrees with `ok`."""
+    leaf, t = _clocked(monkeypatch, 80000.0)
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=0 rejected emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=5 ok emitted
+    t[0] += 5
+    leaf.note_failure("openai", quota_err(), "dispatch")  # t=10 quota emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=15 ok suppressed, pending
+    t[0] += 85
+    leaf.note_success("openai", "dispatch")  # t=100 inside: nothing
+    assert _states(alert_rec) == ["rejected", "ok", "quota"]
+    t[0] = 80000.0 + 910
+    leaf.note_success("openai", "dispatch")  # t=910 cooled: emitted once
+    t[0] += 5000
+    leaf.note_success("openai", "dispatch")
+    assert _alerts(alert_rec) == [
+        ("llm_credential", "openai", "rejected", 401),
+        ("llm_credential", "openai", "ok", None),
+        ("llm_credential", "openai", "quota", 429),
+        ("llm_credential", "openai", "ok", None),
+    ]
+    assert _state()["state"] == "ok"
+
+
+def test_g13_moderation_success_never_clears_quota_or_dispatch_403(
+    monkeypatch, alert_rec  # noqa: F811
+):
+    """F1-3: a moderation success proves authentication only: it never clears a
+    quota state (dispatch- or moderation-sourced) or a dispatch-sourced 403, and
+    emits no recovery event while one is held. A served dispatch clears either."""
+    leaf, t = _clocked(monkeypatch, 90000.0)
+    leaf.note_failure("openai", quota_err(), "dispatch")
+    leaf.note_success("openai", "moderation")
+    st = _state()
+    assert st["state"] == "quota" and st["source"] == "dispatch" and st["count"] == 1
+    assert _states(alert_rec) == ["quota"]
+    leaf.note_success("openai", "dispatch")
+    assert _state()["state"] == "ok"
+    t[0] += 1000
+    leaf.note_failure("openai", oa_err("PermissionDeniedError", 403), "dispatch")
+    leaf.note_success("openai", "moderation")
+    st = _state()
+    assert st["state"] == "rejected" and st["last_status"] == 403
+    assert st["source"] == "dispatch"
+    assert _states(alert_rec) == ["quota", "ok", "rejected"]
+    leaf._reset_credential_health_state()
+    leaf.note_failure("openai", quota_err(), "moderation")
+    leaf.note_success("openai", "moderation")
+    assert _state()["state"] == "quota"
+
+
+def test_g14_moderation_success_clears_a_401_and_only_after_the_call(
+    monkeypatch, alert_rec  # noqa: F811
+):
+    """F1-3: through the content-safety call site, a moderation call that RAISES
+    from a held dispatch 401 emits no recovery event (note_success stays after the
+    awaited call); a moderation success then clears the 401 with one recovery
+    event."""
+    from app.services import content_safety_service as css
+    from app.services import openai_service
+
+    leaf, t = _clocked(monkeypatch, 95000.0)
+    leaf.note_failure("openai", auth401(), "dispatch")
+    outcomes = [
+        auth401(),
+        types.SimpleNamespace(results=[types.SimpleNamespace(flagged=False)]),
+    ]
+
+    async def mod_create(**kw):
+        item = outcomes.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    fake = types.SimpleNamespace(moderations=types.SimpleNamespace(create=mod_create))
+    monkeypatch.setattr(openai_service, "get_client", lambda: fake)
+    svc = css.ContentSafetyService()
+    res = asyncio.run(svc.moderate_output("a plain sentence"))
+    assert res.allowed is True
+    assert _states(alert_rec) == ["rejected"]
+    assert _state()["state"] == "rejected"
+    res = asyncio.run(svc.moderate_output("a plain sentence"))
+    assert res.allowed is True
+    st = _state()
+    assert st["state"] == "ok" and st["source"] == "moderation"
+    assert _states(alert_rec) == ["rejected", "ok"]
