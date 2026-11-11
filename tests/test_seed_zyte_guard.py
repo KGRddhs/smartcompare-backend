@@ -184,6 +184,19 @@ class TestKeyPresentStillSeeds:
         # What the script itself sets at import; re-asserted here because the
         # autouse fixture restores the pre-import value between tests.
         monkeypatch.setenv("ENABLE_ZYTE_RENDER", "true")
+        # S81-23 (E5): the script's seed lists are retired (empty), so one
+        # synthetic truth-critical entry is installed for this row; the guard
+        # contract under test is unchanged.
+        monkeypatch.setattr(seeder, "TRUTH_CRITICAL_SEEDS", [{
+            "id": "synthetic-seed-1",
+            "brand": "Prada",
+            "name": "Luna Rossa Carbon",
+            "variant": "Eau de Toilette 100ml",
+            "category": "fragrances",
+            "region": "bahrain",
+            "domain": "store-a.example.com",
+            "pdp_url": "https://store-a.example.com/p/luna-rossa-carbon-100ml",
+        }])
         # Only the pinned truth-critical PDP entry: one Zyte call, no GPT parse.
         monkeypatch.setattr(
             "sys.argv", ["seed_zyte_luxury", "--only", "luna rossa carbon"]

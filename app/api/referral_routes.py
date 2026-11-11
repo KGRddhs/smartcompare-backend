@@ -25,6 +25,7 @@ from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 
 # M13-28: bound the invite params so unbounded/hostile strings can never reach
 # the PostgREST filter values. share_token is the 22-char url-safe token
@@ -42,6 +43,7 @@ from app.api.auth_routes import (
     get_optional_user,
 )
 from app.middleware.rate_limiter import limiter
+from app.services.feedback_service import feedback_v2_enabled
 from app.services.referral_service import (
     ReferralService,
     WeeklyInviteCapExceeded,
@@ -79,6 +81,20 @@ router = APIRouter(
 
 ShareTarget = Literal["whatsapp", "copy", "x", "telegram", "snapchat", "other"]
 
+# S81-SF1 (ENABLE_FEEDBACK_V2, read per call): the share builder's three new targets
+# (migration 049 widens the referral_invites CHECK). ShareTarget above stays the base
+# alias; flag OFF the request keeps the six-value contract and its 422 bytes.
+BASE_SHARE_TARGETS = ("whatsapp", "copy", "x", "telegram", "snapchat", "other")
+WIDENED_SHARE_TARGETS = BASE_SHARE_TARGETS + ("sms", "email", "more")
+ShareTargetV2 = Literal[
+    "whatsapp", "copy", "x", "telegram", "snapchat", "other", "sms", "email", "more"
+]
+# The base literal_error 'expected' text, built the way pydantic renders it.
+_BASE_SHARE_EXPECTED = (
+    ", ".join("'%s'" % t for t in BASE_SHARE_TARGETS[:-1])
+    + " or '%s'" % BASE_SHARE_TARGETS[-1]
+)
+
 # Invitee quiz brand-attitude enum — design 3.6 spec uses a 3-option set
 # distinct from the onboarding VALID_BRAND_ATTITUDE. Kept separate so the
 # invitee quiz doesn't widen the user-facing onboarding contract.
@@ -108,7 +124,7 @@ class ShareRequest(BaseModel):
     model_config = {"extra": "ignore"}
 
     comparison_id: str = Field(..., min_length=1, max_length=128)
-    share_target: ShareTarget
+    share_target: ShareTargetV2
     # H5 (audit 2026-05-22): tightened from max_length=128 to a strict
     # SHA-256 hex regex so a malicious client can't poison the anti-farming
     # counter by sending arbitrary strings or another user's known hash.
@@ -126,6 +142,19 @@ class ShareRequest(BaseModel):
     # any other unknown keys from the nested dict so the trust invariant
     # (PDF #8) holds even when malicious clients use the back-compat path.
     privacy: Optional[dict] = None
+
+    @field_validator("share_target", mode="before")
+    @classmethod
+    def _share_target_v2_gate(cls, v):
+        # S81-SF1: flag OFF, anything outside the six base targets is refused with the
+        # base literal_error (type, message, ctx and input as at 18cb9e04).
+        if not feedback_v2_enabled():
+            if not (isinstance(v, str) and v in BASE_SHARE_TARGETS):
+                raise PydanticCustomError(
+                    "literal_error", "Input should be {expected}",
+                    {"expected": _BASE_SHARE_EXPECTED},
+                )
+        return v
 
     @field_validator("privacy")
     @classmethod

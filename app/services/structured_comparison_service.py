@@ -81,6 +81,9 @@ from app.services import llm_spend_breaker as _llm_spend_breaker
 # S81-06 ANTHROPIC-ROUTER: the consent gate at both entries, the request scope
 # bind, the active-provider preflight (module attribute: a test patch sees it).
 from app.services import llm_router as _llm_router
+# S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the post-resolve decision,
+# run only when a route passed its pre-consume decision (a stdlib-only module).
+from app.services import category_gate as _category_gate
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
 from app.services.adapter_timeouts import adapter_inner_ceiling
@@ -124,7 +127,7 @@ _CF_INTERSTITIAL_MARKERS = (
     # _detect_cf_interstitial flag detected_cf=True in metadata.source_trace for
     # an Akamai block (today a 403 Akamai page records cf_block only via the
     # status branch, with detected_cf=False on the body axis). Harmless when
-    # SCRAPEDO_SUPER is OFF (the default) — the sephora.me requires_super row is
+    # ENABLE_SCRAPEDO_SUPER is OFF (the default) — the sephora.me requires_super row is
     # filtered out of routing, so no Akamai render is attempted; this is purely
     # observability for the gated super-render path.
     "akamaighost",
@@ -379,6 +382,46 @@ def spec_confidence_cache_enabled() -> bool:
     return os.getenv("ENABLE_SPEC_CONFIDENCE_CACHE", "").strip().lower() in (
         "true", "1", "yes", "on",
     )
+
+
+def behavior_profile_rebuild_enabled() -> bool:
+    """D22c PROFILE-SELECT (S81-G7): True iff ENABLE_BEHAVIOR_PROFILE_REBUILD is
+    truthy (default OFF). Read PER CALL, as the first statement of
+    `_update_behavior_profile`. ON repoints the two phantom-column selects of the
+    profile write at live columns (the comparisons category / products inside
+    `full_response`, the user_events `event_data`); OFF is byte-identical."""
+    return os.getenv("ENABLE_BEHAVIOR_PROFILE_REBUILD", "").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+#: D22c: the ON selects of `_update_behavior_profile` (PostgREST JSON-path
+#: aliases deliver the keys behavior_service reads).
+_PROFILE_COMPARISON_COLUMNS_V2 = (
+    "category_used:full_response->>category_used, products:full_response->products, created_at"
+)
+_PROFILE_EVENT_COLUMNS_V2 = "event_type, metadata:event_data"
+
+
+def _profile_rows_v2(comparisons: Any, events: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """D22c (ON only): a comparisons row whose `products` is not a list gets [],
+    an events row whose `metadata` is not a dict gets {} (a NULL `event_data` or
+    `full_response` must not raise inside behavior_service); non-dict rows drop."""
+    comparison_rows = []
+    for row in comparisons or []:
+        if isinstance(row, dict):
+            fixed = dict(row)
+            if not isinstance(fixed.get("products"), list):
+                fixed["products"] = []
+            comparison_rows.append(fixed)
+    event_rows = []
+    for row in events or []:
+        if isinstance(row, dict):
+            fixed = dict(row)
+            if not isinstance(fixed.get("metadata"), dict):
+                fixed["metadata"] = {}
+            event_rows.append(fixed)
+    return comparison_rows, event_rows
 
 
 #: Transient per-request keys that must never be persisted by the enriched
@@ -1552,6 +1595,18 @@ from app.services.image_service import get_product_image_url
 # image_service._is_valid_image_url takes effect here (fix-round ruling F1-6).
 from app.services import image_service
 from app.services.deny_hosts import data_guards_v2_enabled
+# D08 (ENABLE_IMAGE_PIPELINE_V2 / ENABLE_JSONLD_RATING): the stdlib leaf, by
+# MODULE ATTRIBUTE so the per-call flag readers, the robots seam and the clock
+# seam are read at call time (a patch of the leaf takes effect here).
+from app.services import jsonld_widen
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the per-compare attempt aggregator (bind +
+# flush) and S81-17 (ENABLE_KB_INGEST / ENABLE_FIELD_STATUS_METADATA): the ingest
+# tail; both by MODULE ATTRIBUTE, every flag read per call.
+from app.services import live_robots
+from app.services import kb_ingest
+# S81-18 (ENABLE_KB_FIRST_SERVE / ENABLE_VERDICT_CACHE_LOG): the KB-first serve and
+# the verdict-cache key log, by MODULE ATTRIBUTE (every flag read per call).
+from app.services import kb_serve
 # B.0 (Bundle B Lane F1) — Bahrain-first source registry. Wires the weighted
 # SOURCE_REGISTRY into the Tier 1.5 price-escalation cascade: a Bahrain
 # `site:` discovery query runs FIRST, and every candidate is gated registry-
@@ -3344,7 +3399,6 @@ class StructuredComparisonService:
         # generate_comparison's success usage dict; reset per run; surfaced as
         # the additive, absent-unless-true metadata.model_downgraded.
         self._verdict_model_downgraded: bool = False
-        self._regen_model_downgraded: bool = False
         # Launch degradation fix (2026-07-06) — the EARLY identity+specs buffer.
         # Holds each product's `result` dict BY REFERENCE the instant
         # _fetch_product_data builds it (indexed by product position 0/1), so a
@@ -3550,6 +3604,8 @@ class StructuredComparisonService:
         into the SAME list. Always-on, $0, metadata-only."""
         self._provider_attempts: List[Dict[str, Any]] = []
         _PROVIDER_ATTEMPTS_CTX.set(self._provider_attempts)
+        # D14: the robots-skip / outcome aggregator (flag OFF: one env read).
+        live_robots.bind_attempts()
 
     def _attach_provider_attempts(self, source_trace: Dict[str, Any]) -> Dict[str, Any]:
         """Attach the collected provider attempts under the EXISTING
@@ -3863,11 +3919,50 @@ class StructuredComparisonService:
             openai_usage=summarize_openai_ledger(self._openai_ledger),
             # B1 (S80): the per-product categories (None before the pair resolution).
             product_categories=ctx.get("product_categories"),
+            kb_views=getattr(self, "_kb_views", None),  # S81-11b
+            output_lang=ctx.get("output_lang"),  # S81-18b
         )
         # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
         result = attach_data_freshness_notice(result)
         self._stamp_unit_metadata(result)
         return result
+
+    def _kb_ingest_tail(
+        self,
+        result: Dict[str, Any],
+        product_data: Any,
+        *,
+        product_categories: Any,
+        region: Any,
+        vision: bool,
+    ) -> None:
+        """S81-17 KB-INGEST + D05 FIELD-STATUS, called at the two success exits
+        only (REST after the L3 moderation pass, before `return result`; stream
+        after it, before the `settle_complete` yield). Both flags are read FIRST;
+        both OFF -> return (no projection, no task, no key). Otherwise the plain-data
+        projection is built on the loop with no I/O (a failure is one WARNING and the
+        body untouched); ENABLE_FIELD_STATUS_METADATA stamps the additive
+        `metadata.field_status`; ENABLE_KB_INGEST hands kb_ingest.run_job to ONE
+        asyncio.to_thread inside ONE fire-and-forget task (label `kb_ingest`),
+        never awaited: the response never waits for, or sees, the job."""
+        ingest = kb_ingest.kb_ingest_enabled()
+        expose = kb_ingest.field_status_metadata_enabled()
+        if not (ingest or expose):
+            return
+        try:
+            snap = kb_ingest.build_job(
+                result, product_data, product_categories=product_categories,
+                region=region, vision=vision, captured_at=kb_ingest._now(),
+            )
+        except Exception as exc:  # noqa: BLE001 - the response never depends on it
+            logger.warning("[KB_INGEST] build failed: %s", type(exc).__name__)
+            return
+        if expose:
+            metadata = result.setdefault("metadata", {})
+            if isinstance(metadata, dict):
+                metadata["field_status"] = snap["field_status"]
+        if ingest:
+            _fire_and_forget(asyncio.to_thread(kb_ingest.run_job, snap), "kb_ingest")
 
     def _stamp_unit_metadata(self, response: Dict[str, Any]) -> None:
         """FANOUT-STARVE (FS-R3 m9 / FS-R4) -- the additive, flag-ON-only metadata keys
@@ -3894,6 +3989,19 @@ class StructuredComparisonService:
                 (dict(m) for m in marks),
                 key=lambda m: (m.get("product", 0), m.get("tier", "")),
             )
+        # S81-18 H7: the per-slot KB hit marks, only when the flag started the
+        # card task for this compare (additive; absent with the flag OFF).
+        kb_marks = getattr(self, "_kb_hit_marks", None)
+        if kb_marks:
+            metadata["kb_hit"] = list(kb_marks)
+            # S81-22c: the KB card product id of each slot that served a full or
+            # partial card (null otherwise), an additive sibling of kb_hit; absent
+            # when no slot holds one, so a both-miss compare stays byte-identical.
+            views = (list(getattr(self, "_kb_views", None) or []) + [None, None])[:2]
+            kb_ids = [v["pid"] if isinstance(v, dict) and v.get("hit") in ("full", "partial")
+                      and isinstance(v.get("pid"), str) and v["pid"] else None for v in views]
+            if any(kb_ids):
+                metadata["kb_product_ids"] = kb_ids
 
     def _tier_fill_residual_skip(
         self, tier: str, wall_seconds: float, *, brand: str, name: str,
@@ -4013,6 +4121,8 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
+        fragrance_gate: Optional[Any] = None,
+        kb_price_asof: bool = False,
     ) -> Dict[str, Any]:
         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
@@ -4077,6 +4187,11 @@ class StructuredComparisonService:
                     user_id=user_id,
                     explicit_pair=explicit_pair,
                     **({"output_lang": output_lang} if output_lang else {}),
+                    # S81-10: forwarded only when a route passed it (the output_lang
+                    # pattern), so every other caller makes the identical impl call.
+                    **({"fragrance_gate": fragrance_gate} if fragrance_gate is not None else {}),
+                    # S81-18 (R-G4-4): forwarded only when a route passed True.
+                    **({"kb_price_asof": True} if kb_price_asof else {}),
                 ),
                 timeout=STREAM_HARD_CAP_SECONDS,
             )
@@ -4168,6 +4283,8 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
+        fragrance_gate: Optional[Any] = None,
+        kb_price_asof: bool = False,
     ) -> Dict[str, Any]:
         """Main entry point for text-based comparisons (post-L2.7 inner impl).
 
@@ -4183,6 +4300,8 @@ class StructuredComparisonService:
         # COST-METER (#66): a FRESH per-request ledger; every task this compare
         # spawns copies the context and appends into this same list.
         self._openai_ledger = start_openai_ledger()
+        if kb_price_asof:
+            self._kb_price_asof = True  # S81-18 (R-G4-4): the client renders as_of
         # S81-06 (F1-9): the llm ledger + escalation scope in the PARENT task,
         # before any tracked call; every role flag OFF binds nothing.
         _llm_router.bind_request_scope()
@@ -4238,6 +4357,8 @@ class StructuredComparisonService:
             "category_used": _seed_category,
             "category_switched": False,
             "original_category": None,
+            # S81-18b: the request's language for the partial build (absent -> base bytes).
+            **({"output_lang": output_lang} if output_lang else {}),
         }
         self._partial_product_data = None
         self._partial_scoring_result = None
@@ -4344,6 +4465,32 @@ class StructuredComparisonService:
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
+            # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE): the chip-free post-resolve decision,
+            # only when the route passed its pre-consume decision (never with the flag
+            # OFF, never from /text/quick, the price warmer or the URL path). A refusal
+            # returns before the write-back, the profile task and any fetch; the route's
+            # existing failure arm refunds it.
+            if fragrance_gate is not None:
+                _gate_verdict = await _category_gate.post_resolve_refusal(
+                    fragrance_gate, products, parser_path=_parser_path,
+                    selected_category=selected_category, category_used=category_used,
+                    classify=classify_category_llm,
+                )
+                if _gate_verdict.refused is not None:
+                    await _category_gate.record_refusal_async(fragrance_gate.subject)
+                    _category_gate.log_refused("post_resolve", _gate_verdict.refused)
+                    return {
+                        **_category_gate.refusal_result(_gate_verdict.refused),
+                        "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                        "total_cost": self.total_cost,
+                        "api_calls": self.api_calls,
+                    }
+                if _gate_verdict.form_override and category_used != "fragrances":
+                    category_used, category_switched, original_category = (
+                        _category_gate.form_override_category(selected_category)
+                    )
+                # F1-2: the overridden product's own stub joins the pair category (B1).
+                _category_gate.apply_form_override_stubs(_gate_verdict, products)
 
             # WS1 (D1) — fold the resolved category context into the partial
             # build ctx so a hard-cap timeout after this point can still build
@@ -4384,6 +4531,12 @@ class StructuredComparisonService:
                     get_user_demographics(user_id),
                 ))
 
+            # S81-18 H0 (ENABLE_KB_FIRST_SERVE, read once per compare): ONE bounded,
+            # total task reads both kb_product_card rows; OFF writes nothing.
+            if kb_serve.kb_first_serve_enabled():
+                self._kb_cards_task = asyncio.ensure_future(kb_serve.fetch_cards(products, output_lang))
+                self._kb_hit_marks = ["miss", "miss"]
+                self._kb_views = [None, None]
             # Step 2: Fetch data for each product (parallel)
             product_data = await asyncio.gather(
                 self._fetch_product_data(products[0], region, include_specs, include_reviews, nocache, partial_slot=0),
@@ -4510,6 +4663,15 @@ class StructuredComparisonService:
             # priors block in extraction_service can render when conditions are met).
             # M18 PO-prompts-02 — feed the actual data-quality signal into the
             # verdict prompt (flag OFF -> 'normal', the legacy hardcode).
+            # S81-18 H8 (ENABLE_VERDICT_CACHE_LOG, read first inside): the would-hit
+            # key line for an eligible compare; OFF -> None, nothing else read.
+            _vkey = kb_serve.log_verdict_key(
+                user_preferences=user_preferences, demographics_profile=demographics_profile,
+                behavior_profile=behavior_profile, product_data=product_data,
+                scores_summary=scores_summary, winner_index=scoring_result.get("winner_index", 0),
+                lang=output_lang, category=category_used, comparison_quality=None,
+                views=getattr(self, "_kb_views", None),
+            )
             _verdict_quality = verdict_comparison_quality(product_data)
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             comparison, usage = await generate_comparison(
@@ -4524,29 +4686,12 @@ class StructuredComparisonService:
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
+            kb_serve.seed_verdict_key(_vkey)  # S81-18 H8: seeded only after a successful verdict
             # #268 R2.5 — the verdict ran on the standard model (cap downgrade
             # or 429 fallback), as marked on generate_comparison's success
             # usage dict (R2.4).
             self._verdict_model_downgraded = (
                 isinstance(usage, dict) and usage.get("model_downgraded") is True
-            )
-
-            # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod
-            # until ENABLE_SELF_CRITIQUE flips). May regenerate the verdict ONCE
-            # when a quality axis scores low. Cost + latency tracked inside.
-            comparison = await self._apply_self_critique(
-                comparison=comparison,
-                product_names=product_names,
-                regen_args=dict(
-                    product1=product_data[0], product2=product_data[1], region=region,
-                    concern=parsed.get("comparison_type", "value") if not vision_products else "value",
-                    user_preferences=user_preferences, scores_summary=scores_summary,
-                    category=category_used, demographics_profile=demographics_profile,
-                    comparison_quality=_verdict_quality,
-                    **({"output_lang": output_lang} if output_lang else {}),
-                ),
-                pain_workflow_context=scores_summary,
-                stage_timings=orchestrator_timings,
             )
 
             # WS1 (D1) — stash the finished verdict. From here on the remaining
@@ -4630,12 +4775,6 @@ class StructuredComparisonService:
                 _metadata_override["source_trace"] = self._attach_provider_attempts(
                     _src_trace if isinstance(_src_trace, dict) else {}
                 )
-            # I3.2 — thread the self-critique outcome (internal key) so the
-            # post-save path can persist it once the comparison_id exists.
-            # Present only when the flag is ON and a critique actually ran.
-            _crit_meta = self._verdict_critique_metadata()
-            if _crit_meta:
-                _metadata_override["_verdict_critique"] = _crit_meta
             # #268 R2.7 / C8 — additive, absent-unless-true (verdict_scrubbed
             # precedent): the served verdict ran on the standard model.
             if getattr(self, "_verdict_model_downgraded", False):
@@ -4668,6 +4807,8 @@ class StructuredComparisonService:
                 # COST-METER (#66): the per-request OpenAI usage summary.
                 openai_usage=summarize_openai_ledger(self._openai_ledger),
                 product_categories=product_categories,  # B1 (S80)
+                kb_views=getattr(self, "_kb_views", None),  # S81-11b
+                output_lang=output_lang,  # S81-18b
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             result = attach_data_freshness_notice(result)
@@ -4732,6 +4873,13 @@ class StructuredComparisonService:
                     "layer": "moderation_api",
                 }
 
+            # S81-17 / D05: the field_status exposure and the ONE ingest job (both
+            # flags OFF: two env reads, nothing else).
+            self._kb_ingest_tail(
+                result, product_data, product_categories=product_categories,
+                region=region, vision=bool(vision_products),
+            )
+
             # Fire-and-forget: update behavioral profile (M6: tracked so
             # silent task failures surface as WARNING logs).
             if user_id:
@@ -4762,6 +4910,10 @@ class StructuredComparisonService:
                 "code": "INTERNAL_ERROR",
                 "total_cost": self.total_cost,
             }
+        finally:
+            # D14: ONE health flush per compare (flag OFF: one env read). A bare
+            # call that never awaits and never raises (no return in a finally).
+            live_robots.flush_attempts()
 
     async def compare_from_text_streaming(
         self,
@@ -4777,6 +4929,8 @@ class StructuredComparisonService:
         user_id: Optional[str] = None,
         explicit_pair: Optional[Tuple[str, str]] = None,
         output_lang: Optional[str] = None,
+        fragrance_gate: Optional[Any] = None,
+        kb_price_asof: bool = False,
     ):
         """Async generator version of compare_from_text that yields partial results."""
         start_time = datetime.now()
@@ -4787,6 +4941,8 @@ class StructuredComparisonService:
         self._shopping_items_cache = {}
         # COST-METER (#66): the streaming entry binds its own fresh ledger.
         self._openai_ledger = start_openai_ledger()
+        if kb_price_asof:
+            self._kb_price_asof = True  # S81-18 (R-G4-4): the client renders as_of
         # S81-06 (F1-9): the stream twin of the impl's scope bind.
         _llm_router.bind_request_scope()
 
@@ -5004,6 +5160,31 @@ class StructuredComparisonService:
             category_used, category_switched, original_category = (
                 await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
             )
+            # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE): the mirror of the sync post-resolve
+            # decision; a refusal is the terminal `error` event (the route's had_error
+            # arm refunds it), before the write-back, the profile task and any fetch.
+            if fragrance_gate is not None:
+                _gate_verdict = await _category_gate.post_resolve_refusal(
+                    fragrance_gate, products, parser_path=_parser_path,
+                    selected_category=selected_category, category_used=category_used,
+                    classify=classify_category_llm,
+                )
+                if _gate_verdict.refused is not None:
+                    await _category_gate.record_refusal_async(fragrance_gate.subject)
+                    _category_gate.log_refused("post_resolve", _gate_verdict.refused)
+                    yield ("error", {
+                        **_category_gate.refusal_result(_gate_verdict.refused),
+                        "elapsed_seconds": (datetime.now() - start_time).total_seconds(),
+                        "total_cost": self.total_cost,
+                        "api_calls": self.api_calls,
+                    })
+                    return
+                if _gate_verdict.form_override and category_used != "fragrances":
+                    category_used, category_switched, original_category = (
+                        _category_gate.form_override_category(selected_category)
+                    )
+                # F1-2: the overridden product's own stub joins the pair category (B1).
+                _category_gate.apply_form_override_stubs(_gate_verdict, products)
             # B1 (S80): the per-product categories captured BEFORE the pair write-back
             # (read only under ENABLE_RESULT_STATUS_METADATA; unused with the flag OFF).
             product_categories = [canonicalize_category(_p.get("category")) for _p in products]
@@ -5028,6 +5209,8 @@ class StructuredComparisonService:
                 "product_categories": product_categories,  # B1 (S80)
                 # FANOUT-STARVE FS-R3 m9: the Step-1 marks ({} with the flags OFF).
                 **_parse_marks(parsed),
+                # S81-18b: the request's language for the partial build (absent -> base bytes).
+                **({"output_lang": output_lang} if output_lang else {}),
             }
 
             # Step 2: Fetch product data
@@ -5045,6 +5228,12 @@ class StructuredComparisonService:
                     get_user_demographics(user_id),
                 ))
 
+            # S81-18 H0 (ENABLE_KB_FIRST_SERVE, read once per compare): ONE bounded,
+            # total task reads both kb_product_card rows; OFF writes nothing.
+            if kb_serve.kb_first_serve_enabled():
+                self._kb_cards_task = asyncio.ensure_future(kb_serve.fetch_cards(products, output_lang))
+                self._kb_hit_marks = ["miss", "miss"]
+                self._kb_views = [None, None]
             # Bundle E § Decision 8 — hard 25s cap on the data-fetch step.
             # Wraps both products' fetches together so a single hung scraper
             # can't extend the stream beyond the budget. On timeout we yield
@@ -5331,6 +5520,15 @@ class StructuredComparisonService:
             yield ("status", {"message": "Generating verdict...", "progress": 80})
             # M18 PO-prompts-02 — feed the actual data-quality signal into the
             # verdict prompt (flag OFF -> 'normal', the legacy hardcode).
+            # S81-18 H8 (ENABLE_VERDICT_CACHE_LOG, read first inside): the would-hit
+            # key line for an eligible compare; OFF -> None, nothing else read.
+            _vkey = kb_serve.log_verdict_key(
+                user_preferences=user_preferences, demographics_profile=demographics_profile,
+                behavior_profile=behavior_profile, product_data=product_data,
+                scores_summary=scores_summary, winner_index=scoring_result.get("winner_index", 0),
+                lang=output_lang, category=category_used, comparison_quality=None,
+                views=getattr(self, "_kb_views", None),
+            )
             _verdict_quality = verdict_comparison_quality(product_data)
             t_verdict = time.perf_counter() if orchestrator_timings is not None else None
             # M13-04 — the verdict LLM call is the dominant post-Phase-1 tail cost
@@ -5358,38 +5556,11 @@ class StructuredComparisonService:
             if orchestrator_timings is not None:
                 orchestrator_timings["verdict_ms"] = round((time.perf_counter() - t_verdict) * 1000, 1)
             self._track_gpt_cost(usage)
+            kb_serve.seed_verdict_key(_vkey)  # S81-18 H8: seeded only after a successful verdict
             # #268 R2.5 — same carrier read as the sync path.
             self._verdict_model_downgraded = (
                 isinstance(usage, dict) and usage.get("model_downgraded") is True
             )
-
-            # I3.1 — optional self-critique pass (flag-gated OFF; no-op in prod).
-            # Same flow as the sync path; may regenerate the verdict ONCE.
-            _critique_coro = self._apply_self_critique(
-                comparison=comparison,
-                product_names=product_names,
-                regen_args=dict(
-                    product1=product_data[0], product2=product_data[1], region=region,
-                    concern=parsed.get("comparison_type", "value") if not vision_products else "value",
-                    user_preferences=user_preferences, scores_summary=scores_summary,
-                    category=category_used, demographics_profile=demographics_profile,
-                    comparison_quality=_verdict_quality,
-                    **({"output_lang": output_lang} if output_lang else {}),
-                ),
-                pain_workflow_context=scores_summary,
-                stage_timings=orchestrator_timings,
-            )
-            # M13-04 — bound the (optional) self-critique regen under the residual
-            # stream budget; flag OFF -> await directly (byte-identical no-op in prod).
-            if _full_deadline_on:
-                try:
-                    comparison = await asyncio.wait_for(_critique_coro, timeout=_tail_residual())
-                except asyncio.TimeoutError:
-                    async for _ev in _emit_stream_deadline_partial():
-                        yield _ev
-                    return
-            else:
-                comparison = await _critique_coro
 
             from app.services.trust_validation_service import validate_verdict
             verdict_validation = validate_verdict(comparison, scoring_result, category_used, products=product_data)
@@ -5494,12 +5665,6 @@ class StructuredComparisonService:
                 _metadata_override["source_trace"] = self._attach_provider_attempts(
                     _src_trace if isinstance(_src_trace, dict) else {}
                 )
-            # I3.2 — thread the self-critique outcome (internal key) so the
-            # post-save path can persist it once the comparison_id exists.
-            # Present only when the flag is ON and a critique actually ran.
-            _crit_meta = self._verdict_critique_metadata()
-            if _crit_meta:
-                _metadata_override["_verdict_critique"] = _crit_meta
             # W4-12 — the pre-verdict scrub emptied the reason (telemetry key).
             if _verdict_scrubbed:
                 _metadata_override["verdict_scrubbed"] = True
@@ -5535,6 +5700,8 @@ class StructuredComparisonService:
                 openai_usage=summarize_openai_ledger(self._openai_ledger),
                 product_categories=product_categories,  # B1 (S80)
                 _single_margin=_single_margin_on,  # W4-12 (K12) — read once above
+                kb_views=getattr(self, "_kb_views", None),  # S81-11b
+                output_lang=output_lang,  # S81-18b
             )
             # M18 PO-fact-check-10 — Decision 7 notice (additive metadata key).
             complete_response = attach_data_freshness_notice(complete_response)
@@ -5625,6 +5792,12 @@ class StructuredComparisonService:
             # after this. Existing `complete` event is preserved
             # immediately after for backward-compat with current EAS
             # builds that listen on `complete`.
+            # S81-17 / D05: the field_status exposure and the ONE ingest job,
+            # before the settle_complete yield (both flags OFF: two env reads).
+            self._kb_ingest_tail(
+                complete_response, product_data, product_categories=product_categories,
+                region=region, vision=bool(vision_products),
+            )
             yield ("settle_complete", complete_response)
             yield ("complete", complete_response)
 
@@ -5649,6 +5822,11 @@ class StructuredComparisonService:
                 "code": "INTERNAL_ERROR",
                 "total_cost": self.total_cost,
             })
+        finally:
+            # D14: ONE health flush per compare, on the cancel / aclose / error
+            # paths too (flag OFF: one env read). A bare call: never awaits, never
+            # raises, never returns from the finally.
+            live_robots.flush_attempts()
 
     # ============================================
     # Internal orchestration methods
@@ -5752,6 +5930,7 @@ class StructuredComparisonService:
     async def _update_behavior_profile(self, user_id: str):
         """Fire-and-forget: update user's behavioral profile after comparison."""
         try:
+            rebuild = behavior_profile_rebuild_enabled()  # D22c: read per call, first
             from app.services.behavior_service import get_behavior_service
             from app.services.database_service import get_supabase_client
 
@@ -5763,12 +5942,18 @@ class StructuredComparisonService:
             # inline when OFF). The comparison_feedback select gains a .limit()
             # mirroring the 50/200 bounds its siblings already carry — it was
             # the one unbounded read in the chain.
-            comparisons = await run_db(lambda: supabase.table("comparisons").select("category_used, products, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute())
+            comparison_columns = _PROFILE_COMPARISON_COLUMNS_V2 if rebuild else "category_used, products, created_at"
+            event_columns = _PROFILE_EVENT_COLUMNS_V2 if rebuild else "event_type, metadata"
+            comparisons = await run_db(lambda: supabase.table("comparisons").select(comparison_columns).eq("user_id", user_id).order("created_at", desc=True).limit(50).execute())
             feedback = await run_db(lambda: supabase.table("comparison_feedback").select("useful").eq("user_id", user_id).limit(200).execute())
-            events = await run_db(lambda: supabase.table("user_events").select("event_type, metadata").eq("user_id", user_id).order("created_at", desc=True).limit(200).execute())
+            events = await run_db(lambda: supabase.table("user_events").select(event_columns).eq("user_id", user_id).order("created_at", desc=True).limit(200).execute())
 
+            comparison_rows = comparisons.data or []
+            event_rows = events.data or []
+            if rebuild:
+                comparison_rows, event_rows = _profile_rows_v2(comparison_rows, event_rows)
             profile = await behavior_service.build_behavior_profile(
-                comparisons.data or [], feedback.data or [], events.data or [],
+                comparison_rows, feedback.data or [], event_rows,
             )
             await run_db(lambda: supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute())
         except Exception as e:
@@ -5868,8 +6053,34 @@ class StructuredComparisonService:
         # S78-F8 (R2) -- ONE hoisted flag read per product for the race record;
         # OFF (or partial_slot None): no callback, no post-loop write.
         _record_races = partial_slot is not None and _flag_on("ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT")
+        # S81-18 H1: the per-request card task (absent with the flag OFF, and for
+        # every non-orchestrator caller: partial_slot None never serves from the KB).
+        _kb = None
+        _kb_task = getattr(self, "_kb_cards_task", None)
+        if _kb_task is not None and partial_slot in (0, 1):
+            try:
+                _kb_cards = await _kb_task
+                _kb = kb_serve.classify(
+                    _kb_cards[partial_slot], category=category, region=region, now=kb_serve._now(),
+                    accepts_asof=bool(getattr(self, "_kb_price_asof", False)),
+                )
+            except Exception as _kb_exc:  # noqa: BLE001 - a miss for this slot
+                logger.warning("[KB_SERVE] classify failed: %s", type(_kb_exc).__name__)
+                _kb = None
+            if _kb is not None:
+                self._kb_hit_marks[partial_slot] = _kb["hit"]
+                self._kb_views[partial_slot] = _kb
+        _kb_price = _kb["price"] if _kb else None
+        _kb_specs = _kb["specs"] if (_kb and _kb["specs_complete"]) else None
+        _kb_full = bool(_kb and _kb["hit"] == "full")
+        if _kb_price is not None:
+            # S81-18 H2: every eligible KB offer is a fairness candidate.
+            self._seed_shortcircuit_candidates(full_name, kind="price_dicts", price_dicts=_kb["candidates"])
         _price_task = asyncio.ensure_future(asyncio.wait_for(
-            _timed_task("price", self._get_price(brand, name, variant, region, search_query, nocache, category), stage_timings),
+            _timed_task("price", (
+                kb_serve.served(_kb_price) if _kb_price is not None
+                else self._get_price(brand, name, variant, region, search_query, nocache, category)
+            ), stage_timings),
             timeout=_PHASE1_TIMEOUTS["price"],
         ))
 
@@ -5929,7 +6140,10 @@ class StructuredComparisonService:
                 reviews_key = get_reviews_cache_key(brand, name, variant)
                 specs_hit = (await _cache_get_async(specs_key)) if not nocache else None
                 reviews_hit = (await _cache_get_async(reviews_key)) if not nocache else None
-                if (include_specs and not specs_hit) or (include_reviews and not reviews_hit):
+                # S81-18 H3: a KB-served leg needs no unified search (OFF: _kb_specs
+                # None and _kb_full False, the base condition).
+                if ((include_specs and not specs_hit and _kb_specs is None)
+                        or (include_reviews and not reviews_hit and not _kb_full)):
                     t0 = time.perf_counter() if stage_timings is not None else None
                     _unified_query = f"{search_query} specifications reviews price"
                     if _flag_on("ENABLE_UNIFIED_SEARCH_BOUND"):
@@ -5995,7 +6209,10 @@ class StructuredComparisonService:
                 # refactor: flag-OFF (or partial_slot None) no callback is attached
                 # and the 4105-loop writes result['specs'] with the identical value.
                 _specs_task = asyncio.ensure_future(asyncio.wait_for(
-                    _timed_task("specs", self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context), stage_timings),
+                    _timed_task("specs", (
+                        kb_serve.served(_kb_specs) if _kb_specs is not None
+                        else self._get_specs(brand, name, variant, category, search_query, nocache, search_results=unified_search, drug_context=drug_context)
+                    ), stage_timings),
                     timeout=_PHASE1_TIMEOUTS["specs"],
                 ))
                 if _stash_early:
@@ -6029,10 +6246,13 @@ class StructuredComparisonService:
                 # populated DURING _get_price (Phase 1) so we can't pre-collect.
                 # _get_reviews accepts None and skips retailer_ratings enrichment.
                 phase1_tasks.append(asyncio.wait_for(
-                    _timed_task("reviews", self._get_reviews(
-                        brand, name, variant, search_query, nocache,
-                        category=category, retailer_ratings=None,
-                        search_results=unified_search,
+                    _timed_task("reviews", (
+                        kb_serve.served(_kb["reviews"]) if _kb_full  # S81-18 H4
+                        else self._get_reviews(
+                            brand, name, variant, search_query, nocache,
+                            category=category, retailer_ratings=None,
+                            search_results=unified_search,
+                        )
                     ), stage_timings),
                     timeout=_PHASE1_TIMEOUTS["reviews"],
                 ))
@@ -6047,7 +6267,7 @@ class StructuredComparisonService:
             # path costs zero extra wall (we discard the eager Tier 1/3 result),
             # piggyback miss path saves zero wall too (Tier 1/3 already running).
             phase1_tasks.append(asyncio.wait_for(
-                _timed_task("image_url", get_product_image_url(
+                _timed_task("image_url", kb_serve.served(_kb["image_url"]) if (_kb and _kb["image_url"]) else get_product_image_url(  # S81-18 H5
                     full_name, region=region,
                     page_scrape_image=None,  # piggyback evaluated post-Phase1 below
                     organic_results=(unified_search.get("organic", []) if unified_search else None),
@@ -6197,7 +6417,19 @@ class StructuredComparisonService:
             # image_service._is_valid_image_url, so a page image on a banned
             # host (fimgs.net) never replaces the cascade result. Flag OFF:
             # the base inline test below, unchanged.
-            if data_guards_v2_enabled():
+            # D08 (ENABLE_IMAGE_PIPELINE_V2, read per call, checked FIRST): the
+            # page image replaces the cascade result only under the D08 image
+            # policy (https, a public host, raster, never a DENY_HOSTS host,
+            # first-party / a platform CDN / a brand domain), whichever producer
+            # wrote it (the JSON-LD stamp or a cached Zyte seed); otherwise the
+            # eager cascade image stands. Flag OFF: the two base branches below.
+            if jsonld_widen.image_pipeline_v2_enabled():
+                _d08_page_img = jsonld_widen.allowed_image_url(
+                    page_img, result["price"].get("url"), OFFICIAL_BRAND_DOMAINS,
+                )
+                if _d08_page_img:
+                    result["image_url"] = _d08_page_img
+            elif data_guards_v2_enabled():
                 if image_service._is_valid_image_url(page_img):
                     result["image_url"] = page_img.strip()
             elif page_img and isinstance(page_img, str) and (
@@ -6298,7 +6530,7 @@ class StructuredComparisonService:
                 return {"rating": None, "review_count": None,
                         "rating_verified": False, "rating_source": None}
 
-        if not _phase2_skip:
+        if not _phase2_skip and not _kb_full:  # S81-18 H6: a full hit carries the card rating
             phase2_tasks.append(_timed_task("rating", _rating_with_cap(), stage_timings))
             phase2_keys.append("_rating_data")
 
@@ -6323,7 +6555,7 @@ class StructuredComparisonService:
             if specs_so_far.get(f) in (None, "", "N/A")
         ][:6]
         fallback_added = False
-        if missing_critical and not _phase2_skip:
+        if missing_critical and not _phase2_skip and not _kb_full:  # S81-18 H6
             phase2_tasks.append(_timed_task("smart_fallback", self._smart_fallback_extract(
                 brand, name, variant, category, missing_critical,
             ), stage_timings))
@@ -6375,7 +6607,7 @@ class StructuredComparisonService:
         result_specs_now = result.get("specs") or {}
         t_tier2 = time.perf_counter() if stage_timings is not None else None
         # S78-TG -- the residual guard (flag OFF: the base call, unchanged).
-        if self._tier_fill_residual_skip(
+        if _kb_full or self._tier_fill_residual_skip(  # S81-18 H6: skipped like the S78-TG skip
             "tier2", _TIER2_WALL_SECONDS, brand=brand, name=name, category=category,
             specs_so_far=result_specs_now, partial_slot=partial_slot,
         ):
@@ -6406,7 +6638,7 @@ class StructuredComparisonService:
         # path adds zero wall.
         t_tier3 = time.perf_counter() if stage_timings is not None else None
         # S78-TG -- the residual guard, re-read after Tier 2 (independent decision).
-        if self._tier_fill_residual_skip(
+        if _kb_full or self._tier_fill_residual_skip(  # S81-18 H6: skipped like the S78-TG skip
             "tier3", _TIER3_WALL_SECONDS, brand=brand, name=name, category=category,
             specs_so_far=result_specs_now, partial_slot=partial_slot,
         ):
@@ -6478,11 +6710,37 @@ class StructuredComparisonService:
         result["review_count"] = rating_data.get("review_count")
         result["rating_verified"] = rating_data.get("rating_verified", False)
         result["rating_source"] = rating_data.get("rating_source")
+        if _kb_full:  # S81-18 H6: the card's rating, after the rating_data block (GC-4 (a))
+            result["rating"] = _kb["rating"]
+            result["review_count"] = _kb["review_count"]
 
-        # Fallback: use GPT-extracted average_rating (flagged rating_derived +
-        # count nulled at source). Extracted to a module helper so the provenance
-        # contract is unit-testable against the real code.
-        _apply_gpt_review_aggregate_fallback(result)
+        # D08 (ENABLE_JSONLD_RATING, read per call, checked FIRST): rating
+        # channel 1 = the Product node's own JSON-LD aggregateRating (stamped on
+        # the price as _jsonld_facts.rating), only from a host whose persisted
+        # robots record allows the page (jsonld_widen.rating_host_allowed via the
+        # ROBOTS_ENTRY_LOOKUP seam, which answers nothing until D14). It is
+        # always reported additively as `jsonld_rating` and fills ONLY an EMPTY
+        # slot: a provider rating (the Serper tiers / consensus) is never
+        # replaced (RULINGS_S81_G1 R-G1-2). The GPT review-aggregate estimate is
+        # NOT promoted under the flag (an unknown rating stays unknown). Flag
+        # OFF: the base fallback below, unchanged.
+        if jsonld_widen.jsonld_rating_enabled():
+            _d08_now = jsonld_widen._now()
+            _d08_ch1 = jsonld_widen.channel1_rating(result.get("price"), _d08_now)
+            if _d08_ch1:
+                result["jsonld_rating"] = _d08_ch1
+                if result.get("rating") is None:
+                    result["rating"] = _d08_ch1["value"]
+                    result["review_count"] = _d08_ch1["count"]
+                    result["rating_verified"] = False
+                    result["rating_source"] = jsonld_widen.channel1_rating_source(
+                        _d08_ch1, _d08_now,
+                    )
+        else:
+            # Fallback: use GPT-extracted average_rating (flagged rating_derived +
+            # count nulled at source). Extracted to a module helper so the provenance
+            # contract is unit-testable against the real code.
+            _apply_gpt_review_aggregate_fallback(result)
 
         # Inject verified rating into reviews
         if result.get("reviews") and isinstance(result["reviews"], dict) and rating_data.get("rating"):
@@ -9566,127 +9824,6 @@ class StructuredComparisonService:
             )
         except Exception as e:  # noqa: BLE001 — never let the optimization break a resolution
             logger.debug(f"negative-cache write skipped: {e}")
-
-    async def _apply_self_critique(
-        self,
-        *,
-        comparison: Dict[str, Any],
-        product_names: List[str],
-        regen_args: Dict[str, Any],
-        pain_workflow_context: Optional[str] = None,
-        stage_timings: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """I3.1/I3.3 — run the flag-gated self-critique pass and return the
-        (possibly regenerated) verdict.
-
-        No-op + zero cost when ENABLE_SELF_CRITIQUE is OFF (the prod default)
-        — `critique_and_maybe_regenerate` short-circuits before any API call.
-        On a low-scoring axis it regenerates the verdict ONCE via a closure
-        that re-runs generate_comparison with the critique feedback appended
-        to the scoring context. NEVER raises — a critique/regeneration
-        failure serves the original verdict.
-
-        Cost: the critique call's tokens are tracked into self.total_cost via
-        _track_gpt_cost (≤$0.002/cmp gate); the regeneration call tracks its
-        own cost inside the closure. Latency: records `critique_ms` into
-        stage_timings when DEBUG_STAGE_TIMINGS is on. The CritiqueResult is
-        stashed on self for the metadata/persistence thread.
-        """
-        from app.services import verdict_critique_service as _vcs
-
-        self._verdict_critique_outcome = None
-        # #268 R2.6 — the regen verdict's own marker; it replaces the
-        # original's only when the regenerated verdict is the one served.
-        self._regen_model_downgraded = False
-        if not _vcs.is_self_critique_enabled():
-            return comparison
-
-        async def _regenerate(critique: "_vcs.CritiqueResult") -> Dict[str, Any]:
-            # Re-run the verdict with the critique's low-axis feedback folded
-            # into the scoring context (scores_summary is appended to the
-            # verdict system prompt by generate_comparison).
-            feedback = (
-                "\n\n## Self-critique feedback (regenerate to fix)\n"
-                f"The previous verdict scored low on: {critique.regen_reason}. "
-                "Rewrite the verdict to be more specific, decisive, balanced, "
-                "and grounded in the numbers — keep the same JSON schema."
-            )
-            args = dict(regen_args)
-            args["scores_summary"] = (args.get("scores_summary") or "") + feedback
-            regen_comparison, regen_usage = await generate_comparison(
-                args["product1"], args["product2"], args["region"],
-                args.get("concern", "value"),
-                user_preferences=args.get("user_preferences"),
-                scores_summary=args.get("scores_summary"),
-                category=args.get("category", "other"),
-                demographics_profile=args.get("demographics_profile"),
-                # M18 PO-prompts-02 — the regen keeps the same data-quality
-                # framing as the original verdict (thin data stays hedgeable).
-                comparison_quality=args.get("comparison_quality", "normal"),
-                **({"output_lang": args["output_lang"]} if args.get("output_lang") else {}),
-            )
-            self._track_gpt_cost(regen_usage)
-            self._regen_model_downgraded = (
-                isinstance(regen_usage, dict) and regen_usage.get("model_downgraded") is True
-            )
-            return regen_comparison
-
-        t_crit = time.perf_counter() if stage_timings is not None else None
-        # G6 integration fix: bound critique+regen (~1-2s + 4-6s worst) so a
-        # flag-ON regen can never push a completed comparison past the outer
-        # 30s hard cap. Timeout serves the original verdict.
-        try:
-            outcome = await asyncio.wait_for(
-                _vcs.critique_and_maybe_regenerate(
-                    comparison=comparison,
-                    product_names=product_names,
-                    regenerate=_regenerate,
-                    pain_workflow_context=pain_workflow_context,
-                    # M18 PO-prompts-02 — on weak/weird data the critic's
-                    # hedging axis must not force a regen toward false
-                    # confidence ('normal' when the V2 flag is OFF).
-                    comparison_quality=regen_args.get("comparison_quality", "normal"),
-                ),
-                timeout=8.0,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("[SELF_CRITIQUE] critique+regen exceeded 8s — serving original verdict")
-            self._verdict_critique_outcome = None
-            return comparison
-        if stage_timings is not None and t_crit is not None:
-            stage_timings["critique_ms"] = round((time.perf_counter() - t_crit) * 1000, 1)
-
-        # Track the critique call's own cost (zero when the flag was OFF or
-        # critique short-circuited — _track_gpt_cost on all-zero usage still
-        # bumps api/gpt counters, so only call it when a critique actually ran).
-        if outcome.critique is not None:
-            self._track_gpt_cost(outcome.critique_usage)
-
-        self._verdict_critique_outcome = outcome
-        # #268 R2.6 — the served verdict decides the marker: a regenerated
-        # verdict carries its own value; a rejected/failed regen (and the 8 s
-        # timeout above) keeps the original verdict's.
-        if outcome.regenerated is True:
-            self._verdict_model_downgraded = self._regen_model_downgraded
-        return outcome.final_comparison
-
-    def _verdict_critique_metadata(self) -> Optional[Dict[str, Any]]:
-        """Serialize the stashed self-critique outcome for the response
-        metadata `_verdict_critique` key (consumed by the post-save
-        persistence path). None when no critique ran (flag OFF / failure)."""
-        outcome = getattr(self, "_verdict_critique_outcome", None)
-        if outcome is None or outcome.critique is None:
-            return None
-        c = outcome.critique
-        return {
-            "axis_scores": dict(c.axis_scores),
-            "needs_regen": c.needs_regen,
-            "low_axes": list(c.low_axes),
-            "regen_reason": c.regen_reason,
-            "critic_model": c.critic_model,
-            "critic_tokens_used": c.tokens_used,
-            "regenerated": outcome.regenerated,
-        }
 
     def _track_gpt_cost(self, usage: dict):
         """Track real GPT cost from token usage."""

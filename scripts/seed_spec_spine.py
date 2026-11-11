@@ -126,9 +126,8 @@ def _walk_json(node: Any, out: List[Dict[str, Any]]) -> None:
 
 
 def _iter_jsonld_nodes(html: str) -> Iterator[Dict[str, Any]]:
-    """Every dict node in every JSON-LD block, in document order. Mirrors
-    ``judgeme_service._iter_jsonld_nodes``; kept local so a batch script never
-    imports the review stack."""
+    """Every dict node in every JSON-LD block, in document order; kept local so
+    a batch script never imports the review stack."""
     for match in _JSONLD_BLOCK_RE.finditer(html):
         try:
             data = json.loads(match.group(1))

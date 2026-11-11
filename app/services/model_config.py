@@ -49,8 +49,6 @@ _ROLE_DEFAULTS: Dict[str, str] = {
     "standard": "gpt-4o-mini",
     # Camera product identification (image input).
     "vision": "gpt-4o-mini",
-    # Verdict self-critique pass (flag-gated, ENABLE_SELF_CRITIQUE).
-    "critic": "gpt-4o-mini",
     # Content moderation — a separate endpoint, priced free.
     "moderation": "omni-moderation-latest",
 }
@@ -87,11 +85,6 @@ def standard_model() -> str:
 def vision_model() -> str:
     """Model for camera product identification."""
     return _resolve("vision")
-
-
-def critic_model() -> str:
-    """Model for the verdict self-critique pass."""
-    return _resolve("critic")
 
 
 def moderation_model() -> str:

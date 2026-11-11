@@ -55,7 +55,7 @@ const stripAddresses = (s: string) => s.replace(ADDRESS_RE, ' ');
 const countMatches = (s: string, re: RegExp) =>
   (s.match(new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)) ?? []).length;
 
-/** The 23 Arabic brand keys (S75 U3b removed profile.aiSharing.subtitle) + the one Latin-in-AR key (review table) + the two U6 pre-prompt keys + the U3 consent body. */
+/** The 22 Arabic brand keys (S75 U3b removed profile.aiSharing.subtitle; S81-11 E6 removed the deleted profile.styleProfile.basedOn) + the one Latin-in-AR key (review table) + the two U6 pre-prompt keys + the U3 consent body. */
 const BRAND_KEYS = [
   'app.name',
   'home.savings.count_zero',
@@ -65,7 +65,6 @@ const BRAND_KEYS = [
   'home.savings.count_many',
   'home.savings.count_other',
   'loading.tip.cross_checks',
-  'profile.styleProfile.basedOn',
   'referrals.share.maxReached',
   'referrals.landing.unavailable',
   'referrals.landing.network',
@@ -141,14 +140,14 @@ describe('S69 U-R T1 — catalog brand fence (MYEZ / ميّز)', () => {
     expect(hits).toEqual(VERB_KEYS);
   });
 
-  it('the en values carrying MYEZ are exactly the 27 brand keys', () => {
+  it('the en values carrying MYEZ are exactly the 26 brand keys', () => {
     const keys = Object.keys(EN)
       .filter((k) => /\bMYEZ\b/.test(EN[k]))
       .sort();
     expect(keys).toEqual(BRAND_KEYS);
   });
 
-  it('the ar values carrying standalone «ميّز» are exactly the same 27 brand keys (parity both ways)', () => {
+  it('the ar values carrying standalone «ميّز» are exactly the same 26 brand keys (parity both ways)', () => {
     const keys = Object.keys(AR)
       .filter((k) => MYEZ_AR_WORD.test(AR[k]))
       .sort();

@@ -1,0 +1,8 @@
+{
+ "_doc": "S81-G2 D11 synthetic robots bodies, sitemap XML and a CDX line ({host} and {locs} are filled at run time; synthetic hosts only).",
+ "cdx_line": "{\"url\": \"https://{host}/products/example-eau-de-parfum\", \"status\": \"200\", \"mime\": \"text/html\"}",
+ "robots_one": "User-agent: *\nAllow: /\nSitemap: https://{host}/sitemap_products.xml\n",
+ "robots_two": "User-agent: *\nAllow: /\nSitemap: https://{host}/sitemap_a.xml\nSitemap: https://{host}/sitemap_b.xml\n",
+ "sitemap_index": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://{host}/sitemap_products_1.xml</loc></sitemap></sitemapindex>",
+ "urlset": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">{locs}</urlset>"
+}

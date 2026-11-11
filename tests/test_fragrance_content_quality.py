@@ -893,10 +893,10 @@ async def test_scrapedo_super_off_by_default_byte_identical_params():
 
 @pytest.mark.asyncio
 async def test_scrapedo_super_on_adds_super_and_geocode():
-    """With SCRAPEDO_SUPER=true the params gain super="true" + geoCode (default bh)."""
+    """With ENABLE_SCRAPEDO_SUPER=true the params gain super="true" + geoCode (default bh)."""
     with _patch.dict(
         "os.environ",
-        {"SCRAPEDO_API_TOKEN": "test-token", "SCRAPEDO_SUPER": "true"},
+        {"SCRAPEDO_API_TOKEN": "test-token", "ENABLE_SCRAPEDO_SUPER": "true"},
         clear=True,
     ):
         _reset_scrapedo_super_cache()
@@ -916,7 +916,7 @@ async def test_scrapedo_super_on_render_page_also_gated():
     """render_page (the no-status sibling) honors the same flag."""
     with _patch.dict(
         "os.environ",
-        {"SCRAPEDO_API_TOKEN": "test-token", "SCRAPEDO_SUPER": "true", "SCRAPEDO_GEOCODE": "ae"},
+        {"SCRAPEDO_API_TOKEN": "test-token", "ENABLE_SCRAPEDO_SUPER": "true", "SCRAPEDO_GEOCODE": "ae"},
         clear=True,
     ):
         _reset_scrapedo_super_cache()
@@ -989,10 +989,10 @@ def test_g2_super_sources_absent_when_flag_off_byte_identical():
 
 
 def test_g2_super_sources_routed_render_only_when_flag_on():
-    """With SCRAPEDO_SUPER=true, both sephora.me and boutiqaat.com ARE routed for
+    """With ENABLE_SCRAPEDO_SUPER=true, both sephora.me and boutiqaat.com ARE routed for
     fragrances (Bahrain tier) AND are flagged render-only (residential-proxy
     render tier, never the wasted curl)."""
-    with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+    with _patch.dict("os.environ", {"ENABLE_SCRAPEDO_SUPER": "true"}, clear=True):
         _reset_scrapedo_super_cache()
         routed = _routed_domains("fragrances")
         for d in _G2_SUPER_DOMAINS:
@@ -1005,7 +1005,7 @@ def test_g2_off_state_equals_on_state_minus_super_sources():
     """The OFF routing is EXACTLY the ON routing with the two gated domains
     removed — proves the gate adds nothing else and removes nothing else
     (behavior-neutral when OFF)."""
-    with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+    with _patch.dict("os.environ", {"ENABLE_SCRAPEDO_SUPER": "true"}, clear=True):
         _reset_scrapedo_super_cache()
         on = _routed_domains("fragrances")
     with _patch.dict("os.environ", {}, clear=True):
@@ -1018,11 +1018,11 @@ def test_g2_off_state_equals_on_state_minus_super_sources():
 def test_g2_boutiqaat_routed_super_independent_after_reverify():
     """Wave-3c — boutiqaat.com is now a mechanism="sitemap" source (genuine BHD
     curl adapter), so it is routed for its beauty categories REGARDLESS of the
-    SCRAPEDO_SUPER flag (super-independent, like bolo). It carries makeup/skincare/
+    ENABLE_SCRAPEDO_SUPER flag (super-independent, like bolo). It carries makeup/skincare/
     haircare/fragrances but NOT electronics. sephora.me stays super-gated and has
     no haircare."""
     from app.services.source_router import get_sitemap_sources_for_category
-    for flag in ({}, {"SCRAPEDO_SUPER": "true"}):
+    for flag in ({}, {"ENABLE_SCRAPEDO_SUPER": "true"}):
         with _patch.dict("os.environ", flag, clear=True):
             _reset_scrapedo_super_cache()
             # Routed for haircare with the super flag in BOTH states.
@@ -1070,11 +1070,11 @@ def test_wave4_sephora_me_off_state_absent_all_categories_byte_identical():
 
 
 def test_wave4_sephora_me_on_state_routed_render_only_all_categories():
-    """ON-state (SCRAPEDO_SUPER=true): sephora.me IS routed for EACH of its three
+    """ON-state (ENABLE_SCRAPEDO_SUPER=true): sephora.me IS routed for EACH of its three
     categories and is flagged render-only — the residential-proxy render tier,
     never the wasted datacenter curl. Haircare is NOT one of its categories, so it
     stays absent there in BOTH flag states (no category leak)."""
-    with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+    with _patch.dict("os.environ", {"ENABLE_SCRAPEDO_SUPER": "true"}, clear=True):
         _reset_scrapedo_super_cache()
         for cat in _SEPHORA_ME_CATEGORIES:
             routed = _routed_domains(cat)
@@ -1094,7 +1094,7 @@ def test_wave4_sephora_me_off_equals_on_minus_super_each_category():
     is behavior-neutral when OFF, across all three categories not just fragrances).
     """
     for cat in _SEPHORA_ME_CATEGORIES:
-        with _patch.dict("os.environ", {"SCRAPEDO_SUPER": "true"}, clear=True):
+        with _patch.dict("os.environ", {"ENABLE_SCRAPEDO_SUPER": "true"}, clear=True):
             _reset_scrapedo_super_cache()
             on = _routed_domains(cat)
         with _patch.dict("os.environ", {}, clear=True):

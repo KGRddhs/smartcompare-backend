@@ -173,6 +173,7 @@ def _zero_network(monkeypatch):
 def _clean_flags(monkeypatch):
     for name in (METER, ENVELOPE, ANON_GATE, "ENABLE_LLM_PREFLIGHT_BREAKER",
                  "ENABLE_STRICT_OPTIONAL_AUTH", "ENABLE_URL_MODE_V2",
+                 "ENABLE_RESULT_GATE",  # S81-20 E2
                  # S81-06 E10: the seven router flags.
                  "ENABLE_ANTHROPIC_TEXT", "ENABLE_ANTHROPIC_VISION", "ENABLE_ANTHROPIC_VERDICT",
                  "ENABLE_ANTHROPIC_CRITIC", "ENABLE_ANTHROPIC_MODERATION",

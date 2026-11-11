@@ -73,7 +73,6 @@ import { Card } from '../components/Card';
 import { DirectionalIcon } from '../components/primitives/DirectionalIcon';
 import { SkeletonLoader } from '../components/SkeletonLoader';
 import { ProgressBar } from '../components/ProgressBar';
-import { CohortBadge } from '../components/CohortBadge';
 import { useLanguage } from '../hooks/useLanguage';
 import FeedbackCard from '../components/FeedbackCard';
 import DemographicsBottomSheet from '../components/DemographicsBottomSheet';
@@ -118,6 +117,11 @@ import { emitSessionInvalid } from '../services/sessionEvents';
 // S69 U6 R3 (RT-12) — the one-time notifications pre-prompt.
 import { shouldShowPushPrePrompt } from '../services/pushPrePrompt';
 import { PushPrePrompt } from '../components/PushPrePrompt';
+// S81-G6 CL2 -- the reveal cut on a measured fast hit, the product image
+// prefetch and the History cache invalidation.
+import { revealDelayMs } from '../utils/clientSpeed';
+import { prefetchProductImages } from '../services/imagePrefetch';
+import { invalidateSwrPrefix } from '../services/swrCache';
 
 type ResultsScreenProps = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
@@ -166,6 +170,9 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     | 'engine_unavailable'
     | 'auth'
     | 'generic'
+    | 'category_not_live'
+    | 'reason_same_identity'
+    | 'reason_category_conflict'
     | null
   >(null);
   // Genuine-BH bundle (D2) — bumping this nonce re-arms the fetch effects so
@@ -344,6 +351,22 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             setLoadError('timeout');
             setLoadingResult(false);
           }
+        } else if (data?.action === 'error' && data?.code === 'CATEGORY_NOT_LIVE') {
+          // S81-11 -- the fragrance-only gate (refusal or budget body).
+          if (!cancelled) {
+            setLoadError('category_not_live');
+            setLoadingResult(false);
+          }
+        } else if (
+          data?.action === 'error' &&
+          (data?.reason === 'same_identity' || data?.reason === 'category_conflict')
+        ) {
+          if (!cancelled) {
+            setLoadError(
+              data.reason === 'same_identity' ? 'reason_same_identity' : 'reason_category_conflict',
+            );
+            setLoadingResult(false);
+          }
         } else {
           // action === 'error' — vision couldn't identify the products.
           if (!cancelled) {
@@ -457,9 +480,25 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     tracker.mark('all_cards_visible');
   }, [loadingResult, products?.length]);
 
+  // S81-G6 CL2: warm the two product images as soon as a result is known
+  // (the Home path already started them; the module dedupes).
+  useEffect(() => {
+    prefetchProductImages(result);
+  }, [result]);
+
+  // S81-G6 CL2: any Results view may follow a saved comparison, so the
+  // History cache is dropped and the next History focus refetches.
+  useEffect(() => {
+    invalidateSwrPrefix('history:');
+  }, []);
+
   useEffect(() => {
     // Winner reveal with haptic feedback + Bundle B/C/D Task 3.3 spring.
+    // S81-G6 CL2: 0 ms only on a measured fast hit (Home passes
+    // fastHit: true for a response within 300 ms); history, camera and
+    // slower compares keep the 800 ms reveal.
     const tracker = getWallTimeTracker();
+    const delay = revealDelayMs(route?.params?.fastHit === true);
     const timer = setTimeout(async () => {
       setWinnerRevealed(true);
       winnerScale.value = withSpring(1, motion.springConfig.progress);
@@ -472,7 +511,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       // so the tag reflects "moment the user can actually interact"
       // rather than "moment the reveal began."
       setTimeout(() => tracker.mark('user_tappable'), 420);
-    }, 800);
+    }, delay);
 
     return () => {
       clearTimeout(timer);
@@ -776,6 +815,13 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     // The CTA mirrors HistoryScreen's: clear the stored session, then tell
     // App's listener, which swaps to the Auth stack (no onLogout prop here).
     const isAuth = loadError === 'auth';
+    const isCategoryNotLive = loadError === 'category_not_live';
+    const reasonKey =
+      loadError === 'reason_same_identity'
+        ? 'home.errors.insufficientDataReason.same_identity'
+        : loadError === 'reason_category_conflict'
+        ? 'home.errors.insufficientDataReason.category_conflict'
+        : null;
     const handleSignIn = async () => {
       await clearSession();
       emitSessionInvalid();
@@ -793,7 +839,17 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         </View>
         <View
           style={styles.emptyStateContainer}
-          testID={isTimeout ? 'results-timeout-state' : isAuth ? 'results-auth-state' : undefined}
+          testID={
+            isTimeout
+              ? 'results-timeout-state'
+              : isAuth
+              ? 'results-auth-state'
+              : isCategoryNotLive
+              ? 'results-category-not-live-state'
+              : reasonKey
+              ? 'results-reason-state'
+              : undefined
+          }
         >
           <AlertCircle size={48} color={colors.text.secondary} />
           <Text style={styles.emptyStateTitle}>
@@ -809,8 +865,15 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ? t('home.errors.engineUnavailable.title')
               : isAuth
               ? t('common.signInRequired')
+              : isCategoryNotLive
+              ? t('home.categories.fragrancesOnly')
+              : reasonKey
+              ? t(reasonKey)
               : t('results.emptyState.title')}
           </Text>
+          {isCategoryNotLive ? (
+            <Text style={styles.emptyStateBody}>{t('home.errors.categoryNotLive')}</Text>
+          ) : null}
           {isTimeout ? (
             <Text style={styles.emptyStateBody}>{t('results.timeout.body')}</Text>
           ) : isEngineUnavailable ? (
@@ -827,7 +890,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 ? t('results.timeout.retry')
                 : isAuth
                 ? t('auth.signIn')
-                : isEngineUnavailable
+                : isEngineUnavailable || isCategoryNotLive || reasonKey
                 ? // S69 U7 R3 — the camera user did not come from History:
                   // a neutral "Back", not "Back to history".
                   t('common.back')
@@ -894,8 +957,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         winnerIndex={presentationWinnerIndex}
         scoring_v2={scoring_v2}
         comparisonId={comparisonId}
-        cohortPeerCount={resolveCohortPeerCount(result)}
-        cohortGovernorate={resolveCohortGovernorate(result)}
+        resultOrigin={route?.params?.comparison_id ? 'stored' : 'live'}
         isRTL={isRTL}
         feedbackSubmitted={feedbackSubmitted}
         onFeedbackSubmitted={onFeedbackSubmittedStable}
@@ -973,35 +1035,6 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
       ) : null}
     </View>
   );
-}
-
-/**
- * Phase 3 § 4b helpers — surface cohort match details inline on Results.
- * The backend (Phase 3.1) emits a root `cohort_summary` block —
- * `{ peer_count, governorate }` — ONLY when ENABLE_COHORT_PERSONALIZATION
- * is on AND a real cohort matched (quality exact / broadened-governorate /
- * broadened-language) AND peer_count > 0 with a non-blank governorate. When
- * the key is absent (no match / flag off / low-confidence), these helpers
- * return values that make CohortBadge render nothing (peerCount=0 OR
- * governorate=''). Falls back to `personalization.cohort` for forward-compat.
- */
-function resolveCohortPeerCount(result: ComparisonResult): number {
-  const summary: any =
-    (result as any)?.cohort_summary ??
-    (result as any)?.personalization?.cohort ??
-    null;
-  if (!summary) return 0;
-  const n = summary.peer_count ?? summary.peers_count ?? summary.peers ?? 0;
-  return typeof n === 'number' ? Math.max(0, Math.floor(n)) : 0;
-}
-
-function resolveCohortGovernorate(result: ComparisonResult): string {
-  const summary: any =
-    (result as any)?.cohort_summary ??
-    (result as any)?.personalization?.cohort ??
-    null;
-  if (!summary) return '';
-  return typeof summary.governorate === 'string' ? summary.governorate : '';
 }
 
 const styles = StyleSheet.create({

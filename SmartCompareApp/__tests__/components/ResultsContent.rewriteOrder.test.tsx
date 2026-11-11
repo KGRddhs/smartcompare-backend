@@ -111,14 +111,7 @@ jest.mock('../../src/components/results/PersonalizationChip', () => {
   };
 });
 jest.mock('../../src/components/hero/RevealBurst', () => ({ RevealBurst: () => null }));
-jest.mock('../../src/components/CohortBadge', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    CohortBadge: () =>
-      React.createElement(View, { testID: 'mock-cohort-badge' }),
-  };
-});
+// S81-11 (E1b, R-S11-31): the CohortBadge mock is removed with the deleted component.
 jest.mock('../../src/components/FeedbackCard', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -236,7 +229,7 @@ describe('ResultsContent — REWRITE element order per ResultsScreen.jsx', () =>
       'results-content-why',
       'results-scoring-v2',
       'results-content-confidence',
-      'results-cohort-badge-slot',
+      // S81-11 (E1e, R-S11-31): the cohort badge slot anchor is removed with CohortBadge.
       'results-content-accordion',
       'results-content-feedback',
     ];
@@ -263,15 +256,15 @@ describe('ResultsContent — REWRITE element order per ResultsScreen.jsx', () =>
     );
   });
 
-  it('places cohort badge AFTER confidence pills (JSX 367-377)', () => {
+  // S81-11 (E1e, R-S11-31): the cohort slot is removed; the row pins its absence.
+  it('renders NO cohort badge slot after the confidence pills (S81-11)', () => {
     const r = render(<ResultsContent {...baseProps} />);
     const order = buildTestIdOrder(r.toJSON(), [
       'results-content-confidence',
       'results-cohort-badge-slot',
     ]);
-    expect(order['results-content-confidence']).toBeLessThan(
-      order['results-cohort-badge-slot']
-    );
+    expect(order['results-content-confidence']).toBeDefined();
+    expect(order['results-cohort-badge-slot']).toBeUndefined();
   });
 
   it('header sits at the top — before the hero pair (JSX 297-311 vs 316)', () => {

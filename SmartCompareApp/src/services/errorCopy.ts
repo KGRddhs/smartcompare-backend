@@ -30,10 +30,18 @@ export function isEngineUnavailableCode(code: string | null | undefined): boolea
  * Total: null / undefined / unknown codes return `common.error`.
  */
 export function friendlyErrorTitleKey(code: string | null | undefined): string {
+  if (code === 'CATEGORY_NOT_LIVE') return 'home.categories.fragrancesOnly';
   return isEngineUnavailableCode(code)
     ? 'home.errors.engineUnavailable.title'
     : 'common.error';
 }
+
+/** S81-11 -- the INSUFFICIENT_DATA reasons that get their own sentence (S81-20). */
+export const INSUFFICIENT_DATA_REASONS: ReadonlySet<string> = new Set([
+  'same_identity',
+  'placeholder_identity',
+  'category_conflict',
+]);
 
 /**
  * A11 — backend error `code` -> user-facing i18n key.
@@ -66,8 +74,13 @@ export function friendlyErrorTitleKey(code: string | null | undefined): string {
  * `undefined` (a codeless transport failure) — returns a key that exists in
  * both en.json and ar.json. There is no branch on which a caller can fall
  * back to a raw string, which is what made the pre-A11 codeless arm leak.
+ *
+ * S81-11: the optional `reason` (the additive S81-20 field, read by
+ * parseApiError top-level then under detail) picks a per-reason sentence for
+ * INSUFFICIENT_DATA only; an absent, unknown or `no_evidence` reason returns
+ * today's key, so every single-argument call keeps its result.
  */
-export function friendlyErrorKey(code: string | null | undefined): string {
+export function friendlyErrorKey(code: string | null | undefined, reason?: unknown): string {
   if (isEngineUnavailableCode(code)) {
     // S69 U7 R1 — an outage, not the pair: never the retype nudge.
     return 'home.errors.engineUnavailable.body';
@@ -76,7 +89,12 @@ export function friendlyErrorKey(code: string | null | undefined): string {
     case 'INSUFFICIENT_DATA':
       // Both products' Phase 1 specs+price came back None — retyping the
       // same pair will not help, so steer to a different//better-named pair.
+      if (typeof reason === 'string' && INSUFFICIENT_DATA_REASONS.has(reason)) {
+        return `home.errors.insufficientDataReason.${reason}`;
+      }
       return 'home.errors.insufficientData';
+    case 'CATEGORY_NOT_LIVE':
+      return 'home.errors.categoryNotLive';
     case 'RATE_LIMITED':
       // The 10/min compare limiter. The generic copy told this user to
       // "try with brand or model", i.e. to retype — actively wrong

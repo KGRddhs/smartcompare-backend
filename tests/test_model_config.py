@@ -25,7 +25,6 @@ LEGACY_DEFAULTS = {
     "verdict": "gpt-4o",
     "standard": "gpt-4o-mini",
     "vision": "gpt-4o-mini",
-    "critic": "gpt-4o-mini",
     "moderation": "omni-moderation-latest",
 }
 
@@ -33,7 +32,6 @@ RESOLVERS = {
     "verdict": model_config.verdict_model,
     "standard": model_config.standard_model,
     "vision": model_config.vision_model,
-    "critic": model_config.critic_model,
     "moderation": model_config.moderation_model,
 }
 
@@ -41,7 +39,6 @@ ENV_VARS = {
     "verdict": "OPENAI_MODEL_VERDICT",
     "standard": "OPENAI_MODEL_STANDARD",
     "vision": "OPENAI_MODEL_VISION",
-    "critic": "OPENAI_MODEL_CRITIC",
     "moderation": "OPENAI_MODEL_MODERATION",
 }
 

@@ -68,8 +68,8 @@ interface Props {
    * inside the LoadingRings hero (ticks 0 → target over motion
    * .counterTick = 2400ms). Per F-S2.W3.hotfix (#37) the external
    * counter chip was de-duplicated — the count now renders inside the
-   * LoadingRings hero's built-in chip. LoadingRings defaults to 2074
-   * when this prop is omitted.
+   * LoadingRings hero's built-in chip. S81-11: LoadingRings has no
+   * default target, so omitting this prop renders no counter chip.
    */
   counterTarget?: number;
   /**
@@ -364,8 +364,8 @@ export function LoadingScreenVariants({
               now — drops the duplicate stack Ahmed flagged ("big
               emerald 2,038 ticking above a separate neutral 46 chip").
               LoadingRings handles tabular-nums + thousands-separator +
-              2.4s rAF tick. Default counterTarget = 2074 stays inside
-              LoadingRings if Step14 doesn't override. */}
+              2.4s rAF tick. S81-11: there is no default target any
+              more, so with no counterTarget the hero shows no chip. */}
           <LoadingRings
             size={240}
             counterTarget={counterTarget}

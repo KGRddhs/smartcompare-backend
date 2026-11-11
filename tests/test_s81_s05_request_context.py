@@ -1322,9 +1322,50 @@ _ALLOWED_CTX_FILES = {
     # S81-06 (E9 / R-S05-10 / R-S06-16): the first consumer; the import shape and
     # the attribute uses are pinned below.
     "app/services/llm_router.py",
+    # S81-09 (E3 / GATE_S81_09 GC-13): the device-quota consumer; the import shape
+    # and the attribute uses are pinned below.
+    "app/services/usage_service.py",
+    # S81-10 (R-S10-2, the S81-06 E9 form): the refusal-budget subject; the import
+    # shape and the attribute uses are pinned below; no needle string in the file.
+    "app/services/category_gate.py",
+    # S81-SF1 (E3 / R-SF1-9): log_search writes search_logs.compare_request_id; the
+    # import shape and the attribute uses are pinned below; no needle string in the file.
+    "app/services/database_service.py",
+    # S81-22 (E4, the S81-06 E9 form): the compare-run row reads the consent version,
+    # the compare request id, the device key and the pepper NAME; the import shape and
+    # the attribute uses are pinned below; no needle string in the file.
+    "app/services/compare_runs.py",
 }
 # S81-06 (E9): the router's only reads of the leaf.
 _ROUTER_CTX_ATTRS = {"consent_version", "header_state"}
+# S81-09 (E3): the usage service's only reads of the leaf: the device fingerprint
+# and key, and header_state with its bytes constant for the account-only metric
+# line ("[USAGE-DEVICE] account-only header=<state>", RED row r22).
+_USAGE_CTX_ATTRS = {
+    "device_fingerprint",
+    "device_key",
+    "header_state",
+    "HEADER_DEVICE_FINGERPRINT",
+}
+# S81-10 (R-S10-2): the fragrance gate's only reads of the leaf.
+_GATE_CTX_ATTRS = {"device_fingerprint", "device_key"}
+# S81-SF1 (R-SF1-9): log_search reads only compare_request_id.
+_LOG_SEARCH_CTX_ATTRS = {"compare_request_id"}
+# S81-22 (E4): the compare-run row's only reads of the leaf.
+_RUNS_CTX_ATTRS = {
+    "consent_version",
+    "compare_request_id",
+    "device_fingerprint",
+    "device_key",
+    "PEPPER_ENV",
+}
+_CTX_CONSUMER_ATTRS = {
+    "app/services/llm_router.py": _ROUTER_CTX_ATTRS,
+    "app/services/usage_service.py": _USAGE_CTX_ATTRS,
+    "app/services/category_gate.py": _GATE_CTX_ATTRS,
+    "app/services/database_service.py": _LOG_SEARCH_CTX_ATTRS,
+    "app/services/compare_runs.py": _RUNS_CTX_ATTRS,
+}
 
 
 def test_s05_p01_no_consumer_in_app():
@@ -1352,13 +1393,20 @@ def test_s05_p01_no_consumer_in_app():
                         if needle in ("header_state", "x-ai-consent-version")
                         else ()
                     ),
+                    # S81-09 (E3): the account-only metric reads header_state.
+                    *(
+                        ("app/services/usage_service.py",)
+                        if needle == "header_state"
+                        else ()
+                    ),
                 }, (rel, needle)
         if "request_context" not in text:
             continue
         tree = ast.parse(text)
-        if rel == "app/services/llm_router.py":
-            # S81-06 (E9): exactly `from app.utils import request_context as _request_context`
-            # and attribute uses limited to {consent_version, header_state}.
+        if rel in _CTX_CONSUMER_ATTRS:
+            # S81-06 (E9) / S81-09 (E3): exactly
+            # `from app.utils import request_context as _request_context` and
+            # attribute uses limited to the consumer's pinned set.
             froms = [
                 n
                 for n in ast.walk(tree)
@@ -1375,7 +1423,7 @@ def test_s05_p01_no_consumer_in_app():
                 and isinstance(n.value, ast.Name)
                 and n.value.id == "_request_context"
             }
-            assert used == _ROUTER_CTX_ATTRS, used
+            assert used == _CTX_CONSUMER_ATTRS[rel], (rel, used)
             continue
         for n in ast.walk(tree):
             if isinstance(n, ast.ImportFrom) and n.module == LEAF_NAME:

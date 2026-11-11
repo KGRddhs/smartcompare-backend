@@ -1,0 +1,6047 @@
+{
+ "_comment": "S81-G10 / S81-22b P1 golden: the flag-OFF REST + SSE payloads (ENABLE_FULL_STREAM_DEADLINE OFF and ON), the routed site keys, the persisted payload, the follow-ups and the compare_runs row under the FULL companion configuration, recorded at base 90d4ed74 by the RED agent through tests/test_s81_s22b_self_critique_retire.py::_snapshot (unset). ASCII, LF.",
+ "base": "90d4ed74bdd16f62130dc9f7a4727620f8a1cea2",
+ "snapshot": {
+  "followups": [
+   "cache_bust",
+   "track_event",
+   "loop2"
+  ],
+  "persisted": {
+   "category": "fragrances",
+   "category_switched": false,
+   "category_used": "fragrances",
+   "comparison": {
+    "cons": {},
+    "pros": {},
+    "verdict": "v",
+    "winner_declaration": "Acme wins",
+    "winner_index": 0,
+    "winner_reason": "longevity"
+   },
+   "key_differences": [],
+   "metadata": {
+    "api_calls": 4,
+    "budget_mismatch": false,
+    "cache_hit": false,
+    "cached": false,
+    "cohort_injected": false,
+    "comparison_quality": "normal",
+    "data_freshness_shaky": true,
+    "fact_check": {
+     "product_0": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "product_1": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     }
+    },
+    "genuine_from_cache": false,
+    "gpt_calls": 2,
+    "guard_rejected": [],
+    "llm": {
+     "basis": "list_price",
+     "by_model": {},
+     "by_provider": {},
+     "cache_read_tokens": 0,
+     "cache_write_1h_tokens": 0,
+     "cache_write_5m_tokens": 0,
+     "calls": 0,
+     "completion_tokens": 0,
+     "cost_complete": true,
+     "cost_usd": "0.0",
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "price_table_as_of": {
+      "anthropic": "2026-10-22",
+      "openai": "2026-10-08"
+     },
+     "priced_calls": 0,
+     "prompt_tokens": 0,
+     "schema_version": 1,
+     "unpriced_calls": 0,
+     "web_search_requests": 0
+    },
+    "missing_dim_cells": {
+     "count": 8,
+     "fraction": "0.6667",
+     "total": 12
+    },
+    "openai": {
+     "basis": "list_price",
+     "by_model": {},
+     "cached_tokens": 0,
+     "calls": 0,
+     "completion_tokens": 0,
+     "cost_complete": true,
+     "cost_usd": "0.0",
+     "price_table_as_of": "2026-10-08",
+     "priced_calls": 0,
+     "prompt_tokens": 0,
+     "unpriced_calls": 0
+    },
+    "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+    "region": "bahrain",
+    "serper_calls": 2,
+    "source_trace": {
+     "products": [
+      {
+       "name": "Acme Nimbus Noir Eau de Parfum",
+       "races": {
+        "image": {
+         "sources_returned_value": [],
+         "sources_tried": [
+          "image_url"
+         ],
+         "wall_ms": 0
+        },
+        "price": {
+         "sources_returned_value": [
+          "price"
+         ],
+         "sources_tried": [
+          "price"
+         ],
+         "wall_ms": 0
+        },
+        "reviews": {
+         "sources_returned_value": [
+          "reviews"
+         ],
+         "sources_tried": [
+          "reviews"
+         ],
+         "wall_ms": 0
+        },
+        "specs": {
+         "sources_returned_value": [
+          "specs"
+         ],
+         "sources_tried": [
+          "specs"
+         ],
+         "wall_ms": 0
+        }
+       }
+      },
+      {
+       "name": "Zephyra Velvet Dusk Eau de Toilette",
+       "races": {
+        "image": {
+         "sources_returned_value": [],
+         "sources_tried": [
+          "image_url"
+         ],
+         "wall_ms": 0
+        },
+        "price": {
+         "sources_returned_value": [
+          "price"
+         ],
+         "sources_tried": [
+          "price"
+         ],
+         "wall_ms": 0
+        },
+        "reviews": {
+         "sources_returned_value": [
+          "reviews"
+         ],
+         "sources_tried": [
+          "reviews"
+         ],
+         "wall_ms": 0
+        },
+        "specs": {
+         "sources_returned_value": [
+          "specs"
+         ],
+         "sources_tried": [
+          "specs"
+         ],
+         "wall_ms": 0
+        }
+       }
+      }
+     ]
+    },
+    "total_cost": "0.002048",
+    "verdict_validation": {
+     "claims_flagged": 0,
+     "claims_softened": 3,
+     "claims_validated": 0,
+     "confidence_adjustment": null,
+     "winner_aligned": true
+    }
+   },
+   "original_category": null,
+   "overview": {
+    "confidence": {
+     "legs": {
+      "price": "strong",
+      "reviews": "weak",
+      "specs": "weak"
+     },
+     "overall": "low",
+     "price": {
+      "freshness": "live",
+      "method": "retailer_verified",
+      "source_count": 0
+     },
+     "rating": {
+      "review_count": 10,
+      "source": "example",
+      "verified": true
+     },
+     "specs": {
+      "citation_count": 3,
+      "verified_pct": 0
+     }
+    },
+    "products": [
+     {
+      "_debug_capture": null,
+      "best_for": "",
+      "brand": "Acme",
+      "cons": [],
+      "image_url": null,
+      "name": "Nimbus Noir Eau de Parfum",
+      "overall_score": "68.5",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "pros": [],
+      "pros_cons": {
+       "cons": [],
+       "is_winner": true,
+       "pros": []
+      },
+      "rating": "4.5",
+      "review_count": 10,
+      "value_badge": "fair_price",
+      "value_context": "",
+      "value_match": "unknown",
+      "variant": "Eau de Parfum"
+     },
+     {
+      "_debug_capture": null,
+      "best_for": "",
+      "brand": "Zephyra",
+      "cons": [],
+      "image_url": null,
+      "name": "Velvet Dusk Eau de Toilette",
+      "overall_score": "68.5",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "pros": [],
+      "pros_cons": {
+       "cons": [],
+       "is_winner": false,
+       "pros": []
+      },
+      "rating": "4.5",
+      "review_count": 10,
+      "value_badge": "fair_price",
+      "value_context": "",
+      "value_match": "unknown",
+      "variant": "Eau de Parfum"
+     }
+    ],
+    "tradeoffs": [],
+    "winner": {
+     "declaration": "Acme wins",
+     "key_tradeoff": "",
+     "margin": "0.0",
+     "name": "Acme wins",
+     "product_index": 0,
+     "reason": "longevity"
+    }
+   },
+   "personalization": {
+    "applied_shifts": [],
+    "factors": [],
+    "personalized": false,
+    "personalized_insights": []
+   },
+   "personalization_factors": [],
+   "personalized": false,
+   "personalized_insights": [],
+   "price_method_mismatch": false,
+   "products": [
+    {
+     "best_price": "55.0",
+     "brand": "Acme",
+     "category": "fragrances",
+     "category_profile": {
+      "category": "fragrances",
+      "fields": [
+       {
+        "key": "scent_family",
+        "label": "Scent family",
+        "value": "amber"
+       },
+       {
+        "key": "longevity",
+        "label": "Longevity",
+        "value": "8 hours"
+       },
+       {
+        "key": "concentration",
+        "label": "Concentration",
+        "value": "Eau de Parfum"
+       }
+      ]
+     },
+     "cons": [],
+     "currency": "BHD",
+     "data_freshness": "cached",
+     "fact_check": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "full_name": "Acme Nimbus Noir Eau de Parfum",
+     "image_url": null,
+     "name": "Nimbus Noir Eau de Parfum",
+     "price": {
+      "amount": "55.0",
+      "currency": "BHD",
+      "estimated": false,
+      "in_stock": true,
+      "retailer": "Live Store",
+      "source_method": "local_bhd",
+      "title": "x",
+      "url": "https://live-store.example.com/p/1"
+     },
+     "pros": [],
+     "pros_cons": {
+      "cons": [],
+      "pros": []
+     },
+     "query": "Acme Nimbus Noir Eau de Parfum",
+     "rating": "4.5",
+     "rating_count": 10,
+     "rating_source": {
+      "name": "example",
+      "url": "https://example.com/r"
+     },
+     "rating_verified": true,
+     "retailer": "Live Store",
+     "review_count": 10,
+     "review_praise": null,
+     "reviews": {
+      "highlights": [
+       "good"
+      ],
+      "summary": "ok",
+      "verified_rating": {
+       "rating": "4.5",
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      }
+     },
+     "specs": {
+      "concentration": "Eau de Parfum",
+      "longevity": "8 hours",
+      "scent_family": "amber"
+     },
+     "value_badge": "fair_price",
+     "variant": null
+    },
+    {
+     "best_price": "55.0",
+     "brand": "Zephyra",
+     "category": "fragrances",
+     "category_profile": {
+      "category": "fragrances",
+      "fields": [
+       {
+        "key": "scent_family",
+        "label": "Scent family",
+        "value": "amber"
+       },
+       {
+        "key": "longevity",
+        "label": "Longevity",
+        "value": "8 hours"
+       },
+       {
+        "key": "concentration",
+        "label": "Concentration",
+        "value": "Eau de Parfum"
+       }
+      ]
+     },
+     "cons": [],
+     "currency": "BHD",
+     "data_freshness": "cached",
+     "fact_check": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+     "image_url": null,
+     "name": "Velvet Dusk Eau de Toilette",
+     "price": {
+      "amount": "55.0",
+      "currency": "BHD",
+      "estimated": false,
+      "in_stock": true,
+      "retailer": "Live Store",
+      "source_method": "local_bhd",
+      "title": "x",
+      "url": "https://live-store.example.com/p/1"
+     },
+     "pros": [],
+     "pros_cons": {
+      "cons": [],
+      "pros": []
+     },
+     "query": "Zephyra Velvet Dusk Eau de Toilette",
+     "rating": "4.5",
+     "rating_count": 10,
+     "rating_source": {
+      "name": "example",
+      "url": "https://example.com/r"
+     },
+     "rating_verified": true,
+     "retailer": "Live Store",
+     "review_count": 10,
+     "review_praise": null,
+     "reviews": {
+      "highlights": [
+       "good"
+      ],
+      "summary": "ok",
+      "verified_rating": {
+       "rating": "4.5",
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      }
+     },
+     "specs": {
+      "concentration": "Eau de Parfum",
+      "longevity": "8 hours",
+      "scent_family": "amber"
+     },
+     "value_badge": "fair_price",
+     "variant": null
+    }
+   ],
+   "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+   "recommendation": "longevity",
+   "reviews": {
+    "products": [
+     {
+      "brand": "Acme",
+      "name": "Nimbus Noir Eau de Parfum",
+      "rating": "4.5",
+      "rating_source": {
+       "name": "example",
+       "url": "https://example.com/r"
+      },
+      "retailer_quotes": [],
+      "review_count": 10,
+      "review_praise": null,
+      "review_summary": {
+       "agreement_level": "moderate",
+       "consensus": "",
+       "highlights": [],
+       "overall_sentiment": "mixed",
+       "review_volume": "minimal"
+      },
+      "youtube_review_signal": null
+     },
+     {
+      "brand": "Zephyra",
+      "name": "Velvet Dusk Eau de Toilette",
+      "rating": "4.5",
+      "rating_source": {
+       "name": "example",
+       "url": "https://example.com/r"
+      },
+      "retailer_quotes": [],
+      "review_count": 10,
+      "review_praise": null,
+      "review_summary": {
+       "agreement_level": "moderate",
+       "consensus": "",
+       "highlights": [],
+       "overall_sentiment": "mixed",
+       "review_volume": "minimal"
+      },
+      "youtube_review_signal": null
+     }
+    ]
+   },
+   "scoring": {
+    "category_weights": {
+     "character_score": "0.25",
+     "longevity_score": "0.25",
+     "presentation_score": "0.1",
+     "projection_score": "0.15",
+     "versatility_score": "0.15",
+     "wear_value_score": "0.1"
+    },
+    "dimension_winners": {
+     "character_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "longevity_score": {
+      "margin": "0.0",
+      "winner": "tie"
+     },
+     "presentation_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "projection_score": {
+      "margin": "0.0",
+      "winner": "tie"
+     },
+     "versatility_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "wear_value_score": {
+      "margin": null,
+      "winner": "N/A"
+     }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+     "Acme Nimbus Noir Eau de Parfum": "mid",
+     "Zephyra Velvet Dusk Eau de Toilette": "mid"
+    },
+    "scores": {
+     "product_0": {
+      "breakdown": {
+       "character_score": 50,
+       "longevity_score": "90.0",
+       "presentation_score": 50,
+       "projection_score": "90.0",
+       "versatility_score": 50,
+       "wear_value_score": "75.0"
+      },
+      "missing_data": [
+       "character_score",
+       "versatility_score",
+       "wear_value_score",
+       "presentation_score"
+      ],
+      "overall": "68.5",
+      "weights_used": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      }
+     },
+     "product_1": {
+      "breakdown": {
+       "character_score": 50,
+       "longevity_score": "90.0",
+       "presentation_score": 50,
+       "projection_score": "90.0",
+       "versatility_score": 50,
+       "wear_value_score": "75.0"
+      },
+      "missing_data": [
+       "character_score",
+       "versatility_score",
+       "wear_value_score",
+       "presentation_score"
+      ],
+      "overall": "68.5",
+      "weights_used": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      }
+     }
+    },
+    "scoring_method": "category_weighted"
+   },
+   "scoring_v2": {
+    "comparison_quality": "normal",
+    "confidence_details": {
+     "price": {
+      "freshness": "live",
+      "method": "retailer_verified",
+      "method_p0": "local_bhd",
+      "method_p1": "local_bhd",
+      "sources_count": 0
+     },
+     "reviews": {
+      "review_count": 10,
+      "source": "example",
+      "verified": true
+     },
+     "specs": {
+      "citation_count": 3,
+      "verified_pct": 0
+     }
+    },
+    "confidence_legs": {
+     "price": "strong",
+     "reviews": "weak",
+     "specs": "weak"
+    },
+    "dimensions": [
+     {
+      "confidence": "high",
+      "delta_text": "BHD 0 less",
+      "is_core": true,
+      "key": "price",
+      "label": "Price",
+      "score_a": 85,
+      "score_b": 85,
+      "winner": null
+     },
+     {
+      "confidence": "high",
+      "delta_text": "Same rating",
+      "is_core": true,
+      "key": "reviews",
+      "label": "Reviews",
+      "score_a": 88,
+      "score_b": 88,
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable value",
+      "is_core": true,
+      "is_cross_tier": false,
+      "key": "value",
+      "label": "Value",
+      "score_a": 88,
+      "score_b": 88,
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable",
+      "is_core": false,
+      "key": "longevity",
+      "label": "Longevity",
+      "score_a": "90.0",
+      "score_b": "90.0",
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable",
+      "is_core": false,
+      "key": "projection",
+      "label": "Projection",
+      "score_a": "90.0",
+      "score_b": "90.0",
+      "winner": null
+     }
+    ],
+    "factual_verdict": {
+     "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+     "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+    },
+    "overall_score": {
+     "product_a": 79,
+     "product_b": 78,
+     "winner_idx": 0
+    },
+    "personalization": {
+     "applied_shifts": []
+    },
+    "win_margin": 1,
+    "winner_evidence": []
+   },
+   "specs": {
+    "products": [
+     {
+      "brand": "Acme",
+      "name": "Nimbus Noir Eau de Parfum",
+      "spec_advantages": [],
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      }
+     },
+     {
+      "brand": "Zephyra",
+      "name": "Velvet Dusk Eau de Toilette",
+      "spec_advantages": [],
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      }
+     }
+    ],
+    "specs_comparison": {
+     "rows": [
+      {
+       "field": "concentration",
+       "p0_value": "Eau de Parfum",
+       "p1_value": "Eau de Parfum",
+       "winner": "tie"
+      },
+      {
+       "field": "scent_family",
+       "p0_value": "amber",
+       "p1_value": "amber",
+       "winner": "tie"
+      },
+      {
+       "field": "longevity",
+       "p0_value": "8 hours",
+       "p1_value": "8 hours",
+       "winner": "tie"
+      }
+     ]
+    }
+   },
+   "success": true,
+   "tier_context": {
+    "is_cross_tier": false,
+    "price_tiers": {
+     "Acme Nimbus Noir Eau de Parfum": "mid",
+     "Zephyra Velvet Dusk Eau de Toilette": "mid"
+    }
+   },
+   "winner_index": 0
+  },
+  "persisted_is_body": true,
+  "rest_deadline_off": {
+   "category": "fragrances",
+   "category_switched": false,
+   "category_used": "fragrances",
+   "comparison": {
+    "cons": {},
+    "pros": {},
+    "verdict": "v",
+    "winner_declaration": "Acme wins",
+    "winner_index": 0,
+    "winner_reason": "longevity"
+   },
+   "key_differences": [],
+   "metadata": {
+    "api_calls": 4,
+    "budget_mismatch": false,
+    "cache_hit": false,
+    "cached": false,
+    "cohort_injected": false,
+    "comparison_quality": "normal",
+    "data_freshness_shaky": true,
+    "fact_check": {
+     "product_0": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "product_1": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     }
+    },
+    "genuine_from_cache": false,
+    "gpt_calls": 2,
+    "guard_rejected": [],
+    "llm": {
+     "basis": "list_price",
+     "by_model": {},
+     "by_provider": {},
+     "cache_read_tokens": 0,
+     "cache_write_1h_tokens": 0,
+     "cache_write_5m_tokens": 0,
+     "calls": 0,
+     "completion_tokens": 0,
+     "cost_complete": true,
+     "cost_usd": "0.0",
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "price_table_as_of": {
+      "anthropic": "2026-10-22",
+      "openai": "2026-10-08"
+     },
+     "priced_calls": 0,
+     "prompt_tokens": 0,
+     "schema_version": 1,
+     "unpriced_calls": 0,
+     "web_search_requests": 0
+    },
+    "missing_dim_cells": {
+     "count": 8,
+     "fraction": "0.6667",
+     "total": 12
+    },
+    "openai": {
+     "basis": "list_price",
+     "by_model": {},
+     "cached_tokens": 0,
+     "calls": 0,
+     "completion_tokens": 0,
+     "cost_complete": true,
+     "cost_usd": "0.0",
+     "price_table_as_of": "2026-10-08",
+     "priced_calls": 0,
+     "prompt_tokens": 0,
+     "unpriced_calls": 0
+    },
+    "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+    "region": "bahrain",
+    "serper_calls": 2,
+    "source_trace": {
+     "products": [
+      {
+       "name": "Acme Nimbus Noir Eau de Parfum",
+       "races": {
+        "image": {
+         "sources_returned_value": [],
+         "sources_tried": [
+          "image_url"
+         ],
+         "wall_ms": 0
+        },
+        "price": {
+         "sources_returned_value": [
+          "price"
+         ],
+         "sources_tried": [
+          "price"
+         ],
+         "wall_ms": 0
+        },
+        "reviews": {
+         "sources_returned_value": [
+          "reviews"
+         ],
+         "sources_tried": [
+          "reviews"
+         ],
+         "wall_ms": 0
+        },
+        "specs": {
+         "sources_returned_value": [
+          "specs"
+         ],
+         "sources_tried": [
+          "specs"
+         ],
+         "wall_ms": 0
+        }
+       }
+      },
+      {
+       "name": "Zephyra Velvet Dusk Eau de Toilette",
+       "races": {
+        "image": {
+         "sources_returned_value": [],
+         "sources_tried": [
+          "image_url"
+         ],
+         "wall_ms": 0
+        },
+        "price": {
+         "sources_returned_value": [
+          "price"
+         ],
+         "sources_tried": [
+          "price"
+         ],
+         "wall_ms": 0
+        },
+        "reviews": {
+         "sources_returned_value": [
+          "reviews"
+         ],
+         "sources_tried": [
+          "reviews"
+         ],
+         "wall_ms": 0
+        },
+        "specs": {
+         "sources_returned_value": [
+          "specs"
+         ],
+         "sources_tried": [
+          "specs"
+         ],
+         "wall_ms": 0
+        }
+       }
+      }
+     ]
+    },
+    "total_cost": "0.002048",
+    "verdict_validation": {
+     "claims_flagged": 0,
+     "claims_softened": 3,
+     "claims_validated": 0,
+     "confidence_adjustment": null,
+     "winner_aligned": true
+    }
+   },
+   "original_category": null,
+   "overview": {
+    "confidence": {
+     "legs": {
+      "price": "strong",
+      "reviews": "weak",
+      "specs": "weak"
+     },
+     "overall": "low",
+     "price": {
+      "freshness": "live",
+      "method": "retailer_verified",
+      "source_count": 0
+     },
+     "rating": {
+      "review_count": 10,
+      "source": "example",
+      "verified": true
+     },
+     "specs": {
+      "citation_count": 3,
+      "verified_pct": 0
+     }
+    },
+    "products": [
+     {
+      "_debug_capture": null,
+      "best_for": "",
+      "brand": "Acme",
+      "cons": [],
+      "image_url": null,
+      "name": "Nimbus Noir Eau de Parfum",
+      "overall_score": "68.5",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "pros": [],
+      "pros_cons": {
+       "cons": [],
+       "is_winner": true,
+       "pros": []
+      },
+      "rating": "4.5",
+      "review_count": 10,
+      "value_badge": "fair_price",
+      "value_context": "",
+      "value_match": "unknown",
+      "variant": "Eau de Parfum"
+     },
+     {
+      "_debug_capture": null,
+      "best_for": "",
+      "brand": "Zephyra",
+      "cons": [],
+      "image_url": null,
+      "name": "Velvet Dusk Eau de Toilette",
+      "overall_score": "68.5",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "pros": [],
+      "pros_cons": {
+       "cons": [],
+       "is_winner": false,
+       "pros": []
+      },
+      "rating": "4.5",
+      "review_count": 10,
+      "value_badge": "fair_price",
+      "value_context": "",
+      "value_match": "unknown",
+      "variant": "Eau de Parfum"
+     }
+    ],
+    "tradeoffs": [],
+    "winner": {
+     "declaration": "Acme wins",
+     "key_tradeoff": "",
+     "margin": "0.0",
+     "name": "Acme wins",
+     "product_index": 0,
+     "reason": "longevity"
+    }
+   },
+   "personalization": {
+    "applied_shifts": [],
+    "factors": [],
+    "personalized": false,
+    "personalized_insights": []
+   },
+   "personalization_factors": [],
+   "personalized": false,
+   "personalized_insights": [],
+   "price_method_mismatch": false,
+   "products": [
+    {
+     "best_price": "55.0",
+     "brand": "Acme",
+     "category": "fragrances",
+     "category_profile": {
+      "category": "fragrances",
+      "fields": [
+       {
+        "key": "scent_family",
+        "label": "Scent family",
+        "value": "amber"
+       },
+       {
+        "key": "longevity",
+        "label": "Longevity",
+        "value": "8 hours"
+       },
+       {
+        "key": "concentration",
+        "label": "Concentration",
+        "value": "Eau de Parfum"
+       }
+      ]
+     },
+     "cons": [],
+     "currency": "BHD",
+     "data_freshness": "cached",
+     "fact_check": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "full_name": "Acme Nimbus Noir Eau de Parfum",
+     "image_url": null,
+     "name": "Nimbus Noir Eau de Parfum",
+     "price": {
+      "amount": "55.0",
+      "currency": "BHD",
+      "estimated": false,
+      "in_stock": true,
+      "retailer": "Live Store",
+      "source_method": "local_bhd",
+      "title": "x",
+      "url": "https://live-store.example.com/p/1"
+     },
+     "pros": [],
+     "pros_cons": {
+      "cons": [],
+      "pros": []
+     },
+     "query": "Acme Nimbus Noir Eau de Parfum",
+     "rating": "4.5",
+     "rating_count": 10,
+     "rating_source": {
+      "name": "example",
+      "url": "https://example.com/r"
+     },
+     "rating_verified": true,
+     "retailer": "Live Store",
+     "review_count": 10,
+     "review_praise": null,
+     "reviews": {
+      "highlights": [
+       "good"
+      ],
+      "summary": "ok",
+      "verified_rating": {
+       "rating": "4.5",
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      }
+     },
+     "specs": {
+      "concentration": "Eau de Parfum",
+      "longevity": "8 hours",
+      "scent_family": "amber"
+     },
+     "value_badge": "fair_price",
+     "variant": null
+    },
+    {
+     "best_price": "55.0",
+     "brand": "Zephyra",
+     "category": "fragrances",
+     "category_profile": {
+      "category": "fragrances",
+      "fields": [
+       {
+        "key": "scent_family",
+        "label": "Scent family",
+        "value": "amber"
+       },
+       {
+        "key": "longevity",
+        "label": "Longevity",
+        "value": "8 hours"
+       },
+       {
+        "key": "concentration",
+        "label": "Concentration",
+        "value": "Eau de Parfum"
+       }
+      ]
+     },
+     "cons": [],
+     "currency": "BHD",
+     "data_freshness": "cached",
+     "fact_check": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+     "image_url": null,
+     "name": "Velvet Dusk Eau de Toilette",
+     "price": {
+      "amount": "55.0",
+      "currency": "BHD",
+      "estimated": false,
+      "in_stock": true,
+      "retailer": "Live Store",
+      "source_method": "local_bhd",
+      "title": "x",
+      "url": "https://live-store.example.com/p/1"
+     },
+     "pros": [],
+     "pros_cons": {
+      "cons": [],
+      "pros": []
+     },
+     "query": "Zephyra Velvet Dusk Eau de Toilette",
+     "rating": "4.5",
+     "rating_count": 10,
+     "rating_source": {
+      "name": "example",
+      "url": "https://example.com/r"
+     },
+     "rating_verified": true,
+     "retailer": "Live Store",
+     "review_count": 10,
+     "review_praise": null,
+     "reviews": {
+      "highlights": [
+       "good"
+      ],
+      "summary": "ok",
+      "verified_rating": {
+       "rating": "4.5",
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      }
+     },
+     "specs": {
+      "concentration": "Eau de Parfum",
+      "longevity": "8 hours",
+      "scent_family": "amber"
+     },
+     "value_badge": "fair_price",
+     "variant": null
+    }
+   ],
+   "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+   "recommendation": "longevity",
+   "reviews": {
+    "products": [
+     {
+      "brand": "Acme",
+      "name": "Nimbus Noir Eau de Parfum",
+      "rating": "4.5",
+      "rating_source": {
+       "name": "example",
+       "url": "https://example.com/r"
+      },
+      "retailer_quotes": [],
+      "review_count": 10,
+      "review_praise": null,
+      "review_summary": {
+       "agreement_level": "moderate",
+       "consensus": "",
+       "highlights": [],
+       "overall_sentiment": "mixed",
+       "review_volume": "minimal"
+      },
+      "youtube_review_signal": null
+     },
+     {
+      "brand": "Zephyra",
+      "name": "Velvet Dusk Eau de Toilette",
+      "rating": "4.5",
+      "rating_source": {
+       "name": "example",
+       "url": "https://example.com/r"
+      },
+      "retailer_quotes": [],
+      "review_count": 10,
+      "review_praise": null,
+      "review_summary": {
+       "agreement_level": "moderate",
+       "consensus": "",
+       "highlights": [],
+       "overall_sentiment": "mixed",
+       "review_volume": "minimal"
+      },
+      "youtube_review_signal": null
+     }
+    ]
+   },
+   "scoring": {
+    "category_weights": {
+     "character_score": "0.25",
+     "longevity_score": "0.25",
+     "presentation_score": "0.1",
+     "projection_score": "0.15",
+     "versatility_score": "0.15",
+     "wear_value_score": "0.1"
+    },
+    "dimension_winners": {
+     "character_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "longevity_score": {
+      "margin": "0.0",
+      "winner": "tie"
+     },
+     "presentation_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "projection_score": {
+      "margin": "0.0",
+      "winner": "tie"
+     },
+     "versatility_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "wear_value_score": {
+      "margin": null,
+      "winner": "N/A"
+     }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+     "Acme Nimbus Noir Eau de Parfum": "mid",
+     "Zephyra Velvet Dusk Eau de Toilette": "mid"
+    },
+    "scores": {
+     "product_0": {
+      "breakdown": {
+       "character_score": 50,
+       "longevity_score": "90.0",
+       "presentation_score": 50,
+       "projection_score": "90.0",
+       "versatility_score": 50,
+       "wear_value_score": "75.0"
+      },
+      "missing_data": [
+       "character_score",
+       "versatility_score",
+       "wear_value_score",
+       "presentation_score"
+      ],
+      "overall": "68.5",
+      "weights_used": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      }
+     },
+     "product_1": {
+      "breakdown": {
+       "character_score": 50,
+       "longevity_score": "90.0",
+       "presentation_score": 50,
+       "projection_score": "90.0",
+       "versatility_score": 50,
+       "wear_value_score": "75.0"
+      },
+      "missing_data": [
+       "character_score",
+       "versatility_score",
+       "wear_value_score",
+       "presentation_score"
+      ],
+      "overall": "68.5",
+      "weights_used": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      }
+     }
+    },
+    "scoring_method": "category_weighted"
+   },
+   "scoring_v2": {
+    "comparison_quality": "normal",
+    "confidence_details": {
+     "price": {
+      "freshness": "live",
+      "method": "retailer_verified",
+      "method_p0": "local_bhd",
+      "method_p1": "local_bhd",
+      "sources_count": 0
+     },
+     "reviews": {
+      "review_count": 10,
+      "source": "example",
+      "verified": true
+     },
+     "specs": {
+      "citation_count": 3,
+      "verified_pct": 0
+     }
+    },
+    "confidence_legs": {
+     "price": "strong",
+     "reviews": "weak",
+     "specs": "weak"
+    },
+    "dimensions": [
+     {
+      "confidence": "high",
+      "delta_text": "BHD 0 less",
+      "is_core": true,
+      "key": "price",
+      "label": "Price",
+      "score_a": 85,
+      "score_b": 85,
+      "winner": null
+     },
+     {
+      "confidence": "high",
+      "delta_text": "Same rating",
+      "is_core": true,
+      "key": "reviews",
+      "label": "Reviews",
+      "score_a": 88,
+      "score_b": 88,
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable value",
+      "is_core": true,
+      "is_cross_tier": false,
+      "key": "value",
+      "label": "Value",
+      "score_a": 88,
+      "score_b": 88,
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable",
+      "is_core": false,
+      "key": "longevity",
+      "label": "Longevity",
+      "score_a": "90.0",
+      "score_b": "90.0",
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable",
+      "is_core": false,
+      "key": "projection",
+      "label": "Projection",
+      "score_a": "90.0",
+      "score_b": "90.0",
+      "winner": null
+     }
+    ],
+    "factual_verdict": {
+     "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+     "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+    },
+    "overall_score": {
+     "product_a": 79,
+     "product_b": 78,
+     "winner_idx": 0
+    },
+    "personalization": {
+     "applied_shifts": []
+    },
+    "win_margin": 1,
+    "winner_evidence": []
+   },
+   "specs": {
+    "products": [
+     {
+      "brand": "Acme",
+      "name": "Nimbus Noir Eau de Parfum",
+      "spec_advantages": [],
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      }
+     },
+     {
+      "brand": "Zephyra",
+      "name": "Velvet Dusk Eau de Toilette",
+      "spec_advantages": [],
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      }
+     }
+    ],
+    "specs_comparison": {
+     "rows": [
+      {
+       "field": "concentration",
+       "p0_value": "Eau de Parfum",
+       "p1_value": "Eau de Parfum",
+       "winner": "tie"
+      },
+      {
+       "field": "scent_family",
+       "p0_value": "amber",
+       "p1_value": "amber",
+       "winner": "tie"
+      },
+      {
+       "field": "longevity",
+       "p0_value": "8 hours",
+       "p1_value": "8 hours",
+       "winner": "tie"
+      }
+     ]
+    }
+   },
+   "success": true,
+   "tier_context": {
+    "is_cross_tier": false,
+    "price_tiers": {
+     "Acme Nimbus Noir Eau de Parfum": "mid",
+     "Zephyra Velvet Dusk Eau de Toilette": "mid"
+    }
+   },
+   "winner_index": 0
+  },
+  "rest_deadline_on": {
+   "category": "fragrances",
+   "category_switched": false,
+   "category_used": "fragrances",
+   "comparison": {
+    "cons": {},
+    "pros": {},
+    "verdict": "v",
+    "winner_declaration": "Acme wins",
+    "winner_index": 0,
+    "winner_reason": "longevity"
+   },
+   "key_differences": [],
+   "metadata": {
+    "api_calls": 4,
+    "budget_mismatch": false,
+    "cache_hit": false,
+    "cached": false,
+    "cohort_injected": false,
+    "comparison_quality": "normal",
+    "data_freshness_shaky": true,
+    "fact_check": {
+     "product_0": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "product_1": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     }
+    },
+    "genuine_from_cache": false,
+    "gpt_calls": 2,
+    "guard_rejected": [],
+    "llm": {
+     "basis": "list_price",
+     "by_model": {},
+     "by_provider": {},
+     "cache_read_tokens": 0,
+     "cache_write_1h_tokens": 0,
+     "cache_write_5m_tokens": 0,
+     "calls": 0,
+     "completion_tokens": 0,
+     "cost_complete": true,
+     "cost_usd": "0.0",
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "price_table_as_of": {
+      "anthropic": "2026-10-22",
+      "openai": "2026-10-08"
+     },
+     "priced_calls": 0,
+     "prompt_tokens": 0,
+     "schema_version": 1,
+     "unpriced_calls": 0,
+     "web_search_requests": 0
+    },
+    "missing_dim_cells": {
+     "count": 8,
+     "fraction": "0.6667",
+     "total": 12
+    },
+    "openai": {
+     "basis": "list_price",
+     "by_model": {},
+     "cached_tokens": 0,
+     "calls": 0,
+     "completion_tokens": 0,
+     "cost_complete": true,
+     "cost_usd": "0.0",
+     "price_table_as_of": "2026-10-08",
+     "priced_calls": 0,
+     "prompt_tokens": 0,
+     "unpriced_calls": 0
+    },
+    "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+    "region": "bahrain",
+    "serper_calls": 2,
+    "source_trace": {
+     "products": [
+      {
+       "name": "Acme Nimbus Noir Eau de Parfum",
+       "races": {
+        "image": {
+         "sources_returned_value": [],
+         "sources_tried": [
+          "image_url"
+         ],
+         "wall_ms": 0
+        },
+        "price": {
+         "sources_returned_value": [
+          "price"
+         ],
+         "sources_tried": [
+          "price"
+         ],
+         "wall_ms": 0
+        },
+        "reviews": {
+         "sources_returned_value": [
+          "reviews"
+         ],
+         "sources_tried": [
+          "reviews"
+         ],
+         "wall_ms": 0
+        },
+        "specs": {
+         "sources_returned_value": [
+          "specs"
+         ],
+         "sources_tried": [
+          "specs"
+         ],
+         "wall_ms": 0
+        }
+       }
+      },
+      {
+       "name": "Zephyra Velvet Dusk Eau de Toilette",
+       "races": {
+        "image": {
+         "sources_returned_value": [],
+         "sources_tried": [
+          "image_url"
+         ],
+         "wall_ms": 0
+        },
+        "price": {
+         "sources_returned_value": [
+          "price"
+         ],
+         "sources_tried": [
+          "price"
+         ],
+         "wall_ms": 0
+        },
+        "reviews": {
+         "sources_returned_value": [
+          "reviews"
+         ],
+         "sources_tried": [
+          "reviews"
+         ],
+         "wall_ms": 0
+        },
+        "specs": {
+         "sources_returned_value": [
+          "specs"
+         ],
+         "sources_tried": [
+          "specs"
+         ],
+         "wall_ms": 0
+        }
+       }
+      }
+     ]
+    },
+    "total_cost": "0.002048",
+    "verdict_validation": {
+     "claims_flagged": 0,
+     "claims_softened": 3,
+     "claims_validated": 0,
+     "confidence_adjustment": null,
+     "winner_aligned": true
+    }
+   },
+   "original_category": null,
+   "overview": {
+    "confidence": {
+     "legs": {
+      "price": "strong",
+      "reviews": "weak",
+      "specs": "weak"
+     },
+     "overall": "low",
+     "price": {
+      "freshness": "live",
+      "method": "retailer_verified",
+      "source_count": 0
+     },
+     "rating": {
+      "review_count": 10,
+      "source": "example",
+      "verified": true
+     },
+     "specs": {
+      "citation_count": 3,
+      "verified_pct": 0
+     }
+    },
+    "products": [
+     {
+      "_debug_capture": null,
+      "best_for": "",
+      "brand": "Acme",
+      "cons": [],
+      "image_url": null,
+      "name": "Nimbus Noir Eau de Parfum",
+      "overall_score": "68.5",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "pros": [],
+      "pros_cons": {
+       "cons": [],
+       "is_winner": true,
+       "pros": []
+      },
+      "rating": "4.5",
+      "review_count": 10,
+      "value_badge": "fair_price",
+      "value_context": "",
+      "value_match": "unknown",
+      "variant": "Eau de Parfum"
+     },
+     {
+      "_debug_capture": null,
+      "best_for": "",
+      "brand": "Zephyra",
+      "cons": [],
+      "image_url": null,
+      "name": "Velvet Dusk Eau de Toilette",
+      "overall_score": "68.5",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "pros": [],
+      "pros_cons": {
+       "cons": [],
+       "is_winner": false,
+       "pros": []
+      },
+      "rating": "4.5",
+      "review_count": 10,
+      "value_badge": "fair_price",
+      "value_context": "",
+      "value_match": "unknown",
+      "variant": "Eau de Parfum"
+     }
+    ],
+    "tradeoffs": [],
+    "winner": {
+     "declaration": "Acme wins",
+     "key_tradeoff": "",
+     "margin": "0.0",
+     "name": "Acme wins",
+     "product_index": 0,
+     "reason": "longevity"
+    }
+   },
+   "personalization": {
+    "applied_shifts": [],
+    "factors": [],
+    "personalized": false,
+    "personalized_insights": []
+   },
+   "personalization_factors": [],
+   "personalized": false,
+   "personalized_insights": [],
+   "price_method_mismatch": false,
+   "products": [
+    {
+     "best_price": "55.0",
+     "brand": "Acme",
+     "category": "fragrances",
+     "category_profile": {
+      "category": "fragrances",
+      "fields": [
+       {
+        "key": "scent_family",
+        "label": "Scent family",
+        "value": "amber"
+       },
+       {
+        "key": "longevity",
+        "label": "Longevity",
+        "value": "8 hours"
+       },
+       {
+        "key": "concentration",
+        "label": "Concentration",
+        "value": "Eau de Parfum"
+       }
+      ]
+     },
+     "cons": [],
+     "currency": "BHD",
+     "data_freshness": "cached",
+     "fact_check": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "full_name": "Acme Nimbus Noir Eau de Parfum",
+     "image_url": null,
+     "name": "Nimbus Noir Eau de Parfum",
+     "price": {
+      "amount": "55.0",
+      "currency": "BHD",
+      "estimated": false,
+      "in_stock": true,
+      "retailer": "Live Store",
+      "source_method": "local_bhd",
+      "title": "x",
+      "url": "https://live-store.example.com/p/1"
+     },
+     "pros": [],
+     "pros_cons": {
+      "cons": [],
+      "pros": []
+     },
+     "query": "Acme Nimbus Noir Eau de Parfum",
+     "rating": "4.5",
+     "rating_count": 10,
+     "rating_source": {
+      "name": "example",
+      "url": "https://example.com/r"
+     },
+     "rating_verified": true,
+     "retailer": "Live Store",
+     "review_count": 10,
+     "review_praise": null,
+     "reviews": {
+      "highlights": [
+       "good"
+      ],
+      "summary": "ok",
+      "verified_rating": {
+       "rating": "4.5",
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      }
+     },
+     "specs": {
+      "concentration": "Eau de Parfum",
+      "longevity": "8 hours",
+      "scent_family": "amber"
+     },
+     "value_badge": "fair_price",
+     "variant": null
+    },
+    {
+     "best_price": "55.0",
+     "brand": "Zephyra",
+     "category": "fragrances",
+     "category_profile": {
+      "category": "fragrances",
+      "fields": [
+       {
+        "key": "scent_family",
+        "label": "Scent family",
+        "value": "amber"
+       },
+       {
+        "key": "longevity",
+        "label": "Longevity",
+        "value": "8 hours"
+       },
+       {
+        "key": "concentration",
+        "label": "Concentration",
+        "value": "Eau de Parfum"
+       }
+      ]
+     },
+     "cons": [],
+     "currency": "BHD",
+     "data_freshness": "cached",
+     "fact_check": {
+      "price_deviation_pct": null,
+      "price_verified": true,
+      "review_rating_deviation": null,
+      "review_sentiment_consistent": null,
+      "specs_flagged": 0,
+      "specs_likely": 0,
+      "specs_unverified": 3,
+      "specs_verified": 0
+     },
+     "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+     "image_url": null,
+     "name": "Velvet Dusk Eau de Toilette",
+     "price": {
+      "amount": "55.0",
+      "currency": "BHD",
+      "estimated": false,
+      "in_stock": true,
+      "retailer": "Live Store",
+      "source_method": "local_bhd",
+      "title": "x",
+      "url": "https://live-store.example.com/p/1"
+     },
+     "pros": [],
+     "pros_cons": {
+      "cons": [],
+      "pros": []
+     },
+     "query": "Zephyra Velvet Dusk Eau de Toilette",
+     "rating": "4.5",
+     "rating_count": 10,
+     "rating_source": {
+      "name": "example",
+      "url": "https://example.com/r"
+     },
+     "rating_verified": true,
+     "retailer": "Live Store",
+     "review_count": 10,
+     "review_praise": null,
+     "reviews": {
+      "highlights": [
+       "good"
+      ],
+      "summary": "ok",
+      "verified_rating": {
+       "rating": "4.5",
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      }
+     },
+     "specs": {
+      "concentration": "Eau de Parfum",
+      "longevity": "8 hours",
+      "scent_family": "amber"
+     },
+     "value_badge": "fair_price",
+     "variant": null
+    }
+   ],
+   "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+   "recommendation": "longevity",
+   "reviews": {
+    "products": [
+     {
+      "brand": "Acme",
+      "name": "Nimbus Noir Eau de Parfum",
+      "rating": "4.5",
+      "rating_source": {
+       "name": "example",
+       "url": "https://example.com/r"
+      },
+      "retailer_quotes": [],
+      "review_count": 10,
+      "review_praise": null,
+      "review_summary": {
+       "agreement_level": "moderate",
+       "consensus": "",
+       "highlights": [],
+       "overall_sentiment": "mixed",
+       "review_volume": "minimal"
+      },
+      "youtube_review_signal": null
+     },
+     {
+      "brand": "Zephyra",
+      "name": "Velvet Dusk Eau de Toilette",
+      "rating": "4.5",
+      "rating_source": {
+       "name": "example",
+       "url": "https://example.com/r"
+      },
+      "retailer_quotes": [],
+      "review_count": 10,
+      "review_praise": null,
+      "review_summary": {
+       "agreement_level": "moderate",
+       "consensus": "",
+       "highlights": [],
+       "overall_sentiment": "mixed",
+       "review_volume": "minimal"
+      },
+      "youtube_review_signal": null
+     }
+    ]
+   },
+   "scoring": {
+    "category_weights": {
+     "character_score": "0.25",
+     "longevity_score": "0.25",
+     "presentation_score": "0.1",
+     "projection_score": "0.15",
+     "versatility_score": "0.15",
+     "wear_value_score": "0.1"
+    },
+    "dimension_winners": {
+     "character_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "longevity_score": {
+      "margin": "0.0",
+      "winner": "tie"
+     },
+     "presentation_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "projection_score": {
+      "margin": "0.0",
+      "winner": "tie"
+     },
+     "versatility_score": {
+      "margin": null,
+      "winner": "N/A"
+     },
+     "wear_value_score": {
+      "margin": null,
+      "winner": "N/A"
+     }
+    },
+    "is_cross_tier": false,
+    "price_tiers": {
+     "Acme Nimbus Noir Eau de Parfum": "mid",
+     "Zephyra Velvet Dusk Eau de Toilette": "mid"
+    },
+    "scores": {
+     "product_0": {
+      "breakdown": {
+       "character_score": 50,
+       "longevity_score": "90.0",
+       "presentation_score": 50,
+       "projection_score": "90.0",
+       "versatility_score": 50,
+       "wear_value_score": "75.0"
+      },
+      "missing_data": [
+       "character_score",
+       "versatility_score",
+       "wear_value_score",
+       "presentation_score"
+      ],
+      "overall": "68.5",
+      "weights_used": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      }
+     },
+     "product_1": {
+      "breakdown": {
+       "character_score": 50,
+       "longevity_score": "90.0",
+       "presentation_score": 50,
+       "projection_score": "90.0",
+       "versatility_score": 50,
+       "wear_value_score": "75.0"
+      },
+      "missing_data": [
+       "character_score",
+       "versatility_score",
+       "wear_value_score",
+       "presentation_score"
+      ],
+      "overall": "68.5",
+      "weights_used": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      }
+     }
+    },
+    "scoring_method": "category_weighted"
+   },
+   "scoring_v2": {
+    "comparison_quality": "normal",
+    "confidence_details": {
+     "price": {
+      "freshness": "live",
+      "method": "retailer_verified",
+      "method_p0": "local_bhd",
+      "method_p1": "local_bhd",
+      "sources_count": 0
+     },
+     "reviews": {
+      "review_count": 10,
+      "source": "example",
+      "verified": true
+     },
+     "specs": {
+      "citation_count": 3,
+      "verified_pct": 0
+     }
+    },
+    "confidence_legs": {
+     "price": "strong",
+     "reviews": "weak",
+     "specs": "weak"
+    },
+    "dimensions": [
+     {
+      "confidence": "high",
+      "delta_text": "BHD 0 less",
+      "is_core": true,
+      "key": "price",
+      "label": "Price",
+      "score_a": 85,
+      "score_b": 85,
+      "winner": null
+     },
+     {
+      "confidence": "high",
+      "delta_text": "Same rating",
+      "is_core": true,
+      "key": "reviews",
+      "label": "Reviews",
+      "score_a": 88,
+      "score_b": 88,
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable value",
+      "is_core": true,
+      "is_cross_tier": false,
+      "key": "value",
+      "label": "Value",
+      "score_a": 88,
+      "score_b": 88,
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable",
+      "is_core": false,
+      "key": "longevity",
+      "label": "Longevity",
+      "score_a": "90.0",
+      "score_b": "90.0",
+      "winner": null
+     },
+     {
+      "confidence": "medium",
+      "delta_text": "Comparable",
+      "is_core": false,
+      "key": "projection",
+      "label": "Projection",
+      "score_a": "90.0",
+      "score_b": "90.0",
+      "winner": null
+     }
+    ],
+    "factual_verdict": {
+     "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+     "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+    },
+    "overall_score": {
+     "product_a": 79,
+     "product_b": 78,
+     "winner_idx": 0
+    },
+    "personalization": {
+     "applied_shifts": []
+    },
+    "win_margin": 1,
+    "winner_evidence": []
+   },
+   "specs": {
+    "products": [
+     {
+      "brand": "Acme",
+      "name": "Nimbus Noir Eau de Parfum",
+      "spec_advantages": [],
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      }
+     },
+     {
+      "brand": "Zephyra",
+      "name": "Velvet Dusk Eau de Toilette",
+      "spec_advantages": [],
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      }
+     }
+    ],
+    "specs_comparison": {
+     "rows": [
+      {
+       "field": "concentration",
+       "p0_value": "Eau de Parfum",
+       "p1_value": "Eau de Parfum",
+       "winner": "tie"
+      },
+      {
+       "field": "scent_family",
+       "p0_value": "amber",
+       "p1_value": "amber",
+       "winner": "tie"
+      },
+      {
+       "field": "longevity",
+       "p0_value": "8 hours",
+       "p1_value": "8 hours",
+       "winner": "tie"
+      }
+     ]
+    }
+   },
+   "success": true,
+   "tier_context": {
+    "is_cross_tier": false,
+    "price_tiers": {
+     "Acme Nimbus Noir Eau de Parfum": "mid",
+     "Zephyra Velvet Dusk Eau de Toilette": "mid"
+    }
+   },
+   "winner_index": 0
+  },
+  "run_row": {
+   "cache_hits": {
+    "price": [
+     false,
+     false
+    ],
+    "response": false,
+    "v": 1
+   },
+   "category": "fragrances",
+   "compare_request_id": null,
+   "comparison_id": null,
+   "consent_version": null,
+   "data_coverage": 3,
+   "device_key": null,
+   "evidence": {
+    "category": "fragrances",
+    "products": [
+     {
+      "brand": "Acme",
+      "category": "fragrances",
+      "concentration": "Eau de Parfum",
+      "image": false,
+      "name": "Nimbus Noir Eau de Parfum",
+      "price": {
+       "amount": "55.0",
+       "as_of": null,
+       "currency": "BHD",
+       "estimated": false,
+       "host": "live-store.example.com",
+       "source_method": "local_bhd",
+       "unavailable": false
+      },
+      "rating": {
+       "count": 10,
+       "source": null,
+       "value": "4.5"
+      },
+      "size": null,
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      },
+      "variant": null
+     },
+     {
+      "brand": "Zephyra",
+      "category": "fragrances",
+      "concentration": "Eau de Parfum",
+      "image": false,
+      "name": "Velvet Dusk Eau de Toilette",
+      "price": {
+       "amount": "55.0",
+       "as_of": null,
+       "currency": "BHD",
+       "estimated": false,
+       "host": "live-store.example.com",
+       "source_method": "local_bhd",
+       "unavailable": false
+      },
+      "rating": {
+       "count": 10,
+       "source": null,
+       "value": "4.5"
+      },
+      "size": null,
+      "specs": {
+       "concentration": "Eau de Parfum",
+       "longevity": "8 hours",
+       "scent_family": "amber"
+      },
+      "variant": null
+     }
+    ],
+    "scores": {
+     "overall": [
+      "68.5",
+      "68.5"
+     ],
+     "scoring_method": "category_weighted"
+    },
+    "section_status": {
+     "price": "available",
+     "pros_cons": "unavailable",
+     "reviews": "available",
+     "specs": "available"
+    },
+    "specs_comparison": {
+     "rows": [
+      "{'field': 'concentration', 'p0_value': 'Eau de Parfum', 'p1_value': 'Eau de Parfum', 'winner': 'tie'}",
+      "{'field': 'scent_family', 'p0_value': 'amber', 'p1_value': 'amber', 'winner': 'tie'}",
+      "{'field': 'longevity', 'p0_value': '8 hours', 'p1_value': '8 hours', 'winner': 'tie'}"
+     ]
+    },
+    "truncated": false,
+    "v": 1,
+    "verdict": {
+     "declaration": "Acme wins",
+     "key_tradeoff": "",
+     "margin": "0.0",
+     "name": "Acme wins",
+     "product_index": 0,
+     "reason": "longevity",
+     "supported": true
+    }
+   },
+   "field_status": null,
+   "identity_confidence": "high",
+   "input_type": "text",
+   "kb_product_ids": null,
+   "llm_calls": null,
+   "partial_stage": null,
+   "product_categories": null,
+   "query_hmac": null,
+   "refusal_reason": null,
+   "result_status": "supported_result",
+   "sources_used": {
+    "kb_hit": null,
+    "price_host": [
+     "live-store.example.com",
+     "live-store.example.com"
+    ],
+    "price_method": [
+     "local_bhd",
+     "local_bhd"
+    ],
+    "rating_method": [
+     null,
+     null
+    ],
+    "v": 1
+   },
+   "winner_supported": true
+  },
+  "sites_deadline_off": [],
+  "sites_deadline_on": [],
+  "stream_deadline_off": [
+   [
+    "status",
+    {
+     "message": "Parsing query...",
+     "progress": 10
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Fetching specs and prices...",
+     "progress": 20
+    }
+   ],
+   [
+    "specs",
+    {
+     "products": [
+      {
+       "brand": "Acme",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "image_url": null,
+       "name": "Nimbus Noir Eau de Parfum",
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       }
+      },
+      {
+       "brand": "Zephyra",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "image_url": null,
+       "name": "Velvet Dusk Eau de Toilette",
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       }
+      }
+     ]
+    }
+   ],
+   [
+    "prices",
+    {
+     "product_0": {
+      "best_price": "55.0",
+      "brand": "Acme",
+      "currency": "BHD",
+      "name": "Nimbus Noir Eau de Parfum",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "retailer": "Live Store"
+     },
+     "product_1": {
+      "best_price": "55.0",
+      "brand": "Zephyra",
+      "currency": "BHD",
+      "name": "Velvet Dusk Eau de Toilette",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "retailer": "Live Store"
+     }
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Analyzing reviews...",
+     "progress": 50
+    }
+   ],
+   [
+    "reviews",
+    {
+     "products": [
+      {
+       "brand": "Acme",
+       "name": "Nimbus Noir Eau de Parfum",
+       "rating": "4.5",
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer_quotes": [],
+       "review_count": 10,
+       "review_summary": {
+        "agreement_level": "moderate",
+        "consensus": "",
+        "highlights": [],
+        "overall_sentiment": "mixed",
+        "review_volume": "minimal"
+       },
+       "youtube_review_signal": null
+      },
+      {
+       "brand": "Zephyra",
+       "name": "Velvet Dusk Eau de Toilette",
+       "rating": "4.5",
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer_quotes": [],
+       "review_count": 10,
+       "review_summary": {
+        "agreement_level": "moderate",
+        "consensus": "",
+        "highlights": [],
+        "overall_sentiment": "mixed",
+        "review_volume": "minimal"
+       },
+       "youtube_review_signal": null
+      }
+     ]
+    }
+   ],
+   [
+    "first_paint",
+    {
+     "products": [
+      {
+       "brand": "Acme",
+       "name": "Nimbus Noir Eau de Parfum"
+      },
+      {
+       "brand": "Zephyra",
+       "name": "Velvet Dusk Eau de Toilette"
+      }
+     ]
+    }
+   ],
+   [
+    "scores",
+    {
+     "confidence": {
+      "legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "overall": "low",
+      "price": {
+       "freshness": "live",
+       "method": "retailer_verified",
+       "source_count": 0
+      },
+      "rating": {
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      },
+      "specs": {
+       "citation_count": 3,
+       "verified_pct": 0
+      }
+     },
+     "dimension_winners": {
+      "character_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "longevity_score": {
+       "margin": "0.0",
+       "winner": "tie"
+      },
+      "presentation_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "projection_score": {
+       "margin": "0.0",
+       "winner": "tie"
+      },
+      "versatility_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "wear_value_score": {
+       "margin": null,
+       "winner": "N/A"
+      }
+     },
+     "scores": {
+      "product_0": {
+       "breakdown": {
+        "character_score": 50,
+        "longevity_score": "90.0",
+        "presentation_score": 50,
+        "projection_score": "90.0",
+        "versatility_score": 50,
+        "wear_value_score": "75.0"
+       },
+       "missing_data": [
+        "character_score",
+        "versatility_score",
+        "wear_value_score",
+        "presentation_score"
+       ],
+       "overall": "68.5",
+       "weights_used": {
+        "character_score": "0.25",
+        "longevity_score": "0.25",
+        "presentation_score": "0.1",
+        "projection_score": "0.15",
+        "versatility_score": "0.15",
+        "wear_value_score": "0.1"
+       }
+      },
+      "product_1": {
+       "breakdown": {
+        "character_score": 50,
+        "longevity_score": "90.0",
+        "presentation_score": 50,
+        "projection_score": "90.0",
+        "versatility_score": 50,
+        "wear_value_score": "75.0"
+       },
+       "missing_data": [
+        "character_score",
+        "versatility_score",
+        "wear_value_score",
+        "presentation_score"
+       ],
+       "overall": "68.5",
+       "weights_used": {
+        "character_score": "0.25",
+        "longevity_score": "0.25",
+        "presentation_score": "0.1",
+        "projection_score": "0.15",
+        "versatility_score": "0.15",
+        "wear_value_score": "0.1"
+       }
+      }
+     },
+     "win_margin": "0.0",
+     "winner_index": 0
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Generating verdict...",
+     "progress": 80
+    }
+   ],
+   [
+    "verdict",
+    {
+     "best_for": {},
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "Acme wins",
+      "winner_index": 0,
+      "winner_reason": "longevity"
+     },
+     "key_differences": [],
+     "personalized_insights": [],
+     "recommendation": "longevity",
+     "value_context": "",
+     "winner": {
+      "key_tradeoff": "",
+      "margin": "0.0",
+      "name": "Acme wins",
+      "product_index": 0,
+      "reason": "longevity"
+     },
+     "winner_index": 0
+    }
+   ],
+   [
+    "settle_complete",
+    {
+     "category": "fragrances",
+     "category_switched": false,
+     "category_used": "fragrances",
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "Acme wins",
+      "winner_index": 0,
+      "winner_reason": "longevity"
+     },
+     "key_differences": [],
+     "metadata": {
+      "api_calls": 4,
+      "budget_mismatch": false,
+      "cache_hit": false,
+      "cached": false,
+      "cohort_injected": false,
+      "comparison_quality": "normal",
+      "data_freshness_shaky": true,
+      "fact_check": {
+       "product_0": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "product_1": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       }
+      },
+      "genuine_from_cache": false,
+      "gpt_calls": 2,
+      "guard_rejected": [],
+      "llm": {
+       "basis": "list_price",
+       "by_model": {},
+       "by_provider": {},
+       "cache_read_tokens": 0,
+       "cache_write_1h_tokens": 0,
+       "cache_write_5m_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "input_tokens": 0,
+       "output_tokens": 0,
+       "price_table_as_of": {
+        "anthropic": "2026-10-22",
+        "openai": "2026-10-08"
+       },
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "schema_version": 1,
+       "unpriced_calls": 0,
+       "web_search_requests": 0
+      },
+      "missing_dim_cells": {
+       "count": 8,
+       "fraction": "0.6667",
+       "total": 12
+      },
+      "openai": {
+       "basis": "list_price",
+       "by_model": {},
+       "cached_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "price_table_as_of": "2026-10-08",
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "unpriced_calls": 0
+      },
+      "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+      "region": "bahrain",
+      "serper_calls": 2,
+      "source_trace": {
+       "products": [
+        {
+         "name": "Acme Nimbus Noir Eau de Parfum",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        },
+        {
+         "name": "Zephyra Velvet Dusk Eau de Toilette",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        }
+       ]
+      },
+      "total_cost": "0.002048",
+      "verdict_validation": {
+       "claims_flagged": 0,
+       "claims_softened": 3,
+       "claims_validated": 0,
+       "confidence_adjustment": null,
+       "winner_aligned": true
+      }
+     },
+     "original_category": null,
+     "overview": {
+      "confidence": {
+       "legs": {
+        "price": "strong",
+        "reviews": "weak",
+        "specs": "weak"
+       },
+       "overall": "low",
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "source_count": 0
+       },
+       "rating": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "products": [
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Acme",
+        "cons": [],
+        "image_url": null,
+        "name": "Nimbus Noir Eau de Parfum",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": true,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       },
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Zephyra",
+        "cons": [],
+        "image_url": null,
+        "name": "Velvet Dusk Eau de Toilette",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": false,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       }
+      ],
+      "tradeoffs": [],
+      "winner": {
+       "declaration": "Acme wins",
+       "key_tradeoff": "",
+       "margin": "0.0",
+       "name": "Acme wins",
+       "product_index": 0,
+       "reason": "longevity"
+      }
+     },
+     "personalization": {
+      "applied_shifts": [],
+      "factors": [],
+      "personalized": false,
+      "personalized_insights": []
+     },
+     "personalization_factors": [],
+     "personalized": false,
+     "personalized_insights": [],
+     "price_method_mismatch": false,
+     "products": [
+      {
+       "best_price": "55.0",
+       "brand": "Acme",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Acme Nimbus Noir Eau de Parfum",
+       "image_url": null,
+       "name": "Nimbus Noir Eau de Parfum",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Acme Nimbus Noir Eau de Parfum",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      },
+      {
+       "best_price": "55.0",
+       "brand": "Zephyra",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+       "image_url": null,
+       "name": "Velvet Dusk Eau de Toilette",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Zephyra Velvet Dusk Eau de Toilette",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      }
+     ],
+     "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+     "recommendation": "longevity",
+     "reviews": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       }
+      ]
+     },
+     "scoring": {
+      "category_weights": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      },
+      "dimension_winners": {
+       "character_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "longevity_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "presentation_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "projection_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "versatility_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "wear_value_score": {
+        "margin": null,
+        "winner": "N/A"
+       }
+      },
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      },
+      "scores": {
+       "product_0": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       },
+       "product_1": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       }
+      },
+      "scoring_method": "category_weighted"
+     },
+     "scoring_v2": {
+      "comparison_quality": "normal",
+      "confidence_details": {
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "method_p0": "local_bhd",
+        "method_p1": "local_bhd",
+        "sources_count": 0
+       },
+       "reviews": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "confidence_legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "dimensions": [
+       {
+        "confidence": "high",
+        "delta_text": "BHD 0 less",
+        "is_core": true,
+        "key": "price",
+        "label": "Price",
+        "score_a": 85,
+        "score_b": 85,
+        "winner": null
+       },
+       {
+        "confidence": "high",
+        "delta_text": "Same rating",
+        "is_core": true,
+        "key": "reviews",
+        "label": "Reviews",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable value",
+        "is_core": true,
+        "is_cross_tier": false,
+        "key": "value",
+        "label": "Value",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "longevity",
+        "label": "Longevity",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "projection",
+        "label": "Projection",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       }
+      ],
+      "factual_verdict": {
+       "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+       "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+      },
+      "overall_score": {
+       "product_a": 79,
+       "product_b": 78,
+       "winner_idx": 0
+      },
+      "personalization": {
+       "applied_shifts": []
+      },
+      "win_margin": 1,
+      "winner_evidence": []
+     },
+     "specs": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       }
+      ],
+      "specs_comparison": {
+       "rows": [
+        {
+         "field": "concentration",
+         "p0_value": "Eau de Parfum",
+         "p1_value": "Eau de Parfum",
+         "winner": "tie"
+        },
+        {
+         "field": "scent_family",
+         "p0_value": "amber",
+         "p1_value": "amber",
+         "winner": "tie"
+        },
+        {
+         "field": "longevity",
+         "p0_value": "8 hours",
+         "p1_value": "8 hours",
+         "winner": "tie"
+        }
+       ]
+      }
+     },
+     "success": true,
+     "tier_context": {
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      }
+     },
+     "winner_index": 0
+    }
+   ],
+   [
+    "complete",
+    {
+     "category": "fragrances",
+     "category_switched": false,
+     "category_used": "fragrances",
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "Acme wins",
+      "winner_index": 0,
+      "winner_reason": "longevity"
+     },
+     "key_differences": [],
+     "metadata": {
+      "api_calls": 4,
+      "budget_mismatch": false,
+      "cache_hit": false,
+      "cached": false,
+      "cohort_injected": false,
+      "comparison_quality": "normal",
+      "data_freshness_shaky": true,
+      "fact_check": {
+       "product_0": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "product_1": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       }
+      },
+      "genuine_from_cache": false,
+      "gpt_calls": 2,
+      "guard_rejected": [],
+      "llm": {
+       "basis": "list_price",
+       "by_model": {},
+       "by_provider": {},
+       "cache_read_tokens": 0,
+       "cache_write_1h_tokens": 0,
+       "cache_write_5m_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "input_tokens": 0,
+       "output_tokens": 0,
+       "price_table_as_of": {
+        "anthropic": "2026-10-22",
+        "openai": "2026-10-08"
+       },
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "schema_version": 1,
+       "unpriced_calls": 0,
+       "web_search_requests": 0
+      },
+      "missing_dim_cells": {
+       "count": 8,
+       "fraction": "0.6667",
+       "total": 12
+      },
+      "openai": {
+       "basis": "list_price",
+       "by_model": {},
+       "cached_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "price_table_as_of": "2026-10-08",
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "unpriced_calls": 0
+      },
+      "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+      "region": "bahrain",
+      "serper_calls": 2,
+      "source_trace": {
+       "products": [
+        {
+         "name": "Acme Nimbus Noir Eau de Parfum",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        },
+        {
+         "name": "Zephyra Velvet Dusk Eau de Toilette",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        }
+       ]
+      },
+      "total_cost": "0.002048",
+      "verdict_validation": {
+       "claims_flagged": 0,
+       "claims_softened": 3,
+       "claims_validated": 0,
+       "confidence_adjustment": null,
+       "winner_aligned": true
+      }
+     },
+     "original_category": null,
+     "overview": {
+      "confidence": {
+       "legs": {
+        "price": "strong",
+        "reviews": "weak",
+        "specs": "weak"
+       },
+       "overall": "low",
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "source_count": 0
+       },
+       "rating": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "products": [
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Acme",
+        "cons": [],
+        "image_url": null,
+        "name": "Nimbus Noir Eau de Parfum",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": true,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       },
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Zephyra",
+        "cons": [],
+        "image_url": null,
+        "name": "Velvet Dusk Eau de Toilette",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": false,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       }
+      ],
+      "tradeoffs": [],
+      "winner": {
+       "declaration": "Acme wins",
+       "key_tradeoff": "",
+       "margin": "0.0",
+       "name": "Acme wins",
+       "product_index": 0,
+       "reason": "longevity"
+      }
+     },
+     "personalization": {
+      "applied_shifts": [],
+      "factors": [],
+      "personalized": false,
+      "personalized_insights": []
+     },
+     "personalization_factors": [],
+     "personalized": false,
+     "personalized_insights": [],
+     "price_method_mismatch": false,
+     "products": [
+      {
+       "best_price": "55.0",
+       "brand": "Acme",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Acme Nimbus Noir Eau de Parfum",
+       "image_url": null,
+       "name": "Nimbus Noir Eau de Parfum",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Acme Nimbus Noir Eau de Parfum",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      },
+      {
+       "best_price": "55.0",
+       "brand": "Zephyra",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+       "image_url": null,
+       "name": "Velvet Dusk Eau de Toilette",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Zephyra Velvet Dusk Eau de Toilette",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      }
+     ],
+     "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+     "recommendation": "longevity",
+     "reviews": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       }
+      ]
+     },
+     "scoring": {
+      "category_weights": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      },
+      "dimension_winners": {
+       "character_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "longevity_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "presentation_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "projection_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "versatility_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "wear_value_score": {
+        "margin": null,
+        "winner": "N/A"
+       }
+      },
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      },
+      "scores": {
+       "product_0": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       },
+       "product_1": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       }
+      },
+      "scoring_method": "category_weighted"
+     },
+     "scoring_v2": {
+      "comparison_quality": "normal",
+      "confidence_details": {
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "method_p0": "local_bhd",
+        "method_p1": "local_bhd",
+        "sources_count": 0
+       },
+       "reviews": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "confidence_legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "dimensions": [
+       {
+        "confidence": "high",
+        "delta_text": "BHD 0 less",
+        "is_core": true,
+        "key": "price",
+        "label": "Price",
+        "score_a": 85,
+        "score_b": 85,
+        "winner": null
+       },
+       {
+        "confidence": "high",
+        "delta_text": "Same rating",
+        "is_core": true,
+        "key": "reviews",
+        "label": "Reviews",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable value",
+        "is_core": true,
+        "is_cross_tier": false,
+        "key": "value",
+        "label": "Value",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "longevity",
+        "label": "Longevity",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "projection",
+        "label": "Projection",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       }
+      ],
+      "factual_verdict": {
+       "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+       "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+      },
+      "overall_score": {
+       "product_a": 79,
+       "product_b": 78,
+       "winner_idx": 0
+      },
+      "personalization": {
+       "applied_shifts": []
+      },
+      "win_margin": 1,
+      "winner_evidence": []
+     },
+     "specs": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       }
+      ],
+      "specs_comparison": {
+       "rows": [
+        {
+         "field": "concentration",
+         "p0_value": "Eau de Parfum",
+         "p1_value": "Eau de Parfum",
+         "winner": "tie"
+        },
+        {
+         "field": "scent_family",
+         "p0_value": "amber",
+         "p1_value": "amber",
+         "winner": "tie"
+        },
+        {
+         "field": "longevity",
+         "p0_value": "8 hours",
+         "p1_value": "8 hours",
+         "winner": "tie"
+        }
+       ]
+      }
+     },
+     "success": true,
+     "tier_context": {
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      }
+     },
+     "winner_index": 0
+    }
+   ]
+  ],
+  "stream_deadline_on": [
+   [
+    "status",
+    {
+     "message": "Parsing query...",
+     "progress": 10
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Fetching specs and prices...",
+     "progress": 20
+    }
+   ],
+   [
+    "specs",
+    {
+     "products": [
+      {
+       "brand": "Acme",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "image_url": null,
+       "name": "Nimbus Noir Eau de Parfum",
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       }
+      },
+      {
+       "brand": "Zephyra",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "image_url": null,
+       "name": "Velvet Dusk Eau de Toilette",
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       }
+      }
+     ]
+    }
+   ],
+   [
+    "prices",
+    {
+     "product_0": {
+      "best_price": "55.0",
+      "brand": "Acme",
+      "currency": "BHD",
+      "name": "Nimbus Noir Eau de Parfum",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "retailer": "Live Store"
+     },
+     "product_1": {
+      "best_price": "55.0",
+      "brand": "Zephyra",
+      "currency": "BHD",
+      "name": "Velvet Dusk Eau de Toilette",
+      "price": {
+       "amount": "55.0",
+       "currency": "BHD",
+       "estimated": false,
+       "in_stock": true,
+       "retailer": "Live Store",
+       "source_method": "local_bhd",
+       "title": "x",
+       "url": "https://live-store.example.com/p/1"
+      },
+      "retailer": "Live Store"
+     }
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Analyzing reviews...",
+     "progress": 50
+    }
+   ],
+   [
+    "reviews",
+    {
+     "products": [
+      {
+       "brand": "Acme",
+       "name": "Nimbus Noir Eau de Parfum",
+       "rating": "4.5",
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer_quotes": [],
+       "review_count": 10,
+       "review_summary": {
+        "agreement_level": "moderate",
+        "consensus": "",
+        "highlights": [],
+        "overall_sentiment": "mixed",
+        "review_volume": "minimal"
+       },
+       "youtube_review_signal": null
+      },
+      {
+       "brand": "Zephyra",
+       "name": "Velvet Dusk Eau de Toilette",
+       "rating": "4.5",
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer_quotes": [],
+       "review_count": 10,
+       "review_summary": {
+        "agreement_level": "moderate",
+        "consensus": "",
+        "highlights": [],
+        "overall_sentiment": "mixed",
+        "review_volume": "minimal"
+       },
+       "youtube_review_signal": null
+      }
+     ]
+    }
+   ],
+   [
+    "first_paint",
+    {
+     "products": [
+      {
+       "brand": "Acme",
+       "name": "Nimbus Noir Eau de Parfum"
+      },
+      {
+       "brand": "Zephyra",
+       "name": "Velvet Dusk Eau de Toilette"
+      }
+     ]
+    }
+   ],
+   [
+    "scores",
+    {
+     "confidence": {
+      "legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "overall": "low",
+      "price": {
+       "freshness": "live",
+       "method": "retailer_verified",
+       "source_count": 0
+      },
+      "rating": {
+       "review_count": 10,
+       "source": "example",
+       "verified": true
+      },
+      "specs": {
+       "citation_count": 3,
+       "verified_pct": 0
+      }
+     },
+     "dimension_winners": {
+      "character_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "longevity_score": {
+       "margin": "0.0",
+       "winner": "tie"
+      },
+      "presentation_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "projection_score": {
+       "margin": "0.0",
+       "winner": "tie"
+      },
+      "versatility_score": {
+       "margin": null,
+       "winner": "N/A"
+      },
+      "wear_value_score": {
+       "margin": null,
+       "winner": "N/A"
+      }
+     },
+     "scores": {
+      "product_0": {
+       "breakdown": {
+        "character_score": 50,
+        "longevity_score": "90.0",
+        "presentation_score": 50,
+        "projection_score": "90.0",
+        "versatility_score": 50,
+        "wear_value_score": "75.0"
+       },
+       "missing_data": [
+        "character_score",
+        "versatility_score",
+        "wear_value_score",
+        "presentation_score"
+       ],
+       "overall": "68.5",
+       "weights_used": {
+        "character_score": "0.25",
+        "longevity_score": "0.25",
+        "presentation_score": "0.1",
+        "projection_score": "0.15",
+        "versatility_score": "0.15",
+        "wear_value_score": "0.1"
+       }
+      },
+      "product_1": {
+       "breakdown": {
+        "character_score": 50,
+        "longevity_score": "90.0",
+        "presentation_score": 50,
+        "projection_score": "90.0",
+        "versatility_score": 50,
+        "wear_value_score": "75.0"
+       },
+       "missing_data": [
+        "character_score",
+        "versatility_score",
+        "wear_value_score",
+        "presentation_score"
+       ],
+       "overall": "68.5",
+       "weights_used": {
+        "character_score": "0.25",
+        "longevity_score": "0.25",
+        "presentation_score": "0.1",
+        "projection_score": "0.15",
+        "versatility_score": "0.15",
+        "wear_value_score": "0.1"
+       }
+      }
+     },
+     "win_margin": "0.0",
+     "winner_index": 0
+    }
+   ],
+   [
+    "status",
+    {
+     "message": "Generating verdict...",
+     "progress": 80
+    }
+   ],
+   [
+    "verdict",
+    {
+     "best_for": {},
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "Acme wins",
+      "winner_index": 0,
+      "winner_reason": "longevity"
+     },
+     "key_differences": [],
+     "personalized_insights": [],
+     "recommendation": "longevity",
+     "value_context": "",
+     "winner": {
+      "key_tradeoff": "",
+      "margin": "0.0",
+      "name": "Acme wins",
+      "product_index": 0,
+      "reason": "longevity"
+     },
+     "winner_index": 0
+    }
+   ],
+   [
+    "settle_complete",
+    {
+     "category": "fragrances",
+     "category_switched": false,
+     "category_used": "fragrances",
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "Acme wins",
+      "winner_index": 0,
+      "winner_reason": "longevity"
+     },
+     "key_differences": [],
+     "metadata": {
+      "api_calls": 4,
+      "budget_mismatch": false,
+      "cache_hit": false,
+      "cached": false,
+      "cohort_injected": false,
+      "comparison_quality": "normal",
+      "data_freshness_shaky": true,
+      "fact_check": {
+       "product_0": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "product_1": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       }
+      },
+      "genuine_from_cache": false,
+      "gpt_calls": 2,
+      "guard_rejected": [],
+      "llm": {
+       "basis": "list_price",
+       "by_model": {},
+       "by_provider": {},
+       "cache_read_tokens": 0,
+       "cache_write_1h_tokens": 0,
+       "cache_write_5m_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "input_tokens": 0,
+       "output_tokens": 0,
+       "price_table_as_of": {
+        "anthropic": "2026-10-22",
+        "openai": "2026-10-08"
+       },
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "schema_version": 1,
+       "unpriced_calls": 0,
+       "web_search_requests": 0
+      },
+      "missing_dim_cells": {
+       "count": 8,
+       "fraction": "0.6667",
+       "total": 12
+      },
+      "openai": {
+       "basis": "list_price",
+       "by_model": {},
+       "cached_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "price_table_as_of": "2026-10-08",
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "unpriced_calls": 0
+      },
+      "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+      "region": "bahrain",
+      "serper_calls": 2,
+      "source_trace": {
+       "products": [
+        {
+         "name": "Acme Nimbus Noir Eau de Parfum",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        },
+        {
+         "name": "Zephyra Velvet Dusk Eau de Toilette",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        }
+       ]
+      },
+      "total_cost": "0.002048",
+      "verdict_validation": {
+       "claims_flagged": 0,
+       "claims_softened": 3,
+       "claims_validated": 0,
+       "confidence_adjustment": null,
+       "winner_aligned": true
+      }
+     },
+     "original_category": null,
+     "overview": {
+      "confidence": {
+       "legs": {
+        "price": "strong",
+        "reviews": "weak",
+        "specs": "weak"
+       },
+       "overall": "low",
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "source_count": 0
+       },
+       "rating": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "products": [
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Acme",
+        "cons": [],
+        "image_url": null,
+        "name": "Nimbus Noir Eau de Parfum",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": true,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       },
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Zephyra",
+        "cons": [],
+        "image_url": null,
+        "name": "Velvet Dusk Eau de Toilette",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": false,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       }
+      ],
+      "tradeoffs": [],
+      "winner": {
+       "declaration": "Acme wins",
+       "key_tradeoff": "",
+       "margin": "0.0",
+       "name": "Acme wins",
+       "product_index": 0,
+       "reason": "longevity"
+      }
+     },
+     "personalization": {
+      "applied_shifts": [],
+      "factors": [],
+      "personalized": false,
+      "personalized_insights": []
+     },
+     "personalization_factors": [],
+     "personalized": false,
+     "personalized_insights": [],
+     "price_method_mismatch": false,
+     "products": [
+      {
+       "best_price": "55.0",
+       "brand": "Acme",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Acme Nimbus Noir Eau de Parfum",
+       "image_url": null,
+       "name": "Nimbus Noir Eau de Parfum",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Acme Nimbus Noir Eau de Parfum",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      },
+      {
+       "best_price": "55.0",
+       "brand": "Zephyra",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+       "image_url": null,
+       "name": "Velvet Dusk Eau de Toilette",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Zephyra Velvet Dusk Eau de Toilette",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      }
+     ],
+     "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+     "recommendation": "longevity",
+     "reviews": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       }
+      ]
+     },
+     "scoring": {
+      "category_weights": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      },
+      "dimension_winners": {
+       "character_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "longevity_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "presentation_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "projection_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "versatility_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "wear_value_score": {
+        "margin": null,
+        "winner": "N/A"
+       }
+      },
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      },
+      "scores": {
+       "product_0": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       },
+       "product_1": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       }
+      },
+      "scoring_method": "category_weighted"
+     },
+     "scoring_v2": {
+      "comparison_quality": "normal",
+      "confidence_details": {
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "method_p0": "local_bhd",
+        "method_p1": "local_bhd",
+        "sources_count": 0
+       },
+       "reviews": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "confidence_legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "dimensions": [
+       {
+        "confidence": "high",
+        "delta_text": "BHD 0 less",
+        "is_core": true,
+        "key": "price",
+        "label": "Price",
+        "score_a": 85,
+        "score_b": 85,
+        "winner": null
+       },
+       {
+        "confidence": "high",
+        "delta_text": "Same rating",
+        "is_core": true,
+        "key": "reviews",
+        "label": "Reviews",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable value",
+        "is_core": true,
+        "is_cross_tier": false,
+        "key": "value",
+        "label": "Value",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "longevity",
+        "label": "Longevity",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "projection",
+        "label": "Projection",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       }
+      ],
+      "factual_verdict": {
+       "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+       "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+      },
+      "overall_score": {
+       "product_a": 79,
+       "product_b": 78,
+       "winner_idx": 0
+      },
+      "personalization": {
+       "applied_shifts": []
+      },
+      "win_margin": 1,
+      "winner_evidence": []
+     },
+     "specs": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       }
+      ],
+      "specs_comparison": {
+       "rows": [
+        {
+         "field": "concentration",
+         "p0_value": "Eau de Parfum",
+         "p1_value": "Eau de Parfum",
+         "winner": "tie"
+        },
+        {
+         "field": "scent_family",
+         "p0_value": "amber",
+         "p1_value": "amber",
+         "winner": "tie"
+        },
+        {
+         "field": "longevity",
+         "p0_value": "8 hours",
+         "p1_value": "8 hours",
+         "winner": "tie"
+        }
+       ]
+      }
+     },
+     "success": true,
+     "tier_context": {
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      }
+     },
+     "winner_index": 0
+    }
+   ],
+   [
+    "complete",
+    {
+     "category": "fragrances",
+     "category_switched": false,
+     "category_used": "fragrances",
+     "comparison": {
+      "cons": {},
+      "pros": {},
+      "verdict": "v",
+      "winner_declaration": "Acme wins",
+      "winner_index": 0,
+      "winner_reason": "longevity"
+     },
+     "key_differences": [],
+     "metadata": {
+      "api_calls": 4,
+      "budget_mismatch": false,
+      "cache_hit": false,
+      "cached": false,
+      "cohort_injected": false,
+      "comparison_quality": "normal",
+      "data_freshness_shaky": true,
+      "fact_check": {
+       "product_0": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "product_1": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       }
+      },
+      "genuine_from_cache": false,
+      "gpt_calls": 2,
+      "guard_rejected": [],
+      "llm": {
+       "basis": "list_price",
+       "by_model": {},
+       "by_provider": {},
+       "cache_read_tokens": 0,
+       "cache_write_1h_tokens": 0,
+       "cache_write_5m_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "input_tokens": 0,
+       "output_tokens": 0,
+       "price_table_as_of": {
+        "anthropic": "2026-10-22",
+        "openai": "2026-10-08"
+       },
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "schema_version": 1,
+       "unpriced_calls": 0,
+       "web_search_requests": 0
+      },
+      "missing_dim_cells": {
+       "count": 8,
+       "fraction": "0.6667",
+       "total": 12
+      },
+      "openai": {
+       "basis": "list_price",
+       "by_model": {},
+       "cached_tokens": 0,
+       "calls": 0,
+       "completion_tokens": 0,
+       "cost_complete": true,
+       "cost_usd": "0.0",
+       "price_table_as_of": "2026-10-08",
+       "priced_calls": 0,
+       "prompt_tokens": 0,
+       "unpriced_calls": 0
+      },
+      "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+      "region": "bahrain",
+      "serper_calls": 2,
+      "source_trace": {
+       "products": [
+        {
+         "name": "Acme Nimbus Noir Eau de Parfum",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        },
+        {
+         "name": "Zephyra Velvet Dusk Eau de Toilette",
+         "races": {
+          "image": {
+           "sources_returned_value": [],
+           "sources_tried": [
+            "image_url"
+           ],
+           "wall_ms": 0
+          },
+          "price": {
+           "sources_returned_value": [
+            "price"
+           ],
+           "sources_tried": [
+            "price"
+           ],
+           "wall_ms": 0
+          },
+          "reviews": {
+           "sources_returned_value": [
+            "reviews"
+           ],
+           "sources_tried": [
+            "reviews"
+           ],
+           "wall_ms": 0
+          },
+          "specs": {
+           "sources_returned_value": [
+            "specs"
+           ],
+           "sources_tried": [
+            "specs"
+           ],
+           "wall_ms": 0
+          }
+         }
+        }
+       ]
+      },
+      "total_cost": "0.002048",
+      "verdict_validation": {
+       "claims_flagged": 0,
+       "claims_softened": 3,
+       "claims_validated": 0,
+       "confidence_adjustment": null,
+       "winner_aligned": true
+      }
+     },
+     "original_category": null,
+     "overview": {
+      "confidence": {
+       "legs": {
+        "price": "strong",
+        "reviews": "weak",
+        "specs": "weak"
+       },
+       "overall": "low",
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "source_count": 0
+       },
+       "rating": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "products": [
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Acme",
+        "cons": [],
+        "image_url": null,
+        "name": "Nimbus Noir Eau de Parfum",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": true,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       },
+       {
+        "_debug_capture": null,
+        "best_for": "",
+        "brand": "Zephyra",
+        "cons": [],
+        "image_url": null,
+        "name": "Velvet Dusk Eau de Toilette",
+        "overall_score": "68.5",
+        "price": {
+         "amount": "55.0",
+         "currency": "BHD",
+         "estimated": false,
+         "in_stock": true,
+         "retailer": "Live Store",
+         "source_method": "local_bhd",
+         "title": "x",
+         "url": "https://live-store.example.com/p/1"
+        },
+        "pros": [],
+        "pros_cons": {
+         "cons": [],
+         "is_winner": false,
+         "pros": []
+        },
+        "rating": "4.5",
+        "review_count": 10,
+        "value_badge": "fair_price",
+        "value_context": "",
+        "value_match": "unknown",
+        "variant": "Eau de Parfum"
+       }
+      ],
+      "tradeoffs": [],
+      "winner": {
+       "declaration": "Acme wins",
+       "key_tradeoff": "",
+       "margin": "0.0",
+       "name": "Acme wins",
+       "product_index": 0,
+       "reason": "longevity"
+      }
+     },
+     "personalization": {
+      "applied_shifts": [],
+      "factors": [],
+      "personalized": false,
+      "personalized_insights": []
+     },
+     "personalization_factors": [],
+     "personalized": false,
+     "personalized_insights": [],
+     "price_method_mismatch": false,
+     "products": [
+      {
+       "best_price": "55.0",
+       "brand": "Acme",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Acme Nimbus Noir Eau de Parfum",
+       "image_url": null,
+       "name": "Nimbus Noir Eau de Parfum",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Acme Nimbus Noir Eau de Parfum",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      },
+      {
+       "best_price": "55.0",
+       "brand": "Zephyra",
+       "category": "fragrances",
+       "category_profile": {
+        "category": "fragrances",
+        "fields": [
+         {
+          "key": "scent_family",
+          "label": "Scent family",
+          "value": "amber"
+         },
+         {
+          "key": "longevity",
+          "label": "Longevity",
+          "value": "8 hours"
+         },
+         {
+          "key": "concentration",
+          "label": "Concentration",
+          "value": "Eau de Parfum"
+         }
+        ]
+       },
+       "cons": [],
+       "currency": "BHD",
+       "data_freshness": "cached",
+       "fact_check": {
+        "price_deviation_pct": null,
+        "price_verified": true,
+        "review_rating_deviation": null,
+        "review_sentiment_consistent": null,
+        "specs_flagged": 0,
+        "specs_likely": 0,
+        "specs_unverified": 3,
+        "specs_verified": 0
+       },
+       "full_name": "Zephyra Velvet Dusk Eau de Toilette",
+       "image_url": null,
+       "name": "Velvet Dusk Eau de Toilette",
+       "price": {
+        "amount": "55.0",
+        "currency": "BHD",
+        "estimated": false,
+        "in_stock": true,
+        "retailer": "Live Store",
+        "source_method": "local_bhd",
+        "title": "x",
+        "url": "https://live-store.example.com/p/1"
+       },
+       "pros": [],
+       "pros_cons": {
+        "cons": [],
+        "pros": []
+       },
+       "query": "Zephyra Velvet Dusk Eau de Toilette",
+       "rating": "4.5",
+       "rating_count": 10,
+       "rating_source": {
+        "name": "example",
+        "url": "https://example.com/r"
+       },
+       "rating_verified": true,
+       "retailer": "Live Store",
+       "review_count": 10,
+       "review_praise": null,
+       "reviews": {
+        "highlights": [
+         "good"
+        ],
+        "summary": "ok",
+        "verified_rating": {
+         "rating": "4.5",
+         "review_count": 10,
+         "source": "example",
+         "verified": true
+        }
+       },
+       "specs": {
+        "concentration": "Eau de Parfum",
+        "longevity": "8 hours",
+        "scent_family": "amber"
+       },
+       "value_badge": "fair_price",
+       "variant": null
+      }
+     ],
+     "query": "Acme Nimbus Noir Eau de Parfum vs Zephyra Velvet Dusk Eau de Toilette",
+     "recommendation": "longevity",
+     "reviews": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "rating": "4.5",
+        "rating_source": {
+         "name": "example",
+         "url": "https://example.com/r"
+        },
+        "retailer_quotes": [],
+        "review_count": 10,
+        "review_praise": null,
+        "review_summary": {
+         "agreement_level": "moderate",
+         "consensus": "",
+         "highlights": [],
+         "overall_sentiment": "mixed",
+         "review_volume": "minimal"
+        },
+        "youtube_review_signal": null
+       }
+      ]
+     },
+     "scoring": {
+      "category_weights": {
+       "character_score": "0.25",
+       "longevity_score": "0.25",
+       "presentation_score": "0.1",
+       "projection_score": "0.15",
+       "versatility_score": "0.15",
+       "wear_value_score": "0.1"
+      },
+      "dimension_winners": {
+       "character_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "longevity_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "presentation_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "projection_score": {
+        "margin": "0.0",
+        "winner": "tie"
+       },
+       "versatility_score": {
+        "margin": null,
+        "winner": "N/A"
+       },
+       "wear_value_score": {
+        "margin": null,
+        "winner": "N/A"
+       }
+      },
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      },
+      "scores": {
+       "product_0": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       },
+       "product_1": {
+        "breakdown": {
+         "character_score": 50,
+         "longevity_score": "90.0",
+         "presentation_score": 50,
+         "projection_score": "90.0",
+         "versatility_score": 50,
+         "wear_value_score": "75.0"
+        },
+        "missing_data": [
+         "character_score",
+         "versatility_score",
+         "wear_value_score",
+         "presentation_score"
+        ],
+        "overall": "68.5",
+        "weights_used": {
+         "character_score": "0.25",
+         "longevity_score": "0.25",
+         "presentation_score": "0.1",
+         "projection_score": "0.15",
+         "versatility_score": "0.15",
+         "wear_value_score": "0.1"
+        }
+       }
+      },
+      "scoring_method": "category_weighted"
+     },
+     "scoring_v2": {
+      "comparison_quality": "normal",
+      "confidence_details": {
+       "price": {
+        "freshness": "live",
+        "method": "retailer_verified",
+        "method_p0": "local_bhd",
+        "method_p1": "local_bhd",
+        "sources_count": 0
+       },
+       "reviews": {
+        "review_count": 10,
+        "source": "example",
+        "verified": true
+       },
+       "specs": {
+        "citation_count": 3,
+        "verified_pct": 0
+       }
+      },
+      "confidence_legs": {
+       "price": "strong",
+       "reviews": "weak",
+       "specs": "weak"
+      },
+      "dimensions": [
+       {
+        "confidence": "high",
+        "delta_text": "BHD 0 less",
+        "is_core": true,
+        "key": "price",
+        "label": "Price",
+        "score_a": 85,
+        "score_b": 85,
+        "winner": null
+       },
+       {
+        "confidence": "high",
+        "delta_text": "Same rating",
+        "is_core": true,
+        "key": "reviews",
+        "label": "Reviews",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable value",
+        "is_core": true,
+        "is_cross_tier": false,
+        "key": "value",
+        "label": "Value",
+        "score_a": 88,
+        "score_b": 88,
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "longevity",
+        "label": "Longevity",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       },
+       {
+        "confidence": "medium",
+        "delta_text": "Comparable",
+        "is_core": false,
+        "key": "projection",
+        "label": "Projection",
+        "score_a": "90.0",
+        "score_b": "90.0",
+        "winner": null
+       }
+      ],
+      "factual_verdict": {
+       "line1": "Nimbus Noir Eau de Parfum comes in 0% cheaper.",
+       "line2": "Velvet Dusk Eau de Toilette stays in the conversation as a close alternative."
+      },
+      "overall_score": {
+       "product_a": 79,
+       "product_b": 78,
+       "winner_idx": 0
+      },
+      "personalization": {
+       "applied_shifts": []
+      },
+      "win_margin": 1,
+      "winner_evidence": []
+     },
+     "specs": {
+      "products": [
+       {
+        "brand": "Acme",
+        "name": "Nimbus Noir Eau de Parfum",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       },
+       {
+        "brand": "Zephyra",
+        "name": "Velvet Dusk Eau de Toilette",
+        "spec_advantages": [],
+        "specs": {
+         "concentration": "Eau de Parfum",
+         "longevity": "8 hours",
+         "scent_family": "amber"
+        }
+       }
+      ],
+      "specs_comparison": {
+       "rows": [
+        {
+         "field": "concentration",
+         "p0_value": "Eau de Parfum",
+         "p1_value": "Eau de Parfum",
+         "winner": "tie"
+        },
+        {
+         "field": "scent_family",
+         "p0_value": "amber",
+         "p1_value": "amber",
+         "winner": "tie"
+        },
+        {
+         "field": "longevity",
+         "p0_value": "8 hours",
+         "p1_value": "8 hours",
+         "winner": "tie"
+        }
+       ]
+      }
+     },
+     "success": true,
+     "tier_context": {
+      "is_cross_tier": false,
+      "price_tiers": {
+       "Acme Nimbus Noir Eau de Parfum": "mid",
+       "Zephyra Velvet Dusk Eau de Toilette": "mid"
+      }
+     },
+     "winner_index": 0
+    }
+   ]
+  ]
+ }
+}

@@ -328,8 +328,42 @@ def _py_files(*tops: str) -> list[Path]:
 
 #: S81-15 deliberate changes E3 / E4 (RULINGS_FIX1_S81_15 F1-2): the ONE importer and the ONE relation
 #: literal the merchant registry needs, each keyed by its file AND its exact line text (never a whole file).
-P01_ALLOWED = {("app/services/merchant_registry.py", "from app.services import kb_service as _kb")}
-P02_ALLOWED = {("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"')}
+P01_ALLOWED = {
+    ("app/services/merchant_registry.py", "from app.services import kb_service as _kb"),
+    ("scripts/kb_seed_common.py", "from app.services import kb_service as _kb"),
+    ("app/services/kb_ingest.py", "from app.services import kb_service as _kb"),
+    ("app/services/kb_serve.py", "from app.services import kb_service as _kb"),
+    ("app/services/kb_operator.py", "from app.services import kb_service as _kb"),
+}
+P01_FUNCTIONS = {"app/services/merchant_registry.py": "build_seed_rows", "scripts/kb_seed_common.py": "kb_leaf",
+                 "app/services/kb_ingest.py": "kb_leaf", "app/services/kb_serve.py": "kb_leaf",
+                 "app/services/kb_operator.py": "kb_leaf"}
+P02_ALLOWED = {
+    ("app/services/merchant_registry.py", 'KB_MERCHANTS_TABLE = "kb_merchants"'),
+    ("scripts/kb_seed_common.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
+    ("scripts/kb_seed_common.py", 'KB_VARIANTS_TABLE = "kb_variants"'),
+    ("scripts/kb_seed_common.py", 'KB_OFFERS_TABLE = "kb_offers"'),
+    ("scripts/kb_seed_common.py", 'KB_SPECS_TABLE = "kb_specs"'),
+    ("scripts/kb_seed_common.py", 'KB_GAPS_TABLE = "kb_gaps"'),
+    ("app/services/kb_ingest.py", 'KB_PRODUCTS_TABLE = "kb_products"'),
+    ("app/services/kb_ingest.py", 'KB_VARIANTS_TABLE = "kb_variants"'),
+    ("app/services/kb_ingest.py", 'KB_OFFERS_TABLE = "kb_offers"'),
+    ("app/services/kb_ingest.py", 'KB_IMAGES_TABLE = "kb_images"'),
+    ("app/services/kb_ingest.py", 'KB_REVIEWS_TABLE = "kb_reviews"'),
+    ("app/services/kb_ingest.py", 'KB_GAPS_TABLE = "kb_gaps"'),
+    ("app/services/kb_serve.py", 'KB_PRODUCT_CARD_RPC = "kb_product_card"'),
+    ("app/services/kb_operator.py", 'KB_SPECS_TABLE = "kb_specs"'),
+    ("app/services/kb_operator.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
+    ("scripts/cron_kb_coverage.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
+    ("scripts/cron_kb_coverage.py", 'KB_OFFERS_LATEST_VIEW = "kb_offers_latest"'),
+    #: S81-G5 E1: the D22 job's two relation constants.
+    ("scripts/cron_learning.py", 'KB_COVERAGE_TABLE = "kb_coverage_daily"'),
+    ("scripts/cron_learning.py", 'KB_FEEDBACK_TABLE = "kb_feedback"'),
+    #: S81-22 E2: the judge's 365-day kb_feedback prune (045 header :23-26) and the
+    #: R-S22-32 DRY exact would-delete head count, which reads the table by name.
+    ("scripts/cron_compare_judge.py", 'KB_PRUNE_FEEDBACK_RPC = "kb_prune_feedback"'),
+    ("scripts/cron_compare_judge.py", 'KB_FEEDBACK_TABLE = "kb_feedback"'),
+}
 
 
 def _line(lines, lineno):
@@ -349,7 +383,7 @@ def test_s14_p01_no_importer_of_kb_service():
         tree = ast.parse(text)
         seed_builder = set()
         for fn in ast.walk(tree):
-            if isinstance(fn, ast.FunctionDef) and fn.name == "build_seed_rows":
+            if isinstance(fn, ast.FunctionDef) and fn.name == P01_FUNCTIONS.get(rel):
                 seed_builder.update(id(n) for n in ast.walk(fn))
         for node in ast.walk(tree):
             hit = False
@@ -442,7 +476,7 @@ def test_s14_p05_every_migration_is_linted_by_sqlfluff():
 
 
 IDENTITY_NODES = {
-    "tests/test_s75_fanout_identity.py": "0fa707e2ba571a6c52cbddedd686585aba190a14efbc9774d2bef04268129942",
+    "tests/test_s75_fanout_identity.py": "93c59246ef6c1ee6a41f54aef6edd21ceaf448f6f6b92dcbfe47a27f9e87e4a1",
     "tests/fixtures/s75_fanout_identity_digests.json": "56c378bf05d5135b597367cb8aec9920193dcefd703be047c821df9b3814dc56",
     "tests/test_w4_13_flag_off_ledger.py": "4c051821da78517c0f17a7feaabffa24eaa0d7445737b67d3ace88f544b59993",
     "tests/fixtures/w4_13_flag_off_ledger.json": "9fbf73e177365f352b9243009d9552b5626d7cf7e618adaad5a1856d66231f40",
@@ -457,7 +491,8 @@ def _lf_sha(rel: str) -> str:
 def test_s14_p06_identity_nodes_untouched(rel):
     """The FY25 nine-digest node and the W4-13 ledger run unedited (LF sha at e1878dd8; the FY25 node
     at the rebase main ea3aef15, where S81-04 #372 added one UNIT_ENV entry).
-    S81-06 E10 (the seven ENABLE_ANTHROPIC_* / ENABLE_SONNET_ESCALATION / ENABLE_OPENAI_PRE_V3 names joined UNIT_ENV) moved the FY25 file digest; re-pinned per RULINGS_REBASE_S81_06 RB6-11 (the S81-14 D1 precedent)."""
+    S81-06 E10 (the seven ENABLE_ANTHROPIC_* / ENABLE_SONNET_ESCALATION / ENABLE_OPENAI_PRE_V3 names joined UNIT_ENV) moved the FY25 file digest; re-pinned per RULINGS_REBASE_S81_06 RB6-11 (the S81-14 D1 precedent).
+    S81-20 E8 (ENABLE_RESULT_GATE joined UNIT_ENV, the spec's E1) moved it again; re-pinned the same way."""
     assert _lf_sha(rel) == IDENTITY_NODES[rel], "%s changed: S81-14 edits no identity node" % rel
 
 
@@ -494,7 +529,9 @@ def test_s14_r01_files_exist_once():
     assert sorted(p.name for p in RB.glob("045_*.sql")) == ["045_kb_core.sql"]
     assert sorted(p.name for p in RB.glob("047_*.sql")) == ["047_012_revoke.sql"]
     assert not list(MIG.glob("039_*")), "039 is reserved"
-    for n in ("046", "048", "049", "051"):
+    # S81-SF1 (E2): 046 and 049 now exist; 048 / 051 stay reserved.
+    #: S81-22 E1: 048 is compare_runs (R-S22-2)
+    for n in ("051",):
         assert not list(MIG.glob(n + "_*.sql")), "%s belongs to another unit (R-S14-12)" % n
 
 
@@ -1466,7 +1503,7 @@ def test_s14_r27_builder_keys(table):
     assert tuple(want) == tuple(_attr(kb, "KB_BUILDER_KEYS")[table])
     if table in ("kb_merchants", "kb_products", "kb_variants"):
         assert row["updated_at"] == T0.isoformat(), "R-S14-2: builders emit updated_at (belt)"
-    assert tuple(_attr(kb, "KB_TABLES")) == KB_TABLE_NAMES
+    assert tuple(_attr(kb, "KB_TABLES")) == KB_TABLE_NAMES + ("kb_brands",)  # S81-16b E1: 052 joins the census last
 
 
 NAIVE = datetime(2026, 10, 23, 12, 0)

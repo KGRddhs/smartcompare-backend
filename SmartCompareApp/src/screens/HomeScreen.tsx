@@ -40,6 +40,8 @@ import {
   InteractionManager,
   AppState,
   Linking,
+  AccessibilityInfo,
+  Platform,
   type AppStateStatus,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -75,6 +77,7 @@ import { friendlyErrorKey, friendlyErrorTitleKey } from '../services/errorCopy';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
+import { useLaunchSurfaces, categoryToSend } from '../services/launchSurfaces';
 import QarenLogo from '../components/QarenLogo';
 import TwoInputShell from '../components/TwoInputShell';
 import PaywallBanner from '../components/PaywallBanner';
@@ -97,6 +100,9 @@ import AiConsentSheet from '../components/AiConsentSheet';
 // / `user_tappable`. Aggregated info-level Sentry event surfaces in the
 // dashboard for the 88s wall-time gap diagnosis.
 import { getWallTimeTracker } from '../lib/performance/wallTimeInstrumentation';
+// S81-G6 CL2 -- the A17 300 / 400 floor rule and the product image prefetch.
+import { homeFloorDelayMs, HOME_FLOOR_SKIP_BELOW_MS } from '../utils/clientSpeed';
+import { prefetchProductImages } from '../services/imagePrefetch';
 
 const RECENT_SEARCHES_KEY = '@qaren_recent_searches';
 const MAX_RECENT = 5;
@@ -125,9 +131,34 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // 'electronics' default forced an electronics hint onto every compare
   // (a fragrance pair shipped `selected_category: 'electronics'`); the
   // backend now treats null as "no opinion" and resolves the true
-  // category itself. `selected_category` is sent ONLY when the user taps
-  // a chip (conditional spread at the two compare sites below).
+  // category itself. S81-11 (R-S11-3 / R-S11-34): `selected_category` is
+  // sent ONLY when the user tapped the Fragrances chip AND the cached
+  // /app/version body carried categories_live with fragrances
+  // (categoryToSend at the two compare sites below).
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // S81-11: the cached /app/version reading (categories_live + surfaces).
+  const launchSurfaces = useLaunchSurfaces();
+  const [comingSoonKey, setComingSoonKey] = useState<'skincare' | 'makeup' | null>(null);
+  const comingSoonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (comingSoonTimerRef.current) clearTimeout(comingSoonTimerRef.current);
+    },
+    [],
+  );
+  const handleComingSoon = (key: 'skincare' | 'makeup') => {
+    if (comingSoonTimerRef.current) clearTimeout(comingSoonTimerRef.current);
+    setComingSoonKey(key);
+    const msg = t('home.categories.comingSoonToast', {
+      category: t(`home.categories.${key}`),
+    });
+    if (Platform.OS === 'ios') AccessibilityInfo?.announceForAccessibility?.(msg);
+    trackEvent('category_coming_soon_tap', { category: key });
+    comingSoonTimerRef.current = setTimeout(() => {
+      comingSoonTimerRef.current = null;
+      setComingSoonKey(null);
+    }, 2500);
+  };
   const abortRef = useRef<(() => void) | null>(null);
   // A4 — compare generation token. Bumped on every compare START and on
   // CANCEL, so a response that lands after the user backed out (or after a
@@ -197,16 +228,23 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // the compare aborts on error before the floor expires.
   const loadingStartedAtRef = useRef<number | null>(null);
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const MIN_LOADING_MS = 1200;
+  // S81-G6 CL2: the floor is the A17 rule (clientSpeed.homeFloorDelayMs): a
+  // response within 300 ms renders now, a slower one waits for 400 ms from
+  // the compare start. Only a MEASURED response at or under 300 ms is a fast
+  // hit, which Results reads as fastHit: true to skip its 800 ms reveal.
   const navigateToResultsWithFloor = useCallback(
     (result: any) => {
-      const startedAt = loadingStartedAtRef.current ?? Date.now();
+      prefetchProductImages(result);
+      const measuredStart = loadingStartedAtRef.current;
+      const startedAt = measuredStart ?? Date.now();
       const elapsed = Date.now() - startedAt;
-      const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+      const remaining = homeFloorDelayMs(elapsed);
+      const fastHit =
+        measuredStart !== null && elapsed >= 0 && elapsed <= HOME_FLOOR_SKIP_BELOW_MS;
       const advance = () => {
         advanceTimerRef.current = null;
         loadingStartedAtRef.current = null;
-        navigation.navigate('Results' as any, { result });
+        navigation.navigate('Results' as any, fastHit ? { result, fastHit: true } : { result });
         // setLoading(false) fires AFTER navigate so the theatrical
         // loader stays mounted until the user is on the Results screen.
         // On cached/fast paths setLoading(false) at the caller would
@@ -414,11 +452,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     pasteSplitUsedRef.current = false;
     autoswitchUsedRef.current = false;
 
+    // S81-11 (R-S11-3): sent only for the user's Fragrances pick AND a
+    // cached categories_live carrying it.
+    const sendCategory = categoryToSend(selectedCategory, launchSurfaces);
     const { subscribe, abort } = streamComparison(
       { product_a: productA, product_b: productB },
-      // catfix D1 — omit the key entirely when no chip is selected so the
-      // backend resolves the true category instead of honoring a default.
-      { ...(selectedCategory ? { selected_category: selectedCategory } : {}) }
+      { ...(sendCategory ? { selected_category: sendCategory } : {}) }
     );
     abortRef.current = abort;
 
@@ -465,7 +504,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             const isTimeout = data.code === 'TIMEOUT' || data.code === 'STREAM_TIMEOUT';
             Alert.alert(
               t(friendlyErrorTitleKey(data.code)),
-              isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(data.code))
+              isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(data.code, data.reason))
             );
           }
         }
@@ -523,7 +562,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // its own title instead of "give it another tap".
         Alert.alert(
           t(friendlyErrorTitleKey(parsed.code)),
-          t(friendlyErrorKey(parsed.code), { count: parsed.retryAfterSeconds }),
+          parsed.code === 'CATEGORY_NOT_LIVE'
+            ? t(friendlyErrorKey(parsed.code))
+            : t(friendlyErrorKey(parsed.code, parsed.reason), { count: parsed.retryAfterSeconds }),
         );
       },
     });
@@ -569,6 +610,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     // headers and never overwrites the id).
     const urlCompareRequestId = newCompareRequestId();
     urlCompareRequestIdRef.current = urlCompareRequestId;
+    // S81-11 (R-S11-3): sent only for the user's Fragrances pick AND a
+    // cached categories_live carrying it.
+    const sendCategory = categoryToSend(selectedCategory, launchSurfaces);
     try {
       const response = await api.post(
         '/api/v1/url/compare',
@@ -576,8 +620,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           url1,
           url2,
           region: 'bahrain',
-          // catfix D1 — omit when no chip is selected (see stream path above).
-          ...(selectedCategory ? { selected_category: selectedCategory } : {}),
+          // S81-11 (R-S11-3): the same gate as the stream path above.
+          ...(sendCategory ? { selected_category: sendCategory } : {}),
         },
         // M18 MB-perf-03 — compare-class per-call deadline (was the global
         // 120s, 4x the backend's 30s hard cap).
@@ -609,7 +653,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             response.data.code === 'TIMEOUT' || response.data.code === 'STREAM_TIMEOUT';
           Alert.alert(
             t(friendlyErrorTitleKey(response.data.code)),
-            isTimeout ? t('home.errors.timeout') : t(friendlyErrorKey(response.data.code))
+            isTimeout
+              ? t('home.errors.timeout')
+              : t(friendlyErrorKey(response.data.code, response.data.reason))
           );
         }
       }
@@ -651,7 +697,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // its own title instead of "give it another tap".
         Alert.alert(
           t(friendlyErrorTitleKey(parsed.code)),
-          t(friendlyErrorKey(parsed.code), { count: parsed.retryAfterSeconds }),
+          parsed.code === 'CATEGORY_NOT_LIVE'
+            ? t(friendlyErrorKey(parsed.code))
+            : t(friendlyErrorKey(parsed.code, parsed.reason), { count: parsed.retryAfterSeconds }),
         );
       }
     }
@@ -1064,17 +1112,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <CategorySelector
           value={selectedCategory}
           onChange={setSelectedCategory}
+          surfaces={launchSurfaces.surfaces}
+          onComingSoon={handleComingSoon}
         />
       )}
 
-      {/* catfix D1 — gentle, non-blocking invitation shown only when no
-          category chip is selected. Compare still works without a pick
-          (the backend resolves the true category); tapping a chip both
-          dismisses this and sends `selected_category`. */}
-      {canCompare && selectedCategory == null && (
-        <Text style={styles.categoryNudge} testID="home-category-nudge">
-          {t('home.categories.nudge', {
-            defaultValue: 'Pick a category for the most accurate compare',
+      {/* S81-11 -- the fragrance-only line, whatever the chip state. */}
+      {canCompare && (
+        <Text style={styles.categoryNudge} testID="home-fragrance-only-line">
+          {t('home.categories.fragrancesOnly')}
+        </Text>
+      )}
+      {canCompare && comingSoonKey !== null && (
+        <Text
+          style={styles.categoryNudge}
+          testID="home-coming-soon-toast"
+          accessibilityLiveRegion="polite"
+        >
+          {t('home.categories.comingSoonToast', {
+            category: t(`home.categories.${comingSoonKey}`),
           })}
         </Text>
       )}

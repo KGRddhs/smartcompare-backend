@@ -10,6 +10,7 @@ Plan tasks: B1.2, B2.1, B2.2, B3.1, B3.4, B4.2, B4.4.
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -21,6 +22,7 @@ from app.services.database_service import (
     get_admin_supabase_client,
     get_user_supabase_client,
 )
+from app.services.feedback_service import feedback_v2_enabled
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,15 @@ logger = logging.getLogger(__name__)
 _CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 _VALID_SHARE_TARGETS = {"whatsapp", "copy", "x", "telegram", "snapchat", "other"}
+# S81-SF1 (ENABLE_FEEDBACK_V2): + the share builder's sms / email / more (migration 049).
+_WIDENED_SHARE_TARGETS = frozenset(_VALID_SHARE_TARGETS | {"sms", "email", "more"})
+
+
+def _share_targets():
+    """The share_target set the defence-in-depth check reads: widened ON only."""
+    if feedback_v2_enabled():
+        return _WIDENED_SHARE_TARGETS
+    return _VALID_SHARE_TARGETS
 
 _WEEKLY_INVITE_CAP = 3
 
@@ -48,6 +59,20 @@ BONUS_EXPIRY_DAYS = 7
 # Default app base URL for invitee landing links. Override at deploy via env.
 # Kept as module attribute so tests/runtime can monkeypatch if needed.
 APP_BASE_URL = "https://getmyez.com"
+
+
+def _referral_rewards_paused() -> bool:
+    """S81-09 R-S09-2 (with GATE_S81_09 GC-1): ENABLE_DEVICE_DAILY_QUOTA (default
+    OFF, read PER CALL; the SAME name as usage_service.device_daily_quota_enabled,
+    read through this local one-liner so the referral module imports no usage
+    module) pauses the referral rewards: the Loop-1 Deep Review credit, the
+    Loop-2 grants (the redemption row, the bonus bump, the invitee credit and
+    the lifetime_invites_consumed slot: a slot is spent only when a reward is
+    granted) and the Loop-2 reward push. The invite chain is unchanged (the
+    invite row, the redeemed mark). Flag OFF: byte-identical."""
+    return os.getenv("ENABLE_DEVICE_DAILY_QUOTA", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 class WeeklyInviteCapExceeded(Exception):
@@ -289,9 +314,10 @@ class ReferralService:
         # in the response so the FE can disable the share CTA at 3 lifetime.
 
         # 2. share_target validation (defence-in-depth before DB CHECK)
-        if share_target not in _VALID_SHARE_TARGETS:
+        allowed_targets = _share_targets()
+        if share_target not in allowed_targets:
             raise ValueError(
-                f"share_target {share_target!r} not in allowed set {sorted(_VALID_SHARE_TARGETS)}"
+                f"share_target {share_target!r} not in allowed set {sorted(allowed_targets)}"
             )
 
         # 3. Ensure referrer has a code
@@ -336,12 +362,17 @@ class ReferralService:
         # 6. Loop 1 — grant Deep Review credit (fire-and-forget conceptually,
         #    but we await for test determinism; failure is non-fatal in production
         #    because credit grant is idempotent on next share).
-        self.client.table("deep_review_credits").insert(
-            {
-                "user_id": referrer_user_id,
-                "source": "share_loop1",
-            }
-        ).execute()
+        #    S81-09 R-S09-2: paused under ENABLE_DEVICE_DAILY_QUOTA (ONE INFO line,
+        #    constants only); the invite above and the response below unchanged.
+        if _referral_rewards_paused():
+            logger.info("[REFERRAL-PAUSE] loop1 deep review credit skipped (device quota)")
+        else:
+            self.client.table("deep_review_credits").insert(
+                {
+                    "user_id": referrer_user_id,
+                    "source": "share_loop1",
+                }
+            ).execute()
 
         # 7. Build share link.
         # quote() on share_token in case it ever contains url-unsafe chars; ref code is alnum.
@@ -842,6 +873,13 @@ class ReferralService:
         invitee_id = invitee.get("id")
         if not referrer_id or not invitee_id:
             return
+        # S81-09 R-S09-2 + GATE_S81_09 GC-1: under ENABLE_DEVICE_DAILY_QUOTA no
+        # reward is granted, so steps 1-4 below are all skipped (step 4 too: a
+        # lifetime invite slot is spent only when a reward is granted); the
+        # caller still marks the invite redeemed. ONE INFO line, constants only.
+        if _referral_rewards_paused():
+            logger.info("[REFERRAL-PAUSE] loop2 rewards skipped (device quota)")
+            return
 
         # 1. referral_redemptions row
         # expires_at = now + BONUS_EXPIRY_DAYS. Source of truth for entitlement
@@ -920,6 +958,11 @@ class ReferralService:
         """Fire the referrer push (B4.4). Best-effort — push delivery never
         blocks Loop 2 reward crediting (which already happened by the time
         we reach here)."""
+        # S81-09 R-S09-2: no reward was granted under ENABLE_DEVICE_DAILY_QUOTA,
+        # so no reward push either (ONE INFO line, constants only).
+        if _referral_rewards_paused():
+            logger.info("[REFERRAL-PAUSE] loop2 reward push skipped (device quota)")
+            return
         try:
             from app.services.push_service import send_loop2_push
 

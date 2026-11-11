@@ -1,12 +1,14 @@
 /**
  * Bundle D 2.F.2 Screen 1 — HomeScreen editorial sections (un-deferred).
  *
- * Four optional sections rendered below the CompareCard:
+ * Optional sections rendered below the CompareCard:
  *   1. SmartPickCard       — "Smart pick of the day" personalized winner story
  *      (Backend: GET /api/v1/home/smart-pick)
- *   2. QuickCategories     — 4-tile category grid (static, no backend)
- *   3. SavingsBanner       — dark "This month ~X BHD shopped smarter" banner
- *      (Backend: GET /api/v1/home/savings — hidden when threshold_met=false)
+ *   2. QuickCategories     — the one Fragrances tile (static, no backend;
+ *      S81-11: the fragrance-only launch)
+ *   3. (S81-11: the savings banner is removed; its sum counted estimates and
+ *      converted prices as savings. A replacement waits for a backend
+ *      aggregate field, follow-up S81-11b.)
  *   4. TrendingNearYou     — "Popular comparisons": tap runs that pair
  *      (Backend: GET /api/v1/home/trending — auth-optional)
  *
@@ -30,10 +32,8 @@ import { Check, TrendingUp } from 'lucide-react-native';
 import { colors, spacing, radii, typography } from '../theme';
 import {
   getHomeSmartPick,
-  getHomeSavings,
   getHomeTrending,
   type HomeSmartPickItem,
-  type HomeSavingsResponse,
   type HomeTrendingItem,
 } from '../services/api';
 import { deriveTone } from '../utils/deriveTone';
@@ -258,10 +258,7 @@ interface QuickCategoriesProps {
 }
 
 const QUICK_CATS = [
-  { v: 'electronics', glyph: '⌬', labelKey: 'home.cat.electronics' },
-  { v: 'skincare', glyph: '✦', labelKey: 'home.cat.skincare' },
-  { v: 'supplements', glyph: '◉', labelKey: 'home.cat.supplements' },
-  { v: 'makeup', glyph: '◑', labelKey: 'home.cat.makeup' },
+  { v: 'fragrances', glyph: '✦', labelKey: 'home.categories.fragrances' },
 ];
 
 export function QuickCategories({ onPickCategory }: QuickCategoriesProps) {
@@ -284,50 +281,6 @@ export function QuickCategories({ onPickCategory }: QuickCategoriesProps) {
             <Text style={styles.catLabel}>{t(c.labelKey)}</Text>
           </TouchableOpacity>
         ))}
-      </View>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 3. SavingsBanner
-// ---------------------------------------------------------------------------
-
-export function SavingsBanner() {
-  const { t } = useTranslation();
-  const [stats, setStats] = useState<HomeSavingsResponse | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    getHomeSavings()
-      .then((r) => {
-        if (!mounted) return;
-        setStats(r);
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setStats(null);
-        setLoaded(true);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  if (!loaded || !stats || !stats.threshold_met) return null;
-
-  return (
-    <View testID="home-savings-banner" style={styles.savingsBanner}>
-      <View style={styles.savingsContent}>
-        <Text style={styles.savingsEyebrow}>{t('home.savings.eyebrow')}</Text>
-        <Text style={styles.savingsAmount}>
-          ~{stats.savings_bhd.toFixed(0)} {t('home.savings.amount')}
-        </Text>
-        <Text style={styles.savingsCount}>
-          {t('home.savings.count', { count: stats.decisions_count })}
-        </Text>
       </View>
     </View>
   );
@@ -478,7 +431,6 @@ export default function HomeEditorialSections(props: HomeEditorialSectionsProps)
     >
       <SmartPickCard onPressVerdict={props.onPressVerdict} />
       <QuickCategories onPickCategory={props.onPickCategory} />
-      <SavingsBanner />
       <TrendingNearYou onPressTrending={props.onPressTrending} />
     </View>
   );
@@ -710,36 +662,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: '600',
     color: colors.text.primary,
-  },
-  // SavingsBanner
-  savingsBanner: {
-    marginTop: spacing.xl,
-    padding: spacing.base,
-    borderRadius: radii.card,
-    backgroundColor: colors.bg.inverse,
-    overflow: 'hidden',
-  },
-  savingsContent: {
-    flex: 1,
-  },
-  savingsEyebrow: {
-    ...typography.small,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.55)',
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-  },
-  savingsAmount: {
-    ...typography.title,
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text.onInverse,
-    marginTop: 2,
-  },
-  savingsCount: {
-    ...typography.small,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
   },
   // TrendingNearYou
   trendingList: {

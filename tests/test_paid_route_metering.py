@@ -241,7 +241,7 @@ def flag_off(monkeypatch):
 # E6 (B4 fix round 1, RULINGS_FIX1_B4 F4-3): env names a developer .env may
 # carry that would move these pins (the url_compare stubs keep the base
 # extract_from_url(url) signature); cleared for every node, as CI runs them.
-_CLEAN_ENV = ("ENABLE_URL_MODE_V2",)
+_CLEAN_ENV = ("ENABLE_URL_MODE_V2", "ENABLE_RESULT_GATE")  # S81-20 E4: ENABLE_RESULT_GATE
 
 
 @pytest.fixture(autouse=True)

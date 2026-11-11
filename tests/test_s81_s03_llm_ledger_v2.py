@@ -2440,6 +2440,7 @@ def test_i2_camera_flag_off_no_metadata_llm(monkeypatch, flag):
     """PIN (I2, kills M34 and the IR flag-read-not-first mutant): OFF, the fake
     compare returns no llm (as the builder would): no metadata.llm, the merged
     metadata.openai as cm15b, zero leaf calls."""
+    monkeypatch.delenv("ENABLE_COMPARE_RUN_LEDGER", raising=False)  # S81-22d: the ledger row reads llm_pricing; these OFF pins count leaf calls
     def body():
         _prime_leaf_state(monkeypatch, flag)
         calls = _leaf_recorders(monkeypatch)
@@ -2731,6 +2732,7 @@ def test_i6_off_camera_real_compare_total_cost_is_base(monkeypatch, flag):
     F2-1: recorded at base 84c861f6 with the same content-keyed fake and equal
     at HEAD; the call-index fake's 0.016769 is the historical figure), no
     metadata.llm, metadata.openai 12 calls, zero leaf calls."""
+    monkeypatch.delenv("ENABLE_COMPARE_RUN_LEDGER", raising=False)  # S81-22d: the ledger row reads llm_pricing; these OFF pins count leaf calls
     def body():
         _prime_leaf_state(monkeypatch, flag)
         calls = _leaf_recorders(monkeypatch)

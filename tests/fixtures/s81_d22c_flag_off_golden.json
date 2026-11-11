@@ -1,0 +1,281 @@
+{
+ "A_live_like": {
+  "calls": [
+   [
+    "table",
+    "comparisons"
+   ],
+   [
+    "select",
+    "category_used, products, created_at"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "order",
+    "created_at",
+    true
+   ],
+   [
+    "limit",
+    50
+   ],
+   [
+    "execute",
+    "comparisons"
+   ]
+  ],
+  "run_db": 1,
+  "updates": [],
+  "warnings": [
+   "Failed to update behavior profile: column comparisons.category_used does not exist"
+  ]
+ },
+ "B_permissive": {
+  "calls": [
+   [
+    "table",
+    "comparisons"
+   ],
+   [
+    "select",
+    "category_used, products, created_at"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "order",
+    "created_at",
+    true
+   ],
+   [
+    "limit",
+    50
+   ],
+   [
+    "execute",
+    "comparisons"
+   ],
+   [
+    "table",
+    "comparison_feedback"
+   ],
+   [
+    "select",
+    "useful"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "limit",
+    200
+   ],
+   [
+    "execute",
+    "comparison_feedback"
+   ],
+   [
+    "table",
+    "user_events"
+   ],
+   [
+    "select",
+    "event_type, metadata"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "order",
+    "created_at",
+    true
+   ],
+   [
+    "limit",
+    200
+   ],
+   [
+    "execute",
+    "user_events"
+   ],
+   [
+    "table",
+    "users"
+   ],
+   [
+    "update",
+    {
+     "behavior_profile": {
+      "category_affinity": {
+       "electronics": 0.488,
+       "fragrances": 0.512
+      },
+      "comparison_count": 2,
+      "dimension_sensitivity": {
+       "spec_score": 1.0
+      },
+      "last_updated": "2026-11-05T03:00:00",
+      "price_range_preference": {
+       "avg_price_viewed": 73.3,
+       "tier_distribution": {
+        "budget": 0.0,
+        "luxury": 0.0,
+        "mid": 1.0,
+        "premium": 0.0,
+        "top_tier": 0.0
+       }
+      },
+      "winner_agreement": {
+       "agreed": 1,
+       "agreement_rate": 0.5,
+       "disagreed": 1
+      }
+     }
+    }
+   ],
+   [
+    "eq",
+    "id",
+    "u-synthetic-a"
+   ],
+   [
+    "execute",
+    "users"
+   ]
+  ],
+  "run_db": 4,
+  "updates": [
+   [
+    "users",
+    {
+     "behavior_profile": {
+      "category_affinity": {
+       "electronics": 0.488,
+       "fragrances": 0.512
+      },
+      "comparison_count": 2,
+      "dimension_sensitivity": {
+       "spec_score": 1.0
+      },
+      "last_updated": "2026-11-05T03:00:00",
+      "price_range_preference": {
+       "avg_price_viewed": 73.3,
+       "tier_distribution": {
+        "budget": 0.0,
+        "luxury": 0.0,
+        "mid": 1.0,
+        "premium": 0.0,
+        "top_tier": 0.0
+       }
+      },
+      "winner_agreement": {
+       "agreed": 1,
+       "agreement_rate": 0.5,
+       "disagreed": 1
+      }
+     }
+    },
+    [
+     [
+      "id",
+      "u-synthetic-a"
+     ]
+    ]
+   ]
+  ],
+  "warnings": []
+ },
+ "C_events_raise": {
+  "calls": [
+   [
+    "table",
+    "comparisons"
+   ],
+   [
+    "select",
+    "category_used, products, created_at"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "order",
+    "created_at",
+    true
+   ],
+   [
+    "limit",
+    50
+   ],
+   [
+    "execute",
+    "comparisons"
+   ],
+   [
+    "table",
+    "comparison_feedback"
+   ],
+   [
+    "select",
+    "useful"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "limit",
+    200
+   ],
+   [
+    "execute",
+    "comparison_feedback"
+   ],
+   [
+    "table",
+    "user_events"
+   ],
+   [
+    "select",
+    "event_type, metadata"
+   ],
+   [
+    "eq",
+    "user_id",
+    "u-synthetic-a"
+   ],
+   [
+    "order",
+    "created_at",
+    true
+   ],
+   [
+    "limit",
+    200
+   ],
+   [
+    "execute",
+    "user_events"
+   ]
+  ],
+  "run_db": 3,
+  "updates": [],
+  "warnings": [
+   "Failed to update behavior profile: column user_events.metadata does not exist"
+  ]
+ }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "watchPatterns": [
+      "scripts/cron_learning.py",
+      "scripts/kb_seed_common.py",
+      "railway.learning.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -m scripts.cron_learning",
+    "restartPolicyType": "NEVER"
+  }
+}

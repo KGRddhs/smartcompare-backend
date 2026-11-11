@@ -100,10 +100,11 @@ describe('Bundle E S3 — JSX element-order (ResultsScreen.jsx 1-410)', () => {
     expect(RESULTS_CONTENT_SRC).toMatch(/<ConfidencePills/);
   });
 
-  // # 6 Cohort line — softened single-line treatment
-  it('Cohort line renders via CohortBadge slot below the verdict (JSX 367-377)', () => {
-    expect(RESULTS_CONTENT_SRC).toMatch(/results-cohort-badge-slot/);
-    expect(RESULTS_CONTENT_SRC).toMatch(/<CohortBadge/);
+  // # 6 Cohort line — S81-11 (E1d, R-S11-31): REMOVED with CohortBadge (a
+  // population claim with no measured source); the row pins the absence.
+  it('Cohort line is removed: no CohortBadge slot below the verdict (S81-11)', () => {
+    expect(RESULTS_CONTENT_SRC).not.toMatch(/results-cohort-badge-slot/);
+    expect(RESULTS_CONTENT_SRC).not.toMatch(/<CohortBadge/);
   });
 
   // # 7 DetailsAccordion — Reviews / Pros & Cons / Specs collapsible
@@ -127,7 +128,7 @@ describe('Bundle E S3 — JSX top-down element ORDER (lexical)', () => {
     'results-content-hero-pair', // # 2
     'results-content-why', // # 3
     'results-content-confidence', // # 5
-    'results-cohort-badge-slot', // # 6
+    // # 6 'results-cohort-badge-slot' removed by S81-11 (E1d, R-S11-31)
     'results-content-accordion', // # 7
     'results-content-feedback', // # 8
   ];

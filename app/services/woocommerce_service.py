@@ -62,6 +62,8 @@ _WOO_GENUINE_METHOD = "woo_store_api"
 # Per-request timeout (s). The cascade also wraps the coro in a 10s
 # _ADAPTER_TIMEOUT, so keep the inner curl timeout below that.
 from app.services.adapter_timeouts import adapter_timeout
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the persisted robots verdict before each GET.
+from app.services import live_robots
 _WOO_TIMEOUT = adapter_timeout(10)  # M13-34: clamp under the per-source _timeout_none wrap
 
 # Default headers. WAF stores (ownperfumes/purpleorchidbh/fragrancebh) 403 the
@@ -337,16 +339,25 @@ async def fetch_woocommerce_store_api_price(
     for term in build_adapter_search_terms(product_name, resolved_category):
         params = {"search": term, "per_page": 20}
         try:
+            if live_robots.live_robots_enabled() and not live_robots.gate(
+                    _store_api_url(domain, term, versioned=False), "woo"):
+                return None
             resp = await asyncio.to_thread(
                 _do_get, _store_api_url(domain, term, versioned=False),
                 params, headers,
             )
             if getattr(resp, "status_code", None) == 404:
                 # Unversioned path missing → retry the /v1/ alias.
+                if live_robots.live_robots_enabled() and not live_robots.gate(
+                        _store_api_url(domain, term, versioned=True), "woo"):
+                    return None
                 resp = await asyncio.to_thread(
                     _do_get, _store_api_url(domain, term, versioned=True),
                     params, headers,
                 )
+            if live_robots.live_robots_enabled():
+                live_robots.record_response(
+                    "woo", _store_api_url(domain, term, versioned=False), resp)
             if getattr(resp, "status_code", None) != 200:
                 logger.info(
                     "[PRICE] woo HTTP %s for '%s' (%s)",
@@ -355,6 +366,8 @@ async def fetch_woocommerce_store_api_price(
                 return None
             payload = resp.json()
         except Exception as exc:  # noqa: BLE001 — a fetch/parse error is a miss, not a crash
+            if live_robots.live_robots_enabled():
+                live_robots.record_url("woo", _store_api_url(domain, term, versioned=False), "fail")
             logger.warning("[PRICE] woo fetch failed for %s (%s): %s", product_name, domain, exc)
             return None
         if not (isinstance(payload, list) and not payload):

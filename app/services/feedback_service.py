@@ -3,11 +3,15 @@ Feedback Service - Save comparison feedback and track user events
 """
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional
 
 from app.services.cache_service import delete_cached, _redis_offload_enabled
-from app.services.database_service import get_supabase_client, save_comparison
-from app.services.model_config import critic_model
+from app.services.database_service import (
+    get_supabase_client,
+    postgrest_error_code,
+    save_comparison,
+)
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 
 
@@ -24,32 +28,15 @@ async def _delete_cached_async(key: str) -> bool:
 logger = logging.getLogger(__name__)
 
 
-def _without_verdict_critique(full_response: Dict) -> Dict:
-    """G6 integration fix, W3-2 form: `_verdict_critique` is an INTERNAL key —
-    the comparisons row (which history and the public share read verbatim) must
-    never carry it.
-
-    Returns a payload for the insert with that key removed, WITHOUT mutating the
-    caller's dict. The old composition popped in place; it could afford to,
-    because it only ever ran fire-and-forget AFTER the route had serialized its
-    response. W3-2 awaits the insert ON the request path, so an in-place pop
-    would strip the key from the payload the route is about to return.
-    MEASURED at eecd8bf9 on this tree: today's POST body and BOTH SSE terminal
-    events DO carry `metadata._verdict_critique` while the DB payload does not
-    — sanitizing a copy keeps both halves of that true.
-
-    When there is nothing to remove (the normal case — ENABLE_SELF_CRITIQUE is
-    default OFF) the SAME object is returned, so `save_comparison` receives
-    exactly what it received before.
-    """
-    metadata = full_response.get("metadata")
-    if not isinstance(metadata, dict) or "_verdict_critique" not in metadata:
-        return full_response
-    sanitized = dict(full_response)
-    sanitized["metadata"] = {
-        key: value for key, value in metadata.items() if key != "_verdict_critique"
-    }
-    return sanitized
+def feedback_v2_enabled() -> bool:
+    """S81-SF1 (`ENABLE_FEEDBACK_V2`, default OFF, read PER CALL; a new name). ON: the
+    migration 046 / 049 writes (the v2 feedback answers, `useful` optional, the
+    per-compare request id on feedback / events / search_logs, the three widened share
+    targets). HARD PRECONDITION: 046 and 049 APPLIED. database_service reads the SAME
+    name through its local `_feedback_v2_enabled` (it cannot import this module)."""
+    return os.getenv("ENABLE_FEEDBACK_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
 
 
 async def persist_comparison(
@@ -70,7 +57,7 @@ async def persist_comparison(
     """
     try:
         saved = await save_comparison(
-            full_response=_without_verdict_critique(full_response), query=query,
+            full_response=full_response, query=query,
             input_type=input_type, user_id=user_id,
         )
         return (saved or {}).get("id")
@@ -85,9 +72,10 @@ async def track_after_persist(
     full_response: Dict,
     user_id: str,
 ) -> None:
-    """W3-2 — the FIRE-AND-FORGET half: the four follow-ups that all need the
-    saved row's id. Same set, same order, same falsy-id gate as before the split
-    (savings-cache bust → cohort event → critique persist → referral Loop 2).
+    """W3-2 — the FIRE-AND-FORGET half: the three follow-ups that all need the
+    saved row's id. Same order, same falsy-id gate as before the split
+    (savings-cache bust → cohort event → referral Loop 2; the critique
+    persist was retired by S81-22b).
 
     A falsy `comparison_id` returns immediately: there is no row to track
     against, and a failed save must never bust a valid cache. Errors swallowed.
@@ -97,7 +85,6 @@ async def track_after_persist(
             return
         metadata = full_response.get("metadata") or {}
         cohort_injected = metadata.get("cohort_injected", False)
-        _crit = metadata.get("_verdict_critique")
         # #116 — the save side of the home:savings bust-on-write contract
         # (delete side: history_routes.remove_comparison). Only when the
         # save actually succeeded (comparison_id truthy) — a failed save
@@ -110,13 +97,6 @@ async def track_after_persist(
             event_data={"cohort_injected": bool(cohort_injected)},
             comparison_id=comparison_id,
         )
-        # I3.2 — persist the self-critique row now that the FK target
-        # (comparison_id) exists. The orchestrator threads the critique
-        # into metadata._verdict_critique only when ENABLE_SELF_CRITIQUE
-        # was ON and a critique ran; absent otherwise. Best-effort —
-        # persist_critique swallows its own errors, never blocks.
-        if isinstance(_crit, dict):
-            await _persist_verdict_critique(comparison_id, _crit)
         # Referral Loop 2 — only fires when the user has an unredeemed
         # invite AND this is their first comparison AND abuse checks pass.
         # Self-contained no-op for organic users (most calls).
@@ -152,7 +132,8 @@ async def save_comparison_and_track_cohort(
     so the text compare routes can await ONLY the insert and echo its id. This
     is still the entry point for every NON-text caller (`image_routes.py:340`,
     `url_routes.py:122`) and their behaviour is unchanged: one insert, then the
-    same four follow-ups in the same order, gated on the same truthy id.
+    same follow-ups in the same order (three since S81-22b retired the
+    critique persist), gated on the same truthy id.
     """
     comparison_id = await persist_comparison(
         full_response=full_response, query=query,
@@ -163,47 +144,22 @@ async def save_comparison_and_track_cohort(
     )
 
 
-async def _persist_verdict_critique(comparison_id: str, crit_meta: Dict) -> None:
-    """I3.2 — reconstruct a CritiqueResult from the response metadata
-    `_verdict_critique` dict and write the verdict_critiques row. Best-effort:
-    persist_critique swallows its own DB errors; this wrapper guards the
-    reconstruction so a malformed dict can't break the save flow."""
-    try:
-        from app.services.verdict_critique_service import (
-            CritiqueResult,
-            persist_critique,
-        )
-
-        tokens = int(crit_meta.get("critic_tokens_used", 0) or 0)
-        critique = CritiqueResult(
-            axis_scores=dict(crit_meta.get("axis_scores") or {}),
-            needs_regen=bool(crit_meta.get("needs_regen", False)),
-            low_axes=list(crit_meta.get("low_axes") or []),
-            regen_reason=crit_meta.get("regen_reason"),
-            critic_model=crit_meta.get("critic_model") or critic_model(),
-            # tokens_used is a computed property; split back into prompt-only
-            # (the exact split isn't persisted — total is what the row stores).
-            usage={"prompt_tokens": tokens, "completion_tokens": 0},
-        )
-        await persist_critique(
-            comparison_id=comparison_id,
-            critique=critique,
-            regenerated=bool(crit_meta.get("regenerated", False)),
-        )
-    except Exception as exc:  # noqa: BLE001 — observability write, never fatal
-        logger.warning(f"verdict_critique persist failed (silent): {exc}")
-
-
 async def save_feedback(
     user_id: Optional[str],
     comparison_id: Optional[str],
-    useful: bool,
+    useful: Optional[bool],
     mattered_most: List[str],
     change_suggestion: Optional[str] = None,
     access_token: Optional[str] = None,
     winner_correct: Optional[str] = None,
     price_correct: Optional[str] = None,
     specs_correct: Optional[str] = None,
+    identity_correct: Optional[str] = None,
+    wrong_side: Optional[str] = None,
+    preference: Optional[str] = None,
+    correction: Optional[str] = None,
+    source: Optional[str] = None,
+    compare_request_id: Optional[str] = None,
 ) -> dict:
     """
     Save comparison feedback to Supabase. Fire-and-forget safe.
@@ -216,17 +172,22 @@ async def save_feedback(
     load-bearing forgery control is the UUID validation on comparison_id at the
     route layer — migrations/010 INSERT policies do not constrain comparison_id,
     so the user client alone would not stop it (recorded follow-up).
+
+    S81-SF1 (ENABLE_FEEDBACK_V2, read first): ON, `useful` is written only when not
+    None and the six 046 columns only when not None. OFF, the record is the base
+    record whatever the caller passes (the new keyword arguments are ignored).
     """
+    v2 = feedback_v2_enabled()
     try:
         if user_id and access_token:
             from app.services.database_service import get_user_supabase_client
             client = get_user_supabase_client(access_token)
         else:
             client = get_supabase_client()
-        record: Dict = {
-            "useful": useful,
-            "mattered_most": mattered_most,
-        }
+        record: Dict = {}
+        if not v2 or useful is not None:
+            record["useful"] = useful
+        record["mattered_most"] = mattered_most
         if user_id:
             record["user_id"] = user_id
         if comparison_id:
@@ -241,13 +202,29 @@ async def save_feedback(
             record["price_correct"] = price_correct
         if specs_correct is not None:
             record["specs_correct"] = specs_correct
+        # S81-SF1 (ENABLE_FEEDBACK_V2): the six 046 columns, ON only, each when sent.
+        if v2:
+            for column, value in (
+                ("identity_correct", identity_correct),
+                ("wrong_side", wrong_side),
+                ("preference", preference),
+                ("correction", correction),
+                ("source", source),
+                ("compare_request_id", compare_request_id),
+            ):
+                if value is not None:
+                    record[column] = value
 
         # #115 — request-path write (POST /feedback); offload under
         # ENABLE_SYNC_DB_OFFLOAD, inline (byte-identical) when OFF.
         response = await run_db(lambda: client.table("comparison_feedback").insert(record).execute())
         return {"success": True, "id": response.data[0]["id"] if response.data else None}
     except Exception as e:
-        logger.warning(f"Error saving feedback: {e}", exc_info=True)
+        # S81-SF1 (R-SF1-27, unflagged): constants only. The exception text and a
+        # traceback carry the PostgREST failing row (user text), so neither is logged.
+        logger.warning(
+            "[FEEDBACK] save failed type=%s code=%s", type(e).__name__, postgrest_error_code(e),
+        )
         return {"success": False, "error": str(e)}
 
 
@@ -294,7 +271,11 @@ async def track_events_batch(events: List[dict]) -> List[dict]:
     user_id, comparison_id, session_id.
 
     Returns list of result dicts. Never raises.
+
+    S81-SF1 (ENABLE_FEEDBACK_V2, read first): ON, an event's `compare_request_id`
+    is written when present (migration 049); OFF the records are the base records.
     """
+    v2 = feedback_v2_enabled()
     try:
         client = get_supabase_client()
         records = []
@@ -309,11 +290,18 @@ async def track_events_batch(events: List[dict]) -> List[dict]:
                 record["comparison_id"] = evt["comparison_id"]
             if evt.get("session_id"):
                 record["session_id"] = evt["session_id"]
+            if v2 and evt.get("compare_request_id"):
+                record["compare_request_id"] = evt["compare_request_id"]
             records.append(record)
 
         # #115 — request-path write (POST /events batch); same offload contract.
         response = await run_db(lambda: client.table("user_events").insert(records).execute())
         return [{"success": True, "id": r["id"]} for r in (response.data or [])]
     except Exception as e:
-        logger.warning(f"Error batch tracking events: {e}", exc_info=True)
+        # S81-SF1 (R-SF1-27, unflagged): constants only (the exception text carries
+        # the failing row).
+        logger.warning(
+            "[EVENTS] batch insert failed type=%s code=%s",
+            type(e).__name__, postgrest_error_code(e),
+        )
         return [{"success": False, "error": str(e)}]

@@ -47,6 +47,9 @@ from app.services.database_service import (
 )
 from app.services.text_sanitize import dedup_brand_name, strip_score_internals
 from app.utils.db_offload import run_db  # M13-05 / #116 ENABLE_SYNC_DB_OFFLOAD
+# S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): smart pick and trending show
+# fragrances only under the flag (a stdlib-only module, module attribute access).
+from app.services import category_gate as _category_gate
 
 logger = logging.getLogger(__name__)
 
@@ -810,6 +813,11 @@ async def home_smart_pick(
     except Exception as exc:  # noqa: BLE001
         logger.error("[home/smart_pick] comparisons read failed for %s: %r", user_id, exc)
 
+    # S81-10 (read per call): under the flag the pick comes from the fragrance rows of
+    # the same five-row read only (the query and the cache key are unchanged).
+    if _category_gate.fragrance_only_gate_enabled():
+        comparisons = [c for c in comparisons if _category_gate.is_live_row(c)]
+
     pick = _select_smart_pick(priorities, comparisons)
 
     if pick is None:
@@ -986,7 +994,13 @@ async def home_trending(
         if resolved_region not in _VALID_REGIONS:
             resolved_region = _DEFAULT_REGION
 
-    cache_key = f"home:trending:{resolved_region}"
+    # S81-10 (read once per request): under the flag the fragrance entries only, behind
+    # their own cache key, so neither mode is ever served the other's 1 h payload.
+    _fragrance_only = _category_gate.fragrance_only_gate_enabled()
+    if _fragrance_only:
+        cache_key = f"home:trending:fragrances:{resolved_region}"
+    else:
+        cache_key = f"home:trending:{resolved_region}"
     cached = await _redis_get_async(cache_key)
     if cached:
         try:
@@ -996,6 +1010,8 @@ async def home_trending(
 
     curated = _load_curated_trending()
     raw_entries = curated.get(resolved_region) or []
+    if _fragrance_only:
+        raw_entries = [e for e in raw_entries if _category_gate.is_live_tag(e.get("tag"))]
     # Bundle E B4.3a — JSX-wins shape (tag/a/b/count) + legacy compat fields.
     # Frontend HomeScreen.jsx:608-651 reads tag/a/b/count; the legacy query +
     # view_count survive one release cycle for OTA consumers on the pre-Bundle-E

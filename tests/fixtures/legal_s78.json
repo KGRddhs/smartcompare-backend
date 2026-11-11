@@ -280,7 +280,6 @@
         "app/services/extraction_service.py",
         "app/services/url_extraction_service.py",
         "app/services/llm_provider.py",
-        "app/services/verdict_critique_service.py",
         "app/services/content_safety_service.py",
         "app/services/image_service.py"
       ],

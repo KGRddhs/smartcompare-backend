@@ -150,8 +150,12 @@ describe('Results route param contract (A18)', () => {
   it('finds the Results navigate call sites and the route declaration', () => {
     expect(sites.length).toBeGreaterThanOrEqual(6);
     expect(sites.every((s) => s.keys.length > 0)).toBe(true);
+    // S81-G6 CL2 (E6, RULINGS_S81_G6 R-G6-4): the additive optional
+    // `fastHit` param (Home sets it only on a measured fast hit; Results
+    // reads it to skip the 800 ms reveal).
     expect(declared.sort()).toEqual([
       'comparison_id',
+      'fastHit',
       'result',
       'vision_products',
     ]);

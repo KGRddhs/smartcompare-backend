@@ -36,6 +36,8 @@ from typing import Optional, Dict, Any, List
 
 from app.services.cache_service import get_cached, set_cached
 from app.utils.redis_offloop import run_redis_offloop
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the merchant origin's persisted robots verdict.
+from app.services import live_robots
 from app.services.price_service import (
     strict_title_match,
     _selection_match,
@@ -250,6 +252,8 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
                 timeout=_HTTP_TIMEOUT, allow_redirects=True,
             )
         )
+        if live_robots.live_robots_enabled():
+            live_robots.record_response("algolia", f"https://{domain}/", page)
         if page.status_code != 200:
             logger.info("[ALGOLIA] %s landing HTTP %s", domain, page.status_code)
             await _negcache()
@@ -269,6 +273,8 @@ async def _harvest_config(domain: str) -> Optional[Dict[str, str]]:
             if chunk.status_code == 200:
                 chunk_js = chunk.text
     except Exception as e:  # noqa: BLE001 — harvest is best-effort
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("algolia", f"https://{domain}/", "fail")
         logger.info("[ALGOLIA] config harvest failed for %s: %s", domain, e)
         await _negcache()
         return None
@@ -770,6 +776,9 @@ async def fetch_algolia_price(
     if norm_domain in ALGOLIA_EXPLICIT_STORES:
         return await _fetch_explicit_store_price(norm_domain, product_name, resolved_category=category)
 
+    if live_robots.live_robots_enabled() and not live_robots.gate(
+            f"https://{norm_domain}/", "algolia"):
+        return None
     cfg = await _harvest_config(domain)
     if not cfg:
         return None
@@ -857,6 +866,10 @@ async def _fetch_explicit_store_price(
     store = ALGOLIA_EXPLICIT_STORES.get(domain)
     if not store:
         return None
+    # D14: the Algolia DSN host is the provider API; the merchant origin decides.
+    if live_robots.live_robots_enabled() and not live_robots.gate(
+            f"https://{domain}/", "algolia"):
+        return None
 
     hits: List[Dict[str, Any]] = []
     # R1 retrieval-term ladder (mirrors the harvest path; _algolia_query_explicit
@@ -866,6 +879,9 @@ async def _fetch_explicit_store_price(
     # against an erroring store (woo/salla semantics).
     for term in build_adapter_search_terms(product_name, resolved_category):
         got = await _algolia_query_explicit(store, term)
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("algolia", f"https://{domain}/",
+                                   "fail" if got is None else "ok")
         if got is None:
             break
         hits = got

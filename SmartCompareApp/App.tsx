@@ -35,10 +35,9 @@ import { bootstrapRtl } from './src/i18n/rtlBootstrap';
 
 // Screens
 import SplashScreen from './src/screens/SplashScreen';
-import OnboardingScreen from './src/screens/OnboardingScreen';
-// Phase 2 redesign — gated by features.ENABLE_NEW_ONBOARDING (Task 24).
-// Default OFF; legacy 6-step flow remains the runtime path until canary.
-import { NewOnboardingHost } from './src/screens/onboarding/NewOnboardingHost';
+// S81-G6 CL2: OnboardingScreen and NewOnboardingHost are bound lazily below
+// the imports (lazyScreen). NewOnboardingHost is the Phase 2 redesign, gated
+// by features.ENABLE_NEW_ONBOARDING (Task 24).
 import { features, setFlagStableId } from './src/config/features';
 // Phase 5 Task 47 — canary bucketing primitive (deterministic per-user
 // stable id; powers the ENABLE_NEW_ONBOARDING getter at 10% rollout).
@@ -59,9 +58,9 @@ import EditProfileScreen from './src/screens/EditProfileScreen';
 import EditPreferencesFlow from './src/screens/EditPreferencesFlow';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import ReferralLandingScreen from './src/screens/ReferralLandingScreen';
-import InviteeQuizScreen from './src/screens/InviteeQuizScreen';
-import ScanCameraScreen from './src/screens/ScanCameraScreen';
+// S81-G6 CL2: ReferralLanding, InviteeQuiz and ScanCamera are bound lazily
+// below the imports; Legal (above) and Paywall stay eager (RULINGS_S81_G6
+// R-G6-1: the review-visible legal / quota sheets never wait on a fallback).
 import PaywallScreen from './src/screens/PaywallScreen';
 // A9 — force-update gate. The backend has served GET /api/v1/app/version
 // since Bundle D with nobody calling it, so APP_FORCE_UPDATE could not
@@ -91,6 +90,24 @@ import { installPushTapListeners, onNavigationReady } from './src/services/pushN
 // module-scoped invite-code slot consumed later by RegisterScreen.
 import { tryReadPlayInstallReferrer } from './src/services/playInstallReferrerService';
 import { setDeferredInviteCode } from './src/services/deferredInviteCode';
+// S81-G6 CL2 -- the per-user History cache owner and the lazy screen helper.
+import { setSwrUser } from './src/services/swrCache';
+import { lazyScreen } from './src/navigation/lazyScreen';
+
+// S81-G6 CL2: screens off the cold-start path, evaluated on their first open
+// (the module stays in the one native bundle; the binding names and every
+// route registration are unchanged).
+const OnboardingScreen = lazyScreen(() => import('./src/screens/OnboardingScreen'));
+// A named export: the explicit props type keeps the binding typed (GC-5).
+type NewOnboardingHostProps = React.ComponentProps<
+  typeof import('./src/screens/onboarding/NewOnboardingHost').NewOnboardingHost
+>;
+const NewOnboardingHost = lazyScreen<NewOnboardingHostProps>(() =>
+  import('./src/screens/onboarding/NewOnboardingHost').then((m) => ({ default: m.NewOnboardingHost }))
+);
+const ScanCameraScreen = lazyScreen(() => import('./src/screens/ScanCameraScreen'));
+const InviteeQuizScreen = lazyScreen(() => import('./src/screens/InviteeQuizScreen'));
+const ReferralLandingScreen = lazyScreen(() => import('./src/screens/ReferralLandingScreen'));
 
 // Configure Google Sign-In at module level
 configureGoogleSignIn();
@@ -131,6 +148,9 @@ function MainTabs({ onLogout }: { onLogout: () => void }) {
           backgroundColor: colors.bg.primary,
         },
         tabBarLabelStyle: { ...typography.small, fontWeight: '500' },
+        // S81-G6 CL2: a blurred tab skips re-renders until it is focused
+        // again (react-native-screens; the tabs only, R-G6-8).
+        freezeOnBlur: true,
       }}
     >
       <Tab.Screen
@@ -195,6 +215,13 @@ function App() {
       // Set language + RTL before rendering. bootstrapRtl forces the
       // direction and, when that changes it, reloads the bundle once so the
       // layout applies now (never throws).
+      // S81-G6 CL2: the stable-id read (SecureStore) is started first so it
+      // overlaps the language read (AsyncStorage); it is still awaited at
+      // its old place below, so every effect keeps its order. The attached
+      // catch only keeps a rejection from going unhandled while the boot
+      // waits on the language; the await below still rejects init.
+      const stableIdPromise = Promise.resolve().then(getStableId);
+      stableIdPromise.catch(() => undefined);
       const lang = await getSavedLanguage();
       await i18n.changeLanguage(lang);
       await bootstrapRtl(lang);
@@ -204,7 +231,7 @@ function App() {
       // device-id pre-signup; switches to user.id below once auth lands.
       // Doing this before setNeedsPreferences keeps the onboarding-gating
       // render in step with the bucket's final value (no flicker).
-      const initialId = await getStableId();
+      const initialId = await stableIdPromise;
       setFlagStableId(initialId);
 
       // Auth check.
@@ -284,6 +311,14 @@ function App() {
     });
     return unsubscribe;
   }, []);
+
+  // S81-G6 CL2: the in-memory History cache belongs to the signed-in user;
+  // every sign-out path ends in setUser(null) and every account change
+  // moves user.id, so this one effect clears it on both (authService is
+  // untouched, R-G6-2).
+  useEffect(() => {
+    setSwrUser(user?.id ?? null);
+  }, [user?.id]);
 
   // W3-15 — arm the notification-response listener and the foreground
   // presentation handler at boot. Deliberately its OWN effect and NOT part of

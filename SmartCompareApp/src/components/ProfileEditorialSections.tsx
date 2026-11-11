@@ -375,7 +375,6 @@ export function MonthStrip() {
   // Zero-state when threshold not met OR data missing (network failure).
   // JSX literal: "0 / 0 BHD / +0" — literal zeros, NEVER hide.
   const decisionsCount = stats?.decisions_count ?? 0;
-  const savingsBhd = stats?.savings_bhd ?? 0;
   const bonusCredits = stats?.bonus_credits_this_month ?? 0;
 
   return (
@@ -383,12 +382,6 @@ export function MonthStrip() {
       <View style={styles.statTile} testID="profile-month-stat-decisions">
         <Text style={styles.statNumber}>{decisionsCount}</Text>
         <Text style={styles.statLabel}>{t('profile.month.decisions')}</Text>
-      </View>
-      <View style={styles.statTile} testID="profile-month-stat-savings">
-        <Text style={[styles.statNumber, styles.statNumberAccent]}>
-          {savingsBhd.toFixed(0)}
-        </Text>
-        <Text style={styles.statLabel}>{t('profile.month.savings')}</Text>
       </View>
       <View style={styles.statTile} testID="profile-month-stat-bonus">
         <Text style={styles.statNumber}>
@@ -647,9 +640,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: colors.text.primary,
-  },
-  statNumberAccent: {
-    color: colors.accentDark,
   },
   statLabel: {
     ...typography.small,

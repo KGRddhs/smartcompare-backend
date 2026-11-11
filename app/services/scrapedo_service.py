@@ -1,7 +1,10 @@
 """Scrape.do Service — thin async wrapper around Scrape.do rendering API.
 
-Scrape.do renders JavaScript pages with residential proxies and anti-bot bypass.
-Used as Tier 1.5d fallback when curl_cffi fails to extract prices from retailer pages.
+Scrape.do renders JavaScript pages (Tier 1.5d) for render-only SPA pages when curl
+fetched HTML with no price. Its super / residential-proxy mode is retired under the
+robots policy (challenge = stop; owner decision 12): it runs only when
+ENABLE_SCRAPEDO_SUPER is true; an unset name means OFF (S81-23b; the legacy
+name is no longer read).
 """
 import os
 import logging
@@ -36,48 +39,59 @@ def _diag_enabled() -> bool:
     return _PRICE_PIPELINE_DIAG_FLAG
 
 
-# WS-G (fragrance-content-quality P8) — Scrape.do "super" (residential proxy +
-# anti-bot) + geoCode capability, gated OFF by DEFAULT for a cost-neutral,
-# behavior-neutral deploy. With SCRAPEDO_SUPER off (the default) the request
-# params are byte-identical to today's prod ({token,url,render:"true"}); only when
-# Ahmed flips SCRAPEDO_SUPER=true on Railway (for a separate, credit-spending
-# measurement) do we add super=true + geoCode. super=true bills ~10-25 credits/req
-# vs ~5 (A7 meters it against the 900/mo budget). Cached at process init like
-# _PRICE_PIPELINE_DIAG_FLAG; tests reset via reset_super_flags_cache().
+# Scrape.do "super" mode (the super=true residential-proxy request option plus a
+# geoCode) is RETIRED under the robots policy
+# (docs/policies/2026-08-31-robots-unreadable-ruling.md: a challenge is a stop,
+# never a target; owner decision 12; S81-23). OFF, a request carries exactly
+# {token, url, render: "true"}; ON adds super=true + geoCode (billed about 10-25
+# credits per request against about 5; A7 meters it against the 900/mo budget).
+# Read PER CALL by scrapedo_super_enabled(): ENABLE_SCRAPEDO_SUPER set uses the
+# house idiom (strip + lower, truthy set; "false" is a kill switch); UNSET means
+# OFF. S81-23b (2026-11-07, after the owner's dated unset line of the legacy name
+# on web and price-warmer) deleted the S81-23 transition branch that read the
+# legacy name while the new one was unset. _SUPER_FLAGS is no longer a cache; it
+# stays declared for the reset_super_flags_cache() hook that tests and scripts
+# still call.
 _SUPER_FLAGS = None
+
+_SCRAPEDO_SUPER_TRUTHY = ("true", "1", "yes", "on")
+
+
+def scrapedo_super_enabled() -> bool:
+    """S81-23: the Scrape.do super-mode gate, read PER CALL (never cached).
+
+    ENABLE_SCRAPEDO_SUPER set: the house idiom (strip + lower, truthy set), so
+    "false" / "0" / "off" / "" turn super mode off. ENABLE_SCRAPEDO_SUPER unset:
+    OFF (S81-23b; the legacy name is no longer read)."""
+    raw = os.getenv("ENABLE_SCRAPEDO_SUPER")
+    if raw is None:
+        return False
+    return raw.strip().lower() in _SCRAPEDO_SUPER_TRUTHY
 
 
 def _super_params() -> dict:
     """Return the extra GET params for a Scrape.do request: {"super":"true",
-    "geoCode":<code>} when SCRAPEDO_SUPER is enabled, else {} (the cost-neutral
-    default). Read once and cached."""
-    global _SUPER_FLAGS
-    if _SUPER_FLAGS is None:
-        if os.environ.get("SCRAPEDO_SUPER", "false").lower() == "true":
-            _SUPER_FLAGS = {
-                "super": "true",
-                "geoCode": os.environ.get("SCRAPEDO_GEOCODE", "bh"),
-            }
-        else:
-            _SUPER_FLAGS = {}
-    return _SUPER_FLAGS
+    "geoCode":<code>} when scrapedo_super_enabled(), else {} (the cost-neutral
+    default). Read per call since S81-23; a fresh dict each time."""
+    if not scrapedo_super_enabled():
+        return {}
+    return {
+        "super": "true",
+        "geoCode": os.environ.get("SCRAPEDO_GEOCODE", "bh"),
+    }
 
 
 def _super_enabled() -> bool:
-    """SINGLE source of truth for the SCRAPEDO_SUPER gate (residential proxy +
-    anti-bot render). True only when SCRAPEDO_SUPER=true. Shares the cached
-    _SUPER_FLAGS state with _super_params() (and the reset_super_flags_cache()
-    test hook), so the Scrape.do request params and any flag-gated routing read
-    the SAME flag the SAME way. WS-G G2 reads this from source_router to gate the
-    residential-only BH render source (sephora.me — the lone requires_super row;
-    boutiqaat was cracked to a $0 sitemap adapter in Wave-3c) so the deploy is
-    behavior-neutral with the flag OFF (default)."""
-    return bool(_super_params())
+    """SINGLE source of truth for the super-mode gate, shared by the request
+    params (_super_params) and the routing reader
+    (source_router._super_routing_enabled, which gates the lone requires_super
+    row, sephora.me). Delegates to scrapedo_super_enabled() (S81-23)."""
+    return scrapedo_super_enabled()
 
 
 def reset_super_flags_cache() -> None:
-    """Test hook — clear the cached super/geoCode flags so a subsequent call
-    re-reads the (patched) environment."""
+    """Test hook, kept for compatibility: the flags are read per call since
+    S81-23, so clearing _SUPER_FLAGS changes no outcome."""
     global _SUPER_FLAGS
     _SUPER_FLAGS = None
 

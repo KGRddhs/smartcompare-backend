@@ -451,9 +451,10 @@ def test_u3c_03_call_sites_pass_no_store_or_extra_body():
                         )
                         if not allowed:
                             bad.append("%s **%s is not an allowlisted spread" % (where, ast.unparse(v)))
-    # S81-06 (E3): 16 routed sites (16 + 16 + 1 = 33 spreads; was 15 sites / 31 at dfbda511).
-    assert sites >= 16, "harness: census floor is 16 routed call sites since S81-06, saw %d" % sites
-    assert spreads >= 33, "harness: census floor is 33 spreads since S81-06 (16 + 16 + 1), saw %d" % spreads
+    # S81-06 (E3): 16 routed sites (16 + 16 + 1 = 33 spreads; was 15 sites / 31 at dfbda511);
+    # S81-22b: the critique dispatch retired -> 15 routed sites (15 + 15 + 1 = 31 spreads).
+    assert sites >= 15, "harness: census floor is 15 routed call sites since S81-22b, saw %d" % sites
+    assert spreads >= 31, "harness: census floor is 31 spreads since S81-22b (15 + 15 + 1), saw %d" % spreads
     assert bad == [], bad
 
 

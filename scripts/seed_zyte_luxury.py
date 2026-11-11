@@ -1,20 +1,24 @@
-"""Off-clock Zyte luxury-price seed — the sephora-only PROOF (no cron yet).
+"""Off-clock Zyte luxury-price seed: RETIRED by S81-23, it seeds nothing.
 
-Renders a curated luxury fragrance/beauty gold-set on the Akamai-walled sephora.me
-via Zyte (geolocation=BH) OFF-CLOCK and writes the genuine BHD prices into the
-SHARED price cache (7-day genuine TTL). Live /text/compare requests then serve them
-INSTANT (cache-first) — the slow Zyte render never touches the 15s request clock.
+Every target this script held was sephora.me (the curated luxury pairs, routed
+through the cascade's Zyte tier whose only store is sephora.me, and the one
+truth-critical pinned PDP). sephora.me is Akamai-protected, and under the robots
+policy (docs/policies/2026-08-31-robots-unreadable-ruling.md: a challenge is a
+stop, never a target; owner decision 12) those seeds were removed: LUXURY_PAIRS
+and TRUTH_CRITICAL_SEEDS are empty, so main() makes no Zyte, GPT or Serper call.
 
-It does NOT run a full compare per pair (that would burn Serper on specs/reviews):
-it parses each pair (1 GPT call) then calls the price path directly. For a
-sephora-carried product the cascade's gated Zyte tier hits + caches + returns
-BEFORE any Serper shopping; a non-sephora product (e.g. Creed — not stocked) pends
-honestly.
+The scaffold is kept on purpose (RULINGS_S81_G1 R-G1-7): the startup-key guard
+("no key -> no paid call") and its pins stay meaningful for any future target
+that is robots-allowed, unchallenged and carries a ToS verdict. With targets, it
+parses each pair (1 GPT call) and calls the price path directly, and renders each
+truth-critical entry from its pinned PDP with Zyte product-detail extraction,
+writing genuine BHD prices into the SHARED price cache (7-day genuine TTL)
+off-clock, so the slow Zyte render never touches the 15s request clock.
 
 Sets ENABLE_ZYTE_RENDER + raised price timeout BEFORE importing the comparison
 service (the price modules read the timeout at import).
 
-Manual run (the "small proof"):  python -m scripts.seed_zyte_luxury
+Manual run:  python -m scripts.seed_zyte_luxury
 """
 from __future__ import annotations
 
@@ -51,22 +55,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Curated luxury gold-set — SEPHORA-CARRIED designer brands (Tom Ford / Dior / YSL
-# / Lancome / Mugler / Versace / Armani / Prada / Valentino / Marc Jacobs / V&R).
-# Niche houses sephora does NOT stock (Creed, Parfums de Marly, …) are excluded —
-# they would pend honestly (the strict no-fab match rejects a wrong-brand result).
-LUXURY_PAIRS: List[str] = [
-    "Tom Ford Oud Wood vs Tom Ford Black Orchid",
-    "Tom Ford Tobacco Vanille vs Tom Ford Lost Cherry",
-    "Dior Sauvage vs Dior Homme Intense",
-    "Dior Miss Dior vs YSL Mon Paris",
-    "YSL Black Opium vs YSL Libre",
-    "Lancome La Vie Est Belle vs Mugler Alien",
-    "Versace Eros vs Paco Rabanne 1 Million",
-    "Giorgio Armani Acqua di Gio vs Prada Luna Rossa",
-    "Marc Jacobs Daisy vs Viktor Rolf Flowerbomb",
-    "Valentino Born In Roma vs Carolina Herrera Good Girl",
-]
+# Curated luxury gold-set: retired 2026-10-29 by S81-23 (owner decision 12):
+# every pair was routed to sephora.me, which is Akamai-walled; robots policy,
+# challenge = stop. Kept as an empty list (the scaffold, R-G1-7); a future
+# target must be robots-allowed, unchallenged and carry a ToS verdict.
+LUXURY_PAIRS: List[str] = []
 
 # TRUTH-CRITICAL single-product seeds (Wave C C4) — each pinned to an EXACT,
 # recon-confirmed PDP + variant. Unlike LUXURY_PAIRS (Zyte productList search +
@@ -78,26 +71,10 @@ LUXURY_PAIRS: List[str] = [
 # build_size_aware_price_cache_key + L2 DB) so the warmed key is byte-identical
 # to what a live compare / measure_warmed_kpi reads (parity pinned in
 # tests/test_zyte_seed_variant.py). NO GPT parse, NO Serper — Zyte only.
-TRUTH_CRITICAL_SEEDS: List[Dict[str, Any]] = [
-    {
-        # kpi-frag-005 — Prada Luna Rossa Carbon EDT 100ml. Recon 2026-07-02
-        # (recon_fragrances): sephora.me product-detail size "Eau de Toilette
-        # 100ml", InStock, raw 58500.0 -> fils-fix 58.5 BHD. ounass is REAL-OOS
-        # for this SKU; the noon adapter (C3) is the durable path, this seed the
-        # immediate one.
-        "id": "kpi-frag-005",
-        "brand": "Prada",
-        "name": "Luna Rossa Carbon",
-        "variant": "Eau de Toilette 100ml",
-        "category": "fragrances",
-        "region": "bahrain",
-        "domain": "sephora.me",
-        "pdp_url": (
-            "https://www.sephora.me/bh-en/p/luna-rossa-carbon-eau-de-toilette/"
-            "P2909014?productVariantId=374448"
-        ),
-    },
-]
+# Retired 2026-10-29 by S81-23 (owner decision 12): the one entry was a pinned
+# sephora.me PDP, which is Akamai-walled; robots policy, challenge = stop. Kept
+# as an empty list (the scaffold, R-G1-7).
+TRUTH_CRITICAL_SEEDS: List[Dict[str, Any]] = []
 
 
 def _truth_label(entry: Dict[str, Any]) -> str:

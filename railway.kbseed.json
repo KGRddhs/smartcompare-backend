@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "watchPatterns": [
+      "scripts/seed_kb_batch.py",
+      "scripts/kb_seed_common.py",
+      "railway.kbseed.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -m scripts.seed_kb_batch",
+    "restartPolicyType": "NEVER"
+  }
+}

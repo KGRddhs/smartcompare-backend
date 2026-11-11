@@ -1,0 +1,202 @@
+{
+ "compare": {
+  "rest": {
+   "payload": "62895750f26070d5ea38da0a85bae2a5a0d264d6363537648852a9f57623e9bc",
+   "provider_attempts": "0f512fda1395e9e37c7eb0132231a9e5f94fa84f4b9a0ca473de8e9fa6182835",
+   "transport": "872be4c2a2dbf2870eddfcfdf38909165f2b65b0557d9f4cff9a5a0f4e6d3a7f"
+  },
+  "stream": {
+   "payload": "78d54972d0b37efc9919702892dd419f57bf16e62c109584bc0fe17e34b0de56",
+   "provider_attempts": "0f512fda1395e9e37c7eb0132231a9e5f94fa84f4b9a0ca473de8e9fa6182835",
+   "transport": "872be4c2a2dbf2870eddfcfdf38909165f2b65b0557d9f4cff9a5a0f4e6d3a7f"
+  }
+ },
+ "fetchers": {
+  "algolia_explicit": {
+   "calls": [
+    [
+     "curl.post",
+     "https://testappid-dsn.algolia.net/1/indexes/test_index/query",
+     {
+      "data": "{\"query\": \"Acme Nimbus Noir Eau de Parfum 100ml\", \"hitsPerPage\": 20}",
+      "headers": {
+       "Content-Type": "application/json",
+       "X-Algolia-API-Key": "<redacted>",
+       "X-Algolia-Application-Id": "testappid"
+      },
+      "impersonate": "chrome",
+      "timeout": 8.0
+     }
+    ]
+   ],
+   "returned": null
+  },
+  "algolia_harvest": {
+   "calls": [
+    [
+     "curl.get",
+     "https://store-a.example.com/",
+     {
+      "allow_redirects": true,
+      "impersonate": "chrome",
+      "timeout": 8.0
+     }
+    ]
+   ],
+   "returned": null
+  },
+  "curl": {
+   "calls": [
+    [
+     "curl.get",
+     "https://store-a.example.com/p/nimbus-noir?ref=abc",
+     {
+      "allow_redirects": true,
+      "impersonate": "chrome",
+      "timeout": 5
+     }
+    ]
+   ],
+   "returned": "<html>a</html>"
+  },
+  "same_site": {
+   "calls": [
+    [
+     "curl.get",
+     "https://store-a.example.com/p/nimbus-noir?ref=abc",
+     {
+      "allow_redirects": false,
+      "impersonate": "chrome",
+      "timeout": 5
+     }
+    ],
+    [
+     "curl.get",
+     "https://store-a.example.com/p/nimbus-noir-2",
+     {
+      "allow_redirects": false,
+      "impersonate": "chrome",
+      "timeout": 5
+     }
+    ]
+   ],
+   "returned": "<html>b</html>"
+  },
+  "shopify": {
+   "calls": [
+    [
+     "shopify._curl_get",
+     "https://store-a.example.com/products/nimbus-noir.js",
+     12
+    ]
+   ],
+   "returned": [
+    200,
+    "{\"id\": 1}"
+   ]
+  },
+  "url_base": {
+   "calls": [
+    [
+     "httpx.client",
+     {
+      "follow_redirects": false,
+      "timeout": 30.0
+     }
+    ],
+    [
+     "httpx.get",
+     "https://store-a.example.com/p/nimbus-noir?ref=abc",
+     {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept-Language": "en-US,en;q=0.5",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+     },
+     {}
+    ]
+   ],
+   "returned": {
+    "error": "Failed to fetch URL",
+    "success": false,
+    "url": "https://store-a.example.com/p/nimbus-noir?ref=abc"
+   }
+  },
+  "url_v2": {
+   "calls": [
+    [
+     "httpx.client",
+     {
+      "follow_redirects": false,
+      "timeout": 30.0,
+      "transport": "_TRANSPORT"
+     }
+    ],
+    [
+     "httpx.get",
+     "https://store-a.example.com/p/nimbus-noir?ref=abc",
+     {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept-Language": "en-US,en;q=0.5",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+     },
+     {}
+    ]
+   ],
+   "returned": {
+    "code": "STORE_UNREADABLE",
+    "error": "That store does not let us read its pages. Paste a link from another store, or type the product name.",
+    "reason": "http_4xx",
+    "success": false,
+    "url": "https://store-a.example.com/p/nimbus-noir?ref=abc"
+   }
+  },
+  "woo": {
+   "calls": [
+    [
+     "woo._do_get",
+     "https://store-a.example.com/wp-json/wc/store/products",
+     {
+      "per_page": 20,
+      "search": "Acme Nimbus Noir Eau de Parfum 100ml"
+     },
+     {
+      "Accept": "application/json",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Referer": "https://store-a.example.com/",
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-origin"
+     }
+    ],
+    [
+     "woo._do_get",
+     "https://store-a.example.com/wp-json/wc/store/products",
+     {
+      "per_page": 20,
+      "search": "Acme Nimbus Noir"
+     },
+     {
+      "Accept": "application/json",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Referer": "https://store-a.example.com/",
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-origin"
+     }
+    ]
+   ],
+   "returned": null
+  }
+ },
+ "meta": {
+  "recorded_at_base": "744616e37d031923e522e30740b687de76482ee9",
+  "recorded_with": "ENABLE_LIVE_ROBOTS_REGISTRY unset; the FULL configuration (the health sub-flag ON, the memo knobs set, the client / Redis / pool recorders); every transport faked",
+  "unit": "D14 LIVE-ROBOTS"
+ }
+}

@@ -1,5 +1,5 @@
 {
-  "_doc": "S79 B3-A copy fixture (spec 4.1 / 4.2, rulings A8 + A13). Every AR string is a draft for the owner's NATIVE READ. AR values carry no harakat, shadda or tanween except inside the brand word (ruling A8). The learning_keys copy (ruling A13) was drafted by the RED agent: the spec gives none; GREEN and the owner may reword it, the fixture is the contract.",
+  "_doc": "S81-11 E4/E13: onboarding.s14.cohort_footer and cohort.trainedBy removed (orphan survey-n claims), the three onboarding.s1 quotes re-cut to fragrance examples. S79 B3-A copy fixture (spec 4.1 / 4.2, rulings A8 + A13). Every AR string is a draft for the owner's NATIVE READ. AR values carry no harakat, shadda or tanween except inside the brand word (ruling A8). The learning_keys copy (ruling A13) was drafted by the RED agent: the spec gives none; GREEN and the owner may reword it, the fixture is the contract.",
   "changed_keys": [
     "loading.tip.save_offline",
     "results.tips.save_offline",
@@ -25,13 +25,11 @@
     "onboarding.s12.bullet_1",
     "onboarding.s12.bullet_3",
     "onboarding.s13.subtitle",
-    "onboarding.s14.cohort_footer",
     "loading.cohort.caption",
     "onboarding.s15.subtitle",
     "results.tips.cohort_match",
     "profile.month.bonus",
-    "onboarding.s16.subtitle",
-    "cohort.trainedBy"
+    "onboarding.s16.subtitle"
   ],
   "brand_keys": ["loading.tip.cross_checks", "results.tips.retailers"],
   "en": {
@@ -49,19 +47,17 @@
     "onboarding.s3.subtitle": "Side-by-side comparisons with prices from GCC retailers.",
     "auth.welcomeBackSub": "Sign in to compare any two products.",
     "onboarding.s1.subtitle": "Built for shoppers in the GCC.",
-    "onboarding.s1.quote_1": "Galaxy or iPhone? See where each one is stronger on camera and battery.",
-    "onboarding.s1.quote_2": "Two sunscreens? See which one suits sensitive skin.",
-    "onboarding.s1.quote_3": "Two multivitamins? See how their nutrients differ.",
+    "onboarding.s1.quote_1": "Sauvage or Bleu de Chanel? See their prices and details side by side.",
+    "onboarding.s1.quote_2": "Two oud perfumes? See which one fits your budget.",
+    "onboarding.s1.quote_3": "EDP or EDT of the same scent? See how size and price compare.",
     "onboarding.s12.bullet_1": "Based on answers from real GCC shoppers.",
     "onboarding.s12.bullet_3": "Your own priorities shape every verdict.",
     "onboarding.s13.subtitle": "Tuned to your priorities. Informed by a survey of GCC shoppers.",
-    "onboarding.s14.cohort_footer": "Informed by a survey of {{count}} GCC shoppers",
     "loading.cohort.caption": "Informed by a survey of GCC shoppers",
     "onboarding.s15.subtitle": "Tuned to your priorities. Informed by a survey of GCC shoppers.",
     "results.tips.cohort_match": "Survey answers from shoppers in {{governorate}} inform this match.",
     "profile.month.bonus": "Bonus comparisons",
-    "onboarding.s16.subtitle": "Sign in so your profile and history travel with you.",
-    "cohort.trainedBy": "Informed by a survey of {{count}} GCC shoppers"
+    "onboarding.s16.subtitle": "Sign in so your profile and history travel with you."
   },
   "ar": {
     "home.permission.denied_title": "الكاميرا غير مفعلة لهذا التطبيق",
@@ -78,19 +74,17 @@
     "onboarding.s3.subtitle": "مقارنات جنبا إلى جنب مع أسعار من متاجر الخليج.",
     "auth.welcomeBackSub": "سجل الدخول لمقارنة أي منتجين.",
     "onboarding.s1.subtitle": "صمم للمتسوقين في الخليج.",
-    "onboarding.s1.quote_1": "جالكسي أو آيفون؟ اعرف أين يتميز كل منهما في الكاميرا والبطارية.",
-    "onboarding.s1.quote_2": "واقيان من الشمس؟ اعرف أيهما يناسب البشرة الحساسة.",
-    "onboarding.s1.quote_3": "نوعان من الفيتامينات المتعددة؟ اعرف الفرق بين مكوناتهما الغذائية.",
+    "onboarding.s1.quote_1": "سوفاج أم بلو دو شانيل؟ اعرض الأسعار والتفاصيل جنبا إلى جنب.",
+    "onboarding.s1.quote_2": "عطران من العود؟ اعرف أيهما يناسب ميزانيتك.",
+    "onboarding.s1.quote_3": "نسخة EDP أم EDT من العطر نفسه؟ اعرف الفرق في الحجم والسعر.",
     "onboarding.s12.bullet_1": "مبني على إجابات متسوقين حقيقيين في الخليج.",
     "onboarding.s12.bullet_3": "أولوياتك أنت تشكل كل نتيجة.",
     "onboarding.s13.subtitle": "مصمم حسب أولوياتك. ومبني على استطلاع لمتسوقين في الخليج.",
-    "onboarding.s14.cohort_footer": "مبني على استطلاع شمل {{count}} من المتسوقين في الخليج",
     "loading.cohort.caption": "مبني على استطلاع لمتسوقين في الخليج",
     "onboarding.s15.subtitle": "مصمم حسب أولوياتك. ومبني على استطلاع لمتسوقين في الخليج.",
     "results.tips.cohort_match": "إجابات متسوقين في {{governorate}} من الاستطلاع تدعم هذه النتيجة.",
     "profile.month.bonus": "مقارنات إضافية",
-    "onboarding.s16.subtitle": "سجل الدخول ليرافقك ملفك وسجلك.",
-    "cohort.trainedBy": "مبني على استطلاع شمل {{count}} من المتسوقين في الخليج"
+    "onboarding.s16.subtitle": "سجل الدخول ليرافقك ملفك وسجلك."
   },
   "native": {
     "en": {

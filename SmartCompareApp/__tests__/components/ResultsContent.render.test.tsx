@@ -97,17 +97,7 @@ jest.mock('../../src/components/hero/RevealBurst', () => ({
     return <View testID="mock-reveal-burst" />;
   },
 }));
-jest.mock('../../src/components/CohortBadge', () => ({
-  CohortBadge: ({ peerCount, governorate }: any) => {
-    const { View, Text } = require('react-native');
-    if (!peerCount || !governorate) return null;
-    return (
-      <View testID="mock-cohort-badge">
-        <Text>{peerCount} - {governorate}</Text>
-      </View>
-    );
-  },
-}));
+// S81-11 (E1b, R-S11-31): the CohortBadge mock is removed with the deleted component.
 jest.mock('../../src/components/FeedbackCard', () => ({
   __esModule: true,
   default: ({ submitted, onSubmitted }: any) => {
@@ -210,7 +200,7 @@ describe('ResultsContent — render coverage', () => {
     expect(getByTestId('results-content-hero-pair')).toBeTruthy();
     expect(getByTestId('results-content-why')).toBeTruthy();
     expect(getByTestId('results-content-confidence')).toBeTruthy();
-    expect(getByTestId('results-cohort-badge-slot')).toBeTruthy();
+    // S81-11 (E1c, R-S11-31): the cohort badge slot anchor is removed with CohortBadge.
     expect(getByTestId('results-content-accordion')).toBeTruthy();
     expect(getByTestId('results-content-feedback')).toBeTruthy();
   });
@@ -245,16 +235,12 @@ describe('ResultsContent — render coverage', () => {
     ).toBeTruthy();
   });
 
-  it('renders cohort badge with peer count + governorate', () => {
-    const { getByTestId } = render(<ResultsContent {...baseProps} />);
-    expect(getByTestId('mock-cohort-badge')).toBeTruthy();
-  });
-
-  it('renders nothing in the cohort slot when peerCount=0', () => {
-    const { queryByTestId } = render(
-      <ResultsContent {...baseProps} cohortPeerCount={0} />
-    );
-    expect(queryByTestId('mock-cohort-badge')).toBeNull();
+  // S81-11 (E1c, R-S11-31): CohortBadge is deleted (a population claim with
+  // no measured source); the two cohort rows become one absence row, with the
+  // cohort props still passed (they stay optional and unused).
+  it('renders NO cohort badge slot (S81-11)', () => {
+    const { queryByTestId } = render(<ResultsContent {...baseProps} />);
+    expect(queryByTestId('results-cohort-badge-slot')).toBeNull();
   });
 
   it('renders the dimension-bars section when dimensions length >= 3', () => {

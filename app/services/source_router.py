@@ -60,7 +60,7 @@ class Source:
     is_algolia: bool = False
     # WS-G (fragrance-content-quality P8, 2026-06-22) — CF-walled BH retailer that
     # ONLY cracks with Scrape.do "super" (residential proxy + anti-bot). When True
-    # the row is EXCLUDED from all routing/discovery unless SCRAPEDO_SUPER is
+    # the row is EXCLUDED from all routing/discovery unless ENABLE_SCRAPEDO_SUPER is
     # enabled — so with the flag OFF (the cost-neutral default) the registry is
     # byte-identical to today (the row absent) and we never waste a CF-blocked
     # datacenter render + trip the SHARED scrapedo breaker on a wall only
@@ -200,11 +200,11 @@ _LITERAL_ROWS: List[Source] = [
     # ACTUALLY carry Western-luxury fragrance/beauty but sit behind a Cloudflare
     # interstitial that a plain datacenter render can't pass (render-wall doc:
     # docs/investigations/2026-06-15-render-wall-bh-retailers.md). They are
-    # render-only AND requires_super: routed/discovered ONLY when SCRAPEDO_SUPER
+    # render-only AND requires_super: routed/discovered ONLY when ENABLE_SCRAPEDO_SUPER
     # is enabled (residential proxy + anti-bot). With the flag OFF (the default)
     # these rows are filtered out everywhere, so discovery is byte-identical to
     # today and we never burn a CF-blocked render / trip the shared breaker. The
-    # gated A/B measurement (G4) flips SCRAPEDO_SUPER to see if super cracks them.
+    # gated A/B measurement (G4) flips ENABLE_SCRAPEDO_SUPER to see if super cracks them.
     Source(
         # Source-intel correction 2026-06-23: the CANONICAL BH Sephora is
         # sephora.me + /bh-en (NOT sephora.bh, which 301s + is unverified). Ahmed's
@@ -806,7 +806,7 @@ def _usage_allows(source_usage_value: str, wanted: str) -> bool:
 
 def _super_routing_enabled() -> bool:
     """WS-G — whether requires_super registry rows are routable. Reads the SAME
-    SCRAPEDO_SUPER flag the Scrape.do request params read, via the single source
+    ENABLE_SCRAPEDO_SUPER flag the Scrape.do request params read, via the single source
     of truth in scrapedo_service (so the gate and the actual super-render request
     can never disagree, and the existing reset_super_flags_cache() test hook
     resets both). Lazy import keeps source_router import-time dependency-free;
@@ -834,7 +834,7 @@ def get_sources_for_category(
     category, regardless of usage).
 
     WS-G — a `requires_super` source (CF-walled BH retailer that only cracks via
-    Scrape.do "super") is EXCLUDED unless SCRAPEDO_SUPER is enabled. With the
+    Scrape.do "super") is EXCLUDED unless ENABLE_SCRAPEDO_SUPER is enabled. With the
     flag OFF (the cost-neutral default) the returned set is byte-identical to
     today — the gated rows absent — so this routing chokepoint (and the
     build_site_discovery_query / Serper discovery it feeds) never surfaces a

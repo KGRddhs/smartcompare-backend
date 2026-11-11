@@ -537,28 +537,17 @@ def _anthropic_preflight_allows() -> bool:
     return not (state == _abs.CB_OPEN and _in_cooldown(tripped_at))
 
 
-def _self_critique_on() -> bool:
-    try:
-        vcs = importlib.import_module("app.services.verdict_critique_service")
-        return bool(vcs.is_self_critique_enabled())
-    except Exception:  # noqa: BLE001
-        return False
-
-
 def active_provider_preflight_allows() -> bool:
     """R-S06-4 / GC-1: the AND of the preflights of every provider an ON role
     decides for this compare. Every role flag OFF -> exactly the base OpenAI
     preflight (nothing else read). Else: the text and verdict roles always, the
-    critic when ENABLE_SELF_CRITIQUE is ON, the moderation role when it routes to
-    Claude (the OpenAI moderations endpoint is not behind the W1-3 breaker and
-    fails open, so it adds no breaker to the AND)."""
+    moderation role when it routes to Claude (the OpenAI moderations endpoint is
+    not behind the W1-3 breaker and fails open, so it adds no breaker to the AND)."""
     if not any_role_enabled():
         return _abs.openai_preflight_allows_compare()
     providers = set()
     for role in ("text", "verdict"):
         providers.add(PROVIDER if decide(role) == "anthropic" else "openai")
-    if _self_critique_on():
-        providers.add(PROVIDER if decide("critic") == "anthropic" else "openai")
     if decide("moderation") == "anthropic":
         providers.add(PROVIDER)
     allowed = True

@@ -86,9 +86,7 @@ jest.mock('../../src/components/hero/RevealBurst', () => ({
     return <View testID="mock-reveal-burst" />;
   },
 }));
-jest.mock('../../src/components/CohortBadge', () => ({
-  CohortBadge: () => null,
-}));
+// S81-11 (E1b, R-S11-31): the CohortBadge mock is removed with the deleted component.
 jest.mock('../../src/components/FeedbackCard', () => ({
   __esModule: true,
   default: () => {

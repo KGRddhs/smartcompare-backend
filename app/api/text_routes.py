@@ -42,11 +42,23 @@ from app.services.usage_service import (
     valid_device_fingerprint,
     check_anon_usage_allowed,
     record_anon_comparison,
+    device_quota_kwargs,  # S81-09: {} with ENABLE_DEVICE_DAILY_QUOTA OFF
+    usage_limit_extras,  # S81-09: {} for every base consume result
 )
 from app.utils.async_utils import fire_and_forget
 from app.services.extraction_service import normalize_output_lang
 # B1 (S80, ENABLE_RESULT_STATUS_METADATA): one status message per delivery exit.
 from app.services.sentry_service import capture_result_status
+from app.services import compare_runs as _compare_runs  # S81-22: ENABLE_COMPARE_RUN_LEDGER, read inside per call
+# S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the pre-consume gate of the
+# three compare routes, reached through the module attribute (a stdlib-only module).
+from app.services import category_gate as _category_gate
+# S81-18 KB-FIRST-SERVE (ENABLE_KB_FIRST_SERVE): the X-Client-Capabilities reader of the
+# four compare call sites (module attribute; flag OFF = one env read, no keyword passed).
+from app.services import kb_serve as _kb_serve
+# S81-20 RESULT-GATE (ENABLE_RESULT_GATE): the route-exit gate, reached through the
+# module attribute (a stdlib-only module; the flag is read inside, per call).
+from app.services import result_gate as _rg
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +340,9 @@ async def require_paid_route_user(
     if user:
         return user
     if _admin_credential_passes(request):
+        # S81-10 (R-S10-8, GC-6): the admin-key harness path is marked so the
+        # fragrance gate bypasses it; set ONLY here (no log, no body change).
+        request.state.paid_route_admin = True
         return None
     if request.headers.get("authorization"):
         _refuse_paid_route(request, _PAID_AUTH_BEARER_REJECTED)
@@ -546,10 +561,22 @@ def _surface_comparison_failure(result: Dict):
     # INSUFFICIENT_DATA + parser-failure + anything unrecognized → 400. Keep
     # the structured code where present so the FE can branch (e.g. show the
     # "choose different products" copy for INSUFFICIENT_DATA).
+    if code == _category_gate.CODE:
+        # S81-10: the post-resolve refusal keeps its additive category keys (a code
+        # only the fragrance gate produces; the error handler passes them under the
+        # flag). The url_routes failure arm reaches it too (S81-10b: compare_from_urls
+        # returns it for a refused link pair).
+        raise HTTPException(status_code=400, detail=_category_gate.http_detail(result))
     if code:
+        detail = {"code": code, "error": error_msg}
+        # S81-20 (flag read FIRST): an INSUFFICIENT_DATA gate refusal keeps its additive
+        # reason (one of four); OFF the detail is the base two keys.
+        if (_rg.result_gate_enabled() and code == _rg.GATE_CODE
+                and result.get("reason") in _rg.GATE_REASONS):
+            detail["reason"] = result["reason"]
         raise HTTPException(
             status_code=400,
-            detail={"code": code, "error": error_msg},
+            detail=detail,
         )
     if not _is_codeless_safe_message(error_msg):
         # W4-9 floor. Deliberately does NOT interpolate error_msg — that would
@@ -568,6 +595,74 @@ def _surface_comparison_failure(result: Dict):
             },
         )
     raise HTTPException(status_code=400, detail=error_msg)
+
+
+async def _result_gate_budget(request, user):
+    """S81-20 (R-S20-38, GC-6): the S81-10 refusal budget at a result-gate refusal.
+
+    Returns (gated, subject, spent). gated is False when ENABLE_FRAGRANCE_ONLY_GATE is
+    OFF or on the admin-key path: the refusal is then refunded and never counted (no
+    budget read). spent True (the budget is already spent at the refusal) keeps the
+    consumed credit and skips the record: the counter has no reader past its cap."""
+    if not (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(getattr(request, "state", None), "paid_route_admin", False)):
+        return False, None, False
+    subject = _category_gate.budget_subject(user)
+    spent = (await _category_gate.budget_state_async(subject)) is not None
+    return True, subject, spent
+
+
+async def _result_gate_exit(refusal, *, request, user, query, input_type, usage_consumed,
+                            consumed_keys, duration_ms, syn, where):
+    """S81-20 (ENABLE_RESULT_GATE): the abstain exit of text POST / GET (R-A3). Read the
+    refusal budget; when it is not spent, refund FIRST with the consume's keys (the M13-37
+    lesson) and count the refusal once; then ONE failure row in both W4-13 states, ONE
+    INFO line, and the 400 through the shared mapping, which raises. Never a save, never
+    a lifetime bump, never a KB write."""
+    user_id = user.get("id") if user else None
+    gated, subject, spent = await _result_gate_budget(request, user)
+    if not spent:
+        if usage_consumed and user_id:
+            fire_and_forget(refund_comparison_credit(user_id, consumed_keys),
+                            label=f"usage_refund.{where}.result_gate")
+        if gated:
+            await _category_gate.record_refusal_async(subject)
+    fire_and_forget(
+        log_search(query=query, input_type=input_type, user_id=user_id, success=False,
+                   error_message=_rg.gate_log_message(refusal.get("reason")),
+                   cost=_failure_log_cost(refusal), duration_ms=duration_ms, **syn),
+        label=f"log_search.{where}.result_gate",
+    )
+    logger.info("[RESULT_GATE] refused input=%s reason=%s", input_type, refusal.get("reason"))
+    _surface_comparison_failure(refusal)
+
+
+async def _s20_stream_settle(refusal, *, request, user, query, usage_consumed,
+                             consumed_keys, duration_ms, syn):
+    """S81-20 (GC-7): the stream refusal's settlement, ONE coroutine scheduled from the
+    event generator's finally (which itself awaits nothing): read the refusal budget ->
+    decide -> refund with the consume's keys or keep the credit (spent) -> count the
+    refusal once -> the ONE failure row. Never a save, never a lifetime bump."""
+    user_id = user.get("id") if user else None
+    try:
+        gated, subject, spent = await _result_gate_budget(request, user)
+    except Exception as exc:  # noqa: BLE001 -- a failed read refunds, never counts
+        logger.warning("[RESULT_GATE] budget read failed: %s", type(exc).__name__)
+        gated, subject, spent = False, None, False
+    if not spent:
+        if usage_consumed and user_id:
+            try:
+                await refund_comparison_credit(user_id, consumed_keys)
+            except Exception as exc:  # noqa: BLE001 -- the row below still lands
+                logger.warning("[RESULT_GATE] stream refund failed: %s", type(exc).__name__)
+        if gated:
+            try:
+                await _category_gate.record_refusal_async(subject)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[RESULT_GATE] refusal record failed: %s", type(exc).__name__)
+    await log_search(query=query, input_type="text_stream", user_id=user_id, success=False,
+                     error_message=_rg.gate_log_message(refusal.get("reason")),
+                     cost=_failure_log_cost(refusal), duration_ms=duration_ms, **syn)
 
 
 # ============================================
@@ -597,6 +692,12 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 
     service = get_comparison_service()
     start_time = time.time()
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first): rule 1 and the refusal budget
+    # BEFORE the preferences read and the consume; the admin-key path is never gated.
+    _gate = None
+    if (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(request.state, "paid_route_admin", False)):
+        _gate = await _category_gate.text_gate([body.query], user, route="text.post")
 
     # Fetch user preferences if authenticated
     user_prefs = None
@@ -615,8 +716,11 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
     # ATOMICALLY at the gate (was a TOCTOU — read here, increment fire-and-forget
     # after, so N parallel requests all read the same value and all passed).
     usage_consumed = False
+    usage_consumed_keys = None  # S81-20: the consume's keys, exactly as returned
     if user and user.get("id"):
-        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(
+            user["id"], user.get("access_token", ""), **device_quota_kwargs()
+        )
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -625,9 +729,11 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 }
             )
         usage_consumed = usage_check.get("consumed", False)
+        usage_consumed_keys = usage_check.get("consumed_keys")
 
     # Dual-shape: explicit pair bypasses parse_product_query() in the service
     # (wired via explicit_pair= kwarg in Phase 2). Stored here for forward use.
@@ -646,6 +752,8 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         user_id=user.get("id") if user else None,
         explicit_pair=explicit_pair,
         **({"output_lang": _ol} if (_ol := normalize_output_lang(body.lang)) else {}),
+        **({"fragrance_gate": _gate} if _gate is not None else {}),
+        **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -696,6 +804,14 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         surfaced = _surface_comparison_failure(result)
         if surfaced is not None:
             return surfaced
+
+    # S81-20: the flag is read inside, FIRST; None OFF or on a supported body.
+    _refusal = _rg.result_gate_refusal(result)
+    if _refusal is not None:
+        await _result_gate_exit(_refusal, request=request, user=user, query=body.query,
+                                input_type="text", usage_consumed=usage_consumed,
+                                consumed_keys=usage_consumed_keys, duration_ms=duration_ms,
+                                syn=_syn, where="text.post")
 
     # Extract product names for logging
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
@@ -768,6 +884,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         )
 
     capture_result_status(result, "text")  # B1 (S80): flag read inside, per call
+    _compare_runs.record_compare_run(result, "text")  # S81-22: flag read inside, per call
     return result
 
 
@@ -815,6 +932,12 @@ async def text_compare_get(
 
     service = get_comparison_service()
     start_time = time.time()
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first): rule 1 and the refusal budget
+    # BEFORE the preferences read and the consume; the admin-key path is never gated.
+    _gate = None
+    if (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(request.state, "paid_route_admin", False)):
+        _gate = await _category_gate.text_gate([q], user, route="text.get")
 
     # Fetch user preferences if authenticated
     user_prefs = None
@@ -832,8 +955,11 @@ async def text_compare_get(
     # Usage gate for authenticated users. M13-37: atomic consume at the gate
     # (same TOCTOU fix as POST /compare).
     usage_consumed = False
+    usage_consumed_keys = None  # S81-20: the consume's keys, exactly as returned
     if user and user.get("id"):
-        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(
+            user["id"], user.get("access_token", ""), **device_quota_kwargs()
+        )
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -842,9 +968,11 @@ async def text_compare_get(
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 }
             )
         usage_consumed = usage_check.get("consumed", False)
+        usage_consumed_keys = usage_check.get("consumed_keys")
 
     result = await service.compare_from_text(
         query=q,
@@ -858,6 +986,8 @@ async def text_compare_get(
         user_id=user.get("id") if user else None,
         explicit_pair=explicit_pair,
         **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
+        **({"fragrance_gate": _gate} if _gate is not None else {}),
+        **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -903,6 +1033,14 @@ async def text_compare_get(
         surfaced = _surface_comparison_failure(result)
         if surfaced is not None:
             return surfaced
+
+    # S81-20: the flag is read inside, FIRST; None OFF or on a supported body.
+    _refusal = _rg.result_gate_refusal(result)
+    if _refusal is not None:
+        await _result_gate_exit(_refusal, request=request, user=user, query=q,
+                                input_type="text", usage_consumed=usage_consumed,
+                                consumed_keys=usage_consumed_keys, duration_ms=duration_ms,
+                                syn=_syn, where="text.get")
 
     product_names = [f"{p.get('brand', '')} {p.get('name', '')}".strip()
                      for p in result.get("products", [])]
@@ -952,6 +1090,7 @@ async def text_compare_get(
         )
 
     capture_result_status(result, "text")  # B1 (S80): flag read inside, per call
+    _compare_runs.record_compare_run(result, "text")  # S81-22: flag read inside, per call
     return result
 
 
@@ -1001,6 +1140,13 @@ async def text_compare_stream(
 
     service = get_comparison_service()
     start_time = time.time()
+    # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE, read first): rule 1 and the refusal budget
+    # BEFORE the preferences read and the consume, and before StreamingResponse, so a
+    # refusal is a plain JSON 400 / 429; the admin-key path is never gated.
+    _gate = None
+    if (_category_gate.fragrance_only_gate_enabled()
+            and not getattr(request.state, "paid_route_admin", False)):
+        _gate = await _category_gate.text_gate([q], user, route="text.stream")
 
     # Fetch user preferences if authenticated
     user_prefs = None
@@ -1019,8 +1165,11 @@ async def text_compare_stream(
     # (same TOCTOU fix as POST/GET /compare). usage_consumed is captured by the
     # event_generator closure so it can refund on a streaming error.
     usage_consumed = False
+    usage_consumed_keys = None  # S81-20: the consume's keys, exactly as returned
     if user and user.get("id"):
-        usage_check = await consume_comparison_credit(user["id"], user.get("access_token", ""))
+        usage_check = await consume_comparison_credit(
+            user["id"], user.get("access_token", ""), **device_quota_kwargs()
+        )
         if not usage_check["allowed"]:
             raise HTTPException(
                 status_code=429,
@@ -1029,9 +1178,11 @@ async def text_compare_stream(
                     "code": "USAGE_LIMIT",
                     "tier": usage_check["tier"],
                     "remaining": usage_check["remaining"],
+                    **usage_limit_extras(usage_check),
                 }
             )
         usage_consumed = usage_check.get("consumed", False)
+        usage_consumed_keys = usage_check.get("consumed_keys")
 
     # Bundle E Task 2.5 § Decision 8 — event-type contract documented here
     # so future readers see the wire shape without grep'ing the service.
@@ -1073,6 +1224,7 @@ async def text_compare_stream(
         comparison_id = None
         persisted = False
         user_id = user.get("id") if user else None
+        _s20_refusal = None  # S81-20: the refusal the FIRST terminal decided
 
         # M13-35: the post-stream side effects (quota metering, history save,
         # analytics) MUST run even if the client drops the socket AFTER the
@@ -1110,6 +1262,8 @@ async def text_compare_stream(
             user_id=user.get("id") if user else None,
             explicit_pair=explicit_pair,
             **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
+            **({"fragrance_gate": _gate} if _gate is not None else {}),
+            **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
         )
         try:
             async for event_type, data in _stream:
@@ -1119,6 +1273,12 @@ async def text_compare_stream(
                 # same payload — capturing it means a disconnect right after the
                 # verdict still has the full response to meter + persist.
                 if event_type in ("complete", "settle_complete"):
+                    # S81-20 (flag read inside, FIRST): the FIRST terminal decides; the
+                    # duplicate terminal reuses it, so both frames carry the same refusal.
+                    if _s20_refusal is None and complete_response is None:
+                        _s20_refusal = _rg.result_gate_refusal(data)
+                    if _s20_refusal is not None:
+                        data = _s20_refusal
                     if complete_response is None:
                         # Latch on the FIRST final payload: a settle_complete
                         # delivered while still connected pins this False even if
@@ -1148,6 +1308,7 @@ async def text_compare_stream(
                         if (
                             comparison_id_echo_enabled()
                             and user_id and not client_gone and not had_error
+                            and _s20_refusal is None
                         ):
                             comparison_id = await _persist_comparison_bounded(
                                 full_response=data, query=q,
@@ -1221,7 +1382,24 @@ async def text_compare_stream(
             # Fire-and-forget logging once the stream (or the client) is done.
             duration_ms = int((time.time() - start_time) * 1000)
 
-            if complete_response and not had_error and not complete_after_client_gone:
+            if (_s20_refusal is not None and complete_response is _s20_refusal
+                    and not had_error and not complete_after_client_gone):
+                # S81-20 (R-A3, GC-7): a delivered refusal terminal is a non-delivery.
+                # ONE fire-and-forget settlement (budget read -> refund or keep ->
+                # count -> the row); nothing is awaited here. No save, no lifetime,
+                # no B1 message.
+                fire_and_forget(
+                    _s20_stream_settle(
+                        _s20_refusal, request=request, user=user, query=q,
+                        usage_consumed=usage_consumed,
+                        consumed_keys=usage_consumed_keys,
+                        duration_ms=duration_ms, syn=_syn,
+                    ),
+                    label="usage_refund.text_stream.result_gate",
+                )
+                logger.info("[RESULT_GATE] refused input=%s reason=%s", "text_stream",
+                            _s20_refusal.get("reason"))
+            elif complete_response and not had_error and not complete_after_client_gone:
                 if (
                     _truth and isinstance(complete_response, dict)
                     and complete_response.get("success") is False
@@ -1305,6 +1483,7 @@ async def text_compare_stream(
                 # terminal. Synchronous; no fire_and_forget label.
                 if isinstance(complete_response, dict) and complete_response.get("success") is True:
                     capture_result_status(complete_response, "text_stream")
+                    _compare_runs.record_compare_run(complete_response, "text_stream")  # S81-22: plain call, no await
             elif had_error:
                 # Bundle D 2.B.6 WRAP: failure-path log on streaming.
                 if not _truth:
@@ -1427,7 +1606,8 @@ async def quick_compare(request: Request, body: QuickCompareRequest):
             region=body.region,
             include_specs=True,
             include_reviews=True,
-            include_pros_cons=True
+            include_pros_cons=True,
+            **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
         )
     except Exception:
         if _truth:

@@ -23,7 +23,6 @@ async def test_successful_save_busts_home_savings_cache(monkeypatch):
         fs, "save_comparison", AsyncMock(return_value={"id": "comp-1"})
     )
     monkeypatch.setattr(fs, "track_event", AsyncMock(return_value={"success": True}))
-    monkeypatch.setattr(fs, "_persist_verdict_critique", AsyncMock())
 
     fake_referral = MagicMock()
     fake_referral.return_value.try_trigger_loop2 = AsyncMock()

@@ -1,0 +1,525 @@
+{
+ "_doc": "S81-G1 D08 flag-OFF rating golden, RECORDED AT BASE 6c14ac95 (origin/main) (both D08 flags unset) by tests/test_s81_d08_jsonld_widen.py::_p5_observe over _p5_records: 16 synthetic products = provider rating present/absent x reviews average_rating present (4.2) / absent / out_of_range (7.5) / string ('4.3') x a price carrying / lacking _jsonld_facts.rating. block = (rating, review_count, rating_verified, rating_source, rating_derived, jsonld_rating present) after the scs rating block; projection = (overview rating, overview review_count, reviews rating, reviews review_count, reviews rating_source, reviews jsonld_rating present, pd rating after the build, pd rating_derived after the build). Frozen: a flag-OFF change to any value is a regression.",
+ "records": [
+  {
+   "avg": "present",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": true,
+   "id": "g01",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "present",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": false,
+   "id": "g02",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "absent",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": true,
+   "id": "g03",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "absent",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": false,
+   "id": "g04",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "out_of_range",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": true,
+   "id": "g05",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "out_of_range",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": false,
+   "id": "g06",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "string",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": true,
+   "id": "g07",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "string",
+   "block": [
+    4.6,
+    100,
+    true,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    null,
+    false
+   ],
+   "facts": false,
+   "id": "g08",
+   "projection": [
+    4.6,
+    100,
+    4.6,
+    100,
+    {
+     "confidence": "high",
+     "extract_method": "serper_shopping",
+     "name": "Retailer B",
+     "retrieved_at": "2026-10-29T00:00:00Z",
+     "url": "https://store-b.example.com/p/oud"
+    },
+    false,
+    4.6,
+    null
+   ],
+   "provider": true
+  },
+  {
+   "avg": "present",
+   "block": [
+    4.2,
+    null,
+    false,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    true,
+    false
+   ],
+   "facts": true,
+   "id": "g09",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    false,
+    4.2,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "present",
+   "block": [
+    4.2,
+    null,
+    false,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    true,
+    false
+   ],
+   "facts": false,
+   "id": "g10",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    false,
+    4.2,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "absent",
+   "block": [
+    null,
+    null,
+    false,
+    null,
+    null,
+    false
+   ],
+   "facts": true,
+   "id": "g11",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    3.9,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "absent",
+   "block": [
+    null,
+    null,
+    false,
+    null,
+    null,
+    false
+   ],
+   "facts": false,
+   "id": "g12",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    3.9,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "out_of_range",
+   "block": [
+    null,
+    null,
+    false,
+    null,
+    null,
+    false
+   ],
+   "facts": true,
+   "id": "g13",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    3.9,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "out_of_range",
+   "block": [
+    null,
+    null,
+    false,
+    null,
+    null,
+    false
+   ],
+   "facts": false,
+   "id": "g14",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    3.9,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "string",
+   "block": [
+    4.3,
+    null,
+    false,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    true,
+    false
+   ],
+   "facts": true,
+   "id": "g15",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    false,
+    4.3,
+    true
+   ],
+   "provider": false
+  },
+  {
+   "avg": "string",
+   "block": [
+    4.3,
+    null,
+    false,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    true,
+    false
+   ],
+   "facts": false,
+   "id": "g16",
+   "projection": [
+    null,
+    null,
+    null,
+    null,
+    {
+     "confidence": "low",
+     "extract_method": "gpt_review_aggregate",
+     "name": "Aggregated from reviews",
+     "url": null
+    },
+    false,
+    4.3,
+    true
+   ],
+   "provider": false
+  }
+ ]
+}

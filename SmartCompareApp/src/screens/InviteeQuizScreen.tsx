@@ -159,15 +159,18 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
     // backend ships per-product scores at `scoring.scores.product_N.overall`
     // (response_builder.py:1557-1564) — the previously-read
     // `scoring.products[i].score` exists on NO backend payload shape, so
-    // every invitee saw the fabricated 78 fallback. Pick the winner's
-    // overall and clamp to [0, 100]; 78 remains the fallback only when
-    // scoring data is genuinely absent.
+    // every invitee saw a fabricated fallback score. Pick the winner's
+    // overall and clamp to [0, 100]. S81-11 (R-S11-6): when scoring data is
+    // absent or not a finite number there is NO fallback number: the
+    // quiz-match-score row is not rendered at all.
     const winnerIdx: number =
       result?.overview?.winner?.product_index ??
       (typeof result?.winner_index === 'number' ? result.winner_index : 0);
-    const rawScore: number =
-      result?.scoring?.scores?.[`product_${winnerIdx}`]?.overall ?? 78;
-    const matchScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+    const overall = result?.scoring?.scores?.[`product_${winnerIdx}`]?.overall;
+    const rawScore: number | null =
+      typeof overall === 'number' && Number.isFinite(overall) ? overall : null;
+    const matchScore: number | null =
+      rawScore === null ? null : Math.max(0, Math.min(100, Math.round(rawScore)));
 
     return (
       <SafeAreaView style={styles.container}>
@@ -198,6 +201,7 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
                 ) : null}
                 {/* Match-score CounterTicker — animates 0 → N (1.2s ease-out
                     via the component's default duration). */}
+                {matchScore !== null ? (
                 <View testID="quiz-match-score" style={styles.matchScoreRow}>
                   <CounterTicker
                     target={matchScore}
@@ -211,6 +215,7 @@ export default function InviteeQuizScreen({ navigation, route }: Props) {
                     })}
                   </Text>
                 </View>
+                ) : null}
               </View>
             </Animated.View>
           ) : null}

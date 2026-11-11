@@ -38,6 +38,13 @@ STATUS_CODE_MAP = {
 # `field` / `reason` keys to the wire (ruling B4-R5: scoped, never a global scan).
 # A tuple, not a set: `in` must not hash an arbitrary (possibly unhashable) code.
 _URL_V2_PASSTHROUGH_CODES = ("NOT_PRODUCT_PAGE", "STORE_UNREADABLE", "UNRESOLVED_PRODUCT")
+# S81-10 FRAGRANCE-ONLY-GATE: the nine canonical category keys (a tuple literal, so the
+# middleware imports no service; a row pins it equal to extraction_service's set). A
+# CATEGORY_NOT_LIVE detail passes `category` / `categories_live` only from this set.
+_CANONICAL_CATEGORY_KEYS = (
+    "electronics", "grocery", "supplements", "makeup", "skincare",
+    "haircare", "fragrances", "fashion", "other",
+)
 
 
 def _url_mode_v2_keys_enabled() -> bool:
@@ -46,6 +53,42 @@ def _url_mode_v2_keys_enabled() -> bool:
     middleware never imports a service; it reads the SAME name as
     url_extraction_service.url_mode_v2_enabled."""
     return os.getenv("ENABLE_URL_MODE_V2", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# S81-09 DEVICE-QUOTA-RIYADH: the USAGE_LIMIT `scope` values the client renders
+# (R-S08-2). A tuple, not a set: `in` must not hash an arbitrary value.
+_USAGE_LIMIT_SCOPES = ("daily", "device_daily", "monthly", "lifetime")
+
+
+def _device_quota_keys_enabled() -> bool:
+    """ENABLE_DEVICE_DAILY_QUOTA (S81-09, default OFF), read PER CALL. A local
+    one-liner (the _url_mode_v2_keys_enabled precedent: the middleware never
+    imports a service); it reads the SAME name as
+    usage_service.device_daily_quota_enabled."""
+    return os.getenv("ENABLE_DEVICE_DAILY_QUOTA", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def _fragrance_gate_keys_enabled() -> bool:
+    """ENABLE_FRAGRANCE_ONLY_GATE (S81-10, default OFF), read PER CALL. A local one-liner
+    (the B4 precedent above: the middleware never imports a service); it reads the SAME
+    name as category_gate.fragrance_only_gate_enabled."""
+    return os.getenv("ENABLE_FRAGRANCE_ONLY_GATE", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+_RESULT_GATE_REASONS = ("placeholder_identity", "same_identity", "category_conflict", "no_evidence")
+
+
+def _result_gate_keys_enabled() -> bool:
+    """ENABLE_RESULT_GATE (S81-20, default OFF), read PER CALL. A local one-liner (the
+    middleware never imports a service); it reads the SAME name as
+    result_gate.result_gate_enabled."""
+    return os.getenv("ENABLE_RESULT_GATE", "false").strip().lower() in (
         "true", "1", "yes", "on",
     )
 
@@ -161,6 +204,45 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             value = detail.get(key)
             if isinstance(value, str):
                 content[key] = value
+    # S81-09 (flag read FIRST, so OFF reads nothing more of the detail): a
+    # USAGE_LIMIT 429 keeps its additive `resets_at` (a str) and `scope` (one of
+    # _USAGE_LIMIT_SCOPES); its int `retry_after` reaches the wire through the
+    # W1-9 lines below. Every other code and status keeps the base key set.
+    if (_device_quota_keys_enabled() and exc.status_code == 429
+            and _is_structured_detail(detail)
+            and isinstance(detail.get("code"), str)
+            and detail["code"] == "USAGE_LIMIT"):
+        resets_at = detail.get("resets_at")
+        if isinstance(resets_at, str):
+            content["resets_at"] = resets_at
+        scope = detail.get("scope")
+        if isinstance(scope, str) and scope in _USAGE_LIMIT_SCOPES:
+            content["scope"] = scope
+    # S81-10 (flag read FIRST, so OFF reads nothing more of the detail): a
+    # CATEGORY_NOT_LIVE refusal keeps its additive keys, each validated: `category` a
+    # canonical key, `categories_live` a non-empty list of canonical keys, `scope` only
+    # "refusal_daily", `resets_at` a str. `retry_after` reaches the wire only through
+    # the W1-9 block below.
+    if (_fragrance_gate_keys_enabled() and _is_structured_detail(detail)
+            and detail.get("code") == "CATEGORY_NOT_LIVE"):
+        category = detail.get("category")
+        if isinstance(category, str) and category in _CANONICAL_CATEGORY_KEYS:
+            content["category"] = category
+        live = detail.get("categories_live")
+        if (isinstance(live, list) and live
+                and all(isinstance(item, str) and item in _CANONICAL_CATEGORY_KEYS for item in live)):
+            content["categories_live"] = list(live)
+        if detail.get("scope") == "refusal_daily":
+            content["scope"] = "refusal_daily"
+        resets_at = detail.get("resets_at")
+        if isinstance(resets_at, str):
+            content["resets_at"] = resets_at
+    # S81-20 (flag read FIRST, so OFF reads nothing more of the detail): an
+    # INSUFFICIENT_DATA gate refusal keeps its additive `reason` (one of four).
+    if (_result_gate_keys_enabled() and _is_structured_detail(detail)
+            and detail.get("code") == "INSUFFICIENT_DATA"
+            and detail.get("reason") in _RESULT_GATE_REASONS):
+        content["reason"] = detail["reason"]
     headers = None
     if retry_after is not None:
         content["retry_after_seconds"] = retry_after

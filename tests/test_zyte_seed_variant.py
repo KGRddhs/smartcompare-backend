@@ -36,6 +36,27 @@ CARBON_PDP = (
 )
 CARBON_QUERY = "Prada Luna Rossa Carbon Eau de Toilette 100ml"
 
+# S81-23 (E3 / E4, RULINGS_S81_G1 R-G1-7): the seed script's lists are retired
+# (empty), so the rows that exercised its truth-critical machinery now pass this
+# test-data copy of the retired Carbon entry (and of the retired gold-set pairs)
+# explicitly; the script itself no longer carries either.
+_SEED_ENTRY = {
+    "id": "kpi-frag-005",
+    "brand": "Prada",
+    "name": "Luna Rossa Carbon",
+    "variant": "Eau de Toilette 100ml",
+    "category": "fragrances",
+    "region": "bahrain",
+    "domain": "sephora.me",
+    "pdp_url": CARBON_PDP,
+}
+_SEED_PAIRS = [
+    "Tom Ford Oud Wood vs Tom Ford Black Orchid",
+    "Dior Sauvage vs Dior Homme Intense",
+    "Giorgio Armani Acqua di Gio vs Prada Luna Rossa",
+    "Marc Jacobs Daisy vs Viktor Rolf Flowerbomb",
+]
+
 
 @pytest.fixture(autouse=True)
 def _enable(monkeypatch):
@@ -114,25 +135,20 @@ def _plist(products):
 
 # --- the Carbon truth entry + seed-script scoping ---------------------------
 
-def test_carbon_truth_entry_shape(seed_mod):
-    entries = [e for e in seed_mod.TRUTH_CRITICAL_SEEDS
-               if "carbon" in f"{e.get('brand','')} {e.get('name','')}".lower()]
-    assert len(entries) == 1, "exactly one Luna Rossa Carbon truth-critical entry"
-    e = entries[0]
-    assert e["brand"] == "Prada"
-    assert e["name"] == "Luna Rossa Carbon"
-    assert e["pdp_url"] == CARBON_PDP, "pinned to the EXACT recon-confirmed PDP + variant"
-    assert "productVariantId=374448" in e["pdp_url"]
-    assert e["domain"] == "sephora.me"
-    assert e["category"] == "fragrances"
-    assert "100ml" in (e.get("variant") or ""), "variant pins the 100ml size"
+def test_truth_seed_lists_are_retired(seed_mod):
+    """S81-23 (E3): the sephora.me seeds are retired under the robots policy, so
+    the script keeps its scaffold with BOTH seed lists empty; the default
+    target selection therefore runs nothing."""
+    assert seed_mod.TRUTH_CRITICAL_SEEDS == []
+    assert seed_mod.LUXURY_PAIRS == []
+    assert seed_mod._select_targets([]) == ([], [])
 
 
 def test_carbon_cache_key_parity(seed_mod):
     """The entry-derived key must equal every plausible live-parse key shape —
     warmed key == the key measure_warmed_kpi / a live compare reads."""
     from app.services.price_service import build_size_aware_price_cache_key as k
-    e = [x for x in seed_mod.TRUTH_CRITICAL_SEEDS if x["name"] == "Luna Rossa Carbon"][0]
+    e = dict(_SEED_ENTRY)
     entry_key = k(e["brand"], e["name"], e.get("variant"), e.get("region", "bahrain"),
                   seed_mod._truth_label(e))
     assert entry_key == k("Prada", "Luna Rossa Carbon", None, "bahrain", CARBON_QUERY)
@@ -156,7 +172,7 @@ def test_carbon_parser_axis_presence_gap_documented(seed_mod):
     the KPI truth-check correctly refuses, while the correct 58.5 EDT seed lives
     at the axis-complete key."""
     from app.services.price_service import build_size_aware_price_cache_key as k
-    e = [x for x in seed_mod.TRUTH_CRITICAL_SEEDS if x["name"] == "Luna Rossa Carbon"][0]
+    e = dict(_SEED_ENTRY)
     entry_key = k(e["brand"], e["name"], e.get("variant"), "bahrain", seed_mod._truth_label(e))
     live_parse_key = k("Prada", "Luna Rossa Carbon", "100ml", "bahrain",
                        "Prada Luna Rossa Carbon 100ml")
@@ -167,25 +183,31 @@ def test_carbon_parser_axis_presence_gap_documented(seed_mod):
 
 
 def test_select_targets_only_scoping(seed_mod):
-    pairs = list(seed_mod.LUXURY_PAIRS)
-    truth = list(seed_mod.TRUTH_CRITICAL_SEEDS)
+    # S81-23 (E4): the script's lists are retired (empty), so the scoping rules
+    # are exercised over explicit test-data lists passed as pairs= / truth=.
+    pairs = list(_SEED_PAIRS)
+    truth = [dict(_SEED_ENTRY)]
+
+    def sel(argv):
+        return seed_mod._select_targets(argv, pairs=pairs, truth=truth)
+
     # default: full gold-set + all truth-critical entries
-    p, t = seed_mod._select_targets([])
+    p, t = sel([])
     assert p == pairs and t == truth
     # --only carbon: no pair mentions "carbon" -> ONLY the Carbon truth entry
-    p, t = seed_mod._select_targets(["--only", "carbon"])
+    p, t = sel(["--only", "carbon"])
     assert p == []
     assert len(t) == 1 and t[0]["name"] == "Luna Rossa Carbon"
     # --only is case-insensitive substring over both lists
-    p, t = seed_mod._select_targets(["--only", "LUNA"])
-    assert all("luna" in x.lower() for x in p)
+    p, t = sel(["--only", "LUNA"])
+    assert p and all("luna" in x.lower() for x in p)
     assert len(t) == 1
     # explicit pair args (existing CLI) stay a PAIR-only targeted re-seed
-    p, t = seed_mod._select_targets(["Dior Sauvage vs Bleu de Chanel"])
+    p, t = sel(["Dior Sauvage vs Bleu de Chanel"])
     assert p == ["Dior Sauvage vs Bleu de Chanel"]
     assert t == []
     # --only that matches nothing runs nothing (never falls back to everything)
-    p, t = seed_mod._select_targets(["--only", "zzz-no-such"])
+    p, t = sel(["--only", "zzz-no-such"])
     assert p == [] and t == []
 
 
@@ -448,7 +470,7 @@ def test_seeded_carbon_payload_usable_for_kpi_frag_005():
 @pytest.mark.asyncio
 async def test_seed_truth_entry_writes_cache_at_parity_key(seed_mod):
     from app.services.price_service import build_size_aware_price_cache_key
-    e = [x for x in seed_mod.TRUTH_CRITICAL_SEEDS if x["name"] == "Luna Rossa Carbon"][0]
+    e = dict(_SEED_ENTRY)
     expected_key = build_size_aware_price_cache_key(
         e["brand"], e["name"], e.get("variant"), e.get("region", "bahrain"),
         seed_mod._truth_label(e),
@@ -473,7 +495,7 @@ async def test_seed_truth_entry_writes_cache_at_parity_key(seed_mod):
 async def test_seed_truth_entry_write_gate_refusal_no_write(seed_mod):
     """A dict the fail-closed write gate refuses (no title -> unverifiable) is
     never cached — the seed reports it pending instead."""
-    e = [x for x in seed_mod.TRUTH_CRITICAL_SEEDS if x["name"] == "Luna Rossa Carbon"][0]
+    e = dict(_SEED_ENTRY)
     svc = MagicMock()
     bad = {k: v for k, v in _carbon_price().items() if k != "title"}
     with patch("app.services.zyte_service.fetch_zyte_pdp_price",
@@ -487,7 +509,7 @@ async def test_seed_truth_entry_write_gate_refusal_no_write(seed_mod):
 
 @pytest.mark.asyncio
 async def test_seed_truth_entry_fetch_miss_pends(seed_mod):
-    e = [x for x in seed_mod.TRUTH_CRITICAL_SEEDS if x["name"] == "Luna Rossa Carbon"][0]
+    e = dict(_SEED_ENTRY)
     svc = MagicMock()
     with patch("app.services.zyte_service.fetch_zyte_pdp_price",
                AsyncMock(return_value=None)), \

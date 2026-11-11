@@ -14,9 +14,9 @@ PO-prompts-02 — the verdict stack demanded decisiveness with NO evidence
 condition and never wired the computed quality into the prompt
 (generate_comparison hardcoded comparison_quality="normal"). Under the flag,
 the orchestrator feeds detect_comparison_quality(post_fallback=True) into
-generate_comparison; "weak" injects a thin-evidence hedging clause, and the
-self-critique regen loop stops treating an honest hedge as a defect
-(hedging_score is exempt from the regen trigger on weak/weird data).
+generate_comparison; "weak" injects a thin-evidence hedging clause (the
+self-critique regen loop's hedging exemption was retired with the pass,
+S81-22b).
 
 Flag OFF must be byte-identical to the legacy behaviour — pinned below.
 """
@@ -29,7 +29,6 @@ import pytest
 
 import app.services.structured_comparison_service as scs
 import app.services.extraction_service as es
-import app.services.verdict_critique_service as vcs
 
 
 def _product(name, category="fragrances", price=100.0, specs=None):
@@ -218,60 +217,3 @@ class TestWeakVerdictPrompt:
         assert captured.get("comparison_quality") == "weak"
         # generate_comparison never raises — error sentinel comes back.
         assert isinstance(result, tuple) or isinstance(result, dict)
-
-
-# ---------------------------------------------------------------------------
-# Self-critique: an honest hedge on thin data is not a regen trigger
-# ---------------------------------------------------------------------------
-
-def _critique(hedging=10, bias=10):
-    scores = {
-        "bias_score": bias,
-        "vagueness_score": 10,
-        "hedging_score": hedging,
-        "missing_citation_score": 10,
-        "pain_workflow_align_score": 10,
-    }
-    low = [a for a in vcs.CRITIQUE_AXES if scores[a] < vcs.CRITIQUE_THRESHOLD]
-    return vcs.CritiqueResult(
-        axis_scores=scores,
-        needs_regen=bool(low),
-        low_axes=low,
-        regen_reason="; ".join(low) if low else None,
-        critic_model="gpt-4o-mini",
-        usage={"prompt_tokens": 10, "completion_tokens": 5},
-    )
-
-
-class TestCritiqueHedgingExemption:
-    def _run(self, critique, comparison_quality):
-        regenerate = AsyncMock(return_value={"winner_reason": "regen", "winner_index": 0})
-        with patch.object(vcs, "is_self_critique_enabled", return_value=True), \
-             patch.object(vcs, "critique_verdict", AsyncMock(return_value=critique)):
-            outcome = asyncio.run(
-                vcs.critique_and_maybe_regenerate(
-                    comparison={"winner_reason": "orig", "winner_index": 0},
-                    product_names=["A", "B"],
-                    regenerate=regenerate,
-                    comparison_quality=comparison_quality,
-                )
-            )
-        return outcome, regenerate
-
-    def test_low_hedging_on_weak_data_does_not_regen(self):
-        outcome, regenerate = self._run(_critique(hedging=3), "weak")
-        assert outcome.regenerated is False
-        regenerate.assert_not_awaited()
-        # The critique itself is preserved for persistence/observability.
-        assert outcome.critique is not None
-        assert outcome.critique.axis_scores["hedging_score"] == 3
-
-    def test_low_hedging_on_normal_data_still_regens(self):
-        outcome, regenerate = self._run(_critique(hedging=3), "normal")
-        assert outcome.regenerated is True
-        regenerate.assert_awaited_once()
-
-    def test_low_bias_on_weak_data_still_regens(self):
-        outcome, regenerate = self._run(_critique(hedging=10, bias=2), "weak")
-        assert outcome.regenerated is True
-        regenerate.assert_awaited_once()

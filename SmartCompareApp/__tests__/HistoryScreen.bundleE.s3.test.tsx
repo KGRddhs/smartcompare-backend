@@ -34,10 +34,12 @@ describe('Bundle E S3 — HistoryScreen JSX element-order (HistoryScreen.jsx 1-3
     expect(HISTORY_SRC).toMatch(/<HistoryHeroStats\b/);
   });
 
-  it('HistoryHeroStats renders stat strip: decisions count + savings BHD', () => {
+  // S81-11 (E8b, C9): the savings line is removed ("shopped smarter" summed
+  // estimates and converted prices); the strip keeps the decisions count.
+  it('HistoryHeroStats renders stat strip: decisions count, no savings line (S81-11)', () => {
     expect(HISTORY_SRC).toMatch(/history\.hero\.eyebrow/);
     expect(HISTORY_SRC).toMatch(/history\.hero\.count/);
-    expect(HISTORY_SRC).toMatch(/history\.hero\.savings/);
+    expect(HISTORY_SRC).not.toMatch(/history\.hero\.savings/);
   });
 
   it('HistoryHeroStats renders horizontal marquee with mini VS cards (JSX 99-107)', () => {

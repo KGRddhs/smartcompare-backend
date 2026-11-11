@@ -61,13 +61,6 @@ def fake_redis(monkeypatch):
     return store
 
 
-@pytest.fixture
-def no_learned_write(monkeypatch):
-    """Suppress the data/variant_hint_learned.json write so the suite never
-    touches the committed data file."""
-    monkeypatch.setattr(ps, "_varhint_append_learned", lambda *a, **k: None)
-
-
 def _price(title, amount=95.0, url="https://theperfumesclub.com/product/x", brand="",
            in_stock=True):
     return {
@@ -97,34 +90,34 @@ _UNKNOWN_T = "Obscure Niche House Ambrox Pour Femme Eau de Parfum 100ml"
 # A) The async LLM-hint verdict paths (curated MISS -> LLM consulted)
 # ==========================================================================
 class TestAsyncHintVerdicts:
-    def test_distinct_high_vetoes(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_distinct_high_vetoes(self, hint_on, fake_redis, monkeypatch):
         _mock_llm(monkeypatch, distinct=True, confidence="high")
         allow, reason = asyncio.run(ps.warmer_write_veto_async(
             _UNKNOWN_Q, _price(_UNKNOWN_T), "fragrances"))
         assert allow is False
         assert "gender" in (reason or "").lower()
 
-    def test_same_high_allows(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_same_high_allows(self, hint_on, fake_redis, monkeypatch):
         _mock_llm(monkeypatch, distinct=False, confidence="high")
         allow, _ = asyncio.run(ps.warmer_write_veto_async(
             _UNKNOWN_Q, _price(_UNKNOWN_T), "fragrances"))
         assert allow is True
 
-    def test_low_confidence_failclosed_veto(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_low_confidence_failclosed_veto(self, hint_on, fake_redis, monkeypatch):
         _mock_llm(monkeypatch, distinct=True, confidence="low")
         allow, reason = asyncio.run(ps.warmer_write_veto_async(
             _UNKNOWN_Q, _price(_UNKNOWN_T), "fragrances"))
         assert allow is False
         assert "unknown" in (reason or "").lower() or "fail" in (reason or "").lower()
 
-    def test_unknown_response_failclosed_veto(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_unknown_response_failclosed_veto(self, hint_on, fake_redis, monkeypatch):
         _mock_llm(monkeypatch, distinct="unknown", confidence="high")
         allow, reason = asyncio.run(ps.warmer_write_veto_async(
             _UNKNOWN_Q, _price(_UNKNOWN_T), "fragrances"))
         assert allow is False
         assert "unknown" in (reason or "").lower() or "fail" in (reason or "").lower()
 
-    def test_client_error_failclosed_veto(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_client_error_failclosed_veto(self, hint_on, fake_redis, monkeypatch):
         # The real disambiguator swallows client errors -> {"unknown","low"}.
         async def _boom(category, query, candidate_title, axis):
             return {"distinct_product": "unknown", "confidence": "low", "cost": 0.0}
@@ -161,7 +154,7 @@ class TestVerdictCacheShortCircuit:
             _UNKNOWN_Q, _price(_UNKNOWN_T), "fragrances"))
         assert allow is True
 
-    def test_resolved_verdict_written_to_cache(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_resolved_verdict_written_to_cache(self, hint_on, fake_redis, monkeypatch):
         # A first miss resolves via the LLM and the verdict is persisted so a
         # second consult short-circuits.
         spy = []
@@ -179,7 +172,7 @@ class TestVerdictCacheShortCircuit:
 # C) VARHINT_MAX_CALLS_PER_RUN cap enforced (N+1th fails-closed WITHOUT calling)
 # ==========================================================================
 class TestPerRunCap:
-    def test_cap_enforced_no_call_beyond_limit(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_cap_enforced_no_call_beyond_limit(self, hint_on, fake_redis, monkeypatch):
         monkeypatch.setenv("VARHINT_MAX_CALLS_PER_RUN", "2")
         ps._reset_varhint_run_state()
         spy = []
@@ -202,7 +195,7 @@ class TestPerRunCap:
         assert "unknown" in (results[2][1] or "").lower() \
             or "fail" in (results[2][1] or "").lower()
 
-    def test_reset_run_state_clears_counter(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_reset_run_state_clears_counter(self, hint_on, fake_redis, monkeypatch):
         monkeypatch.setenv("VARHINT_MAX_CALLS_PER_RUN", "1")
         ps._reset_varhint_run_state()
         spy = []
@@ -235,7 +228,7 @@ class TestLivePathNoClientConstruction:
             raise AssertionError("OpenAI client constructed on the live path")
         monkeypatch.setattr(openai_service, "get_client", _boom)
 
-    def test_async_no_warm_signal_no_client(self, fake_redis, no_learned_write, monkeypatch):
+    def test_async_no_warm_signal_no_client(self, fake_redis, monkeypatch):
         # Flags fully ON but NO warm signal (live path) -> the veto no-ops before
         # any axis detection; certainly no client.
         monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
@@ -248,7 +241,7 @@ class TestLivePathNoClientConstruction:
             _UNKNOWN_Q, _price(_UNKNOWN_T), "fragrances"))
         assert allow is True  # live veto no-ops
 
-    def test_async_hint_flag_off_no_client(self, fake_redis, no_learned_write, monkeypatch):
+    def test_async_hint_flag_off_no_client(self, fake_redis, monkeypatch):
         # Warm signal present + axes on, but ENABLE_VARIANT_LLM_HINT OFF -> curated
         # unknown fail-closes WITHOUT ever constructing a client.
         monkeypatch.setenv("ENABLE_EXACT_PRICE_GATE", "true")
@@ -262,7 +255,7 @@ class TestLivePathNoClientConstruction:
         assert allow is False  # curated-unknown fail-closed, no LLM
         assert "unknown" in (reason or "").lower() or "fail" in (reason or "").lower()
 
-    def test_sync_veto_never_constructs_client(self, fake_redis, no_learned_write, monkeypatch):
+    def test_sync_veto_never_constructs_client(self, fake_redis, monkeypatch):
         # The SYNC warmer_write_veto (called by should_cache_price on EVERY path,
         # incl. live) must NEVER construct a client even with the hint flag on and
         # warm context -- it only reads the $0 Redis verdict cache.
@@ -296,7 +289,7 @@ class TestLivePathNoClientConstruction:
 # E) Curated HIT never reaches the LLM (B3a path unchanged by B3b)
 # ==========================================================================
 class TestCuratedHitNoLLM:
-    def test_curated_distinct_no_llm(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_curated_distinct_no_llm(self, hint_on, fake_redis, monkeypatch):
         # Eros is curated (men) -> Pour Femme is DISTINCT via the reference; the
         # LLM must never be consulted.
         def _boom(*a, **k):
@@ -308,7 +301,7 @@ class TestCuratedHitNoLLM:
         assert allow is False
         assert "gender" in (reason or "").lower()
 
-    def test_curated_same_no_llm(self, hint_on, fake_redis, no_learned_write, monkeypatch):
+    def test_curated_same_no_llm(self, hint_on, fake_redis, monkeypatch):
         def _boom(*a, **k):
             raise AssertionError("LLM consulted on a curated HIT")
         monkeypatch.setattr(openai_service, "disambiguate_variant_line", _boom)

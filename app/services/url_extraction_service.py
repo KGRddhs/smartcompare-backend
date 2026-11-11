@@ -22,6 +22,9 @@ from app.services.model_config import sampling_kwargs, standard_model, token_lim
 from app.services.extraction_service import canonicalize_category
 from app.services import api_budget_service as _llm_breaker
 from app.services import llm_router as _llm_router
+# D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the persisted robots verdict before a URL-mode
+# fetch (the flag is read per call at each hook; fetch_page itself is untouched).
+from app.services import live_robots
 
 logger = logging.getLogger(__name__)
 
@@ -519,6 +522,9 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
         _log_fetch_failed(url, "blocked", None)
         result["outcome"] = "blocked"
         return result
+    if live_robots.live_robots_enabled() and not live_robots.gate(url, "url_extraction"):
+        result.update(outcome="robots_skip", final_url=url)
+        return result
     current = url
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=False,
@@ -532,8 +538,14 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
                         _log_fetch_failed(url, "blocked", None)
                         result.update(outcome="blocked", final_url=current)
                         return result
+                    if live_robots.live_robots_enabled() and not live_robots.gate(
+                            nxt, "url_extraction"):
+                        result.update(outcome="robots_skip", final_url=current)
+                        return result
                     current = nxt
                     continue
+                if live_robots.live_robots_enabled():
+                    live_robots.record_response("url_extraction", current, response)
                 result.update(status=response.status_code, final_url=current,
                               text=response.text, outcome="ok")
                 return result
@@ -545,6 +557,8 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
         # F4-1 (RULINGS_FIX1_B4, amends GC-1): the transport error is ONE ERROR line
         # inside this except arm with the distinct [URL-V2] template (host, reason
         # word, exception TYPE only), never the base 'Failed to fetch' template.
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("url_extraction", current, "fail")
         logger.error("[URL-V2] fetch failed host=%s reason=%s type=%s",
                      _host_only(url), "fetch_error", type(e).__name__)
         result.update(outcome="error", error_type=type(e).__name__, final_url=current)
@@ -976,7 +990,11 @@ async def extract_with_ai(url: str, html: str, retailer: Dict,
             raise
         # RULINGS_FIX4_B4 F4-5 (unflagged, log-only, R-A1 b): the exception TYPE
         # only, never its text (the U8d class); the return value is unchanged.
-        logger.error("AI extraction error: %s", type(e).__name__)
+        # S81-04c: the class logs at WARNING by type in every flag state.
+        if isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("AI extraction error: %s", type(e).__name__)
+        else:
+            logger.error("AI extraction error: %s", type(e).__name__)
         return {"error": str(e)}
 
 
@@ -998,7 +1016,7 @@ def _v2_status_reason(status: Any) -> str:
 
 
 _V2_FETCH_OUTCOME_REASONS = {"error": "fetch_error", "blocked": "blocked",
-                             "redirect_cap": "redirect_cap"}
+                             "redirect_cap": "redirect_cap", "robots_skip": "robots_skip"}
 
 
 def _v2_refusal(url: str, code: str, reason: str, outcome: str, status: Any) -> Dict[str, Any]:
@@ -1128,8 +1146,14 @@ async def extract_from_url(url: str, url_mode_v2: bool = False) -> Dict[str, Any
     # R-A1(b), UNFLAGGED log-only: the host, never the pasted path or query.
     logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
     
-    # Fetch page
-    html = await fetch_page(url)
+    # Fetch page (D14: the persisted robots verdict first, at this caller, so
+    # fetch_page stays byte-unchanged; a skip is the existing miss body)
+    if live_robots.live_robots_enabled() and not live_robots.gate(url, "url_extraction"):
+        html = None
+    else:
+        html = await fetch_page(url)
+        if live_robots.live_robots_enabled():
+            live_robots.record_url("url_extraction", url, "ok" if html else "fail")
     if not html:
         return {
             "success": False,
@@ -1252,12 +1276,82 @@ def _llm_unavailable_url_result(stage: str) -> Dict[str, Any]:
     }
 
 
+def _url_gate_copy(gate_module: Any, product: Dict[str, Any], subject: Any) -> Dict[str, Any]:
+    """S81-10b (R-S10B-1 / C12): a SHALLOW copy of one extracted page for the gate.
+    It carries ``search_query`` = "<brand> <name>" (the vision path's shape), and a
+    page without an extraction-LLM category (``other``) whose own text fires rule 1
+    takes that lexicon group as its category. The extracted dict is never touched."""
+    text = " ".join(str(product.get(key) or "") for key in ("brand", "name")).strip()
+    copy = dict(product)
+    copy["search_query"] = text
+    if canonicalize_category(product.get("category")) == "other":
+        own = gate_module.evaluate([text], subject=subject)
+        if own.outcome == "refuse":
+            copy["category"] = own.category
+    return copy
+
+
+async def _url_fragrance_decision(
+    gate: Any,
+    products: List[Dict[str, Any]],
+    selected_category: Optional[str],
+    category_used: str,
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """S81-10b LINKS-GATE: the post-extraction decision of a gated link compare, run
+    between the pair resolve and the write-back / verdict.
+
+    1. rule 1 over the pair's "<brand> <name>" texts (a refusal at no A2b, whatever
+       the extraction LLM labelled the pages: GC-1 of the RED gate);
+    2. per-product rule 1 on copies of the pages (``_url_gate_copy``);
+    3. ``post_resolve_refusal`` over the copies with ``resolver_classified=False``
+       (the URL resolver never classifies: with no real chip ONE A2b decides, with a
+       real chip the evidence-or-ONE-A2b arm), the A2b read off
+       ``extraction_service`` at call time and its answer recorded;
+    4. a proceeding pair is compared as fragrances when the form override fired or
+       the gate's A2b answered fragrances (R-S10B-3);
+    5. a refusal is counted ONCE on the budget keys and returned as the coded
+       CATEGORY_NOT_LIVE result.
+
+    Returns ``(refusal result or None, category_used)``."""
+    from app.services import category_gate as _category_gate
+    from app.services import extraction_service as _extraction_service
+
+    subject = gate.subject
+    pair = _category_gate.evaluate(_category_gate.vision_texts(products), subject=subject)
+    refused = pair.category if pair.outcome == "refuse" else None
+    if refused is None:
+        copies = [_url_gate_copy(_category_gate, product, subject) for product in products]
+        answers: List[Any] = []
+
+        async def _classify(names):
+            answer = await _extraction_service.classify_category_llm(names)
+            answers.append(answer)
+            return answer
+
+        verdict = await _category_gate.post_resolve_refusal(
+            pair, copies, parser_path=False, selected_category=selected_category,
+            category_used=category_used, classify=_classify, resolver_classified=False,
+        )
+        refused = verdict.refused
+        if refused is None and verdict.form_override and category_used != "fragrances":
+            category_used = _category_gate.form_override_category(selected_category)[0]
+        if refused is None and answers and canonicalize_category(answers[-1]) == "fragrances":
+            category_used = "fragrances"
+    if refused is None:
+        return None, category_used
+    await _category_gate.record_refusal_async(subject)
+    _category_gate.log_refused("post_extract", refused)
+    return _category_gate.refusal_result(refused), category_used
+
+
 async def compare_from_urls(
     url1: str,
     url2: str,
     region: str = "bahrain",
     selected_category: Optional[str] = None,
     url_mode_v2: bool = False,
+    *,
+    fragrance_gate: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Compare two products from their URLs.
@@ -1277,7 +1371,12 @@ async def compare_from_urls(
             (_v2_pair_failure) and the frozen `recommendation` /
             `key_differences` keys are filled from the verdict prose
             (_v2_verdict_fill). Default False: the base body, unchanged.
-    
+        fragrance_gate: S81-10b (passed by the route only when the fragrance-only
+            gate is ON and the caller is not the admin key): the pre-consume
+            decision carrying the budget subject; the post-extraction decision
+            (``_url_fragrance_decision``) then runs before the write-back and the
+            verdict. Default None: the base body, unchanged.
+
     Returns:
         Comparison result with both products
     """
@@ -1343,6 +1442,13 @@ async def compare_from_urls(
     category_used, _switched, _orig = await _resolve_pair_category(
         products, selected_category, parser_path=True
     )
+    if fragrance_gate is not None:
+        # S81-10b: the gate decides before the write-back and the verdict (a refusal
+        # skips both; the route's failure arm refunds it once).
+        _refusal, category_used = await _url_fragrance_decision(
+            fragrance_gate, products, selected_category, category_used)
+        if _refusal is not None:
+            return _refusal
     for _p in products:
         _p["category"] = category_used
 

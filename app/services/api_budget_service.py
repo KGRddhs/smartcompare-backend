@@ -937,14 +937,13 @@ def _openai_failure_is_transient(exc: BaseException) -> bool:
 
 # WHICH OpenAI CALLERS FEED THIS BREAKER — the full census, so nobody later
 # assumes it sees traffic it does not (ruling #2; adversarial review MINOR 6).
-# WIRED (14 dispatches, all reachable from a compare):
+# WIRED (13 dispatches since S81-22b, all reachable from a compare):
 #   extraction_service      classify_category_llm, parse_product_query,
 #                           extract_specs, extract_price_*(2), extract_reviews,
 #                           generate_comparison (primary + rate-limit fallback)
 #   openai_service          identify_products (vision), extract_specs_targeted,
 #                           generate_comparison, disambiguate_variant_line
 #   url_extraction_service  extract_with_ai
-#   verdict_critique_service critique_verdict   (wired by this rework)
 # NOT WIRED, deliberately:
 #   content_safety_service:152 — `moderations.create`, a DIFFERENT API surface
 #     with its own fail-open contract. A moderation blip is not an "LLM is down"

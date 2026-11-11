@@ -107,7 +107,11 @@ describe('HomeScreen — MB-perf-03/MB-contract-02 (source)', () => {
         // S69 U7 R1 (sanctioned amendment, review open question 3): the
         // title is chosen by code too (`friendlyErrorTitleKey`) so an engine
         // outage gets its own title instead of "give it another tap".
-        /Alert\.alert\(\s*t\(\s*friendlyErrorTitleKey\(\s*parsed\.code\s*\)\s*\)\s*,\s*t\(\s*friendlyErrorKey\(\s*parsed\.code\s*\)\s*,\s*\{\s*count\s*:\s*parsed\.retryAfterSeconds\s*\}\s*\)\s*,?\s*\)/g,
+        // S81-11 (E15, R-S11-26 / C11): re-pointed to the reason-aware shape:
+        // CATEGORY_NOT_LIVE renders WITHOUT the count option (no seconds can
+        // reach a sentence); every other code keeps the count and gains the
+        // additive reason argument.
+        /Alert\.alert\(\s*t\(\s*friendlyErrorTitleKey\(\s*parsed\.code\s*\)\s*\)\s*,\s*parsed\.code\s*===\s*'CATEGORY_NOT_LIVE'\s*\?\s*t\(\s*friendlyErrorKey\(\s*parsed\.code\s*\)\s*\)\s*:\s*t\(\s*friendlyErrorKey\(\s*parsed\.code\s*,\s*parsed\.reason\s*\)\s*,\s*\{\s*count\s*:\s*parsed\.retryAfterSeconds\s*\}\s*\)\s*,?\s*\)/g,
       ) || [];
     // One per compare path: the SSE/text terminal onError and the URL catch.
     expect(coded.length).toBe(2);

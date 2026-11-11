@@ -335,14 +335,24 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
         if not await _hop_is_allowed_async(current, domain):
             logger.info("[SHOPIFY_JS] blocked hop for %s", domain)
             return None, None
+        # D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the persisted robots verdict per hop,
+        # after the SSRF / same-site gate (function-local: this module's importers).
+        from app.services import live_robots
+        if live_robots.live_robots_enabled() and not live_robots.gate(current, "shopify"):
+            return None, None
         await _await_domain_slot(domain)
         try:
             resp = await asyncio.to_thread(_curl_get, current, HTTP_TIMEOUT)
         except Exception as e:  # noqa: BLE001 — a fetch never raises outward
+            if live_robots.live_robots_enabled():
+                live_robots.record_url("shopify", current, "fail")
             logger.info("[SHOPIFY_JS] fetch failed for %s: %s", domain, e)
             return None, None
 
         status = getattr(resp, "status_code", None)
+        if live_robots.live_robots_enabled() and not (
+                isinstance(status, int) and 300 <= status < 400):
+            live_robots.record_response("shopify", current, resp)
         if isinstance(status, int) and 300 <= status < 400:
             headers = getattr(resp, "headers", None) or {}
             location = headers.get("Location") or headers.get("location")
