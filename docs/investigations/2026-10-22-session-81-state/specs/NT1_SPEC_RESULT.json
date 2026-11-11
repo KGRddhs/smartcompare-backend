@@ -1,0 +1,112 @@
+{
+ "spec:NT1": {
+  "unit": "NT1a NATIVE-1.0.1-P0 (the P0 of PLAN_S81 unit NT1: provider-neutral camera/photo purpose strings + expo.version 1.0.0 -> 1.0.1; client native config, no flag, FOCUS)",
+  "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-nt1/.qa-s80/NT1_UNIT_SPEC.md",
+  "spec_sha256": "4cfb0ec2d5b966f4813c9e95ec87bbd438c565e9b655f446904631d646b8c3fb",
+  "summary": "Spec written: 56,778 bytes, pure ASCII, LF, 0 bytes > 127. The worktree's git status --short was empty before and after. Everything was measured at 6b909e0a, and the four config files are byte-identical to the store build 683f56c0. The EN strings change in exactly one token, \"OpenAI\" to \"our AI providers\", in app.json:220/:228 and locales/en.json:4-5. The AR twins in locales/ar.json:4-5 replace the provider token \"Open AI\" (Arabic transliteration, OPENAI_AR) with the S81-12 v3 AR phrase for \"our AI providers\" without its shadda; they pass the w37 u9/u11 fences and .copy-policy.json (measured with ar_check.py) and are marked [NATIVE READ]. expo.version moves to 1.0.1 in app.json:5 only. The build number is remote (eas.json appVersionSource remote + autoIncrement). package.json version is npm metadata and stays. Runtime trap, measured in the installed eas-cli 18.8.1 code offline: `eas update` takes the runtime from the checkout's app.json at publish time and has no runtime flag. So NT1a merges only after the second production OTA (G-ORDER), and 1.0.0 hotfix OTAs then come from a release/1.0.x branch cut at the last 1.0.0 main sha. The six-step two-runtime procedure and the OTA_READINESS additions are proposed in 2.6. The w37 drift nodes d5/k2/k4/k5 read only the package, lock and node_modules state, so the bump does not move them. S81-12 (#378) touches none of this unit's files (three-dot diff empty); only CLAUDE.md is shared. No jest was run (per the brief). The backend config, CLAUDE.md and legal readers are green at base: 149 + 662 passed.",
+  "change_list": [
+   "0 byte copies of every edited file into <scratchpad>/nt1/notes/green_copies with sha256 (base shas in spec 1.9)",
+   "1 SmartCompareApp/app.json:5 version 1.0.0 -> 1.0.1",
+   "2 SmartCompareApp/app.json:220 cameraPermission and :228 photosPermission: 'OpenAI' -> 'our AI providers' (NEW_CAM_EN sha aa17e72b..., NEW_PHOTOS_EN sha 23ffac74...)",
+   "3 SmartCompareApp/locales/en.json:4-5 -> the same two EN strings (byte-equal to app.json)",
+   "4 SmartCompareApp/locales/ar.json:4-5 -> NEW_CAM_AR (sha cf0a067d...) / NEW_PHOTOS_AR (sha b0506c29...) via a Python write on decoded bytes, CRLF kept, [NATIVE READ]",
+   "5 E1 __tests__/config/nativeBundle.w37.test.ts:64-67 comment + CAMERA_PURPOSE/PHOTOS_PURPOSE literals re-aimed",
+   "6 E2 nativeBundle.w37.test.ts e1 :1107 title, :1108-1128 comment (G-ORDER + maintenance branch), :1130 toBe('1.0.1')",
+   "7 E3 __tests__/fixtures/b3a_copy.json:91-92 native.en and :95-96 native.ar -> new pairs",
+   "8 E4 __tests__/b3a/nativeStrings.b3a.test.ts:29 AI_PROVIDERS_AR (+ OPENAI_AR kept for the negative), r33 :94-97 and r34 :107-110 re-aimed (contain 'our AI providers'/AI_PROVIDERS_AR, NOT the provider)",
+   "9 NEW SmartCompareApp/__tests__/nt1/nativeStrings.nt1.test.ts (R1-R9, P1-P8; pure ASCII with \\u escapes)",
+   "10 E5 CLAUDE.md: the NT1a block after the S81-04c block + the :341 pointer clause sentence in merge order",
+   "No other file: not package.json, package-lock.json, eas.json, privacy-data-inventory.md, src/**, app/**, landing/**"
+  ],
+  "red_rows": 9,
+  "pin_rows": 8,
+  "mutants": 16,
+  "comm_set_size": 54,
+  "open_questions": [
+   "Q-O1 RED file location: the client rule __tests__/nt1/*.nt1.test.ts (chosen; R9/P8 need the installed plugins) vs the template's tests/test_s81_nt1.py python twin (would run without a junction; duplicates the rows)",
+   "Q-O2 package.json version: keep 1.0.0 (recommended; no lock edit, Expo never reads it) or move it with the package-lock root",
+   "Q-O3 R-NT1-1 THE SPLIT is the owner's call via the relay; the spec assumes it is granted (if refused, P2/P3/P6 cannot hold and NT1 re-specs)",
+   "Q-O4 Privacy manifest PurposeOther (documented as the OpenAI data-sharing programme, privacy-data-inventory.md:46) stays byte-identical in 1.0.1 although S81-12 ends the programme: keep, or a separate native-config unit + ASC App Privacy label edit before the 1.0.1 build",
+   "Q-O5 AR wording: shadda-free full v3 phrase with 'ladayna' (chosen) or the shorter form; [NATIVE READ] decides",
+   "Q-O6 maintenance branch name (release/1.0.x proposed) and who records L100 (the last 1.0.0 main sha) in the ledger at the merge",
+   "Q-O7 write the CLAUDE.md block at merge (chosen; the runtime rule is true from the merge on) or wait for the 1.0.1 release"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=nt1-spec-base1 start=2026-11-11 21:42:40 end=2026-11-11 21:42:56 elapsed=15s bound=1200s status=OK rc=0 (tests/test_legal_docs_u8.py tests/test_legal_s78.py tests/test_ci_gates.py tests/test_migration_037_security_definer_grants.py: 149 passed, 4 deselected; [hermeticity] sentinel checked 149 test(s); [netguard] blocked 0 attempt(s) from 0 node(s))",
+   "[pyt] tag=nt1-spec-base2 start=2026-11-11 21:43:02 end=2026-11-11 21:43:37 elapsed=35s bound=1200s status=OK rc=0 (tests/test_behavior_dimension_translation.py test_s81_s04_spend_breaker.py test_s81_s08b_legacy_fingerprint.py test_s81_s08b_gate_rows.py test_s81_s23_bypass_retire.py test_legal_disclosure_s77.py test_legal_docs_u8_polish.py test_security_regression.py: 662 passed; [hermeticity] sentinel checked 662 test(s); [netguard] blocked 36 attempt(s) from 8 node(s))"
+  ],
+  "base_measurements": [
+   "git rev-parse HEAD = 6b909e0a92067d6b3562eee325e4956c116441f7; git status --short empty before/after",
+   "git diff --stat 683f56c0 6b909e0a -- SmartCompareApp/app.json eas.json package.json locales: EMPTY (store-build bytes)",
+   "app.json sha e31ceefa... (10438 B, CRLF, ASCII); locales/en.json 4673ffc8...; locales/ar.json 1a1ade19... (516 non-ASCII bytes); b3a_copy.json 76ed94a3...; nativeStrings.b3a.test.ts d1ccc4a2...; nativeBundle.w37.test.ts 8c6d175c...",
+   "Canonical PIN hashes at base: expo minus version+two keys caf4a65e...; plugins minus two keys 5d26fd82...; privacyManifests b404a4ad...; eas.json d5be08d3...; package.json 3dc071e5...; en minus two keys 976decc1...; ar minus two keys a71cf201...",
+   "AR drafts: diacritics False, latin False, unsafe False, banned [], scary [], AR != EN (ar_check.py)",
+   "eas-cli 18.8.1: exp.version is the iOS short version (build/build/ios/version.js:95-107); remote build number (build/build/ios/build.js:42-48, :71-73); eas update runtime from project config (commands/update/index.js:318 -> project/publish.js:487 -> resolveRuntimeVersionAsync.js:36); no --runtime-version flag on eas update",
+   "w37 drift nodes = d5, k2, k4, k5 (session-79 GATE_B3.md:9/:23): package / lock / node_modules only",
+   "S81-12 branch three-dot diff touches none of the NT1a files; the v3 AR policy phrase for 'our AI providers' carries a shadda (dropped here)"
+  ],
+  "deliberate_pin_changes": [
+   "E1 nativeBundle.w37.test.ts:64-67 CAMERA_PURPOSE/PHOTOS_PURPOSE -> provider-neutral EN (a5/a6/u10 assertions unchanged, re-aimed)",
+   "E2 nativeBundle.w37.test.ts e1 :1107/:1130 expo.version '1.0.0' -> '1.0.1' (node id changes with the title; the runtimeVersion half unchanged)",
+   "E3 b3a_copy.json:91-92/:95-96 native en/ar pairs -> new strings",
+   "E4 nativeStrings.b3a.test.ts r33/r34: 'contains OpenAI/OPENAI_AR' -> 'contains our AI providers/AI_PROVIDERS_AR and NOT the provider' (stronger)",
+   "E5 CLAUDE.md NT1a block + :341 clause"
+  ],
+  "stated_limits": [
+   "L1 only the 1.0.1 binary carries the strings; 1.0.0 (3) keeps 'sent to OpenAI' (an OTA cannot change Info.plist)",
+   "L2 AR phrase omits the shadda the v3 legal AR text has (fence rule); [NATIVE READ]",
+   "L3 no .ipa proof in the agent chain; DONE = the owner's phone",
+   "L4 the two-runtime procedure is read from eas-cli code, never executed",
+   "L5 canonical PIN hashes measured in Python; the RED round must reproduce them in JS at base",
+   "L6 package.json version stays 1.0.0 (cosmetic)",
+   "L7 privacy manifest PurposeOther stays although the OpenAI programme ends (Q-O4)",
+   "NOT MEASURED this round: every jest suite (by the brief), the full backend comm-set base record beyond the 12 files run"
+  ]
+ },
+ "review:NT1": {
+  "unit": "NT1a NATIVE 1.0.1 P0 (provider-neutral camera/photo purpose strings + expo.version 1.0.1)",
+  "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-nt1/.qa-s80/NT1_SPEC_REVIEW.md",
+  "verdict": "APPROVE_WITH_CHANGES",
+  "refuted_claims": [
+   "RC1 section 1.2: resolveRuntimeVersionAsync.js:36 (Updates.getRuntimeVersionNullableAsync) is the FALLBACK branch for old expo-updates; with expo-updates ~29 the modern branch runs the project's installed expo-updates CLI, so a release/1.0.x publish resolves its runtime through that checkout's node_modules (same outcome, but npm ci becomes load-bearing).",
+   "RC2 section 2.6 b step 4: the runtime-preserving republish logic is build/update/republish.js:41/:48/:98/:107, not build/commands/update/republish.js (claim true, citation wrong).",
+   "RC3 section 2.6 b: lever list incomplete; eas-cli 18.8.1 also has update:roll-back-to-embedded --runtime-version and channel:rollout --runtime-version (oclif.manifest.json).",
+   "RC4 L2: the consent sheet v3 AR copy on #378 (src/i18n/ar.json aiConsent.body, onboarding.s5.privacy_anon_body) already uses the shadda-free phrase; only the policy/Terms carry the shadda (privacy_policy_ar.md: shadda form 7x, plain 0x). The draft matches the sheet.",
+   "RC5 sections 1.3/1.4 incomplete: missing inert readers SmartCompareApp/__tests__/onboarding/step05Trust.s69.test.tsx:17 (comment 'sent to OpenAI') and SmartCompareApp/__mocks__/expo-application.ts:6 nativeApplicationVersion '1.0.0' (STAY).",
+   "RC6 section 2.4 / G0: 'every byte outside ... identical to base' is NOT pinned; P1-P7 pin canonical (key-sorted, whitespace-free) JSON, so a reformatting Python write of ar.json / the fixture / app.json passes every PIN and G0 checks only names and CRLF."
+  ],
+  "corrections": [
+   "C1 add a byte-identity gate: git diff --numstat exact per file (app.json 3/3, en.json 2/2, ar.json 2/2, b3a_copy.json 4/4, the test files' E-row hunks) plus a raw-bytes check that each edited JSON with the edited lines restored is sha256-equal to the base blob (LF-normalized).",
+   "C2 re-cite the modern runtime-resolution branch; make npm ci in the release/1.0.x checkout mandatory before every 1.0.0 publish, then eas update:list --runtime-version 1.0.0 (owner side).",
+   "C3 re-cite republish to build/update/republish.js:48/:98/:107.",
+   "C4 add eas update:roll-back-to-embedded --branch production --runtime-version 1.0.0 as the 1.0.0-fleet rollback lever (usable from any checkout).",
+   "C5 rewrite L2: the purpose string matches the consent sheet v3 AR spelling; only policy/Terms carry the shadda; keep [NATIVE READ].",
+   "C6 add the two missing readers (step05Trust.s69.test.tsx:17, __mocks__/expo-application.ts:6) to 1.3/1.4 as STAY.",
+   "C7 Notes for Review: use the ASC-recorded policy URL https://getmyez.com/privacy.html (CLAUDE.md:690; /privacy also resolves via nginx try_files $uri.html); add an owner step to re-read the LIVE consent sheet and policy at submission (S81-12b may remove OpenAI, making 'names Anthropic and OpenAI' / 'more than one' false); state the camera behaviour per B1's ruling.",
+   "C8 G-ORDER: add that the 1.0.1 build is cut promptly after the NT1a merge (the merge-to-release gap is the maintenance-branch window).",
+   "C9 store the 12-file backend base record (1.10) in the LC-6 base file at RED with its [pyt] lines."
+  ],
+  "blocking": [
+   "B1 THE REVIEWER'S CAMERA: the spec flips ENABLE_ANTHROPIC_VISION only after 1.0.1 release (O6) with no bridge OpenAI key, so during App Review every camera/photo scan hits the dead OpenAI credential. A 401 is not transient (app/services/api_budget_service.py _openai_failure_is_transient returns False for 400/401/403), so app/api/image_routes.py:412-417 skips the coded 503 LLM_UNAVAILABLE arm and returns the codeless 500 'Image analysis failed. Please try again.' The reviewer sees the feature named in the two new prompts fail right after granting them (guideline 2.1 risk) and the Notes describe a non-working camera. The spec must rule in 2.6 c / O5-O6 / Notes: vision ON before submission (accepting the 1.0.0 string mismatch for the review window, CLAUDE.md:508 'risk accepted'), OFF with a Notes disclosure, or another lever. RED can proceed; no RED row depends on it."
+  ],
+  "contract_risks": [
+   "CR1 from the NT1a merge on, any eas update from main strands the whole 1.0.0 fleet; nothing in the repo refuses a mistaken publish; OTA_READINESS must carry it as a red line.",
+   "CR2 the 1.0.1 binary embeds main's JS at the build sha; any client unit merged between NT1a and the build with an unmet backend precondition ships to the reviewer; the 2.6 c checklist must run against the exact build sha (asterisk rule).",
+   "CR3 #378's policy says OpenAI's data-sharing programme ended, while the manifest keeps PurposeOther on five types documented (docs/privacy-data-inventory.md:46) as that programme; 1.0.1 ships a manifest whose documented meaning no longer holds (Q-O4, second lens).",
+   "CR4 after 1.0.1 is live, 1.0.0 installs keep the OpenAI strings and, under B1 option (a), may send photos to Anthropic under consent v3; APP_MIN_VERSION / APP_FORCE_UPDATE are the owner's call 4."
+  ],
+  "pin_collisions": [
+   "None beyond E1-E5: T23 OpenAPI, FY25 digests, w4_11 prompt digests, test_retro_w2_1 URL pins, W4-13 ledger fixture untouched (no backend file); copy-policy fences read src/i18n only and w37 u11 passes on the AR drafts (measured: no diacritic outside the brand, no Latin, banned [], scary []); drift nodes d5/k2/k4/k5 read package/lock/node_modules only; backend config needles (u.expo.dev, SmartCompareApp/app.json module path, eas.json keys) do not move; #378's new tests read none of the unit's files; CLAUDE.md is the only file shared with #378 (known rebase)."
+  ],
+  "pyt_lines": [],
+  "questions_for_orchestrator": [
+   "1 B1: which camera state does the App Reviewer get on 1.0.1 (ENABLE_ANTHROPIC_VISION ON before submission, OFF with a Notes disclosure, or another lever)?",
+   "2 Should the codeless 500 at app/api/image_routes.py:417 for a non-transient OpenAI failure (401 dead key) get its own backend follow-up id (coded envelope; 'try again' is forbidden copy)?",
+   "3 Version-bump timing: keep the bump in NT1a after G-ORDER, or merge the runtime-neutral strings first and land expo.version 1.0.1 only in the build commit so main keeps reaching the 1.0.0 fleet until the owner builds?",
+   "4 Q-O1: agree jest only for the RED file.",
+   "5 Q-O2: agree package.json version stays 1.0.0 (P6 pins it).",
+   "6 Q-O4 / CR3: PurposeOther manifest change as a separate native-config unit riding the same 1.0.1 binary, or a stated limit?",
+   "7 Make 're-read the live consent sheet and policy at submission and edit the Notes to match' a named owner step?"
+  ]
+ }
+}
