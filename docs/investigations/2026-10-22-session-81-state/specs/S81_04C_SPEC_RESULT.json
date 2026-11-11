@@ -1,0 +1,103 @@
+{
+ "spec:S81-04c": {
+  "unit": "S81-04c REFUSAL-LOG-HYGIENE",
+  "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s04c/.qa-s80/S81-04c_UNIT_SPEC.md",
+  "spec_sha256": "5d052c5a3171d2a28e261f00fdcaf926060bf4ec580293c2915ffb45e74ff4d2",
+  "summary": "The spec is written and measured at a74caba7: 54,763 bytes, pure ASCII, LF line endings, and git status --short is empty. I ran a base probe through pyt.py; it drove the real arms with the real guarded_llm_create and a W1-3 denial. The census turned up eight request-path except arms that log an LLMUnavailableError at ERROR. Four are the ones the brief names: parse :1576, verdict :2819, camera image_routes :396 and url :993. Four are new: specs :1739, price :1791, price-fallback :1846 and reviews :1903. These four log ERROR in both flag states (reviews with exc_info) and have no role-ON branch, so the change applies there with a role flag ON too. That is open question Q-A, and the four are tagged group B so they can be carved out cleanly. The scs arms :4901 / :5813 and image_routes :788 cannot be reached by the class with every role flag OFF, so they stay unchanged. Sentry, measured on sentry-sdk 2.68.1: a WARNING record is neither an event nor a breadcrumb, while an ERROR record is an event. A W1-3 denial writes no log line of its own. There is one E-row (G03c re-pinned with its delivery assertion added). Reading any_role_enabled is preserved by the elif form; the camera arm reads it twice (scope bind, then the arm), and group B reads it zero times. Both base sets passed under the bounded runner.",
+  "change_list": [
+   "0 byte copies of the 3 app files, the E1 test file and CLAUDE.md, sha256 recorded",
+   "1 extraction_service.py A1 parse :1570-1577: rewrite the comment, insert `elif isinstance(e, _llm_breaker.LLMUnavailableError): logger.warning(\"Product parsing error: %s\", type(e).__name__)` before else; the S81-06 lines stay byte-identical",
+   "2 extraction_service.py B1 specs :1738-1739: if class -> WARNING by type, else the base exc_summary ERROR",
+   "3 B2 price :1790-1791 same shape",
+   "4 B3 price fallback :1845-1846 same shape",
+   "5 B4 reviews :1902-1903 same shape; the else keeps the f-string exc_info ERROR",
+   "6 A2 verdict :2819: after the unchanged role-ON raise, if class -> WARNING by type else the base exc_info ERROR; return unchanged",
+   "7 image_routes.py A3 :390-396: comment rewritten; insert an elif class -> WARNING `[IMAGE] Vision call failed: %s` by type; refunds and 503/500 untouched",
+   "8 url_extraction_service.py A4 :993: if class -> WARNING by type else the base ERROR by type; return {'error': str(e)} unchanged",
+   "9 tests/test_s81_s06_router_gate_rows.py E1: G03c renamed test_g03c_flag_off_parse_site_refusal_warns_by_type, one WARNING by type plus the delivery tuple asserted",
+   "10 CLAUDE.md: (a) :495 limit (9); (c) :853 W1-3 row sentence; (d) :477 vision V2 row sentence; (e) :508 S81-06 clause; (f) :341 pointer clause; (g) :550 migration 052, :628 G9 owner steps, :635 G10 owner step; (h) new S81-04c block after :635 before ## Tests",
+   "11 NEW frozen RED file tests/test_s81_s04c_refusal_log_hygiene.py (RED round)"
+  ],
+  "red_rows": 23,
+  "pin_rows": 78,
+  "mutants": 25,
+  "comm_set_size": 368,
+  "open_questions": [
+   "Q-A: confirm group B (specs/price/price-fallback/reviews arms) is in scope by the R-04C-2 census; it also changes the role-ON record (base ERROR in both states). Otherwise carve it out to follow-up S81-04e",
+   "Q-B: statement form for A1/A3 - the proposed elif duplicate (S81-06 lines byte-identical, the read first and unconditional) vs a named unused read `_role_on = _llm_router.any_role_enabled()`",
+   "Q-C: proposed follow-up S81-04e for the WARNING arms that print the exception text (classify :1420, image tier3 :196 %r, specs_targeted :788, specs_synthesized :861, disambiguate :955) and the query=%r in the W1-3 short-circuit WARNING scs :4152",
+   "Q-D: no CLAUDE.md sentence states the store as approved-not-released at a74caba7 (regex-measured); the met 'after App Review approval' preconditions (:520 :534 :592 :595 :609) are left as written unless ruled",
+   "Q-E: keep R7 (the Sentry subprocess row, n events == 0) as a RED observability row or demote it",
+   "M21 (the two camera refunds swapped) is an equivalent mutant: the latches are mutually exclusive per request; needs a ruling"
+  ],
+  "base_measurements": [
+   "probe (8 arms x class/subclass/RuntimeError x roleOFF/roleON, any_role_enabled recorder, real guarded_llm_create, W1-3 denial): results in scratchpad S81-04c/probe_base.json",
+   "parse role-OFF class: R(F) then ERROR exc_info 'Product parsing error: openai circuit breaker denied admission (U+2014) dispatch suppressed'; delivers ({'products': [], 'error': 'product parsing unavailable'}, zero usage)",
+   "verdict role-OFF class: ERROR exc_info with the text, base dict; role ON: WARNING by type and raised",
+   "url role-OFF class: ERROR 'AI extraction error: LLMUnavailableError'; {'error': str(e)}; role ON: WARNING and raised",
+   "camera: two any_role reads (bind_request_scope + the arm); role-OFF class: ERROR with the text; 503; refund label usage_refund.image.vision_exception once; RuntimeError gives 500",
+   "specs/price/price_training: no read, ERROR '<prefix>LLMUnavailableError: <text>' in BOTH states, return 'error': str(e); reviews: ERROR exc_info with the text in both states",
+   "sentry-sdk 2.68.1 LoggingIntegration(level=ERROR): handler and breadcrumb levels 40; WARNING gives 0 events and no breadcrumb; ERROR exc_info gives 1 event + 1 breadcrumb",
+   "the W1-3 denial (api_budget_service :822-824 / is_circuit_closed) writes no log line; the trip WARNING is at :609",
+   "comm set candidates: 368 files, sha256 79f7bc7e3a135b0c608b319c6d8f97db09c5920792db20a60201b13c86567462"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=s04c-spec-probe start=2026-11-11 17:35:43 end=2026-11-11 17:35:53 elapsed=10s bound=600s status=OK rc=0 (50 passed; [hermeticity] sentinel checked 50; [netguard] blocked 0 attempt(s) from 0 node(s))",
+   "[pyt] tag=s04c-spec-base-a start=2026-11-11 17:36:13 end=2026-11-11 17:37:22 elapsed=69s bound=1200s status=OK rc=0 (1383 passed; [hermeticity] sentinel checked 1383; [netguard] blocked 46 attempt(s) from 24 node(s), all neutralized.supabase.invalid sentinels in test_text_error_envelope_no_raw_exception)",
+   "[pyt] tag=s04c-spec-base-b start=2026-11-11 17:37:29 end=2026-11-11 17:38:08 elapsed=39s bound=1200s status=OK rc=0 (490 passed; [hermeticity] sentinel checked 490; [netguard] blocked 0 attempt(s) from 0 node(s))"
+  ],
+  "deliberate_pin_changes": [
+   "E1 tests/test_s81_s06_router_gate_rows.py::test_g03c_flag_off_parse_site_keeps_the_base_error_line -> test_g03c_flag_off_parse_site_refusal_warns_by_type: role flags OFF, FULL config, one WARNING 'Product parsing error: LLMUnavailableError', exc_info None, and the base parse-error tuple asserted"
+  ],
+  "stated_limits": [
+   "L1 a W1-3 denial logs no line at the denial; after the unit there is no Sentry signal of an open breaker (the trip WARNING and the entry short-circuit WARNING remain)",
+   "L2 specs/price/price-fallback/url return values still carry str(e), the class message incl. the em dash (W4-9/S70 contracts, out of scope)",
+   "L3 A1/A3 duplicated WARNING body (the elif) for R-04C-4; report-only SIM114 may flag it",
+   "L4 group B changes the role-ON record too",
+   "L5 WARNING arms that print exception text are out of scope (classify, tier3, targeted, synthesized, disambiguate)",
+   "L6 M21 (refund swap) is an equivalent mutant"
+  ]
+ },
+ "review:S81-04c": {
+  "unit": "S81-04c REFUSAL-LOG-HYGIENE",
+  "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s04c/.qa-s80/S81-04c_SPEC_REVIEW.md",
+  "verdict": "APPROVE_WITH_CHANGES",
+  "refuted_claims": [
+   "Spec 1.8 / section 7: the claim that no edited file is in .github/black-clean-paths.txt holds only for the three app files. The E1 file tests/test_s81_s06_router_gate_rows.py IS on that list (.github/black-clean-paths.txt:63), and the BLOCKING black --check step in ci.yml:172-188 (black==26.5.1) checks it. Gate 1 leaves this check out.",
+   "Spec 4.1 E1: 'assert out == (parse tuple)' with out taken from the _capture tuple is wrong. _capture returns ('ok', value) (test_s81_s06_anthropic_router.py:321-328), and run_site returns (oai, res), so value = (oai_calls, (dict, usage)). The assertion as written fails at GREEN.",
+   "Spec L1 / Q2 name only the sync compare-entry OPEN WARNING at structured_comparison_service.py:4152-4157. The streaming twin at :4964 is left out.",
+   "Spec 8(g) says no CLAUDE.md sentence states the store state stale. CLAUDE.md:195 says S81-08 'reached phones with the first production OTA, 2026-11-07', but the store version was Pending Developer Release until 2026-11-10 ~02:35 (ledger 415-416). The spec's regex had no 'reached phones' term, so it missed this. The present-tense 'the build in review' at :592 is also stale."
+  ],
+  "corrections": [
+   "C1: add `black --check tests/test_s81_s06_router_gate_rows.py` (black 26.5.1, the CI form) to gate 1 at GREEN and at every rebase. List the black-clean ratchet as a guard (1.7) and as an E1 pin collision (4.1).",
+   "C2: rewrite the E1 body as `st, (oai, res) = _run(_capture(run_site('parse', ...)))`, then assert st == 'ok' and res == ({'products': [], 'error': es.PARSE_PRODUCT_QUERY_ERROR}, {'prompt_tokens': 0, 'completion_tokens': 0}). Keep the record assertions.",
+   "C3: R7 can pass vacuously at HEAD (n==0 when the child's transport never fires). Add a positive control in the same child run: after the arm, log one marker at ERROR; assert exactly 1 marker event and 0 events whose message starts with 'Product parsing error'. Count by prefix, not by total.",
+   "C4: no synthetic exception text used at the verdict arm may contain '429', 'rate' or 'quota' (case-insensitive). The matcher at extraction_service.py:2702-2706 would otherwise run the verdict_fallback dispatch. Words like 'generated', 'separate' and 'accurate' are forbidden.",
+   "C5: the 1.3 probe does not say it ran under the FULL configuration of 2.5. RED must re-measure the P3 read sequences (A3 two reads; A1/A2/A4 one) under the FULL config at base and freeze the measured literals. A PIN that is red at base is a RED defect.",
+   "Name both compare-entry OPEN WARNINGs (scs :4152-4157 and :4964) in L1, Q2 and the proposed S81-04e follow-up.",
+   "State that P5 (the anon camera) pins a non-production code path. ENABLE_COMPARE_AUTH_REQUIRED is ON on web (ledger 316), so require_paid_route_user (image_routes.py:205) refuses an anon camera call before the arm.",
+   "L2 is not a stated limit while it is 'not re-measured'. Either measure at base whether a B1-B3 {'error': str(e)} reaches a body, or assign it a follow-up id."
+  ],
+  "blocking": [],
+  "contract_risks": [
+   "No build-3 contract change: the camera coded 503 LLM_UNAVAILABLE and the 500 literal are unchanged, no codeless 503 is added, and no key or SSE frame moves.",
+   "Billing (R-A3) is unchanged. The two camera refund latches are mutually exclusive (image_routes.py:239-254 vs :296/:311), so M21 is a true equivalent mutant.",
+   "ENABLE_CAMERA_FAILURE_ENVELOPE is ON in prod but acts only after the compare (image_routes.py:728, :773). It does not interact with the vision arm.",
+   "L2: the B1-B3 return value {'error': str(e)}, which carries the em-dash class message, is pre-existing exception text in a dict that may reach a body (U8d class). It is unmeasured."
+  ],
+  "pin_collisions": [
+   ".github/black-clean-paths.txt:63 (tests/test_s81_s06_router_gate_rows.py) is checked by the BLOCKING black --check in ci.yml and is not listed in spec 4.1.",
+   "No collision with the T23 OpenAPI pins, the FY25 digests, the w4_11 prompt digests, the test_retro_w2_1 URL pins, the W4-13 ledger fixture or the copy fences: the unit changes log statements only.",
+   "test_s80_b3 ALLOWED_ERROR_PREFIXES (:1498-1539) and test_s80_url_mode_v2 :2772-2778 stay green, as the spec says."
+  ],
+  "pyt_lines": [],
+  "questions_for_orchestrator": [
+   "Q-A: confirm group B (B1-B4) is in scope under the R-04C-2 census rule, accepting L4 (the role-ON record changes at those four arms too). The reviewer found no reason to carve it out.",
+   "Q-B: the reviewer prefers the elif-duplicate statement form at A1/A3, which keeps the S81-06 lines byte-identical and the read first. Rule on it.",
+   "Rule C3: keep R7 as a RED row with the positive-control marker and prefix counting (proposed), or demote it.",
+   "R-04C-9(f): add CLAUDE.md:195 ('reached phones with the first production OTA, 2026-11-07') and the :592 'the build in review' phrase to the in-place edit list, with the dated truth from ledger 415-416?",
+   "L2: measure at base whether a B1-B3 {'error': str(e)} reaches a response body, or assign a follow-up id?",
+   "Should S81-04e cover both compare-entry OPEN WARNINGs (scs :4152-4157 and :4964)?"
+  ]
+ }
+}
