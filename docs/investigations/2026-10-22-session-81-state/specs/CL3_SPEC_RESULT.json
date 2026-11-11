@@ -1,0 +1,120 @@
+{
+ "spec:CL3": {
+  "unit": "CL3 TWO-QUESTION FEEDBACK CARD (+ S81-24e + ContactUs source line), client FOCUS",
+  "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-cl3/.qa-s80/CL3_UNIT_SPEC.md",
+  "spec_sha256": "194ee86fedca67777fe43cb985fc4979974f33ce6aed1cf8b95608d81c321a02",
+  "summary": "The spec is written at a74caba7: 79,448 B, pure ASCII, LF. The Arabic values are JSON escapes produced by a script, round-trip checked and passed through the copy fences. git status --short of the worktree is empty before and after. No jest run, because no junction exists yet. Every jest claim is by reading or is marked NOT MEASURED.\n\nKey measured findings:\n(1) Q3: with ENABLE_FEEDBACK_V2 OFF (production today), every card row 422s on the missing useful. The SF1 pin P10 new_no_useful covers this, and the card swallows it, so the answers are lost; this is why the unit only ships after the ON ledger line. The contact row with the extra source key is accepted and the key dropped (P11/P12). R-CL3-12's stop condition does NOT fire.\n(2) Q2: no reader reads any CL3 column. cron_learning FEEDBACK_COLUMNS (:69) omits identity_correct, and identity_wrong comes only from kb_feedback. The judge _user_wrong reads winner_correct only, into a set. So nothing double-counts today, and L13 closes on the writer side only; D22b is needed for the readers.\n(3) Q1: the compare id reaches Results only on the camera path, and it is lost there when the body nests under data.result. Text: HomeScreen:458 drops streamComparison().compareRequestId. URL: urlCompareRequestIdRef is unused. The proposed plumbing attaches the id to the result object (the S81-08 identify precedent), which keeps ResultsEntryParams.a18 and HomeScreen.minDisplayFloor unedited.\n(4) The base mount condition shows the card on partial and degraded results, which contradicts the brief's 'partial has no card ... keeps it'.\n(5) S81-24e: both 429 forms render a unified envelope with code RATE_LIMITED and no detail key. ForgotPassword today renders the raw English 'Rate limit exceeded. Please try again later.' (a scary-vocab phrase) on the existing slowapi 3/minute limit.\n(6) tests/test_feedback_allowlist_superset.py (backend) reads FeedbackCard.tsx and pins `mattered_most: [chipKey]`, so it is a forced E-row.\n(7) The base AR thanks value carries a tanween.\n\nBackend base record: 30 files, 2,505 passed, 0 failed.",
+  "change_list": [
+   "NEW SmartCompareApp/src/services/feedbackAnswers.ts (FEEDBACK_DWELL_MS 8000, CORRECTION_MAX 80, isCompareRequestId, sanitizeCorrection, feedbackIds, attachCompareRequestId)",
+   "src/config/features.ts: export const ENABLE_FEEDBACK_PREFERENCE_Q2 = false",
+   "src/services/api.ts: submitFeedback param type widened additively (useful optional, v2 fields, no source); body unchanged",
+   "src/types/types.ts: ComparisonResult.compareRequestId? (client-only)",
+   "src/components/FeedbackCard.tsx rewritten: Q1 one-tap, No posted at tap + optional details row, Q2 behind constant, ref latches, fire-and-forget, a11y 44pt, no event/log/storage",
+   "src/components/results/ResultsContent.tsx: reveal after 8 s dwell or verdict bottom scrolled into view; wrapper kept; not for stored or partial; new prop feedbackCompareRequestId",
+   "src/screens/ResultsScreen.tsx: camera compareRequestId state, feedbackCompareRequestId derivation and prop",
+   "src/screens/HomeScreen.tsx: destructure compareRequestId; attachCompareRequestId before both navigateToResultsWithFloor calls",
+   "src/screens/ForgotPasswordScreen.tsx: RATE_LIMITED -> t('common.errors.rateLimited')",
+   "src/screens/ContactUsScreen.tsx: source: 'contact' added, useful kept",
+   "src/i18n/en.json + ar.json: 6 keys removed, thanks reworded, 11 added (1,016 each)",
+   "E-rows: delete FeedbackCard.designChips.test.tsx; s11/copy.s11 count; s11e/arCopy count; cl2/scope P14 export list; tests/test_feedback_allowlist_superset.py re-aim (Q-1)",
+   "CLAUDE.md: CL3 client block after the S81-G10 block + :341 sentence"
+  ],
+  "red_rows": 48,
+  "pin_rows": 7,
+  "mutants": 38,
+  "comm_set_size": 219,
+  "open_questions": [
+   "Q-1: admit E5 (backend TEST file tests/test_feedback_allowlist_superset.py re-aimed) despite R-CL3-1 'any backend file' OUT? Recommended yes (tests/ only).",
+   "Q-2: base mounts the card on partial and degraded results; spec excludes partial (R-CL3-6 explicit list) and keeps degraded. Confirm.",
+   "Q-3: carry compare_request_id on the result object (compareRequestId) rather than a new Results route param (which would add two E-rows). Confirm.",
+   "Q-4: Q2 row carries preference only (no identity_correct repeat), while the No details row repeats identity_correct 'wrong' per R-CL3-3. Confirm the asymmetry.",
+   "Q-5: S81-24e scope limited to ForgotPassword (the raw 429 text also appears today under the slowapi 3/min limit); no other auth screen joins. Confirm.",
+   "Q-6: exact App Privacy category for the optional product-name text is the owner's / legal window's call."
+  ],
+  "base_measurements": [
+   "[pyt] tag=cl3-spec-baseA start=2026-11-11 17:42:42 end=2026-11-11 17:43:37 elapsed=54s bound=1200s status=OK rc=0 (25 SmartCompareApp-scanning backend tests: 2047 passed, 4 deselected; [hermeticity] sentinel checked 2047; [netguard] blocked 39 attempt(s) from 29 node(s))",
+   "[pyt] tag=cl3-spec-baseB start=2026-11-11 17:43:41 end=2026-11-11 17:43:58 elapsed=17s bound=1200s status=OK rc=0 (5 CLAUDE.md readers: 458 passed)",
+   "[pyt] tag=cl3-spec-allow start=2026-11-11 17:44:05 end=2026-11-11 17:44:09 elapsed=4s bound=600s status=OK rc=0 (test_feedback_allowlist_superset.py 11 passed; netguard 0)",
+   "[pyt] tag=cl3-spec-sf1on start=2026-11-11 17:44:09 end=2026-11-11 17:44:18 elapsed=9s bound=600s status=OK rc=0 (ENABLE_FEEDBACK_V2=true exported: SF1 RED + gate rows + allowlist 213 passed)",
+   "Jest NOT MEASURED (no node_modules junction at the spec stage)"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=cl3-spec-baseA start=2026-11-11 17:42:42 end=2026-11-11 17:43:37 elapsed=54s bound=1200s status=OK rc=0",
+   "[pyt] tag=cl3-spec-baseB start=2026-11-11 17:43:41 end=2026-11-11 17:43:58 elapsed=17s bound=1200s status=OK rc=0",
+   "[pyt] tag=cl3-spec-allow start=2026-11-11 17:44:05 end=2026-11-11 17:44:09 elapsed=4s bound=600s status=OK rc=0",
+   "[pyt] tag=cl3-spec-sf1on start=2026-11-11 17:44:09 end=2026-11-11 17:44:18 elapsed=9s bound=600s status=OK rc=0"
+  ],
+  "deliberate_pin_changes": [
+   "E1 SmartCompareApp/__tests__/components/FeedbackCard.designChips.test.tsx DELETED (pins removed chips/title/useful)",
+   "E2 SmartCompareApp/__tests__/s11/copy.s11.test.tsx:186-191 count -> 1,016 via a named CL3 delta",
+   "E3 SmartCompareApp/__tests__/s11e/arCopy.s11e.test.ts:132/:140 1011 -> 1016",
+   "E4 SmartCompareApp/__tests__/cl2/scope.cl2.test.ts:18-26 FEATURES_EXPORTS_AT_BASE + ENABLE_FEEDBACK_PREFERENCE_Q2",
+   "E5 tests/test_feedback_allowlist_superset.py: re-aim the send-site and chip-discovery rows; shipped-chip and route rows unchanged (Q-1)"
+  ],
+  "stated_limits": [
+   "L-CL3-1 learning job and judge do not read CL3 columns; L13 closed writer-side only (D22b)",
+   "L-CL3-2 ENABLE_FEEDBACK_V2 rollback after the OTA: card rows 422 and drop silently",
+   "L-CL3-3 fresh compares have no comparison_id while ENABLE_COMPARISON_ID_ECHO is OFF; join via compare_request_id only",
+   "L-CL3-4 dwell is wall-clock while mounted",
+   "L-CL3-5 30/minute route limit drops rows silently",
+   "L-CL3-6 Sentry XHR breadcrumb body-free claim NOT MEASURED on the pinned SDK",
+   "L-CL3-7 AR strings await the native read",
+   "L-CL3-8 Q2 code and keys ship dark",
+   "L-CL3-9 degraded keeps the card, partial loses it (Q-2)",
+   "L-CL3-10 jest-side claims by reading only"
+  ]
+ },
+ "review:CL3": {
+  "unit": "CL3 TWO-QUESTION FEEDBACK CARD + S81-24e + ContactUs source line (client FOCUS)",
+  "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-cl3/.qa-s80/CL3_SPEC_REVIEW.md",
+  "verdict": "APPROVE_WITH_CHANGES",
+  "refuted_claims": [
+   "Spec 1.2 'Admin: no comparison_feedback reader' / the Q2 answer is incomplete. Two readers of `useful`, the column CL3 stops writing, are missing. (a) migrations/013_demographics_cohort.sql:46-58 vw_cohort_feedback_lift: useful_pct falls because card rows with useful NULL count in the total. (b) structured_comparison_service.py:5948 -> behavior_service.py:99-105 winner_agreement becomes a number derived only from ContactUs.",
+   "Spec 9 L-CL3-5 'the 30/minute limit is per client key' is false as deployed. The limiter key is get_remote_address (the Railway edge proxy) while ENABLE_PROXY_AWARE_RATELIMIT is OFF (rate_limiter.py:53, comment :159-166), so it is one app-wide bucket.",
+   "Spec 5.2 V9 cannot pass on a correct GREEN. The reveal state in ResultsContent re-renders the tree and re-evaluates every entering=FadeInDown.delay(...)/FadeIn.duration(...) expression. The mock builders are module-level jest.fns (__mocks__/react-native-reanimated.ts:72-84) and no clearMocks is set, so the call counts change on any re-render.",
+   "Spec 7 client comm set (189) misses src/utils/__tests__/{currencyDisplay,formatDate,formatNumber}.test.ts. They import ../../i18n/en.json and ar.json, which this unit edits. Jest testMatch is **/__tests__/** and src holds 3 test directories.",
+   "Spec 1.8 cites common.errors.rateLimited at en.json :377; it is en :380 (ar :377).",
+   "Spec 1.4 says identifyFromImages is called at ResultsScreen :316; it is :306.",
+   "Spec 7 '4 test_precommit_hook files excluded' vs 1.10 '2': the grep finds exactly 2."
+  ],
+  "corrections": [
+   "C1: state the in-handler guard for Send. The jest TouchableOpacity/Pressable mocks pass `disabled` through only as a prop and fireEvent.press ignores it, so R5 needs the guard in the handler.",
+   "C2: R10 input must add fromCharCode(0x85) and fromCharCode(0x2029). Without them, a mutant dropping the C1 range or U+2029 survives.",
+   "C3: make sanitizeCorrection's slice(0,80) surrogate-safe and add an R10b row. The probe shows the ON route accepts a lone surrogate (200); the DB write is NOT MEASURED and could lose the whole details row.",
+   "C4: add V3b (a scroll before any layout does not reveal) and V2b (a re-render at 4 s still reveals at 8 s). State that the dwell effect runs once per mount.",
+   "C5: V8 should spy setTimeout(FEEDBACK_DWELL_MS) and clearTimeout instead of using getTimerCount.",
+   "C6: R16 should mock features with the jest.requireActual spread.",
+   "C7: add stated limits: the useful readers (vw_cohort_feedback_lift, winner_agreement); L-CL3-5 restated as one app-wide bucket; an id-less No + details is two rows.",
+   "C8: name the S81-20 result-gate abstain (a 400 via _surface_comparison_failure, text_routes.py:614-636) among the not-delivered states.",
+   "C9: fix the cosmetic citations (en :380, ResultsScreen :306, 2 precommit files).",
+   "C10: add textContentType='none' to the input, and announce the details step to screen readers (accessibilityLiveRegion or announceForAccessibility) with an R17 sub-assertion."
+  ],
+  "blocking": [
+   "B1: rewrite V9 structurally: no host with `entering` sits between the card and the results-content-feedback wrapper, or compare the reveal-render delta with the delta of a no-op re-render. Reset the builder mocks per test. As written, V9 fails a correct GREEN and is M25's only killer.",
+   "B2: add the three src/utils/__tests__ suites that import en.json/ar.json to the client comm set. Re-grep all 3 src test dirs and restate the count.",
+   "B3: the details step's TextInput sits in the last card of a ScrollView with no keyboardShouldPersistTaps and no keyboard avoidance (ResultsContent.tsx:303-306). On iOS the keyboard covers the field and Send, and the first Send tap only dismisses the keyboard. Add keyboardShouldPersistTaps='handled' plus iOS keyboard insets (or scroll on focus), with a RED row."
+  ],
+  "contract_risks": [
+   "K1: any OTA from a main carrying CL3 before the ENABLE_FEEDBACK_V2 ON ledger line loses every card answer (probe: 422) and also removes the build-3 card's useful:true rows that succeed today. Owner step 1 'merge now, no runtime effect' holds only while no OTA ships. Recommend flipping ON first or an explicit no-OTA stop.",
+   "K2: excluding partial results (Q-2) may suppress the card on a large share of fragrance traffic. ResultsContent.tsx:214-218 says fragrance compares routinely hit the cap and return partial. Measure the partial rate before ruling.",
+   "K3: S81-24e maps the 429 to 'give it a moment, then tap', while the S81-24 day counter can return retry_after up to 86400. The key is mandated by R-S24-25; it is a copy-truth question for the owner at the throttle flip.",
+   "K4: wrong_side first/second = overview.products ?? products order (ResultsScreen.tsx:431-433). D22b must join the same order.",
+   "K5: no backend key removed, renamed or retyped; no refusal, billing, cache-key or error-code mapping change (confirmed)."
+  ],
+  "pin_collisions": [
+   "None missing from 4.1 beyond B2 (the three src/utils/__tests__ catalog importers).",
+   "Checked clean by reading: brand.myez.s69, brand.hardcoded.s69, honestCopy VERB_AR (the AR q1 has an Arabic letter after the root, so no match); copy-policy (no scary_vocab_ar hit); i18n/no-deleted-keys; HomeScreen.minDisplayFloor regexes; ResultsScreen.comparisonId.m18; Results.memo.m21; cl2/scope P14 (E4). No pin on the HomeScreen streamComparison destructure. T23, FY25, w4_11, retro_w2_1 and W4-13 are untouched."
+  ],
+  "pyt_lines": [
+   "[pyt] tag=cl3-rev-allow start=2026-11-11 18:05:15 end=2026-11-11 18:05:19 elapsed=4s bound=600s status=OK rc=0 (tests/test_feedback_allowlist_superset.py: 11 passed; netguard blocked 0)"
+  ],
+  "questions_for_orchestrator": [
+   "1. Q-2: rule partial results in or out only after reading the partial share of fragrance compares (K2)?",
+   "2. K1: flip ENABLE_FEEDBACK_V2 before the merge, or add a hard 'no OTA from a main carrying CL3 before the ON line' stop to CLAUDE.md and the eas-deploy runbook?",
+   "3. B3: accept keyboardShouldPersistTaps='handled' plus iOS keyboard insets on the Results ScrollView as in scope for CL3?",
+   "4. PLAN_S81:175 says '(AR provided)' for Q1. Is there an owner-provided AR string to use instead of the spec's own (none found in runs/ or specs/)?",
+   "5. Q-1/E5: rule tests/test_feedback_allowlist_superset.py in, and confirm the re-aimed vacuity guard (a positive control) is not a fence weakening?",
+   "6. Record the useful readers (vw_cohort_feedback_lift, winner_agreement) as D22b scope or as a separate follow-up?"
+  ]
+ }
+}
