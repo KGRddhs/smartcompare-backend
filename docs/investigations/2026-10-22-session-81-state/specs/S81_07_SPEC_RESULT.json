@@ -1,0 +1,132 @@
+{
+ "spec:S81-07": {
+  "unit": "S81-07 MEAS-CLAUDE-GATE",
+  "spec_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s07/.qa-s80/S81-07_UNIT_SPEC.md",
+  "spec_sha256": "b9c9041d808a2c4f8441ed7a6e7d048353858653026965d02d61d7477e382aad",
+  "summary": "Spec written (74,840 B, pure ASCII, LF, 0 bytes >127). Measured at 6b909e0a; git status --short is empty before and after. Main findings:\n(1) The 12 live text sites can be built offline by the app's own prompt builders. A capture seam on llm_router.route produced all 12 captures with 0 sockets, and each converted through to_claude_request.\n(2) Three import-time hazards: extraction_service:5 and url_extraction_service:6 call load_dotenv(override=True) (2 calls intercepted); openai_service.py:38 builds an AsyncOpenAI at import and raises with no key; cache_service.py:166 builds an Upstash client when both UPSTASH names are set. The harness neutralises dotenv, refuses those names and re-scans the environment after its imports.\n(3) SDK anthropic 1.12.1 runs on httpx2 2.12.0. ANTHROPIC_CUSTOM_HEADERS is applied even with an explicit key, so the harness refuses every ANTHROPIC_* name by prefix. str(exc) carries the response body, so errors are recorded by type and status only. exc.response.request.headers holds the key. DefaultAsyncHttpxClient mounts environment and registry proxies even with trust_env=False, so the harness passes its own httpx2.AsyncClient(trust_env=False, follow_redirects=False). max_retries=0 sends exactly 1 request.\n(4) No site streams (guarded_anthropic_create:968), so TTFT is measured by an A2 stream twin.\n(5) The critique site has no caller since S81-22b, so CRITIC is NOT RUNNABLE.\n(6) shadow_experiments reads its inputs from L2 Supabase, so the verdict eval uses only its offline scoring pattern to label a synthetic 60-case gold set.\n(7) Worst-case spend bounds: text about 1.50, moderation about 0.28, vision about 3.04, web_search about 0.64 USD. The 4/2/5/3 defaults are kept (sum 14 <= 15).\nBase pins: 264 passed, 1 skipped, 2 deselected.",
+  "change_list": [
+   "1. NEW tests/fixtures/s81_s07/_gen_fixtures.py + fragrance_names.json (100), compare_pairs.json (20), verdict_gold.json (60, labels = offline deterministic winners), moderation_parity.json (100), web_search_domains.json (3)",
+   "2. NEW scripts/meas_claude_gate.py (stages text / moderation / vision / web_search / report; --dry-run; ENV_VAR_NAME MEAS_ANTHROPIC_TEST_KEY; ANTHROPIC_* prefix + UPSTASH_REDIS_URL/TOKEN + OPENAI_API_KEY refusal; dotenv guard + post-import re-scan; explicit client max_retries=0, httpx2 trust_env False, follow_redirects False; capture seam + to_claude_request; per-stage ceilings + 15.00 unit ceiling + worst-case pre-call check + fsynced JSONL ledger with resume; stop conditions; results.json + REPORT.md with GO table and three timeout proposals)",
+   "3. tests/_env_safety.py E1: MEAS_ANTHROPIC_TEST_KEY appended to CREDENTIALS_UNSET (CRLF kept)",
+   "4. CLAUDE.md: unit block after the S81-04c block (:637-:640) before ## Tests (:641) + one clause in the :341 pointer paragraph",
+   "5. frozen RED file tests/test_s81_s07_meas_harness.py (not edited by GREEN); no other file"
+  ],
+  "red_rows": 39,
+  "pin_rows": 5,
+  "mutants": 44,
+  "comm_set_size": 156,
+  "open_questions": [
+   "OQ-1 E1 edits tests/_env_safety.py (test-support, outside R-S07-1's three paths) per the DOTENV GUARD rule: accept with its 23 importers in the comm set, or drop?",
+   "OQ-2 Worst-case bound via llm_spend_breaker.prompt_token_upper_bound/upper_bound_usd (pure, >= counted, no request) instead of a count_tokens call before every call: accept? (llm_spend_breaker is not in R-S07-1's import list)",
+   "OQ-3 Compare spacing: phases chained with no gap, 30 s between synthetic compares: rule a value",
+   "OQ-4 Proposed GO bars (2.11), incl. absolute winner-mismatch <= 0.10 and half-leg latency bars: confirm or amend for the owner",
+   "OQ-5 ANTHROPIC_CUSTOM_HEADERS is read by the SDK even with an explicit key and is absent from CREDENTIALS_UNSET; production router follow-up?",
+   "OQ-6 CRITIC has no live site since S81-22b: does ENABLE_ANTHROPIC_CRITIC keep its place in window 13?",
+   "OQ-7 PLAN_S80 section 0 / contract_freeze.json on sc-docs-70 was NOT re-read (injection cost; unit moves no response byte): confirm the freeze is vacuous here",
+   "OQ-8 The ops command should name the interpreter carrying anthropic==1.12.1 (.venv-qaren since #374)"
+  ],
+  "base_measurements": [
+   "probe_sdk.json: anthropic 1.12.1 / httpx2 2.12.0 via httpx2.MockTransport (no socket); explicit api_key disables env credential reads; ANTHROPIC_CUSTOM_HEADERS still sent; max_retries=0 -> 1 request on 400/401/403/404/413/429/500/503/529; str(exc) carries the response body; key absent from str/repr/traceback/vars but present in exc.response.request.headers; DefaultAsyncHttpxClient keeps an env proxy mount with trust_env=False, plain httpx2.AsyncClient(trust_env=False) has 0",
+   "probe_capture.json: 12/12 text-site builders captured offline via a llm_router.route seam; 0 blocked sockets; 2 load_dotenv calls intercepted; openai_service.py:38 import-time AsyncOpenAI needs a placeholder; prompt chars classify 392 .. specs 12,302 / verdict 12,222",
+   "import of app.services.llm_router: 0.81 s, 11 app modules, no anthropic/openai/supabase/upstash import, 0 dotenv calls; cache_service.py:166 builds an Upstash client when both UPSTASH names are set",
+   "comm_union.txt: 156 files, sha256 prefix 6e69d75cf0f4f6b6 (+ the RED file at HEAD = 157)"
+  ],
+  "pyt_lines": [
+   "[pyt] tag=s07-spec-base start=2026-11-11 21:42:40 end=2026-11-11 21:44:05 elapsed=85s bound=600s status=OK rc=0 log=C:\\Users\\SYNACK~1\\AppData\\Local\\Temp\\claude\\cde30765822f13ce\\458aba65-975c-438f-b716-170c7d51b119\\scratchpad\\s07\\spec\\base_pins.log (264 passed, 1 skipped, 2 deselected; netguard lines only the hermeticity self-tests' deliberate blocks; no [hermeticity] line)"
+  ],
+  "deliberate_pin_changes": [
+   "E1 tests/_env_safety.py:110-145 CREDENTIALS_UNSET gains MEAS_ANTHROPIC_TEST_KEY (membership-only pins stay green)"
+  ],
+  "stated_limits": [
+   "L1 expected spend bounds A ~1.50 / M ~0.28 / V ~3.04 / W ~0.64 USD (byte-based upper bounds; actual about a third)",
+   "L2 no production site streams; TTFT from the A2 stream twin",
+   "L3 call order and concurrency replayed, not search legs; 30 s compare spacing assumed; no cache_control in router requests, so cache_read measures automatic caching only",
+   "L4 verdict labels are synthetic deterministic winners; no OpenAI baseline or arms",
+   "L5 CRITIC NOT RUNNABLE (no builder)",
+   "L6 synthetic moderation set omits sexual, minors and self-harm categories; parity is against labels",
+   "L7 imports llm_spend_breaker pure functions; in-process OPENAI_API_KEY placeholder for the import only",
+   "L8 web-search result tokens bounded by a 60,000 constant",
+   "L9 pricing rows dated 2026-10-22; the R-S03-4 docs re-read is the relay's",
+   "L10 the harness cannot police shell history or transcripts; the ops brief must scope the variable to one process"
+  ]
+ },
+ "review:S81-07": {
+  "unit": "S81-07 MEAS-CLAUDE-GATE (spec sha256 b9c9041d..., base 6b909e0a); review written to the worktree, sha256 c4f5706fef6505b1e0c74949e5b6fc7a47fcce79f2ddf8c3227e1f4e996b49e7, 19,351 B, ASCII, LF. Scratchpad probes are s07/rev/p1.py (the SDK surface) and s07/rev/p2.py (the stage-V bound). No pytest was run, so the spec 1.10 base record is NOT re-measured. git status --short was empty before and after.",
+  "review_path": "C:/Users/SynAckITPC/Documents/AI/sc-s81-s07/.qa-s80/S81-07_SPEC_REVIEW.md",
+  "verdict": "BLOCK",
+  "refuted_claims": [
+   "RC1 verdict_fallback cannot be captured by 'raise a non-LLM exception'. extraction_service.py:2710-2722 reaches route('verdict_fallback') only when str(err) contains 429/rate/quota AND verdict_model != standard_model(). Even then, :2738-2741 calls client.with_options on the seam's object() before route and raises AttributeError. The request would also be byte-identical to verdict's: SITES llm_router.py:217-218 are equal and to_claude_request drops the model at :745-751.",
+   "RC2 L1's 'stage V about 3.04, defaults hold with headroom' is false. The spec's own bound, computed with the base functions, is Sonnet vision_v2 0.0333 + v1 >= 0.0183 + Haiku 0.0026 per photo, so 100 photos come to >= 5.42 USD, which is over the 5.00 vision max_usd. R13's 'worst total <= max_usd' fails for a real set (llm_spend_breaker.py:153, :412-422).",
+   "RC3 image_tier3 is not a Phase-2 leg with reviews. image_url is in _PHASE1_TIMEOUTS (structured_comparison_service.py:6026), with specs and price.",
+   "RC4 'tail = p95(verdict) x 1.25' misreads the knob. _tail_reserve_seconds (scs:1897-1906) is the Phase-1-end -> moderation span (reviews + scoring + verdict), measured at 6.1 s.",
+   "RC5 M44 (_scrub not applied) is an equivalent survivor. No designed path writes the key into an output, so R08 and R10 cannot kill it.",
+   "RC6 M37 (len(value) printed) survives. R29 runs the report stage, which reads no key, and R08's 6-char substring check cannot see a decimal length.",
+   "RC7 Every R row is refused at 2.3 step 3. tests/_env_safety.py:152-156 CREDENTIAL_PLACEHOLDERS keeps OPENAI_API_KEY present in every test process, and the spec never says to delete it.",
+   "RC8 R11's static rule contradicts 2.3 step 7. The placeholder store os.environ['OPENAI_API_KEY'] is an os.environ[X] with a literal, and the moderation save/restore must read guarded_anthropic_create.",
+   "RC9 The bar 'every site p99 < 25.0 s' is vacuous. CALL_TIMEOUT_S 25.0 is the client timeout, so slower calls become errors and never latency samples.",
+   "RC10 The parity set does not model the production moderation input. content_safety_service.py:252-253 moderates _l3_text (scs:4848-4860: verdict prose + names + 10 review highlights) and L4 brand/name/size strings (image_routes.py:457), not short shopping texts.",
+   "RC11 P06 'skipped-as-RED' does not meet the rule that RED rows fail on an AssertionError at base.",
+   "RC12 2.5(d) prices 'from resp.usage', which is undefined for the A2 stream kind: an AsyncStream has no resp.usage."
+  ],
+  "corrections": [
+   "C1 Stage-M stop signal: use a BaseException subclass or a per-case stop flag, record not_run cases, and add stage-M rows for 401 and budget.",
+   "C2 Reserve worst_usd in memory before each concurrent send. Add a row (4 concurrent fakes, a cap that fits 3 worst cases -> exactly 3 creates) and a matching mutant.",
+   "C3 Book worst_usd for a timeout, an APIConnectionError or any failure after the send. Book 0 only for the API errors the spec lists as unbilled (the R-S04-3 rule).",
+   "C4 Append and fsync an intent line before each send. On read-back, an unmatched intent counts at worst_usd; an unparsable ledger line refuses the start.",
+   "C5 Price a stream from the message_start usage plus the last message_delta usage; an interrupted stream books worst_usd.",
+   "C6 Drop verdict_fallback (stated limit) or rule a real-branch seam.",
+   "C7 Give every text site >= 20 calls ('once each' means per round) and re-count max_calls (622 without fallback).",
+   "C8 A1 phases: Phase 1 = specs/price/image_tier3, Phase 2 = reviews, then verdict. Use gather(return_exceptions=True) and cancel pending tasks on a stop.",
+   "C9 R rows delete OPENAI_API_KEY and set the CANARY key. R03/R04 run with the key present.",
+   "C10 R11 checks Load-context reads only, allows exactly one OPENAI_API_KEY store, and allows the moderation save/restore attributes.",
+   "C11 P06 asserts the fixture exists at base.",
+   "C12 Restore the dotenv bindings (both are replaced over the conftest guard) and OPENAI_API_KEY in finally, with a row that proves it.",
+   "C13 Kill M44 with a fake that returns the CANARY in content (expect redactions == 1). Kill M37 with the results.json closed key set and the exact REPORT line. Use a run-time random hex canary and a 4-char substring window.",
+   "C14 Count timeouts as +inf in the latency percentiles, or add a timeout_rate bar.",
+   "C15 Measure the tail proposal on the reviews -> verdict chain, or state it as a verdict-only lower bound; source or drop the VERDICT latency bar.",
+   "C16 Build the moderation set in the _l3_text and L4 shapes, with sensitive-looking fragrance names and Arabic. With n = 80, the FP bar means zero false positives.",
+   "C17 Raise the vision max_usd to >= 5.5 (unit sum 14.5) or run Sonnet on vision_v2 only. Restate L1 and add a 100-photo dry-run row.",
+   "C18 Restate the garbled TEXT refusal bar. Send the sensitive and Arabic names through the verdict builder too.",
+   "C19 Store scores_summary and the gold winner in the fixture. The generator and P06 run with the scoring flags explicitly unset; exclude ties.",
+   "C20 Make --max-calls, --max-minutes and --reps lower-only.",
+   "C21 The generator writes LF explicitly."
+  ],
+  "blocking": [
+   "B1 Stage M swallows every stop. _moderate_step (llm_router.py:1164-1181) catches Exception, so budget, auth and transient stops become fail-closed 'unavailable' cases. A 401 is retried for every case, and a budget stop fakes a MODERATION NO-GO.",
+   "B2 The spend ceiling is not hard. A1 sends concurrently with no reservation. Exceptions after the send book 0 even though a timeout can be billed, and resume re-sends them. The ledger is written after the response, so a kill or interrupt loses billed spend. Stream pricing is undefined.",
+   "B3 verdict_fallback cannot be captured as specified (with_options on object(); the 429/rate/quota condition), and its request equals verdict's.",
+   "B4 RED cannot be satisfied as written: the conftest OPENAI_API_KEY placeholder refuses every row, R11 contradicts the spec's own step 7, and P06 is a skip at base."
+  ],
+  "contract_risks": [
+   "K1 The live run has no host guard: only tests and dry-run enforce 'api.anthropic.com only'. SUPABASE_*/SERPER_*/SENTRY_DSN are not refused, yet eleven app modules are imported.",
+   "K2 The ops shell's ENABLE_* state shapes the measured prompts (verdict blocks at extraction_service.py:2660-2690) and is neither stripped nor recorded.",
+   "K3 The unit ceiling is scoped to one --out folder, so a second folder resets it. The relay must fix one --out; the Console spend limit is the only backstop.",
+   "K4 Setting the key from an ops agent's Bash call writes it into that transcript (L10). The owner's own terminal or a getpass source is needed.",
+   "K5 A Claude Code shell may carry ANTHROPIC_* names. The harness refuses them (the safe direction), but the relay command must unset them.",
+   "K6 Stage W uses web_search_20260318, but S81-21 (PLAN_S81.md:165) designs on web_search_20250305.",
+   "K7 A6 measures adherence to scores_summary, not verdict quality; REPORT must say so.",
+   "K8 Nothing pins that this script stays the only Messages dispatch outside guarded_anthropic_create: the u3c chokepoint pin scans app/ only."
+  ],
+  "pin_collisions": [
+   "None beyond E1 (tests/_env_safety.py CREDENTIALS_UNSET; its pins are membership-only, test_conftest_env_safety.py:294/:381).",
+   "Checked clean: test_u3c_store_false_pin.py (its scripts/ scan matches only chat.completions.create at :98-99/:461-490; the Anthropic surface rule scans app/ only at :391/:410/:432), test_model_config*.py (app/ only), test_legal_s78 R5, test_retro_w1_2b:349, test_s81_s08b:1198.",
+   "T23 OpenAPI / FY25 / w4_11 digests / test_retro_w2_1 / W4-13 ledger / copy fences: vacuous, since no app/, client or fixture byte they read moves.",
+   "New ORDER hazard (not a pin edit): the harness replaces the conftest dotenv guard process-wide (C12)."
+  ],
+  "questions_for_orchestrator": [
+   "1 B1: which stage-M stop mechanism (a BaseException subclass or a stop flag), and how are not_run cases reported?",
+   "2 B2: which API outcomes book 0 and which book worst_usd (timeout, connection error, stream cut)?",
+   "3 B3: drop verdict_fallback, or require a real-branch seam?",
+   "4 RC2: raise the vision max_usd to >= 5.5, or run Sonnet on vision_v2 only?",
+   "5 K1: add a live-mode host guard and extend the refused names to the CREDENTIALS_UNSET and CREDENTIAL_PLACEHOLDERS sets?",
+   "6 K2: which ENABLE_* snapshot shapes the measured prompts?",
+   "7 K4: may the key also arrive by a no-echo prompt, or must the owner run the command himself?",
+   "8 K6: which web_search tool version does stage W measure?",
+   "9 RC4: tail proposal on the reviews -> verdict chain, or a verdict-only lower bound?",
+   "10 RC10: accept the _l3_text / L4-shaped parity set?",
+   "11 Spec OQ-1 E1: recommend ACCEPT.",
+   "12 Spec OQ-2 byte bound: recommend ACCEPT, together with C2-C4.",
+   "13 Add an S81-07 index row to DEFECT_LEDGER.md (R-A13)?"
+  ]
+ }
+}
