@@ -1568,9 +1568,13 @@ async def parse_product_query(query: str) -> Tuple[Dict[str, Any], Dict[str, int
         return json.loads(result), usage
 
     except Exception as e:
-        # S81-06 (GC-3 / R-S06-12): under a role flag ON a dispatch-level refusal
-        # logs at WARNING by type (never an exc_info ERROR, the S81-04c class).
+        # S81-06 (GC-3 / R-S06-12) + S81-04c (R-04C-1): an LLMUnavailableError (or a subclass)
+        # logs ONE WARNING by type in every flag state (never an exc_info ERROR); the
+        # any_role_enabled() read stays the arm's first statement (R-04C-4). The elif
+        # duplicates the WARNING body on purpose (R-04C-13, stated limit L3).
         if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("Product parsing error: %s", type(e).__name__)
+        elif isinstance(e, _llm_breaker.LLMUnavailableError):
             logger.warning("Product parsing error: %s", type(e).__name__)
         else:
             logger.error(f"Product parsing error: {e}", exc_info=True)
@@ -1736,7 +1740,10 @@ async def extract_specs(
         return cleaned, usage
 
     except Exception as e:
-        logger.error("Specs extraction error: %s", exc_summary(e))
+        if isinstance(e, _llm_breaker.LLMUnavailableError):  # S81-04c (R-04C-1): by type, no text
+            logger.warning("Specs extraction error: %s", type(e).__name__)
+        else:
+            logger.error("Specs extraction error: %s", exc_summary(e))
         return {"brand": brand, "model": name, "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -1788,7 +1795,10 @@ SEARCH CONTEXT:
         return json.loads(result), usage
 
     except Exception as e:
-        logger.error("Price extraction error: %s", exc_summary(e))
+        if isinstance(e, _llm_breaker.LLMUnavailableError):  # S81-04c (R-04C-1): by type, no text
+            logger.warning("Price extraction error: %s", type(e).__name__)
+        else:
+            logger.error("Price extraction error: %s", exc_summary(e))
         return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -1843,7 +1853,10 @@ Region: {region} ({region_info["currency"]})
                             " ".join(s_brand.split()), " ".join(s_name.split()))
         return parsed_price, usage
     except Exception as e:
-        logger.error("Price fallback error: %s", exc_summary(e))
+        if isinstance(e, _llm_breaker.LLMUnavailableError):  # S81-04c (R-04C-1): by type, no text
+            logger.warning("Price fallback error: %s", type(e).__name__)
+        else:
+            logger.error("Price fallback error: %s", exc_summary(e))
         return {"amount": None, "currency": region_info["currency"], "error": str(e)}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -1900,7 +1913,10 @@ SEARCH CONTEXT:
         return _normalize_review_response(data), usage
 
     except Exception as e:
-        logger.error(f"Reviews extraction error: {e}", exc_info=True)
+        if isinstance(e, _llm_breaker.LLMUnavailableError):  # S81-04c (R-04C-1): by type, no text
+            logger.warning("Reviews extraction error: %s", type(e).__name__)
+        else:
+            logger.error(f"Reviews extraction error: {e}", exc_info=True)
         return {"average_rating": None, "error": REVIEWS_EXTRACTION_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -2813,10 +2829,14 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
         # LLMUnavailableError is a NON-DELIVERY: re-raised (logged at WARNING by
         # type, GC-3) so both compare entries map it to the coded 503
         # LLM_UNAVAILABLE. Every role flag OFF: the base delivery below.
+        # S81-04c: role flags OFF the class logs the same WARNING by type and keeps the base delivery.
         if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
             logger.warning("Comparison generation error: %s", type(e).__name__)
             raise
-        logger.error(f"Comparison generation error: {e}", exc_info=True)
+        if isinstance(e, _llm_breaker.LLMUnavailableError):
+            logger.warning("Comparison generation error: %s", type(e).__name__)
+        else:
+            logger.error(f"Comparison generation error: {e}", exc_info=True)
         return {"winner_index": 0, "error": COMPARISON_GENERATION_ERROR}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 

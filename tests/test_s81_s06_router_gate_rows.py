@@ -171,14 +171,13 @@ def test_g03b_verdict_site_warns_by_type_under_on(monkeypatch, consent, caplog):
     assert recs[0].getMessage().endswith("AnthropicDispatchError")
 
 
-def test_g03c_flag_off_parse_site_keeps_the_base_error_line(
-    monkeypatch, consent, caplog
-):
-    """GC-3 PIN (FULL config): role flags OFF, an LLMUnavailableError at the parse site
-    keeps the base exc_info ERROR line (bytes unchanged)."""
+def test_g03c_flag_off_parse_site_refusal_warns_by_type(monkeypatch, consent, caplog):
+    """GC-3 + S81-04c E1 (FULL config): role flags OFF, an LLMUnavailableError at the
+    parse site logs ONE WARNING by type (no exc_info, no exception text) and delivers the
+    base parse-error tuple (R-04C-7)."""
     _full_config(monkeypatch, consent)
     caplog.set_level(logging.INFO)
-    _run(
+    st, (oai, res) = _run(
         _capture(
             run_site(
                 "parse",
@@ -187,11 +186,15 @@ def test_g03c_flag_off_parse_site_keeps_the_base_error_line(
             )
         )
     )
+    assert st == "ok"
+    assert res == (
+        {"products": [], "error": es.PARSE_PRODUCT_QUERY_ERROR},
+        {"prompt_tokens": 0, "completion_tokens": 0},
+    )
     recs = _records(caplog, "Product parsing error")
-    assert (
-        len(recs) == 1 and recs[0].levelno == logging.ERROR and recs[0].exc_info
-    ), recs
-    assert recs[0].getMessage() == "Product parsing error: openai breaker open"
+    assert len(recs) == 1, recs
+    assert recs[0].levelno == logging.WARNING and recs[0].exc_info is None, recs
+    assert recs[0].getMessage() == "Product parsing error: LLMUnavailableError"
 
 
 def test_g03d_camera_refusal_warns_by_type(monkeypatch, consent, request, caplog):
