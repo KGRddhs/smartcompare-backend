@@ -9,8 +9,8 @@ R-G1-9 (the backstop hook H2 stays).
 Flag ENABLE_LISTING_MATCH_GUARD (default OFF, read per call as the FIRST statement of
 `price_service._vd_gender_line_flip`). Every row sets ENABLE_EXACT_PRICE_GATE=true and
 ENABLE_VARIANT_DESCRIPTOR_AXES=true (production: ON / ON) and deletes
-ENABLE_GENUINE_PRICE_PRIORITY (production: OFF); the unit flag is set or deleted explicitly
-in every row. RED rows fail at base on an AssertionError only; PIN rows are green at base.
+ENABLE_GENUINE_PRICE_PRIORITY (production: OFF) and WARMER_CONTEXT (fix round 1, F1-1); the
+unit flag is set or deleted explicitly in every row. RED rows fail at base on an AssertionError only; PIN rows are green at base.
 
 Hermetic: pure functions over synthetic titles and a synthetic host; no network. The
 incident title is the one quoted in the incident report. Pure ASCII, LF.
@@ -71,6 +71,11 @@ def _env(monkeypatch):
     monkeypatch.setenv("ENABLE_VARIANT_DESCRIPTOR_AXES", "true")
     monkeypatch.delenv("ENABLE_GENUINE_PRICE_PRIORITY", raising=False)
     monkeypatch.delenv(FLAG, raising=False)
+    # F1-1 (fix round 1): the warmer write veto is not ambient state. A module imported
+    # earlier in the same process (tests/test_identity_stamps_wave_b.py imports
+    # scripts/measure_warmed_kpi.py, which sets it by setdefault) must not decide
+    # should_cache_price here.
+    monkeypatch.delenv("WARMER_CONTEXT", raising=False)
     yield
 
 
