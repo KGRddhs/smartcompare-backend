@@ -1,6 +1,6 @@
 # S81-07: what the measurement run needs from the owner (session 93, 2026-11-12)
 
-State: the harness passed its fix round (commit e600215d, re-verifier SOUND, no live call ever made). It is NOT yet ready to run: main moved three times under it, so one more round brings main in and re-measures (see the last section). Everything below stays the same after that round; only the commit changes.
+State (2026-11-12 16:15): the harness is on the branch feature/s81-07-meas-claude-gate at commit 110b3331, with the current main (445f8de3) brought in, and its pull request #402 is open as a draft. No live call was ever made. The run uses this commit in the unit worktree; if main moves before the run, the main lane brings it in again first.
 
 ## 1. His Anthropic TEST key, in a file he creates himself
 
@@ -74,6 +74,6 @@ The harness's own words: "the owner supplies --set <dir> holding 100 owner-taken
 | WEB_SEARCH | a design input for S81-21: no flip bar | PLAN_S81.md:123 |
 REPORTED, NOT A BAR: the cost per synthetic compare (p50, p95) and the compares per day it allows under the breaker's live cap (the breaker is the control); the three timeout proposals (classify = p99 x 1.25; vision = p99 of vision_v2 x 1.25; tail per R-S07-20), each rounded up to 0.5 s and printed beside the current value and the knob NAME. A knob changes only by the owner's dated line.
 
-## 10. What is still to do before the run (the main lane, on the relay's yes)
+## 10. What was still to do before the run: DONE on 2026-11-12
 
-One round, about 0.55 million Opus tokens and about two hours: bring the current main into the unit branch (it is three merges behind, and the last one touches the dispatch code the harness reads), take five small findings of the re-verifier in, measure the regression comparison against the new main, then push, open a draft PR and read CI. The measurement must run on the code that will be flipped.
+Main was brought into the unit branch, five small findings were taken in, the regression comparison against the new main was measured (one pinned list in another lane's test was re-pinned on purpose), and the branch was pushed as draft pull request #402. The pull request merges on the relay's word; the run does not wait for the merge.
