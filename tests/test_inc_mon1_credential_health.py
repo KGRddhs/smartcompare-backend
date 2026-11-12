@@ -106,8 +106,8 @@ GATING_AST_B64 = {
         "moderate_with_claude",
     ): "Y5HyAS5q2TXH/BZE/pa7frns2Ixbl6v71twRLMt5KDA=",
 }
-# Y01: sha256 of repr(sorted(tests/_env_safety.CREDENTIALS_UNSET)) at base (base64).
-ENV_SAFETY_UNSET_B64 = "p3FiYhXjh1kBspwf/7CDzlInXf+ZwJWskCjCBzAaAmE="
+# Y01: sha256 of repr(sorted(tests/_env_safety.CREDENTIALS_UNSET)) (base64); re-pinned by S81-07 (E1: MEAS_ANTHROPIC_TEST_KEY joined the list; RULINGS_MERGE_S81_07 M-10).
+ENV_SAFETY_UNSET_B64 = "KuyarpanjcDiW1QGpvl+SLg0lN7zqgAm1DCpdi9efgM="
 
 
 # ---------------------------------------------------------------------------

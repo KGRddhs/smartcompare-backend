@@ -142,6 +142,7 @@ CREDENTIALS_UNSET = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
+    "MEAS_ANTHROPIC_TEST_KEY",  # S81-07 E1: the measurement harness's one credential variable
 )
 
 #: Variables that must stay PRESENT but must never be real. Both entries here

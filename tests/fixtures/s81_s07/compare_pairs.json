@@ -1,0 +1,1462 @@
+[
+ {
+  "compare_id": "c00",
+  "product_a": {
+   "brand": "Dior",
+   "category": "fragrances",
+   "name": "Sauvage",
+   "price": {
+    "amount": 20.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.5,
+    "review_count": 10,
+    "summary": "Synthetic summary 0."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Armani",
+   "category": "fragrances",
+   "name": "Acqua di Gio",
+   "price": {
+    "amount": 57.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.6,
+    "review_count": 103,
+    "summary": "Synthetic summary 31."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 20 BHD.",
+   "Synthetic catalogue note 1 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 21 BHD.",
+   "Synthetic catalogue note 2 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 22 BHD.",
+   "Synthetic catalogue note 3 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 4 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 5 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 6 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 7 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 8 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 9 for Dior Sauvage: bergamot, cedar and amber, 100 ml, about 29 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 21 BHD.",
+   "Synthetic catalogue note 1 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 22 BHD.",
+   "Synthetic catalogue note 2 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 3 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 4 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 5 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 6 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 7 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 8 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 9 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 30 BHD."
+  ]
+ },
+ {
+  "compare_id": "c01",
+  "product_a": {
+   "brand": "Chanel",
+   "category": "fragrances",
+   "name": "Bleu de Chanel",
+   "price": {
+    "amount": 27.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.6,
+    "review_count": 13,
+    "summary": "Synthetic summary 1."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Lancome",
+   "category": "fragrances",
+   "name": "La Vie Est Belle",
+   "price": {
+    "amount": 64.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 106,
+    "summary": "Synthetic summary 32."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 21 BHD.",
+   "Synthetic catalogue note 1 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 22 BHD.",
+   "Synthetic catalogue note 2 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 3 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 4 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 5 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 6 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 7 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 8 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 9 for Chanel Bleu de Chanel: bergamot, cedar and amber, 100 ml, about 30 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 22 BHD.",
+   "Synthetic catalogue note 1 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 2 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 3 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 4 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 5 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 6 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 7 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 8 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 9 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 31 BHD."
+  ]
+ },
+ {
+  "compare_id": "c02",
+  "product_a": {
+   "brand": "Creed",
+   "category": "fragrances",
+   "name": "Aventus",
+   "price": {
+    "amount": 34.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 16,
+    "summary": "Synthetic summary 2."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Le",
+   "category": "fragrances",
+   "name": "Labo Santal 33",
+   "price": {
+    "amount": 71.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 109,
+    "summary": "Synthetic summary 33."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 22 BHD.",
+   "Synthetic catalogue note 1 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 2 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 3 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 4 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 5 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 6 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 7 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 8 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 9 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 31 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 1 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 2 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 3 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 4 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 5 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 6 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 7 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 8 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 9 for Le Labo Santal 33: bergamot, cedar and amber, 100 ml, about 32 BHD."
+  ]
+ },
+ {
+  "compare_id": "c03",
+  "product_a": {
+   "brand": "Tom",
+   "category": "fragrances",
+   "name": "Ford Oud Wood",
+   "price": {
+    "amount": 41.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 19,
+    "summary": "Synthetic summary 3."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Amouage",
+   "category": "fragrances",
+   "name": "Interlude",
+   "price": {
+    "amount": 78.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 112,
+    "summary": "Synthetic summary 34."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 23 BHD.",
+   "Synthetic catalogue note 1 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 2 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 3 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 4 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 5 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 6 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 7 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 8 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 9 for Tom Ford Oud Wood: bergamot, cedar and amber, 100 ml, about 32 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 1 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 2 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 3 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 4 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 5 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 6 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 7 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 8 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 9 for Amouage Interlude: bergamot, cedar and amber, 100 ml, about 33 BHD."
+  ]
+ },
+ {
+  "compare_id": "c04",
+  "product_a": {
+   "brand": "Guerlain",
+   "category": "fragrances",
+   "name": "Shalimar",
+   "price": {
+    "amount": 48.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 22,
+    "summary": "Synthetic summary 4."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Initio",
+   "category": "fragrances",
+   "name": "Oud for Greatness",
+   "price": {
+    "amount": 85.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 115,
+    "summary": "Synthetic summary 35."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 24 BHD.",
+   "Synthetic catalogue note 1 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 2 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 3 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 4 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 5 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 6 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 7 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 8 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 9 for Guerlain Shalimar: bergamot, cedar and amber, 100 ml, about 33 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 1 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 2 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 3 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 4 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 5 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 6 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 7 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 8 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 9 for Initio Oud for Greatness: bergamot, cedar and amber, 100 ml, about 34 BHD."
+  ]
+ },
+ {
+  "compare_id": "c05",
+  "product_a": {
+   "brand": "Hermes",
+   "category": "fragrances",
+   "name": "Terre d Hermes",
+   "price": {
+    "amount": 55.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 25,
+    "summary": "Synthetic summary 5."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Valentino",
+   "category": "fragrances",
+   "name": "Uomo",
+   "price": {
+    "amount": 92.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 118,
+    "summary": "Synthetic summary 36."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 25 BHD.",
+   "Synthetic catalogue note 1 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 2 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 3 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 4 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 5 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 6 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 7 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 8 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 9 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 34 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 1 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 2 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 3 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 4 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 5 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 6 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 7 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 8 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 9 for Valentino Uomo: bergamot, cedar and amber, 100 ml, about 35 BHD."
+  ]
+ },
+ {
+  "compare_id": "c06",
+  "product_a": {
+   "brand": "Prada",
+   "category": "fragrances",
+   "name": "Luna Rossa",
+   "price": {
+    "amount": 62.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 28,
+    "summary": "Synthetic summary 6."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Mugler",
+   "category": "fragrances",
+   "name": "Alien",
+   "price": {
+    "amount": 99.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 121,
+    "summary": "Synthetic summary 37."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 26 BHD.",
+   "Synthetic catalogue note 1 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 2 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 3 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 4 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 5 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 6 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 7 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 8 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 9 for Prada Luna Rossa: bergamot, cedar and amber, 100 ml, about 35 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 1 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 2 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 3 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 4 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 5 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 6 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 7 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 8 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 9 for Mugler Alien: bergamot, cedar and amber, 100 ml, about 36 BHD."
+  ]
+ },
+ {
+  "compare_id": "c07",
+  "product_a": {
+   "brand": "Armani",
+   "category": "fragrances",
+   "name": "Acqua di Gio",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 31,
+    "summary": "Synthetic summary 7."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Viktor",
+   "category": "fragrances",
+   "name": "Rolf Flowerbomb",
+   "price": {
+    "amount": 106.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 124,
+    "summary": "Synthetic summary 38."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 27 BHD.",
+   "Synthetic catalogue note 1 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 2 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 3 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 4 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 5 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 6 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 7 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 8 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 9 for Armani Acqua di Gio: bergamot, cedar and amber, 100 ml, about 36 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 1 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 2 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 3 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 4 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 5 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 6 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 7 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 8 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 9 for Viktor Rolf Flowerbomb: bergamot, cedar and amber, 100 ml, about 37 BHD."
+  ]
+ },
+ {
+  "compare_id": "c08",
+  "product_a": {
+   "brand": "Versace",
+   "category": "fragrances",
+   "name": "Eros",
+   "price": {
+    "amount": 76.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 34,
+    "summary": "Synthetic summary 8."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Bvlgari",
+   "category": "fragrances",
+   "name": "Aqva",
+   "price": {
+    "amount": 23.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 127,
+    "summary": "Synthetic summary 39."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Versace Eros: bergamot, cedar and amber, 100 ml, about 28 BHD.",
+   "Synthetic catalogue note 1 for Versace Eros: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 2 for Versace Eros: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 3 for Versace Eros: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 4 for Versace Eros: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 5 for Versace Eros: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 6 for Versace Eros: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 7 for Versace Eros: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 8 for Versace Eros: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 9 for Versace Eros: bergamot, cedar and amber, 100 ml, about 37 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 1 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 2 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 3 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 4 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 5 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 6 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 7 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 8 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 9 for Bvlgari Aqva: bergamot, cedar and amber, 100 ml, about 38 BHD."
+  ]
+ },
+ {
+  "compare_id": "c09",
+  "product_a": {
+   "brand": "YSL",
+   "category": "fragrances",
+   "name": "Libre",
+   "price": {
+    "amount": 83.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 37,
+    "summary": "Synthetic summary 9."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Issey",
+   "category": "fragrances",
+   "name": "Miyake L Eau d Issey",
+   "price": {
+    "amount": 30.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 130,
+    "summary": "Synthetic summary 40."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for YSL Libre: bergamot, cedar and amber, 100 ml, about 29 BHD.",
+   "Synthetic catalogue note 1 for YSL Libre: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 2 for YSL Libre: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 3 for YSL Libre: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 4 for YSL Libre: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 5 for YSL Libre: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 6 for YSL Libre: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 7 for YSL Libre: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 8 for YSL Libre: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 9 for YSL Libre: bergamot, cedar and amber, 100 ml, about 38 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 1 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 2 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 3 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 4 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 5 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 6 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 7 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 8 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 9 for Issey Miyake L Eau d Issey: bergamot, cedar and amber, 100 ml, about 39 BHD."
+  ]
+ },
+ {
+  "compare_id": "c10",
+  "product_a": {
+   "brand": "Lancome",
+   "category": "fragrances",
+   "name": "La Vie Est Belle",
+   "price": {
+    "amount": 90.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 40,
+    "summary": "Synthetic summary 10."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Davidoff",
+   "category": "fragrances",
+   "name": "Cool Water",
+   "price": {
+    "amount": 37.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 133,
+    "summary": "Synthetic summary 41."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 30 BHD.",
+   "Synthetic catalogue note 1 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 2 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 3 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 4 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 5 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 6 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 7 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 8 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 9 for Lancome La Vie Est Belle: bergamot, cedar and amber, 100 ml, about 39 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 1 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 2 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 3 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 4 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 5 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 6 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 7 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 8 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 9 for Davidoff Cool Water: bergamot, cedar and amber, 100 ml, about 40 BHD."
+  ]
+ },
+ {
+  "compare_id": "c11",
+  "product_a": {
+   "brand": "Jo",
+   "category": "fragrances",
+   "name": "Malone Wood Sage",
+   "price": {
+    "amount": 97.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 43,
+    "summary": "Synthetic summary 11."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Chloe",
+   "category": "fragrances",
+   "name": "Eau de Parfum",
+   "price": {
+    "amount": 44.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 136,
+    "summary": "Synthetic summary 42."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 31 BHD.",
+   "Synthetic catalogue note 1 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 2 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 3 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 4 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 5 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 6 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 7 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 8 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 9 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 40 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 1 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 2 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 3 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 4 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 5 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 6 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 7 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 8 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 9 for Chloe Eau de Parfum: bergamot, cedar and amber, 100 ml, about 41 BHD."
+  ]
+ },
+ {
+  "compare_id": "c12",
+  "product_a": {
+   "brand": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646",
+   "category": "fragrances",
+   "name": "\u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a",
+   "price": {
+    "amount": 104.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 46,
+    "summary": "Synthetic summary 12."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Clinique",
+   "category": "fragrances",
+   "name": "Happy",
+   "price": {
+    "amount": 51.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.8,
+    "review_count": 139,
+    "summary": "Synthetic summary 43."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 32 BHD.",
+   "Synthetic catalogue note 1 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 2 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 3 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 4 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 5 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 6 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 7 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 8 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 9 for \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: bergamot, cedar and amber, 100 ml, about 41 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 1 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 2 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 3 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 4 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 5 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 6 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 7 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 8 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 9 for Clinique Happy: bergamot, cedar and amber, 100 ml, about 42 BHD."
+  ]
+ },
+ {
+  "compare_id": "c13",
+  "product_a": {
+   "brand": "\u0627\u062c\u0645\u0627\u0644",
+   "category": "fragrances",
+   "name": "\u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f",
+   "price": {
+    "amount": 21.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.8,
+    "review_count": 49,
+    "summary": "Synthetic summary 13."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Mancera",
+   "category": "fragrances",
+   "name": "Cedrat Boise",
+   "price": {
+    "amount": 58.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.9,
+    "review_count": 142,
+    "summary": "Synthetic summary 44."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 33 BHD.",
+   "Synthetic catalogue note 1 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 2 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 3 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 4 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 5 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 6 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 7 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 8 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 9 for \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: bergamot, cedar and amber, 100 ml, about 42 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 1 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 2 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 3 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 4 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 5 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 6 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 7 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 8 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 9 for Mancera Cedrat Boise: bergamot, cedar and amber, 100 ml, about 43 BHD."
+  ]
+ },
+ {
+  "compare_id": "c14",
+  "product_a": {
+   "brand": "\u0633\u0648\u064a\u0633\u0633",
+   "category": "fragrances",
+   "name": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641",
+   "price": {
+    "amount": 28.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.9,
+    "review_count": 52,
+    "summary": "Synthetic summary 14."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Rasasi",
+   "category": "fragrances",
+   "name": "Hawas",
+   "price": {
+    "amount": 65.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.5,
+    "review_count": 145,
+    "summary": "Synthetic summary 45."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 34 BHD.",
+   "Synthetic catalogue note 1 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 2 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 3 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 4 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 5 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 6 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 7 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 8 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 9 for \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: bergamot, cedar and amber, 100 ml, about 43 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 1 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 2 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 3 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 4 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 5 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 6 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 7 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 8 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 9 for Rasasi Hawas: bergamot, cedar and amber, 100 ml, about 44 BHD."
+  ]
+ },
+ {
+  "compare_id": "c15",
+  "product_a": {
+   "brand": "\u0631\u0627\u0633\u0627\u0633\u064a",
+   "category": "fragrances",
+   "name": "\u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645",
+   "price": {
+    "amount": 35.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.5,
+    "review_count": 55,
+    "summary": "Synthetic summary 15."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Creed",
+   "category": "fragrances",
+   "name": "Aventus",
+   "price": {
+    "amount": 72.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.6,
+    "review_count": 148,
+    "summary": "Synthetic summary 46."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 35 BHD.",
+   "Synthetic catalogue note 1 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 2 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 3 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 4 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 5 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 6 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 7 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 8 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 9 for \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: bergamot, cedar and amber, 100 ml, about 44 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 1 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 2 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 3 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 4 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 5 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 6 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 7 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 8 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 9 for Creed Aventus: bergamot, cedar and amber, 100 ml, about 45 BHD."
+  ]
+ },
+ {
+  "compare_id": "c16",
+  "product_a": {
+   "brand": "YSL",
+   "category": "fragrances",
+   "name": "Opium",
+   "price": {
+    "amount": 42.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.6,
+    "review_count": 58,
+    "summary": "Synthetic summary 16."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Hermes",
+   "category": "fragrances",
+   "name": "Terre d Hermes",
+   "price": {
+    "amount": 79.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 151,
+    "summary": "Synthetic summary 47."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for YSL Opium: bergamot, cedar and amber, 100 ml, about 36 BHD.",
+   "Synthetic catalogue note 1 for YSL Opium: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 2 for YSL Opium: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 3 for YSL Opium: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 4 for YSL Opium: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 5 for YSL Opium: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 6 for YSL Opium: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 7 for YSL Opium: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 8 for YSL Opium: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 9 for YSL Opium: bergamot, cedar and amber, 100 ml, about 45 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 1 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 2 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 3 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 4 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 5 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 6 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 7 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 8 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 9 for Hermes Terre d Hermes: bergamot, cedar and amber, 100 ml, about 46 BHD."
+  ]
+ },
+ {
+  "compare_id": "c17",
+  "product_a": {
+   "brand": "Dior",
+   "category": "fragrances",
+   "name": "Poison",
+   "price": {
+    "amount": 49.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 61,
+    "summary": "Synthetic summary 17."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Versace",
+   "category": "fragrances",
+   "name": "Eros",
+   "price": {
+    "amount": 86.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 154,
+    "summary": "Synthetic summary 48."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Dior Poison: bergamot, cedar and amber, 100 ml, about 37 BHD.",
+   "Synthetic catalogue note 1 for Dior Poison: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 2 for Dior Poison: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 3 for Dior Poison: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 4 for Dior Poison: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 5 for Dior Poison: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 6 for Dior Poison: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 7 for Dior Poison: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 8 for Dior Poison: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 9 for Dior Poison: bergamot, cedar and amber, 100 ml, about 46 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Versace Eros: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 1 for Versace Eros: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 2 for Versace Eros: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 3 for Versace Eros: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 4 for Versace Eros: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 5 for Versace Eros: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 6 for Versace Eros: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 7 for Versace Eros: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 8 for Versace Eros: bergamot, cedar and amber, 100 ml, about 46 BHD.",
+   "Synthetic catalogue note 9 for Versace Eros: bergamot, cedar and amber, 100 ml, about 47 BHD."
+  ]
+ },
+ {
+  "compare_id": "c18",
+  "product_a": {
+   "brand": "Calvin",
+   "category": "fragrances",
+   "name": "Klein Obsession",
+   "price": {
+    "amount": 56.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 64,
+    "summary": "Synthetic summary 18."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Jo",
+   "category": "fragrances",
+   "name": "Malone Wood Sage",
+   "price": {
+    "amount": 93.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 157,
+    "summary": "Synthetic summary 49."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 38 BHD.",
+   "Synthetic catalogue note 1 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 2 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 3 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 4 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 5 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 6 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 7 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 8 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 46 BHD.",
+   "Synthetic catalogue note 9 for Calvin Klein Obsession: bergamot, cedar and amber, 100 ml, about 47 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 1 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 2 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 3 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 4 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 5 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 6 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 7 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 46 BHD.",
+   "Synthetic catalogue note 8 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 47 BHD.",
+   "Synthetic catalogue note 9 for Jo Malone Wood Sage: bergamot, cedar and amber, 100 ml, about 48 BHD."
+  ]
+ },
+ {
+  "compare_id": "c19",
+  "product_a": {
+   "brand": "Mugler",
+   "category": "fragrances",
+   "name": "Angel",
+   "price": {
+    "amount": 63.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 67,
+    "summary": "Synthetic summary 19."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Maison",
+   "category": "fragrances",
+   "name": "Margiela Jazz Club",
+   "price": {
+    "amount": 100.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 160,
+    "summary": "Synthetic summary 50."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "snippets_a": [
+   "Synthetic catalogue note 0 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 39 BHD.",
+   "Synthetic catalogue note 1 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 2 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 3 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 4 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 5 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 6 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 7 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 46 BHD.",
+   "Synthetic catalogue note 8 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 47 BHD.",
+   "Synthetic catalogue note 9 for Mugler Angel: bergamot, cedar and amber, 100 ml, about 48 BHD."
+  ],
+  "snippets_b": [
+   "Synthetic catalogue note 0 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 40 BHD.",
+   "Synthetic catalogue note 1 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 41 BHD.",
+   "Synthetic catalogue note 2 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 42 BHD.",
+   "Synthetic catalogue note 3 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 43 BHD.",
+   "Synthetic catalogue note 4 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 44 BHD.",
+   "Synthetic catalogue note 5 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 45 BHD.",
+   "Synthetic catalogue note 6 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 46 BHD.",
+   "Synthetic catalogue note 7 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 47 BHD.",
+   "Synthetic catalogue note 8 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 48 BHD.",
+   "Synthetic catalogue note 9 for Maison Margiela Jazz Club: bergamot, cedar and amber, 100 ml, about 49 BHD."
+  ]
+ }
+]
