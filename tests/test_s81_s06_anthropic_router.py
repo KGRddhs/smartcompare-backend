@@ -668,7 +668,7 @@ def test_r01_router_module_and_symbols():
     """R01 RED: the module exists with every 2.2 symbol and the exact constants (R-S06-8 cap)."""
     r = _router()
     for name in ("ROLE_FLAGS", "ESCALATION_FLAG", "PRE_V3_FLAG", "MIN_CONSENT_VERSION",
-                 "ESCALATION_CAP_PER_COMPARE", "PROVIDER", "SITES", "IMAGE_TIER3_SCHEMA",
+                 "ESCALATION_CAP_PER_COMPARE", "PROVIDER", "SITES",
                  "DISAMBIGUATE_SCHEMA", "MODERATION_SCHEMA", "MODERATION_SYSTEM_PROMPT",
                  "ConsentUpdateRequiredError", "AnthropicNotConfiguredError", "AnthropicShapeError",
                  "AnthropicDispatchError", "AnthropicRefusalError", "AnthropicBreakerOpenError",
@@ -750,13 +750,12 @@ def test_r02b_no_open_schema_anywhere():
 
 
 def test_r02c_mandated_schemas():
-    """R02c RED (R-S06-1, R-S06-10): image_tier3 = IMAGE_TIER3_SCHEMA; vision_v2 reuses the B3 V2
-    identity schema; vision_v1 requests {"products": [...]}; disambiguate is the
-    ["true", "false", "unknown"] enum with the confidence enum."""
+    """R02c RED (R-S06-1, R-S06-10; S81-07c T1 / T2): image_tier3 takes option (b) (no schema, the
+    JSON-only line); vision_v2 reuses the B3 V2 identity schema; vision_v1 requests
+    {"products": [...]}; disambiguate is the ["true", "false", "unknown"] enum with the confidence enum."""
     sites = _sym("SITES")
     r = _router()
-    assert sites["image_tier3"].output_schema == r.IMAGE_TIER3_SCHEMA
-    assert r.IMAGE_TIER3_SCHEMA["required"] == ["image_url"]
+    assert sites["image_tier3"].output_schema is None and sites["image_tier3"].expects_json is True
     assert sites["vision_v2"].output_schema == osvc.VISION_RESPONSE_FORMAT_V2["json_schema"]["schema"]
     v1 = sites["vision_v1"].output_schema
     assert isinstance(v1, dict) and v1.get("type") == "object" and v1.get("required") == ["products"]

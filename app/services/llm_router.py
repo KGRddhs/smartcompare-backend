@@ -101,12 +101,6 @@ _DATA_URL_RE = re.compile(r"^data:([^;,]+);base64,(.*)$", re.S)
 # ---------------------------------------------------------------------------
 # Closed schemas (R-S06-1: every object additionalProperties false; no open schema)
 # ---------------------------------------------------------------------------
-IMAGE_TIER3_SCHEMA: Dict[str, Any] = {
-    "type": "object",
-    "properties": {"image_url": {"type": ["string", "null"]}},
-    "required": ["image_url"],
-    "additionalProperties": False,
-}
 # R-S06-10: the warmer's fail-closed "unknown" stays reachable (an enum, not a bool).
 DISAMBIGUATE_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -207,8 +201,11 @@ class SiteSpec:
 
 
 # GC-6 / R-S06-1: the eleven prose-JSON sites take option (b) (no format, the
-# JSON-only line, the Claude-branch fence strip); image_tier3 / vision_v1 /
-# vision_v2 / disambiguate carry closed schemas; classify returns a word.
+# JSON-only line, the Claude-branch fence strip); image_tier3 takes (b) too since
+# S81-07c (the measured schema cost: a first-use grammar compile and a per-call
+# overhead; its Tier-3 parser already strips a fence, parses, validates the URL and
+# returns None on any failure); vision_v1 / vision_v2 / disambiguate carry closed
+# schemas; classify returns a word.
 SITES: Dict[str, SiteSpec] = {
     "classify": SiteSpec("text", 32, None, False),
     "parse": SiteSpec("text", 768, None, True),
@@ -218,7 +215,7 @@ SITES: Dict[str, SiteSpec] = {
     "reviews": SiteSpec("text", 1024, None, True),
     "verdict": SiteSpec("verdict", 1536, None, True),
     "verdict_fallback": SiteSpec("verdict", 1536, None, True),
-    "image_tier3": SiteSpec("text", 256, IMAGE_TIER3_SCHEMA, True),
+    "image_tier3": SiteSpec("text", 256, None, True),
     "vision_v2": SiteSpec("vision", 1536, _VISION_V2_SCHEMA_REF, True),
     "vision_v1": SiteSpec("vision", 768, VISION_V1_SCHEMA, True),
     "specs_targeted": SiteSpec("text", 384, None, True),
