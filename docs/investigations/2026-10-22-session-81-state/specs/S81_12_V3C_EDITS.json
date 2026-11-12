@@ -1,0 +1,242 @@
+{
+ "amendment_records": [
+  {
+   "id": "J8",
+   "kind": "RESTORED_VERBATIM",
+   "file": "SmartCompareApp/src/i18n/ar.json",
+   "head_line": "aiConsent.body",
+   "main_line": "aiConsent.body",
+   "old": "",
+   "new": "وقد تستخدم OpenAI هذه المدخلات والمخرجات التي تنتجها منها للتعرف على أنماط الاستخدام وقياس جودة النماذج والاستعانة بها في تقييم نماذجها وتدريبها. ",
+   "note": "consent sheet: OpenAI's use, after the transition sentence"
+  },
+  {
+   "id": "J8",
+   "kind": "RESTORED_VERBATIM",
+   "file": "SmartCompareApp/src/i18n/en.json",
+   "head_line": "aiConsent.body",
+   "main_line": "aiConsent.body",
+   "old": "",
+   "new": "OpenAI may use these inputs and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models. ",
+   "note": "consent sheet: OpenAI's use, after the transition sentence"
+  },
+  {
+   "id": "S1",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy.md",
+   "head_line": 17,
+   "main_line": 15,
+   "old": "We do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers.",
+   "new": "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers.",
+   "note": "not-sold promise with the programme carve-out"
+  },
+  {
+   "id": "S2",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy.md",
+   "head_line": 17,
+   "main_line": 15,
+   "old": "We took part in OpenAI's data-sharing programme, under which OpenAI could use the inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some free use of its service; our part in it has ended (section 4).",
+   "new": "We take part in OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service.",
+   "note": "the programme sentence, present tense"
+  },
+  {
+   "id": "B1",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy.md",
+   "head_line": "59/60",
+   "main_line": 58,
+   "old": "",
+   "new": "- Letting OpenAI use the inputs and outputs of your comparisons under its data-sharing programme, as section 4 describes (legal basis: the permission you give before your first comparison; withdrawal as section 10 describes).\n",
+   "note": "legal-basis bullet"
+  },
+  {
+   "id": "N1",
+   "kind": "ADAPTED",
+   "file": "app/legal/privacy_policy.md",
+   "head_line": 7,
+   "main_line": null,
+   "old": ", our part in OpenAI's data-sharing programme ended on that date (section 4)",
+   "new": "",
+   "note": "notice shortened"
+  },
+  {
+   "id": "P4",
+   "kind": "ADAPTED",
+   "file": "app/legal/privacy_policy.md",
+   "head_line": 76,
+   "main_line": 69,
+   "old": "We took part in OpenAI's data-sharing programme, which let OpenAI use the inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some free use of its service; our part in the programme ended on October 29, 2026. Since then, OpenAI does not use the data we send it to train its models, and it may keep that data in abuse-monitoring logs for up to 30 days. Data shared with OpenAI under the programme before that date remains governed by OpenAI's terms.",
+   "new": "We take part in OpenAI's data-sharing programme for the requests OpenAI processes: OpenAI may use the inputs we send it and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models. Data shared this way is governed by OpenAI's terms rather than the 30-day abuse-monitoring limit below. In return for this sharing, OpenAI gives us some free use of its service. OpenAI may keep data sent to its API in abuse-monitoring logs for up to 30 days.",
+   "note": "main :69 sentences 0 (scope phrase), 1, 3, 5 in main's order; sentence 2 (the 'every comparison' anchor) removed; sentence 4 (photo guidance) stays at head :78"
+  },
+  {
+   "id": "C5",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy.md",
+   "head_line": 97,
+   "main_line": 87,
+   "old": "Except as section 4 describes for data shared with OpenAI before October 29, 2026 and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at privacy@getmyez.com. We may also disclose data where the law requires it.",
+   "new": "Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at privacy@getmyez.com. We may also disclose data where the law requires it.",
+   "note": "undated carve-out, whole line"
+  },
+  {
+   "id": "S1",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy_ar.md",
+   "head_line": 17,
+   "main_line": 15,
+   "old": "لا نبيع بياناتك الشخصية ولا نبادلها مقابل أي شيء ذي قيمة، ولا نشاركها مع وسطاء البيانات أو المعلنين.",
+   "new": "باستثناء برنامج OpenAI الموضّح أدناه، لا نبيع بياناتك الشخصية ولا نبادلها مقابل أي شيء ذي قيمة، ولا نشاركها مع وسطاء البيانات أو المعلنين.",
+   "note": "not-sold promise with the programme carve-out"
+  },
+  {
+   "id": "S2",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy_ar.md",
+   "head_line": 17,
+   "main_line": 15,
+   "old": "وكنا نشارك في برنامج مشاركة البيانات لدى OpenAI، الذي كان يسمح لها باستخدام المدخلات التي أرسلناها إليها والمخرجات التي أنتجتها منها لتقييم نماذجها وتدريبها مقابل قدر من الاستخدام المجاني لخدمتها؛ وقد انتهت مشاركتنا فيه (القسم 4).",
+   "new": "ونشارك في برنامج مشاركة البيانات لدى OpenAI (القسم 4): إذ قد تستخدم OpenAI المدخلات التي نرسلها إليها والمخرجات التي تنتجها منها لتقييم نماذجها وتدريبها، وفي المقابل تمنحنا OpenAI قدرًا من الاستخدام المجاني لخدمتها.",
+   "note": "the programme sentence, present tense"
+  },
+  {
+   "id": "B1",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy_ar.md",
+   "head_line": "59/60",
+   "main_line": 58,
+   "old": "",
+   "new": "- السماح لشركة OpenAI باستخدام مدخلات مقارناتك ومخرجاتها ضمن برنامج مشاركة البيانات لديها، على النحو الذي يوضّحه القسم 4 (الأساس القانوني: الإذن الذي تمنحه قبل مقارنتك الأولى؛ ويكون سحبه على النحو الذي يوضّحه القسم 10).\n",
+   "note": "legal-basis bullet"
+  },
+  {
+   "id": "N1",
+   "kind": "ADAPTED",
+   "file": "app/legal/privacy_policy_ar.md",
+   "head_line": 7,
+   "main_line": null,
+   "old": "، وانتهت مشاركتنا في برنامج مشاركة البيانات لدى OpenAI في ذلك التاريخ (القسم 4)",
+   "new": "",
+   "note": "notice shortened (AR clause dropped whole)"
+  },
+  {
+   "id": "P4",
+   "kind": "ADAPTED",
+   "file": "app/legal/privacy_policy_ar.md",
+   "head_line": 76,
+   "main_line": 69,
+   "old": "وكنا نشارك في برنامج مشاركة البيانات لدى OpenAI، الذي أتاح لها استخدام المدخلات التي أرسلناها إليها والمخرجات التي أنتجتها منها لتقييم نماذجها وتدريبها مقابل قدر من الاستخدام المجاني لخدمتها، وانتهت مشاركتنا في هذا البرنامج في 29 أكتوبر 2026. ومنذ ذلك التاريخ لا تستخدم OpenAI البيانات التي نرسلها إليها لتدريب نماذجها، وقد تحتفظ بها في سجلات مراقبة إساءة الاستخدام لمدة تصل إلى 30 يومًا. وتظل البيانات التي تمت مشاركتها مع OpenAI ضمن هذا البرنامج قبل ذلك التاريخ خاضعة لشروط OpenAI.",
+   "new": "نشارك في برنامج مشاركة البيانات لدى OpenAI في الطلبات التي تعالجها OpenAI: وقد تستخدم OpenAI المدخلات التي نرسلها إليها والمخرجات التي تنتجها منها للتعرف على أنماط الاستخدام وقياس جودة النماذج والاستعانة بها في تقييم نماذجها وتدريبها. وتخضع البيانات التي تُشارك بهذه الطريقة لشروط OpenAI بدلًا من حدّ الثلاثين يومًا لمراقبة إساءة الاستخدام المذكور أدناه. وفي مقابل هذه المشاركة، تمنحنا OpenAI قدرًا من الاستخدام المجاني لخدمتها. قد تحتفظ OpenAI بالبيانات المرسلة إلى واجهة برمجة التطبيقات (API) الخاصة بها في سجلات مراقبة إساءة الاستخدام لمدة تصل إلى 30 يومًا.",
+   "note": "main :69 sentences 0 (scope phrase), 1, 3, 5 in main's order; sentence 2 (the 'every comparison' anchor) removed; sentence 4 (photo guidance) stays at head :78"
+  },
+  {
+   "id": "C5",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/privacy_policy_ar.md",
+   "head_line": 97,
+   "main_line": 87,
+   "old": "باستثناء ما يوضّحه القسم 4 بشأن البيانات التي تمت مشاركتها مع OpenAI قبل 29 أكتوبر 2026 وما يوضّحه هذا القسم بشأن مزوّد صندوق بريدنا، يعالج كل مزوّد من مزوّدي الخدمات لدينا البيانات فقط لتقديم خدمته لنا، ونُلزم كلًّا منهم بحمايتها بمستوى لا يقل عن المستوى الذي تنص عليه هذه السياسة. أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle، ومزوّد صندوق بريدنا، وخدمة الخطوط على الويب التي يستخدمها موقعنا، فتعمل وفق شروطها الخاصة. وسنخبرك بأسماء مزوّدي الخدمات لدينا عند الطلب عبر privacy@getmyez.com. وقد نفصح أيضًا عن البيانات عندما يقتضي القانون ذلك.",
+   "new": "باستثناء ما يوضّحه القسم 4 بشأن OpenAI وما يوضّحه هذا القسم بشأن مزوّد صندوق بريدنا، يعالج كل مزوّد من مزوّدي الخدمات لدينا البيانات فقط لتقديم خدمته لنا، ونُلزم كلًّا منهم بحمايتها بمستوى لا يقل عن المستوى الذي تنص عليه هذه السياسة. أما مواقع المتاجر (القسم 6) ومزوّدا تسجيل الدخول Apple وGoogle، ومزوّد صندوق بريدنا، وخدمة الخطوط على الويب التي يستخدمها موقعنا، فتعمل وفق شروطها الخاصة. وسنخبرك بأسماء مزوّدي الخدمات لدينا عند الطلب عبر privacy@getmyez.com. وقد نفصح أيضًا عن البيانات عندما يقتضي القانون ذلك.",
+   "note": "undated carve-out, whole line"
+  },
+  {
+   "id": "S3",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/terms_of_service.md",
+   "head_line": 57,
+   "main_line": 53,
+   "old": "We do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers.",
+   "new": "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers.",
+   "note": "Terms s8 not-sold promise with the carve-out"
+  },
+  {
+   "id": "S4",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/terms_of_service.md",
+   "head_line": 57,
+   "main_line": 53,
+   "old": "We took part in OpenAI's data-sharing programme, as section 4 of our Privacy Policy describes; our part in it has ended.",
+   "new": "We take part in OpenAI's data-sharing programme, as section 4 of our Privacy Policy describes: OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service.",
+   "note": "Terms s8 programme sentence"
+  },
+  {
+   "id": "N2",
+   "kind": "ADAPTED",
+   "file": "app/legal/terms_of_service.md",
+   "head_line": 7,
+   "main_line": null,
+   "old": ", our part in OpenAI's data-sharing programme ended on that date (section 4 of our Privacy Policy)",
+   "new": "",
+   "note": "notice shortened"
+  },
+  {
+   "id": "S3",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/terms_of_service_ar.md",
+   "head_line": 57,
+   "main_line": 53,
+   "old": "لا نبيع بياناتك الشخصية ولا نبادلها مقابل أي شيء ذي قيمة، ولا نشاركها مع وسطاء البيانات أو المعلنين.",
+   "new": "باستثناء برنامج OpenAI الموضّح أدناه، لا نبيع بياناتك الشخصية ولا نبادلها مقابل أي شيء ذي قيمة، ولا نشاركها مع وسطاء البيانات أو المعلنين.",
+   "note": "Terms s8 not-sold promise with the carve-out"
+  },
+  {
+   "id": "S4",
+   "kind": "RESTORED_VERBATIM",
+   "file": "app/legal/terms_of_service_ar.md",
+   "head_line": 57,
+   "main_line": 53,
+   "old": "وكنا نشارك في برنامج مشاركة البيانات لدى OpenAI على النحو الذي يوضّحه القسم 4 من سياسة الخصوصية؛ وقد انتهت مشاركتنا فيه.",
+   "new": "ونشارك في برنامج مشاركة البيانات لدى OpenAI على النحو الذي يوضّحه القسم 4 من سياسة الخصوصية: إذ قد تستخدم OpenAI المدخلات التي نرسلها إليها والمخرجات التي تنتجها منها لتقييم نماذجها وتدريبها، وفي المقابل تمنحنا OpenAI قدرًا من الاستخدام المجاني لخدمتها.",
+   "note": "Terms s8 programme sentence"
+  },
+  {
+   "id": "N2",
+   "kind": "ADAPTED",
+   "file": "app/legal/terms_of_service_ar.md",
+   "head_line": 7,
+   "main_line": null,
+   "old": "، وانتهت مشاركتنا في برنامج مشاركة البيانات لدى OpenAI في ذلك التاريخ (القسم 4 من سياسة الخصوصية)",
+   "new": "",
+   "note": "notice shortened (AR clause dropped whole)"
+  }
+ ],
+ "added_by_the_rulings": [
+  {
+   "id": "C2",
+   "kind": "ADAPTED",
+   "file": "app/legal/privacy_policy.md",
+   "line_in_expected": 77,
+   "insert_after": "Data shared this way is governed by OpenAI's terms rather than the 30-day abuse-monitoring limit below.",
+   "new": "This applies to every request OpenAI processes, and the App has no separate setting for it.",
+   "note": "privacy s4: main :69 [2] with the scope narrowed ('every comparison' -> 'every request OpenAI processes'), after the governed sentence"
+  },
+  {
+   "id": "C2",
+   "kind": "ADAPTED",
+   "file": "app/legal/privacy_policy_ar.md",
+   "line_in_expected": 77,
+   "insert_after": "وتخضع البيانات التي تُشارك بهذه الطريقة لشروط OpenAI بدلًا من حدّ الثلاثين يومًا لمراقبة إساءة الاستخدام المذكور أدناه.",
+   "new": "وينطبق ذلك على كل طلب تعالجه OpenAI، ولا يوجد في التطبيق إعداد منفصل له.",
+   "note": "privacy s4 AR: main :69 [2] with the one phrase replaced [NATIVE READ]"
+  },
+  {
+   "id": "D3",
+   "kind": "NEW",
+   "file": "app/legal/terms_of_service.md",
+   "line_in_expected": 45,
+   "insert_after": "Verdicts, summaries, specifications and recommendations are generated by AI from public information and may be incomplete, wrong or out of date.",
+   "new": "Check what matters to you against the retailer's or the manufacturer's own information before you rely on it.",
+   "note": "Terms s6: the verify-before-relying sentence (TR-8), after the first sentence"
+  },
+  {
+   "id": "D3",
+   "kind": "NEW",
+   "file": "app/legal/terms_of_service_ar.md",
+   "line_in_expected": 45,
+   "insert_after": "تُنشأ خلاصات المقارنة والملخصات والمواصفات والتوصيات بالذكاء الاصطناعي من معلومات عامة، وقد تكون ناقصة أو غير صحيحة أو غير محدّثة.",
+   "new": "وقبل الاعتماد على ما يهمّك، تحقّق منه بالرجوع إلى المعلومات التي يقدّمها المتجر أو الشركة المصنّعة.",
+   "note": "Terms s6 AR: the Arabic twin [NATIVE READ]"
+  }
+ ]
+}
