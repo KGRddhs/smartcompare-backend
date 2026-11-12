@@ -31,6 +31,12 @@ PIN (green at base and after): the positive controls of T1/T2/T3/T6/T7/T8, the T
 parity, the four T9 route pins (UL13), no tables in the legal markdown (C22), the
 landing chrome (UL1/UL11).
 
+S81-12 LEGAL-V3 (2026-10-29; deliberate pin changes, ruling R-S12-11 and E9): Anthropic is named beside
+OpenAI (privacy s2 / s4 / s5, Terms s8, consent v3), so PUBLIC_NAME_IDS gains 'anthropic' and the T8 keyword
+maps gain an 'Anthropic' key required in section 4 and in the consent copy. Since S81-12 V3C (PATH C of item
+26, RULINGS_V3C_S81_12 C3) d3 is 'C' again and the T8 rules read section 4 in main's form. The PR is held by
+H1 of tests/test_s81_12_legal_v3.py until the window record exists.
+
 DOCUMENTS
 ---------
 Markdown: app/legal/{privacy_policy,terms_of_service}.md and their NEW ``_ar.md`` twins.
@@ -796,7 +802,8 @@ SPEC_RECIPIENT_IDS = (
     "serper", "bright_data", "firecrawl", "scrapedo", "cloudflare", "gmail",
 )
 # S78 (LR3): the only recipients the policy names; every other row is described by its category.
-PUBLIC_NAME_IDS = frozenset({"openai", "apple", "google_sign_in", "retailers"})
+# S81-12 (R-S12-11, a deliberate pin change): the anthropic row is public; the policy names Anthropic.
+PUBLIC_NAME_IDS = frozenset({"openai", "anthropic", "apple", "google_sign_in", "retailers"})
 SUPPORT_MD = ("app/legal/support_contact.md", "app/legal/support_contact_ar.md")
 
 _ROW_KEYS = (
@@ -1097,6 +1104,8 @@ AI_SECTION_KEYWORDS_EN = {
     "language": (r"\blanguage\b", True),
     "area": (r"\barea\b", True),
     "OpenAI": (r"\bOpenAI\b", True),
+    # S81-12 (R-S12-4, E9): both AI providers are required in section 4 and in the consent copy (v3).
+    "Anthropic": (r"\bAnthropic\b", True),
     "similar": (r"\bsimilar\b", False),  # C4: cohort priors from people with similar answers
 }
 NOT_SENT_EN = {
@@ -1130,6 +1139,7 @@ AI_SECTION_KEYWORDS_AR = {
     "language": ("\u0644\u063a\u062a\u0643", True),
     "area": ("\u0645\u0646\u0637\u0642\u062a\u0643", True),
     "OpenAI": ("OpenAI", True),
+    "Anthropic": ("Anthropic", True),  # S81-12 (E9)
     "similar": ("\u062a\u062a\u0634\u0627\u0628\u0647|\u0645\u0634\u0627\u0628\u0647", False),
 }
 AI_SECTION_NOT_SENT_AR = {
@@ -1244,7 +1254,7 @@ def _ar_map_problems():
         en_flag = AI_SECTION_KEYWORDS_EN.get(key, (None, None))[1]
         if not (isinstance(entry, tuple) and len(entry) == 2 and entry[1] is en_flag):
             problems.append(f"AI_SECTION_KEYWORDS_AR[{key!r}] must be (pattern, {en_flag})")
-        elif not _usable_ar_pattern(entry[0], latin_ok=key == "OpenAI"):
+        elif not _usable_ar_pattern(entry[0], latin_ok=key in ("OpenAI", "Anthropic")):
             problems.append(f"AI_SECTION_KEYWORDS_AR[{key!r}]: empty, invalid or not Arabic")
     for key, pattern in AI_SECTION_NOT_SENT_AR.items():
         if not _usable_ar_pattern(pattern):

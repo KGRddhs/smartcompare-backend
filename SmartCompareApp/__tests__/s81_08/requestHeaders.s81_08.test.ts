@@ -335,7 +335,7 @@ beforeEach(() => {
   Object.values(mockSentrySvc).forEach((m) => m.mockClear());
   Object.values(mockSentryRN).forEach((m) => m.mockClear());
   mockGlobalConsent.hasCurrentAiConsent.mockClear();
-  plantConsent(2);
+  plantConsent(Number(/AI_CONSENT_VERSION\s*=\s*([0-9]+)/.exec(require('fs').readFileSync(__dirname + '/../../src/services/aiConsent.ts', 'utf8'))?.[1]));
   dateSpy = jest.spyOn(Date, 'now').mockReturnValue(PRE_CUTOFF_MS);
 });
 

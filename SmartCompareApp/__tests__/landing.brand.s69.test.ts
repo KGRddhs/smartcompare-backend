@@ -68,12 +68,13 @@ const ADDRESS_COUNTS: Record<string, number> = {
   // privacy@getmyez.com (privacy s1 + s16, ToS s1 + s19, the support line), privacy s5 adds the
   // on-request sentence, and ToS v2 names support@ in s7, s13, s15 and s19. A later P.O. Box re-fill
   // drops the postal mentions (privacy -2, terms -2, support -1): re-measure these six counts then.
-  'privacy.html': 14,
+  // S81-12 (gate GC-4): privacy s6 names https://getmyez.com/bot/ (R-S12-2): +1 per privacy page.
+  'privacy.html': 15,
   'support.html': 11,
   'terms.html': 13,
   'open.html': 1, // S78 F4: the script's linking prefix only (the head comment is gone)
   'ar/index.html': 8,
-  'ar/privacy.html': 14, // S78: the same mentions as privacy.html, in Arabic
+  'ar/privacy.html': 15, // S78: the same mentions as privacy.html, in Arabic (S81-12: +1, the /bot/ page)
   'ar/support.html': 11,
   'ar/terms.html': 13,
 };

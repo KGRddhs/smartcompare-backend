@@ -10,7 +10,8 @@
  * Trust bridge — pre-empts the "why do you need this?" objection BEFORE
  * we ask for age, gender, etc. The 3 rows mirror the JSX recipe verbatim:
  *   - check    "What we use"          / what's collected
- *   - search   "What reaches OpenAI"  / what is sent to OpenAI, and what never is
+ *   - search   "What reaches our AI providers" / what is sent to Anthropic and OpenAI,
+ *              and what never is (S81-12)
  *     (S69 U3: retitled from "What's anonymized", which no longer
  *     described the body)
  *   - X        "What we never share"  / name and email
@@ -20,8 +21,8 @@
  * _build_preferences_prompt, "Budget level: …"), so it is no longer listed as
  * never shared, and the subtitle counts two off-limits items, not three. The
  * old "Your queries help MYEZ get smarter. We strip … first" was a data-use
- * claim; it now states what is sent to OpenAI. No opt-out is promised (the
- * organisation shares data with OpenAI, decision D3 = C; no per-user opt-out).
+ * claim; it now states what is sent to the AI providers, Anthropic and OpenAI
+ * (S81-12). No opt-out is promised (there is no per-user opt-out).
  *
  * Privacy invariant per qaren-cohort skill: this surface conveys policy,
  * doesn't expose actual signal content. The PrivacyRow primitive owns
@@ -91,10 +92,10 @@ export function Step05Trust({ onNext }: Props) {
                 strokeWidth={3}
               />
             }
-            head={t('onboarding.s5.privacy_anon_head', { defaultValue: 'What reaches OpenAI' })}
+            head={t('onboarding.s5.privacy_anon_head', { defaultValue: 'What reaches our AI providers' })}
             body={t('onboarding.s5.privacy_anon_body', {
               defaultValue:
-                'To write each comparison, MYEZ sends OpenAI your product names and preferences such as priorities and budget tier — never your name, email or account.',
+                'To write each comparison, MYEZ sends our AI providers, Anthropic and OpenAI, your product names and preferences such as priorities and budget tier — never your name, email or account.',
             })}
           />
           <PrivacyRow

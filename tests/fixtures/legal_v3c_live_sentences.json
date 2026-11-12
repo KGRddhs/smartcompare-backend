@@ -1,0 +1,272 @@
+{
+ "_comment": "S81-12 V3C (PATH C of item 26, RULINGS_V3C_S81_12 V3C-6 (2)): 'live' = the sentences restored from the LIVE version-2 texts, copied from main 6b909e0a by script (path:line of main per entry); 'ruled' = the ADAPTED and NEW sentences of this round (P4 scoped, C2, the two shortened notices N1 / N2, the Terms s6 sentence D3), recorded from the orchestrator's expected files. Read by tests/test_s81_12_gate_rows.py V3C-1..V3C-5; a row never reads git. Re-record only by a ruled pin update (e.g. after the native read).",
+ "main_sha": "6b909e0a92067d6b3562eee325e4956c116441f7",
+ "live": [
+  {
+   "id": "S1",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "2",
+   "main": "app/legal/privacy_policy.md:15",
+   "text": "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers."
+  },
+  {
+   "id": "S2",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "2",
+   "main": "app/legal/privacy_policy.md:15",
+   "text": "We take part in OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service."
+  },
+  {
+   "id": "B1",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "3",
+   "main": "app/legal/privacy_policy.md:58",
+   "text": "- Letting OpenAI use the inputs and outputs of your comparisons under its data-sharing programme, as section 4 describes (legal basis: the permission you give before your first comparison; withdrawal as section 10 describes)."
+  },
+  {
+   "id": "P4g",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "4",
+   "main": "app/legal/privacy_policy.md:69",
+   "text": "Data shared this way is governed by OpenAI's terms rather than the 30-day abuse-monitoring limit below."
+  },
+  {
+   "id": "P4r",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "4",
+   "main": "app/legal/privacy_policy.md:69",
+   "text": "In return for this sharing, OpenAI gives us some free use of its service."
+  },
+  {
+   "id": "P4k",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "4",
+   "main": "app/legal/privacy_policy.md:69",
+   "text": "OpenAI may keep data sent to its API in abuse-monitoring logs for up to 30 days."
+  },
+  {
+   "id": "C5",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "5",
+   "main": "app/legal/privacy_policy.md:87",
+   "text": "Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at privacy@getmyez.com. We may also disclose data where the law requires it."
+  },
+  {
+   "id": "S3",
+   "lang": "en",
+   "file": "app/legal/terms_of_service.md",
+   "section": "8",
+   "main": "app/legal/terms_of_service.md:53",
+   "text": "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers."
+  },
+  {
+   "id": "S4",
+   "lang": "en",
+   "file": "app/legal/terms_of_service.md",
+   "section": "8",
+   "main": "app/legal/terms_of_service.md:53",
+   "text": "We take part in OpenAI's data-sharing programme, as section 4 of our Privacy Policy describes: OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service."
+  },
+  {
+   "id": "T95",
+   "lang": "en",
+   "file": "app/legal/terms_of_service.md",
+   "section": "13",
+   "main": "app/legal/terms_of_service.md:91",
+   "text": "Deleting your account does not delete data already shared with OpenAI under its data-sharing programme, which is governed by OpenAI's terms (section 4 of our Privacy Policy)."
+  },
+  {
+   "id": "J8",
+   "lang": "en",
+   "file": "SmartCompareApp/src/i18n/en.json",
+   "key": "aiConsent.body",
+   "main": "SmartCompareApp/src/i18n/en.json:aiConsent.body[2]",
+   "text": "OpenAI may use these inputs and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models."
+  },
+  {
+   "id": "S1",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "2",
+   "main": "app/legal/privacy_policy_ar.md:15",
+   "text": "\u0628\u0627\u0633\u062a\u062b\u0646\u0627\u0621 \u0628\u0631\u0646\u0627\u0645\u062c OpenAI \u0627\u0644\u0645\u0648\u0636\u0651\u062d \u0623\u062f\u0646\u0627\u0647\u060c \u0644\u0627 \u0646\u0628\u064a\u0639 \u0628\u064a\u0627\u0646\u0627\u062a\u0643 \u0627\u0644\u0634\u062e\u0635\u064a\u0629 \u0648\u0644\u0627 \u0646\u0628\u0627\u062f\u0644\u0647\u0627 \u0645\u0642\u0627\u0628\u0644 \u0623\u064a \u0634\u064a\u0621 \u0630\u064a \u0642\u064a\u0645\u0629\u060c \u0648\u0644\u0627 \u0646\u0634\u0627\u0631\u0643\u0647\u0627 \u0645\u0639 \u0648\u0633\u0637\u0627\u0621 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0623\u0648 \u0627\u0644\u0645\u0639\u0644\u0646\u064a\u0646."
+  },
+  {
+   "id": "S2",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "2",
+   "main": "app/legal/privacy_policy_ar.md:15",
+   "text": "\u0648\u0646\u0634\u0627\u0631\u0643 \u0641\u064a \u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u0649 OpenAI (\u0627\u0644\u0642\u0633\u0645 4): \u0625\u0630 \u0642\u062f \u062a\u0633\u062a\u062e\u062f\u0645 OpenAI \u0627\u0644\u0645\u062f\u062e\u0644\u0627\u062a \u0627\u0644\u062a\u064a \u0646\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u064a\u0647\u0627 \u0648\u0627\u0644\u0645\u062e\u0631\u062c\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0646\u062a\u062c\u0647\u0627 \u0645\u0646\u0647\u0627 \u0644\u062a\u0642\u064a\u064a\u0645 \u0646\u0645\u0627\u0630\u062c\u0647\u0627 \u0648\u062a\u062f\u0631\u064a\u0628\u0647\u0627\u060c \u0648\u0641\u064a \u0627\u0644\u0645\u0642\u0627\u0628\u0644 \u062a\u0645\u0646\u062d\u0646\u0627 OpenAI \u0642\u062f\u0631\u064b\u0627 \u0645\u0646 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0645\u062c\u0627\u0646\u064a \u0644\u062e\u062f\u0645\u062a\u0647\u0627."
+  },
+  {
+   "id": "B1",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "3",
+   "main": "app/legal/privacy_policy_ar.md:58",
+   "text": "- \u0627\u0644\u0633\u0645\u0627\u062d \u0644\u0634\u0631\u0643\u0629 OpenAI \u0628\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0645\u062f\u062e\u0644\u0627\u062a \u0645\u0642\u0627\u0631\u0646\u0627\u062a\u0643 \u0648\u0645\u062e\u0631\u062c\u0627\u062a\u0647\u0627 \u0636\u0645\u0646 \u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u064a\u0647\u0627\u060c \u0639\u0644\u0649 \u0627\u0644\u0646\u062d\u0648 \u0627\u0644\u0630\u064a \u064a\u0648\u0636\u0651\u062d\u0647 \u0627\u0644\u0642\u0633\u0645 4 (\u0627\u0644\u0623\u0633\u0627\u0633 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a: \u0627\u0644\u0625\u0630\u0646 \u0627\u0644\u0630\u064a \u062a\u0645\u0646\u062d\u0647 \u0642\u0628\u0644 \u0645\u0642\u0627\u0631\u0646\u062a\u0643 \u0627\u0644\u0623\u0648\u0644\u0649\u061b \u0648\u064a\u0643\u0648\u0646 \u0633\u062d\u0628\u0647 \u0639\u0644\u0649 \u0627\u0644\u0646\u062d\u0648 \u0627\u0644\u0630\u064a \u064a\u0648\u0636\u0651\u062d\u0647 \u0627\u0644\u0642\u0633\u0645 10)."
+  },
+  {
+   "id": "P4g",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "4",
+   "main": "app/legal/privacy_policy_ar.md:69",
+   "text": "\u0648\u062a\u062e\u0636\u0639 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u064f\u0634\u0627\u0631\u0643 \u0628\u0647\u0630\u0647 \u0627\u0644\u0637\u0631\u064a\u0642\u0629 \u0644\u0634\u0631\u0648\u0637 OpenAI \u0628\u062f\u0644\u064b\u0627 \u0645\u0646 \u062d\u062f\u0651 \u0627\u0644\u062b\u0644\u0627\u062b\u064a\u0646 \u064a\u0648\u0645\u064b\u0627 \u0644\u0645\u0631\u0627\u0642\u0628\u0629 \u0625\u0633\u0627\u0621\u0629 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0645\u0630\u0643\u0648\u0631 \u0623\u062f\u0646\u0627\u0647."
+  },
+  {
+   "id": "P4r",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "4",
+   "main": "app/legal/privacy_policy_ar.md:69",
+   "text": "\u0648\u0641\u064a \u0645\u0642\u0627\u0628\u0644 \u0647\u0630\u0647 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629\u060c \u062a\u0645\u0646\u062d\u0646\u0627 OpenAI \u0642\u062f\u0631\u064b\u0627 \u0645\u0646 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0645\u062c\u0627\u0646\u064a \u0644\u062e\u062f\u0645\u062a\u0647\u0627."
+  },
+  {
+   "id": "P4k",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "4",
+   "main": "app/legal/privacy_policy_ar.md:69",
+   "text": "\u0642\u062f \u062a\u062d\u062a\u0641\u0638 OpenAI \u0628\u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u0631\u0633\u0644\u0629 \u0625\u0644\u0649 \u0648\u0627\u062c\u0647\u0629 \u0628\u0631\u0645\u062c\u0629 \u0627\u0644\u062a\u0637\u0628\u064a\u0642\u0627\u062a (API) \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0647\u0627 \u0641\u064a \u0633\u062c\u0644\u0627\u062a \u0645\u0631\u0627\u0642\u0628\u0629 \u0625\u0633\u0627\u0621\u0629 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0644\u0645\u062f\u0629 \u062a\u0635\u0644 \u0625\u0644\u0649 30 \u064a\u0648\u0645\u064b\u0627."
+  },
+  {
+   "id": "C5",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "5",
+   "main": "app/legal/privacy_policy_ar.md:87",
+   "text": "\u0628\u0627\u0633\u062a\u062b\u0646\u0627\u0621 \u0645\u0627 \u064a\u0648\u0636\u0651\u062d\u0647 \u0627\u0644\u0642\u0633\u0645 4 \u0628\u0634\u0623\u0646 OpenAI \u0648\u0645\u0627 \u064a\u0648\u0636\u0651\u062d\u0647 \u0647\u0630\u0627 \u0627\u0644\u0642\u0633\u0645 \u0628\u0634\u0623\u0646 \u0645\u0632\u0648\u0651\u062f \u0635\u0646\u062f\u0648\u0642 \u0628\u0631\u064a\u062f\u0646\u0627\u060c \u064a\u0639\u0627\u0644\u062c \u0643\u0644 \u0645\u0632\u0648\u0651\u062f \u0645\u0646 \u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u062e\u062f\u0645\u0627\u062a \u0644\u062f\u064a\u0646\u0627 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0641\u0642\u0637 \u0644\u062a\u0642\u062f\u064a\u0645 \u062e\u062f\u0645\u062a\u0647 \u0644\u0646\u0627\u060c \u0648\u0646\u064f\u0644\u0632\u0645 \u0643\u0644\u064b\u0651\u0627 \u0645\u0646\u0647\u0645 \u0628\u062d\u0645\u0627\u064a\u062a\u0647\u0627 \u0628\u0645\u0633\u062a\u0648\u0649 \u0644\u0627 \u064a\u0642\u0644 \u0639\u0646 \u0627\u0644\u0645\u0633\u062a\u0648\u0649 \u0627\u0644\u0630\u064a \u062a\u0646\u0635 \u0639\u0644\u064a\u0647 \u0647\u0630\u0647 \u0627\u0644\u0633\u064a\u0627\u0633\u0629. \u0623\u0645\u0627 \u0645\u0648\u0627\u0642\u0639 \u0627\u0644\u0645\u062a\u0627\u062c\u0631 (\u0627\u0644\u0642\u0633\u0645 6) \u0648\u0645\u0632\u0648\u0651\u062f\u0627 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 Apple \u0648Google\u060c \u0648\u0645\u0632\u0648\u0651\u062f \u0635\u0646\u062f\u0648\u0642 \u0628\u0631\u064a\u062f\u0646\u0627\u060c \u0648\u062e\u062f\u0645\u0629 \u0627\u0644\u062e\u0637\u0648\u0637 \u0639\u0644\u0649 \u0627\u0644\u0648\u064a\u0628 \u0627\u0644\u062a\u064a \u064a\u0633\u062a\u062e\u062f\u0645\u0647\u0627 \u0645\u0648\u0642\u0639\u0646\u0627\u060c \u0641\u062a\u0639\u0645\u0644 \u0648\u0641\u0642 \u0634\u0631\u0648\u0637\u0647\u0627 \u0627\u0644\u062e\u0627\u0635\u0629. \u0648\u0633\u0646\u062e\u0628\u0631\u0643 \u0628\u0623\u0633\u0645\u0627\u0621 \u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u062e\u062f\u0645\u0627\u062a \u0644\u062f\u064a\u0646\u0627 \u0639\u0646\u062f \u0627\u0644\u0637\u0644\u0628 \u0639\u0628\u0631 privacy@getmyez.com. \u0648\u0642\u062f \u0646\u0641\u0635\u062d \u0623\u064a\u0636\u064b\u0627 \u0639\u0646 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0639\u0646\u062f\u0645\u0627 \u064a\u0642\u062a\u0636\u064a \u0627\u0644\u0642\u0627\u0646\u0648\u0646 \u0630\u0644\u0643."
+  },
+  {
+   "id": "S3",
+   "lang": "ar",
+   "file": "app/legal/terms_of_service_ar.md",
+   "section": "8",
+   "main": "app/legal/terms_of_service_ar.md:53",
+   "text": "\u0628\u0627\u0633\u062a\u062b\u0646\u0627\u0621 \u0628\u0631\u0646\u0627\u0645\u062c OpenAI \u0627\u0644\u0645\u0648\u0636\u0651\u062d \u0623\u062f\u0646\u0627\u0647\u060c \u0644\u0627 \u0646\u0628\u064a\u0639 \u0628\u064a\u0627\u0646\u0627\u062a\u0643 \u0627\u0644\u0634\u062e\u0635\u064a\u0629 \u0648\u0644\u0627 \u0646\u0628\u0627\u062f\u0644\u0647\u0627 \u0645\u0642\u0627\u0628\u0644 \u0623\u064a \u0634\u064a\u0621 \u0630\u064a \u0642\u064a\u0645\u0629\u060c \u0648\u0644\u0627 \u0646\u0634\u0627\u0631\u0643\u0647\u0627 \u0645\u0639 \u0648\u0633\u0637\u0627\u0621 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0623\u0648 \u0627\u0644\u0645\u0639\u0644\u0646\u064a\u0646."
+  },
+  {
+   "id": "S4",
+   "lang": "ar",
+   "file": "app/legal/terms_of_service_ar.md",
+   "section": "8",
+   "main": "app/legal/terms_of_service_ar.md:53",
+   "text": "\u0648\u0646\u0634\u0627\u0631\u0643 \u0641\u064a \u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u0649 OpenAI \u0639\u0644\u0649 \u0627\u0644\u0646\u062d\u0648 \u0627\u0644\u0630\u064a \u064a\u0648\u0636\u0651\u062d\u0647 \u0627\u0644\u0642\u0633\u0645 4 \u0645\u0646 \u0633\u064a\u0627\u0633\u0629 \u0627\u0644\u062e\u0635\u0648\u0635\u064a\u0629: \u0625\u0630 \u0642\u062f \u062a\u0633\u062a\u062e\u062f\u0645 OpenAI \u0627\u0644\u0645\u062f\u062e\u0644\u0627\u062a \u0627\u0644\u062a\u064a \u0646\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u064a\u0647\u0627 \u0648\u0627\u0644\u0645\u062e\u0631\u062c\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0646\u062a\u062c\u0647\u0627 \u0645\u0646\u0647\u0627 \u0644\u062a\u0642\u064a\u064a\u0645 \u0646\u0645\u0627\u0630\u062c\u0647\u0627 \u0648\u062a\u062f\u0631\u064a\u0628\u0647\u0627\u060c \u0648\u0641\u064a \u0627\u0644\u0645\u0642\u0627\u0628\u0644 \u062a\u0645\u0646\u062d\u0646\u0627 OpenAI \u0642\u062f\u0631\u064b\u0627 \u0645\u0646 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0645\u062c\u0627\u0646\u064a \u0644\u062e\u062f\u0645\u062a\u0647\u0627."
+  },
+  {
+   "id": "T95",
+   "lang": "ar",
+   "file": "app/legal/terms_of_service_ar.md",
+   "section": "13",
+   "main": "app/legal/terms_of_service_ar.md:91",
+   "text": "\u0648\u0644\u0627 \u064a\u0624\u062f\u064a \u062d\u0630\u0641 \u062d\u0633\u0627\u0628\u0643 \u0625\u0644\u0649 \u062d\u0630\u0641 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u062a\u064a \u0633\u0628\u0642\u062a \u0645\u0634\u0627\u0631\u0643\u062a\u0647\u0627 \u0645\u0639 OpenAI \u0636\u0645\u0646 \u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u064a\u0647\u0627\u060c \u0648\u0627\u0644\u062a\u064a \u062a\u062e\u0636\u0639 \u0644\u0634\u0631\u0648\u0637 OpenAI (\u0627\u0644\u0642\u0633\u0645 4 \u0645\u0646 \u0633\u064a\u0627\u0633\u0629 \u0627\u0644\u062e\u0635\u0648\u0635\u064a\u0629)."
+  },
+  {
+   "id": "J8",
+   "lang": "ar",
+   "file": "SmartCompareApp/src/i18n/ar.json",
+   "key": "aiConsent.body",
+   "main": "SmartCompareApp/src/i18n/ar.json:aiConsent.body[2]",
+   "text": "\u0648\u0642\u062f \u062a\u0633\u062a\u062e\u062f\u0645 OpenAI \u0647\u0630\u0647 \u0627\u0644\u0645\u062f\u062e\u0644\u0627\u062a \u0648\u0627\u0644\u0645\u062e\u0631\u062c\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0646\u062a\u062c\u0647\u0627 \u0645\u0646\u0647\u0627 \u0644\u0644\u062a\u0639\u0631\u0641 \u0639\u0644\u0649 \u0623\u0646\u0645\u0627\u0637 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0648\u0642\u064a\u0627\u0633 \u062c\u0648\u062f\u0629 \u0627\u0644\u0646\u0645\u0627\u0630\u062c \u0648\u0627\u0644\u0627\u0633\u062a\u0639\u0627\u0646\u0629 \u0628\u0647\u0627 \u0641\u064a \u062a\u0642\u064a\u064a\u0645 \u0646\u0645\u0627\u0630\u062c\u0647\u0627 \u0648\u062a\u062f\u0631\u064a\u0628\u0647\u0627."
+  }
+ ],
+ "ruled": [
+  {
+   "id": "P4s",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "4",
+   "kind": "ADAPTED",
+   "text": "We take part in OpenAI's data-sharing programme for the requests OpenAI processes: OpenAI may use the inputs we send it and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models."
+  },
+  {
+   "id": "C2",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "4",
+   "kind": "ADAPTED",
+   "text": "This applies to every request OpenAI processes, and the App has no separate setting for it."
+  },
+  {
+   "id": "N1",
+   "lang": "en",
+   "file": "app/legal/privacy_policy.md",
+   "section": "front",
+   "kind": "ADAPTED",
+   "text": "**Changes on {date}:** we added Anthropic as one of our AI providers (section 4), and the App will ask again for your permission to send your requests to our AI providers.",
+   "date_key": "AI_SWITCH_DATE"
+  },
+  {
+   "id": "N2",
+   "lang": "en",
+   "file": "app/legal/terms_of_service.md",
+   "section": "front",
+   "kind": "ADAPTED",
+   "text": "**Changes on {date}:** we added Anthropic as one of our AI providers (section 8), and the App will ask again for your permission to send your requests to our AI providers.",
+   "date_key": "AI_SWITCH_DATE"
+  },
+  {
+   "id": "D3",
+   "lang": "en",
+   "file": "app/legal/terms_of_service.md",
+   "section": "6",
+   "kind": "NEW",
+   "text": "Check what matters to you against the retailer's or the manufacturer's own information before you rely on it.",
+   "after": "Verdicts, summaries, specifications and recommendations are generated by AI from public information and may be incomplete, wrong or out of date.",
+   "before": "Prices, availability and ratings come from third-party sources and can change or differ at the retailer; prices may be converted from another currency and may not include delivery, customs or taxes."
+  },
+  {
+   "id": "P4s",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "4",
+   "kind": "ADAPTED",
+   "text": "\u0646\u0634\u0627\u0631\u0643 \u0641\u064a \u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u0649 OpenAI \u0641\u064a \u0627\u0644\u0637\u0644\u0628\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0639\u0627\u0644\u062c\u0647\u0627 OpenAI: \u0648\u0642\u062f \u062a\u0633\u062a\u062e\u062f\u0645 OpenAI \u0627\u0644\u0645\u062f\u062e\u0644\u0627\u062a \u0627\u0644\u062a\u064a \u0646\u0631\u0633\u0644\u0647\u0627 \u0625\u0644\u064a\u0647\u0627 \u0648\u0627\u0644\u0645\u062e\u0631\u062c\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0646\u062a\u062c\u0647\u0627 \u0645\u0646\u0647\u0627 \u0644\u0644\u062a\u0639\u0631\u0641 \u0639\u0644\u0649 \u0623\u0646\u0645\u0627\u0637 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0648\u0642\u064a\u0627\u0633 \u062c\u0648\u062f\u0629 \u0627\u0644\u0646\u0645\u0627\u0630\u062c \u0648\u0627\u0644\u0627\u0633\u062a\u0639\u0627\u0646\u0629 \u0628\u0647\u0627 \u0641\u064a \u062a\u0642\u064a\u064a\u0645 \u0646\u0645\u0627\u0630\u062c\u0647\u0627 \u0648\u062a\u062f\u0631\u064a\u0628\u0647\u0627."
+  },
+  {
+   "id": "C2",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "4",
+   "kind": "ADAPTED",
+   "text": "\u0648\u064a\u0646\u0637\u0628\u0642 \u0630\u0644\u0643 \u0639\u0644\u0649 \u0643\u0644 \u0637\u0644\u0628 \u062a\u0639\u0627\u0644\u062c\u0647 OpenAI\u060c \u0648\u0644\u0627 \u064a\u0648\u062c\u062f \u0641\u064a \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0625\u0639\u062f\u0627\u062f \u0645\u0646\u0641\u0635\u0644 \u0644\u0647."
+  },
+  {
+   "id": "N1",
+   "lang": "ar",
+   "file": "app/legal/privacy_policy_ar.md",
+   "section": "front",
+   "kind": "ADAPTED",
+   "text": "**\u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a \u0641\u064a {date}:** \u0623\u0636\u0641\u0646\u0627 Anthropic \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u062f\u064a\u0646\u0627 (\u0627\u0644\u0642\u0633\u0645 4)\u060c \u0648\u0633\u064a\u0637\u0644\u0628 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0625\u0630\u0646\u0643 \u0645\u0631\u0629 \u0623\u062e\u0631\u0649 \u0644\u0625\u0631\u0633\u0627\u0644 \u0637\u0644\u0628\u0627\u062a\u0643 \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u062f\u064a\u0646\u0627.",
+   "date_key": "AI_SWITCH_DATE_AR"
+  },
+  {
+   "id": "N2",
+   "lang": "ar",
+   "file": "app/legal/terms_of_service_ar.md",
+   "section": "front",
+   "kind": "ADAPTED",
+   "text": "**\u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a \u0641\u064a {date}:** \u0623\u0636\u0641\u0646\u0627 Anthropic \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u062f\u064a\u0646\u0627 (\u0627\u0644\u0642\u0633\u0645 8)\u060c \u0648\u0633\u064a\u0637\u0644\u0628 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0625\u0630\u0646\u0643 \u0645\u0631\u0629 \u0623\u062e\u0631\u0649 \u0644\u0625\u0631\u0633\u0627\u0644 \u0637\u0644\u0628\u0627\u062a\u0643 \u0625\u0644\u0649 \u0645\u0632\u0648\u0651\u062f\u064a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u062f\u064a\u0646\u0627.",
+   "date_key": "AI_SWITCH_DATE_AR"
+  },
+  {
+   "id": "D3",
+   "lang": "ar",
+   "file": "app/legal/terms_of_service_ar.md",
+   "section": "6",
+   "kind": "NEW",
+   "text": "\u0648\u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062a\u0645\u0627\u062f \u0639\u0644\u0649 \u0645\u0627 \u064a\u0647\u0645\u0651\u0643\u060c \u062a\u062d\u0642\u0651\u0642 \u0645\u0646\u0647 \u0628\u0627\u0644\u0631\u062c\u0648\u0639 \u0625\u0644\u0649 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062a \u0627\u0644\u062a\u064a \u064a\u0642\u062f\u0651\u0645\u0647\u0627 \u0627\u0644\u0645\u062a\u062c\u0631 \u0623\u0648 \u0627\u0644\u0634\u0631\u0643\u0629 \u0627\u0644\u0645\u0635\u0646\u0651\u0639\u0629.",
+   "after": "\u062a\u064f\u0646\u0634\u0623 \u062e\u0644\u0627\u0635\u0627\u062a \u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0629 \u0648\u0627\u0644\u0645\u0644\u062e\u0635\u0627\u062a \u0648\u0627\u0644\u0645\u0648\u0627\u0635\u0641\u0627\u062a \u0648\u0627\u0644\u062a\u0648\u0635\u064a\u0627\u062a \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0645\u0646 \u0645\u0639\u0644\u0648\u0645\u0627\u062a \u0639\u0627\u0645\u0629\u060c \u0648\u0642\u062f \u062a\u0643\u0648\u0646 \u0646\u0627\u0642\u0635\u0629 \u0623\u0648 \u063a\u064a\u0631 \u0635\u062d\u064a\u062d\u0629 \u0623\u0648 \u063a\u064a\u0631 \u0645\u062d\u062f\u0651\u062b\u0629.",
+   "before": "\u0648\u062a\u0623\u062a\u064a \u0627\u0644\u0623\u0633\u0639\u0627\u0631 \u0648\u0627\u0644\u062a\u0648\u0641\u0631 \u0648\u0627\u0644\u062a\u0642\u064a\u064a\u0645\u0627\u062a \u0645\u0646 \u0645\u0635\u0627\u062f\u0631 \u062a\u0627\u0628\u0639\u0629 \u0644\u0623\u0637\u0631\u0627\u0641 \u062b\u0627\u0644\u062b\u0629\u060c \u0648\u0642\u062f \u062a\u062a\u063a\u064a\u0631 \u0623\u0648 \u062a\u062e\u062a\u0644\u0641 \u0644\u062f\u0649 \u0627\u0644\u0645\u062a\u062c\u0631\u061b \u0648\u0642\u062f \u062a\u0643\u0648\u0646 \u0627\u0644\u0623\u0633\u0639\u0627\u0631 \u0645\u062d\u0648\u0651\u0644\u0629 \u0645\u0646 \u0639\u0645\u0644\u0629 \u0623\u062e\u0631\u0649\u060c \u0648\u0642\u062f \u0644\u0627 \u062a\u0634\u0645\u0644 \u0631\u0633\u0648\u0645 \u0627\u0644\u062a\u0648\u0635\u064a\u0644 \u0623\u0648 \u0627\u0644\u062c\u0645\u0627\u0631\u0643 \u0623\u0648 \u0627\u0644\u0636\u0631\u0627\u0626\u0628."
+  }
+ ]
+}
