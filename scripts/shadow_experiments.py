@@ -992,6 +992,10 @@ async def _create_with_retry(client, **kwargs):
     import random
 
     kwargs["store"] = False  # U3c: never a stored completion
+    # S81-12d: with ENABLE_OPENAI_EGRESS_STOP ON in this shell, no OpenAI call is
+    # made: the stop class is raised before the retry loop (no retry, no sleep).
+    from app.services import api_budget_service as _abs
+    _abs.stop_openai_egress_if_enabled("script")
     delay = 2.0
     last_exc: Optional[Exception] = None
     for attempt in range(_MAX_RETRIES):

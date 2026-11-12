@@ -985,7 +985,7 @@ async def extract_with_ai(url: str, html: str, retailer: Dict,
         # refusal, an Anthropic dispatch failure, a breaker or spend denial) is
         # re-raised, logged at WARNING by type (GC-3), never swallowed into
         # {'error': str(e)}; compare_from_urls maps it to LLM_UNAVAILABLE.
-        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
+        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError) and not isinstance(e, _llm_breaker.OpenAIEgressStoppedError):
             logger.warning("AI extraction error: %s", type(e).__name__)
             raise
         # RULINGS_FIX4_B4 F4-5 (unflagged, log-only, R-A1 b): the exception TYPE

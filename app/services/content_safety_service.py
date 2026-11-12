@@ -255,6 +255,10 @@ class ContentSafetyService:
             if _llm_router.decide_moderation() == "anthropic":
                 allowed, reason = await _llm_router.moderate_with_claude(text)
                 return SafetyResult(allowed=True) if allowed else SafetyResult(allowed=False, reason=reason)
+            # S81-12d: ON, the OpenAI moderation call is not made; the arm below fails
+            # OPEN exactly as on today's 401. The Claude branch above is untouched.
+            from app.services import api_budget_service as _abs
+            _abs.stop_openai_egress_if_enabled("moderations")
             # Inline import — keeps module importable without OPENAI_API_KEY at process boot.
             from app.services.model_config import moderation_model
             from app.services.openai_service import get_client

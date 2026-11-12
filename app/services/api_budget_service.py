@@ -724,6 +724,48 @@ def llm_preflight_breaker_enabled() -> bool:
     )
 
 
+# S81-12d OPENAI-EGRESS-STOP (ENABLE_OPENAI_EGRESS_STOP, default OFF, read per call).
+_OPENAI_EGRESS_STOP_FLAG = "ENABLE_OPENAI_EGRESS_STOP"
+OPENAI_EGRESS_STOP_MESSAGE = "openai dispatch stopped locally (ENABLE_OPENAI_EGRESS_STOP)"
+OPENAI_EGRESS_STOP_LOG = "[OPENAI_EGRESS] dispatch stopped locally surface=%s (logged once per process per surface)"
+OPENAI_EGRESS_SURFACES = ("chat_completions", "moderations", "script")
+_openai_egress_stop_logged: set = set()
+
+
+class OpenAIEgressStoppedError(LLMUnavailableError):
+    """S81-12d: raised INSTEAD of an OpenAI dispatch while ENABLE_OPENAI_EGRESS_STOP is
+    ON, before any network activity, spend admit, breaker admission or record. An
+    LLMUnavailableError, so every arm that already distinguishes the class (the
+    camera's coded 503, the S81-04c WARNING-by-type arms) treats it as a typed
+    refusal; the two role-ON re-raise arms (the verdict arm of generate_comparison
+    and the url_extract arm of extract_with_ai) exclude it by name (ruling J-3), so
+    a stop never becomes a role-ON non-delivery. The message carries none of the
+    words the verdict fallback matcher keys on. No subclass (ruling J-11)."""
+
+
+def openai_egress_stop_enabled() -> bool:
+    """Read PER CALL with the house idiom; any value outside the ON set is OFF."""
+    return os.getenv(_OPENAI_EGRESS_STOP_FLAG, "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def stop_openai_egress_if_enabled(surface: str) -> None:
+    """Flag OFF: one getenv, returns None (nothing else read, logged or raised).
+    Flag ON: one WARNING per process per surface, then OpenAIEgressStoppedError."""
+    if not openai_egress_stop_enabled():
+        return
+    if surface not in _openai_egress_stop_logged:
+        _openai_egress_stop_logged.add(surface)
+        logger.warning(OPENAI_EGRESS_STOP_LOG, surface)
+    raise OpenAIEgressStoppedError(OPENAI_EGRESS_STOP_MESSAGE)
+
+
+def _reset_openai_egress_stop_state() -> None:
+    """Test seam: forget the once-per-process log latch."""
+    _openai_egress_stop_logged.clear()
+
+
 def _llm_breaker_cache_ttl() -> float:
     """Seconds a breaker snapshot is reused. <=0 disables memoisation entirely
     (every call re-reads Redis) — the escape hatch if a decision must be
@@ -951,6 +993,7 @@ def _openai_failure_is_transient(exc: BaseException) -> bool:
 #   content_safety_service:152 — `moderations.create`, a DIFFERENT API surface
 #     with its own fail-open contract. A moderation blip is not an "LLM is down"
 #     signal and must not gate every compare.
+#   S81-12d: ENABLE_OPENAI_EGRESS_STOP stops this chokepoint and the moderation arm.
 #   image_service:173 — the Tier-3 product-image GPT fallback. It IS reachable
 #     from a compare (structured_comparison_service awaits get_product_image_url
 #     in the product fetch), so this is a scope decision, not a reachability
@@ -990,11 +1033,19 @@ async def guarded_llm_create(client, **kwargs):
     LLMUnavailableError before any dispatch. A SERVED response is recorded
     non-awaited AFTER the usage ledger on both tails; a raising or cancelled
     create records nothing. Flag OFF: no admit, no record, no Redis command.
+
+    S81-12d (ENABLE_OPENAI_EGRESS_STOP, read per call): ON, the call raises
+    OpenAIEgressStoppedError after the privacy prologue and before the spend admit;
+    nothing is dispatched, admitted or recorded.
     """
     kwargs["store"] = False
     eb = kwargs.get("extra_body")
     if isinstance(eb, collections.abc.Mapping) and "store" in eb:
         kwargs["extra_body"] = {**eb, "store": False}
+    # S81-12d (ENABLE_OPENAI_EGRESS_STOP, read per call): ON, the call stops HERE,
+    # after the local privacy prologue and before the spend admit, the W1-3
+    # admission, the dispatch, MON1's credential-health notes and every record.
+    stop_openai_egress_if_enabled("chat_completions")
     spend_ticket = None
     if _llm_spend_breaker.spend_breaker_enabled():
         spend_ticket = await _llm_spend_breaker.admit_openai_dispatch(
