@@ -32,8 +32,10 @@ universal results (no GCC vs US split observed in pre-implementation audit).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from app.services.api_budget_service import try_consume_serper_image_credit
@@ -215,6 +217,14 @@ async def extract_image_via_gpt(
     return None
 
 
+def _log_img_tier(tier: str, outcome: str, t0: float) -> None:
+    """INC-X2a IMAGE-TIER-TIMING (log-only, unflagged): one INFO line per tier
+    reached: a constant tier name, a closed-set outcome and elapsed ms. Never a
+    product name, URL or query text."""
+    logger.info("[IMG_TIER] tier=%s outcome=%s ms=%d", tier, outcome,
+                int((time.perf_counter() - t0) * 1000))
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator — tier cascade
 # ---------------------------------------------------------------------------
@@ -246,50 +256,89 @@ async def get_product_image_url(
     if not name:
         return None
 
-    # ----- Tier 1.5 — piggyback page-scrape image (FREE, highest fidelity) -----
-    if page_scrape_image and _is_valid_image_url(page_scrape_image):
-        logger.info("[image] Tier 1.5 piggyback hit for %r", name[:60])
-        return page_scrape_image.strip()
+    _t_call = time.perf_counter()
+    # INC-X2a: the tier in flight and its start, for the cancellation line.
+    _inflight = ["piggyback", _t_call]
+    try:
+        # ----- Tier 1.5 — piggyback page-scrape image (FREE, highest fidelity) -----
+        if page_scrape_image and _is_valid_image_url(page_scrape_image):
+            _log_img_tier("piggyback", "hit", _inflight[1])
+            logger.info("[image] Tier 1.5 piggyback hit for %r", name[:60])
+            return page_scrape_image.strip()
+        _log_img_tier("piggyback", "miss" if page_scrape_image else "skipped", _inflight[1])
 
-    # ----- Tier 1.5b — FREE image from the unified search payload (#21) -----
-    # Reads the Knowledge Graph / organic image the pipeline ALREADY fetched.
-    # $0, no Serper-Images budget, independent of the price-scrape — fixes the
-    # fragrance placeholder when the price pends.
-    search_img = extract_image_from_search(search_payload)
-    if search_img:
-        logger.info("[image] Tier 1.5b unified-search image hit for %r", name[:60])
-        return search_img
+        # ----- Tier 1.5b — FREE image from the unified search payload (#21) -----
+        # Reads the Knowledge Graph / organic image the pipeline ALREADY fetched.
+        # $0, no Serper-Images budget, independent of the price-scrape — fixes the
+        # fragrance placeholder when the price pends.
+        _inflight[0] = "search_payload"
+        _inflight[1] = time.perf_counter()
+        search_img = extract_image_from_search(search_payload)
+        if search_img:
+            _log_img_tier("search_payload", "hit", _inflight[1])
+            logger.info("[image] Tier 1.5b unified-search image hit for %r", name[:60])
+            return search_img
+        _log_img_tier("search_payload", "skipped" if search_payload is None else "miss", _inflight[1])
 
-    # ----- Tier 1 — Serper Images (paid, budget-gated) -----
-    if try_consume_serper_image_credit(1):
-        try:
-            response = await search_images(name, num_results=1)
-        except Exception as e:
-            logger.warning("[image] Tier 1 Serper Images raised: %r", e)
-            response = None
+        # ----- Tier 1 — Serper Images (paid, budget-gated) -----
+        # The credit gate is the same single synchronous call as before; INC-X2a
+        # only times it (it cannot be interrupted, L-X2a-3).
+        _inflight[0] = "serper_budget"
+        _inflight[1] = time.perf_counter()
+        _granted = try_consume_serper_image_credit(1)
+        _log_img_tier("serper_budget", "hit" if _granted else "miss", _inflight[1])
+        _inflight[0] = "serper_images"
+        _inflight[1] = time.perf_counter()
+        if _granted:
+            _outcome = "miss"
+            try:
+                response = await search_images(name, num_results=1)
+            except Exception as e:
+                _outcome = "error:" + type(e).__name__
+                logger.warning("[image] Tier 1 Serper Images raised: %r", e)
+                response = None
 
-        if isinstance(response, dict):
-            images = response.get("images") or []
-            # Defensive: future Serper API drift may return `images` as a
-            # string / dict / int. We require a list before indexing — any
-            # other shape falls through to Tier 3 instead of crashing.
-            if isinstance(images, list) and images and isinstance(images[0], dict):
-                candidate = images[0].get("imageUrl")
-                if _is_valid_image_url(candidate):
-                    logger.info("[image] Tier 1 Serper hit for %r", name[:60])
-                    return candidate.strip()
+            if isinstance(response, dict):
+                images = response.get("images") or []
+                # Defensive: future Serper API drift may return `images` as a
+                # string / dict / int. We require a list before indexing — any
+                # other shape falls through to Tier 3 instead of crashing.
+                if isinstance(images, list) and images and isinstance(images[0], dict):
+                    candidate = images[0].get("imageUrl")
+                    if _is_valid_image_url(candidate):
+                        _log_img_tier("serper_images", "hit", _inflight[1])
+                        logger.info("[image] Tier 1 Serper hit for %r", name[:60])
+                        return candidate.strip()
+            _log_img_tier("serper_images", _outcome, _inflight[1])
+        else:
+            _log_img_tier("serper_images", "skipped", _inflight[1])
 
-    # ----- Tier 3 — GPT extraction from organic results (paid) -----
-    if organic_results:
-        try:
-            gpt_url = await extract_image_via_gpt(name, organic_results)
-        except Exception as e:
-            logger.warning("[image] Tier 3 orchestrator caught: %r", e)
-            gpt_url = None
-        if _is_valid_image_url(gpt_url):
-            logger.info("[image] Tier 3 GPT hit for %r", name[:60])
-            return gpt_url.strip()
+        # ----- Tier 3 — GPT extraction from organic results (paid) -----
+        _inflight[0] = "llm_pick"
+        _inflight[1] = time.perf_counter()
+        if organic_results:
+            _outcome = "miss"
+            try:
+                gpt_url = await extract_image_via_gpt(name, organic_results)
+            except Exception as e:
+                _outcome = "error:" + type(e).__name__
+                logger.warning("[image] Tier 3 orchestrator caught: %r", e)
+                gpt_url = None
+            if _is_valid_image_url(gpt_url):
+                _log_img_tier("llm_pick", "hit", _inflight[1])
+                logger.info("[image] Tier 3 GPT hit for %r", name[:60])
+                return gpt_url.strip()
+            _log_img_tier("llm_pick", _outcome, _inflight[1])
+        else:
+            _log_img_tier("llm_pick", "skipped", _inflight[1])
 
-    # ----- Final fallback — None (frontend renders placeholder) -----
-    logger.info("[image] All tiers exhausted for %r — returning None", name[:60])
-    return None
+        # ----- Final fallback — None (frontend renders placeholder) -----
+        logger.info("[image] All tiers exhausted for %r — returning None", name[:60])
+        return None
+    except asyncio.CancelledError:
+        # INC-X2a: the 5 s Phase-1 race cancelled this call. Log the tier in
+        # flight; no await here, and the cancellation is re-raised unchanged.
+        logger.info("[IMG_TIER] cancelled tier=%s tier_ms=%d total_ms=%d",
+                    _inflight[0], int((time.perf_counter() - _inflight[1]) * 1000),
+                    int((time.perf_counter() - _t_call) * 1000))
+        raise

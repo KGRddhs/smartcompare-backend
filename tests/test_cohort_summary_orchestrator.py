@@ -54,22 +54,24 @@ def _demographics(*, n=19, governorate="Capital", quality="exact",
 
 # ---------- happy path ----------
 
-def test_returns_peer_count_and_governorate_when_resolved():
+def test_resolved_cohort_returns_none_since_inc_x9():
     out = _build(_demographics(n=19, governorate="Capital"))
-    assert out == {"peer_count": 19, "governorate": "Capital"}
+    # INC-X9 E9-1: a fully resolved cohort no longer yields a block.
+    assert out is None
 
 
-def test_peer_count_sourced_from_cohort_match_n():
+def test_cohort_match_n_never_surfaces_since_inc_x9():
     """peer_count must be the cohort prior's real sample size `n`, verbatim."""
     out = _build(_demographics(n=27, governorate="Northern"))
-    assert out["peer_count"] == 27
+    # INC-X9 E9-2: the survey group size n=27 never surfaces.
+    assert out is None
 
 
-def test_broadened_governorate_quality_still_emits():
+def test_broadened_governorate_quality_returns_none_since_inc_x9():
     """broadened_governorate is in the inject set → still a valid cohort line."""
     out = _build(_demographics(quality="broadened_governorate"))
-    assert out is not None
-    assert out["governorate"] == "Capital"
+    # INC-X9 E9-3: no block for a broadened_governorate match either.
+    assert out is None
 
 
 # ---------- graceful absence ----------
