@@ -31,14 +31,11 @@ PIN (green at base and after): the positive controls of T1/T2/T3/T6/T7/T8, the T
 parity, the four T9 route pins (UL13), no tables in the legal markdown (C22), the
 landing chrome (UL1/UL11).
 
-S81-12 LEGAL-V3 (2026-10-29; deliberate pin changes, rulings R-S12-4 / R-S12-11): Anthropic is named
-beside OpenAI (privacy s2 / s4 / s5, Terms s8, consent v3), so PUBLIC_NAME_IDS gains 'anthropic' and
-the T8 keyword maps gain an 'Anthropic' key required in section 4 and in the consent copy; d3 is
-recorded 'A' (OpenAI's data-sharing programme ended on AI_SWITCH_DATE) and the forks d3_training /
-openai_retention are retired; the T8 'A' rule reads the hyphenated programme name too and allow-lists
-the ONE dated past-tense history sentence of section 4 by its exact text
-(test_t8_history_allow_list_is_exact). The PR is held by H1 of tests/test_s81_12_legal_v3.py until the
-merge-window record exists.
+S81-12 LEGAL-V3 (2026-10-29; deliberate pin changes, ruling R-S12-11 and E9): Anthropic is named beside
+OpenAI (privacy s2 / s4 / s5, Terms s8, consent v3), so PUBLIC_NAME_IDS gains 'anthropic' and the T8 keyword
+maps gain an 'Anthropic' key required in section 4 and in the consent copy. Since S81-12 V3C (PATH C of item
+26, RULINGS_V3C_S81_12 C3) d3 is 'C' again and the T8 rules read section 4 in main's form. The PR is held by
+H1 of tests/test_s81_12_legal_v3.py until the window record exists.
 
 DOCUMENTS
 ---------
@@ -1119,9 +1116,7 @@ NOT_SENT_EN = {
     "account": r"\baccount\b",
 }
 D3_FORBIDDEN_EN = {
-    # S81-12 (R-S12-4, a deliberate pin change): the programme name in either spelling the documents use
-    # ("Data Sharing Program", "data-sharing programme"); _d3_scan_text allow-lists the one history sentence.
-    "A": (r"\bopt(?:s|ed|ing)?[\s-]+out\b", r"Help improve AI quality", r"\bdata[\s-]+sharing\s+program"),
+    "A": (r"\bopt(?:s|ed|ing)?[\s-]+out\b", r"Help improve AI quality", r"Data Sharing Program"),
     "B": (r"\bopt(?:s|ed|ing)?[\s-]+out\b", r"Data Sharing Program"),
     # D3 = C (OA2): section 4 names OpenAI's data-sharing programme; only an opt-out or switch promise is false.
     "C": (
@@ -1171,42 +1166,6 @@ D3_FORBIDDEN_AR = {
         "\u0627\u0644\u0627\u0646\u0633\u062d\u0627\u0628 \u0645\u0646 \u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629",  # withdraw from sharing
     ),
 }
-# S81-12 (R-S12-4, a deliberate pin change): with d3 'A' since the AI switch date, privacy section 4 carries ONE
-# past-tense history sentence that names OpenAI's data-sharing programme (the AR programme name is in
-# D3_FORBIDDEN_AR['A'], the EN one in D3_FORBIDDEN_EN['A']). That sentence, and only it, is allow-listed by its
-# exact text, dated with the fill-in data's AI_SWITCH_DATE / _AR; the T8 scan runs on section 4 without it. A
-# present-tense sentence, or the history sentence with any other date, is still caught
-# (test_t8_history_allow_list_is_exact).
-D3_HISTORY_EN = (
-    "We took part in OpenAI's data-sharing programme, which let OpenAI use the inputs we sent it and the outputs it"
-    " generated from them to evaluate and train its models in return for some free use of its service; our part in "
-    "the programme ended on {date}."
-)
-D3_HISTORY_AR = (
-    "\u0648\u0643\u0646\u0627 \u0646\u0634\u0627\u0631\u0643 \u0641\u064a \u0628\u0631\u0646\u0627\u0645\u062c "
-    "\u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u0649 OpenA"
-    "I\u060c \u0627\u0644\u0630\u064a \u0623\u062a\u0627\u062d \u0644\u0647\u0627 \u0627\u0633\u062a\u062e\u062f"
-    "\u0627\u0645 \u0627\u0644\u0645\u062f\u062e\u0644\u0627\u062a \u0627\u0644\u062a\u064a \u0623\u0631\u0633"
-    "\u0644\u0646\u0627\u0647\u0627 \u0625\u0644\u064a\u0647\u0627 \u0648\u0627\u0644\u0645\u062e\u0631\u062c\u0627"
-    "\u062a \u0627\u0644\u062a\u064a \u0623\u0646\u062a\u062c\u062a\u0647\u0627 \u0645\u0646\u0647\u0627 \u0644"
-    "\u062a\u0642\u064a\u064a\u0645 \u0646\u0645\u0627\u0630\u062c\u0647\u0627 \u0648\u062a\u062f\u0631\u064a\u0628"
-    "\u0647\u0627 \u0645\u0642\u0627\u0628\u0644 \u0642\u062f\u0631 \u0645\u0646 \u0627\u0644\u0627\u0633\u062a"
-    "\u062e\u062f\u0627\u0645 \u0627\u0644\u0645\u062c\u0627\u0646\u064a \u0644\u062e\u062f\u0645\u062a\u0647\u0627"
-    "\u060c \u0648\u0627\u0646\u062a\u0647\u062a \u0645\u0634\u0627\u0631\u0643\u062a\u0646\u0627 \u0641\u064a "
-    "\u0647\u0630\u0627 \u0627\u0644\u0628\u0631\u0646\u0627\u0645\u062c \u0641\u064a {date}."
-)
-
-
-def _d3_scan_text(section, lang, data):
-    """Section 4 without the exact dated history sentence (R-S12-4); unchanged when no date is recorded."""
-    placeholders = (data or {}).get("placeholders") if isinstance(data, dict) else None
-    date = (placeholders or {}).get("AI_SWITCH_DATE_AR" if lang == "ar" else "AI_SWITCH_DATE")
-    if not (isinstance(date, str) and date.strip()):
-        return section
-    sentence = (D3_HISTORY_AR if lang == "ar" else D3_HISTORY_EN).format(date=date.strip())
-    return section.replace(sentence, " ")
-
-
 SENTENCE_SPLIT = re.compile("(?<=[.!?\u061f])\\s+|\\n+")  # U+061F = Arabic question mark
 
 
@@ -1265,9 +1224,8 @@ def test_t8_policy_ai_section_agrees_with_consent_copy_en():
         problems.append("section 4 has no sentence saying name, email and account are not sent")
     data, _ = _load_fill_in()
     variant = _d3(data)
-    scan = _d3_scan_text(section, "en", data)
     for pattern in D3_FORBIDDEN_EN[variant]:
-        if re.search(pattern, scan, re.I):
+        if re.search(pattern, section, re.I):
             problems.append(f"section 4 contains {pattern!r} (forbidden under D3 = {variant})")
     assert not problems, _report("T8 (en): policy section 4 vs the consent sheet (C4, UL2):", problems)
 
@@ -1323,35 +1281,11 @@ def test_t8_policy_ai_section_agrees_with_consent_copy_ar():
         if not _not_sent_sentence(section, AI_SECTION_NOT_SENT_AR):
             problems.append("AR section 4 has no not-sent sentence (name, email, account)")
         data, _ = _load_fill_in()
-        scan = _d3_scan_text(section, "ar", data)
         for phrase in D3_FORBIDDEN_AR[_d3(data)]:
-            if phrase in scan:
+            if phrase in section:
                 problems.append(f"AR section 4 contains forbidden phrase {_esc(phrase)}")
     assert not problems, _report("T8 (ar): AR policy section 4 vs the AR consent sheet:", problems)
 
-
-def test_t8_history_allow_list_is_exact():
-    """PIN (S81-12, R-S12-4): the allow-list removes only the exact dated history sentence. The sentence itself passes
-    the d3 'A' rule (EN and AR); the S77 present-tense sentence (EN 'We take part in OpenAI's Data Sharing Program',
-    AR the retired d3 = C sentence) is still caught (positive control); the history sentence carrying another date
-    (a mutant of the recorded date) is caught too."""
-    en_date, ar_date = "November 2, 2026", "2 " + GULF_MONTHS_AR[10] + " 2026"
-    data = {"placeholders": {"AI_SWITCH_DATE": en_date, "AI_SWITCH_DATE_AR": ar_date}}
-
-    def hits_en(text):
-        return [p for p in D3_FORBIDDEN_EN["A"] if re.search(p, _d3_scan_text(text, "en", data), re.I)]
-
-    def hits_ar(text):
-        return [p for p in D3_FORBIDDEN_AR["A"] if p in _d3_scan_text(text, "ar", data)]
-
-    assert not hits_en(D3_HISTORY_EN.format(date=en_date)), "the exact EN history sentence must pass"
-    assert not hits_ar(D3_HISTORY_AR.format(date=ar_date)), "the exact AR history sentence must pass"
-    assert hits_en("We take part in OpenAI's Data Sharing Program for every comparison."), "control: EN present tense"
-    assert hits_en("We take part in OpenAI's data-sharing programme for all comparisons."), "control: EN hyphenated"
-    present_ar = "\u0646\u0634\u0627\u0631\u0643 \u0641\u064a \u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u0649 OpenAI \u0641\u064a \u062c\u0645\u064a\u0639 \u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0627\u062a."
-    assert hits_ar(present_ar), "control: AR present tense"
-    assert hits_en(D3_HISTORY_EN.format(date="November 3, 2026")), "mutant: EN history with another date"
-    assert hits_ar(D3_HISTORY_AR.format(date="3 " + GULF_MONTHS_AR[10] + " 2026")), "mutant: AR history with another date"
 
 # ---------------------------------------------------------------------------
 # T9 -- the legal routes: date, language, legacy paths, no-argument call (UL13)

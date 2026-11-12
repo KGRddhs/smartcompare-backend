@@ -4,7 +4,7 @@
 
 *Effective date: October 29, 2026*
 
-**Changes on October 29, 2026:** we added Anthropic as one of our AI providers (section 4), our part in OpenAI's data-sharing programme ended on that date (section 4), and the App will ask again for your permission to send your requests to our AI providers.
+**Changes on October 29, 2026:** we added Anthropic as one of our AI providers (section 4), and the App will ask again for your permission to send your requests to our AI providers.
 
 ## 1. Who we are
 
@@ -14,7 +14,7 @@ This policy explains what data we collect, why, who receives it, how long we kee
 
 ## 2. Summary
 
-MYEZ compares two products for you. To do that we process the products you enter or photograph, your account details and the preferences you choose to give us. MYEZ uses AI providers to process your requests: Anthropic, PBC and OpenAI, L.L.C. We are moving this processing to Anthropic; until the move is complete, some or all requests, including photos, are processed by OpenAI. We use AI to identify products and write comparisons (section 4), and we search retailer websites for prices. We do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers. We took part in OpenAI's data-sharing programme, under which OpenAI could use the inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some free use of its service; our part in it has ended (section 4). We do not show third-party ads and we do not track you across other companies' apps. We may share or sell aggregated or anonymised comparison and preference statistics (for example price trends or category popularity) that cannot identify you.
+MYEZ compares two products for you. To do that we process the products you enter or photograph, your account details and the preferences you choose to give us. MYEZ uses AI providers to process your requests: Anthropic, PBC and OpenAI, L.L.C. We are moving this processing to Anthropic; until the move is complete, some or all requests, including photos, are processed by OpenAI. We use AI to identify products and write comparisons (section 4), and we search retailer websites for prices. Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal data for anything of value, and we do not share it with data brokers or advertisers. We take part in OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its service. We do not show third-party ads and we do not track you across other companies' apps. We may share or sell aggregated or anonymised comparison and preference statistics (for example price trends or category popularity) that cannot identify you.
 
 ## 3. What we collect and why
 
@@ -57,6 +57,7 @@ MYEZ compares two products for you. To do that we process the products you enter
 - **To provide the App under our agreement with you (the Terms of Service):** your account, your comparisons (including sending them to our AI providers to produce the result), your history and the security of the App.
 - **With your consent:** your optional profile answers, notifications and your answer about how you heard about us. You can withdraw your consent at any time (section 10).
 - **The permission the App asks for before your first comparison** is the permission Apple requires before an app shares data with a third-party AI service (section 4).
+- Letting OpenAI use the inputs and outputs of your comparisons under its data-sharing programme, as section 4 describes (legal basis: the permission you give before your first comparison; withdrawal as section 10 describes).
 - **In our legitimate interest in improving and funding the service:** producing de-identified statistics about comparisons and preferences.
 
 Your email address and a password are required to create an account; without them you cannot create one. Everything else in section 3.3, and notifications, are optional; without them comparisons are less personalised.
@@ -73,7 +74,7 @@ Anthropic, PBC processes the information we send it to provide its service to us
 
 If we use Anthropic's web search to look up product information, Anthropic's search provider receives the search terms, such as product names, and never your identity.
 
-Until the move to Anthropic is complete, OpenAI processes some or all requests, including photos, and receives the same kinds of information described above. We took part in OpenAI's data-sharing programme, which let OpenAI use the inputs we sent it and the outputs it generated from them to evaluate and train its models in return for some free use of its service; our part in the programme ended on October 29, 2026. Since then, OpenAI does not use the data we send it to train its models, and it may keep that data in abuse-monitoring logs for up to 30 days. Data shared with OpenAI under the programme before that date remains governed by OpenAI's terms.
+Until the move to Anthropic is complete, OpenAI processes some or all requests, including photos, and receives the same kinds of information described above. We take part in OpenAI's data-sharing programme for the requests OpenAI processes: OpenAI may use the inputs we send it and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models. Data shared this way is governed by OpenAI's terms rather than the 30-day abuse-monitoring limit below. This applies to every request OpenAI processes, and the App has no separate setting for it. In return for this sharing, OpenAI gives us some free use of its service. OpenAI may keep data sent to its API in abuse-monitoring logs for up to 30 days.
 
 Please photograph products only, and do not include people, documents, payment cards or other personal or health details in your photos or searches.
 
@@ -94,7 +95,7 @@ Comparisons are generated by AI and can be wrong; see our Terms of Service.
 - **Our email providers:** an email-routing service receives the email you send to our addresses and forwards it to our mailbox provider, which stores it under its own terms.
 - **The retailer websites and store search services we query:** see section 6.
 
-Except as section 4 describes for data shared with OpenAI before October 29, 2026 and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at privacy@getmyez.com. We may also disclose data where the law requires it.
+Except as section 4 describes for OpenAI and as this section describes for our mailbox provider, each of our service providers processes data only to provide its service to us, and we require each of them to protect it at least as well as this policy does. Retailer websites (section 6), the sign-in providers Apple and Google, our mailbox provider and the web-font service our website uses act under their own terms. We will tell you the names of our service providers on request at privacy@getmyez.com. We may also disclose data where the law requires it.
 
 People you send a comparison or invite link to can see that comparison, without the parts personalised for you. People who open an invite link you share can also see your display name. If you joined through a friend's invite, the notification we send that friend can show your display name.
 

@@ -8,17 +8,21 @@ They pin the facts both adversaries showed unpinned (S81_12_ADV1_correctness M-2
 S81_12_ADV1_legal MAJ-L4; the surviving mutants X1 X2 X4 X8 X9 X10 X12, M6s, L10m) and the dated
 publication notice of F1-5:
 
-  (a) privacy s4: OpenAI's no-training sentence since the switch, EN verbatim + its AR twin   (X1, L10m)
-  (b) no 'OpenAI may use ... to train' (EN, AR) in the sources or the landing regions outside the ONE
-      dated history sentence of privacy s4; EN also 'may train' and '... its models' (F2-2(b))   (X10, S3)
-  (c) privacy s4: the pre-switch carve-out sentence, EN verbatim + its AR twin                    (X4)
+  (a) privacy s4: OpenAI's own 30-day abuse-monitoring sentence, last in the OpenAI paragraph after the
+      governed sentence; the 'Since then' no-training sentence absent (V3C EK15)                (X1, L10m)
+  (b) no 'OpenAI may use ... to train' (EN, AR) in the sources or the landing regions outside the THREE
+      restored programme sentences (privacy s2, privacy s4 scoped, Terms s8; V3C EK16); EN also 'may train'
+      and '... its models' (F2-2(b))                                                         (X10, S3)
+  (c) privacy s4: main's governed sentence ('Data shared this way is governed by OpenAI's terms ...'),
+      the pre-switch carve-out absent; Terms s13 the unchanged deletion sentence (V3C EK17)    (X4)
   (d) privacy s4: the Anthropic no-training sentence UNQUALIFIED (EN) and its AR twin, and since
       F2-2(a) the whole sentence verbatim as rendered, EN + AR                          (X12, X9, S4)
   (e) privacy s4: 'up to 30 days' inside the Anthropic retention sentence, EN + AR               (X8)
   (f) privacy s2: the dual-provider sentence carries 'including photos', EN + AR                 (X2)
   (g) Terms s7: the 'such a link is marked "Sponsored".' clause, EN + AR                        (M6s)
   (h) the dated 'Changes on <AI_SWITCH_DATE>' notice at the top of the privacy policy and of the
-      Terms (F1-5), EN verbatim + AR by its elements, dated from the fill-in data (the window commit's
+      Terms (F1-5), EN verbatim + AR exactly as recorded in the V3C fixture (V3C EK18: we added Anthropic, the
+      App will ask again; nothing about OpenAI's programme), dated from the fill-in data (the window commit's
       re-date moves it with AI_SWITCH_DATE / _AR), present in the landing regions too
   (i) privacy s14: the F1-2 identifier wording, EN + AR: both random identifiers, the older form of
       the install identifier until 31 March 2027 and only the random one after that date; no
@@ -32,8 +36,13 @@ publication notice of F1-5:
       (k) the in-progress tense of the move to Anthropic (privacy s2 + s4, Terms s8, aiConsent.body);
       (l) the onboarding step-5 'never sends' clause; (m) privacy s6 'links' of pictures and pages and the
       bot address without the trailing slash; (n) privacy s14 'the random install identifier'; (o) privacy
-      s4 + s5 the common construction for 'data shared with OpenAI'. Arabic is compared marks-insensitively
+      s4 + s5 main's restored governed sentence and carve-out line, the rare passive absent (V3C EK19).
+      Arabic is compared marks-insensitively
       (U+064B..U+0652, U+0670 and U+0640 stripped by _nomarks).
+  V3C-1..V3C-5 PATH C of item 26 (RULINGS_V3C_S81_12 V3C-6 (2)): no ended story about OpenAI; the
+      sentences restored from the live version-2 text equal main's (the recorded fixture
+      tests/fixtures/legal_v3c_live_sentences.json); the s4 scope phrase; the scoped 'applies' sentence
+      (C2); the Terms s6 verify-before-relying sentence (D3).
 
 Each row fails on its mutant (applied through the U8 machinery on byte copies: snapshot edit ->
 restore -> scripts/fill_in_legal.py) with an AssertionError; the mutation tables are in the fix-round
@@ -45,11 +54,11 @@ renders; the drafts are [NATIVE READ]).
 """
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 
-from tests.test_legal_docs_u8 import D3_HISTORY_AR, D3_HISTORY_EN
 from tests.test_s81_12_legal_v3 import (
     AR_CATALOG,
     AR_LETTER,
@@ -149,25 +158,25 @@ SPONSORED_CLAUSE_AR = (
 # --- (h) the dated publication notice (F1-5; privacy s15 / Terms s14 'tell you ... when we publish it') --
 NOTICE_EN = {
     PRIVACY_EN: (
-        "**Changes on {date}:** we added Anthropic as one of our AI providers (section 4), our part in "
-        "OpenAI's data-sharing programme ended on that date (section 4), and the App will ask again for your "
-        "permission to send your requests to our AI providers."
+        "**Changes on {date}:** we added Anthropic as one of our AI providers (section 4), and the App will ask "
+        "again for your permission to send your requests to our AI providers."
     ),
     TERMS_EN: (
-        "**Changes on {date}:** we added Anthropic as one of our AI providers (section 8), our part in "
-        "OpenAI's data-sharing programme ended on that date (section 4 of our Privacy Policy), and the App "
-        "will ask again for your permission to send your requests to our AI providers."
+        "**Changes on {date}:** we added Anthropic as one of our AI providers (section 8), and the App will ask "
+        "again for your permission to send your requests to our AI providers."
     ),
-}
+}  # V3C EK18: the middle clause about OpenAI's programme is removed (N1 / N2)
 NOTICE_HEAD_AR = "**\u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a \u0641\u064a {date}:**"  # Changes on <date>:
 NOTICE_ELEMENTS_AR = {
     "Anthropic": "Anthropic",
-    "OpenAI": "OpenAI",
-    "the data-sharing programme": "\u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a",
-    "our part ended": "\u0627\u0646\u062a\u0647\u062a \u0645\u0634\u0627\u0631\u0643\u062a\u0646\u0627",
-    "on that date": "\u0641\u064a \u0630\u0644\u0643 \u0627\u0644\u062a\u0627\u0631\u064a\u062e",
     "your permission again": "\u0625\u0630\u0646\u0643 \u0645\u0631\u0629 \u0623\u062e\u0631\u0649",
 }
+NOTICE_FORBIDDEN_AR = {  # V3C EK18 / C5: the shortened AR notice names nothing about OpenAI's programme
+    "OpenAI": "OpenAI",
+    "the data-sharing programme": "\u0628\u0631\u0646\u0627\u0645\u062c \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a",
+    "ended": "\u0627\u0646\u062a\u0647\u062a",
+}
+
 
 # --- (i) the F1-2 identifier wording (privacy s14; F2-2(c), S2) -------------------------------------
 S14_PRESENT_EN = {
@@ -240,11 +249,11 @@ def _switch_date(lang):
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _history_sentence(lang):
-    date = _switch_date(lang)
-    if date is None:
-        return None
-    return (D3_HISTORY_AR if lang == "ar" else D3_HISTORY_EN).format(date=date)
+def _v3c_text(block, rid, lang):
+    """The text of a V3C fixture entry (tests/fixtures/legal_v3c_live_sentences.json), or None."""
+    entry = _v3c_entry(block, rid, lang)
+    text = entry.get("text") if isinstance(entry, dict) else None
+    return text if isinstance(text, str) and text.strip() else None
 
 
 def _front_matter(text):
@@ -264,22 +273,37 @@ def _s4(lang):
 
 
 # =============================================================================================
-# (a) -- OpenAI does not use the data to train its models since the switch (X1, L10m)
+# (a) -- OpenAI's own 30-day sentence, below the programme sentences (X1, L10m; V3C EK15)
 # =============================================================================================
 
 @pytest.mark.parametrize("lang", LANGS)
-def test_g_a_openai_no_training_since_the_switch(lang):
-    """PIN: privacy s4 states, exactly once, that since the switch OpenAI does not use the data we send it
-    to train its models (EN verbatim; the AR twin as the machinery renders it). This is the sentence that
-    makes 'the programme ended' true for users (P7 / R-S12-17 lean on it)."""
+def test_g_a_openai_30_day_sentence_below_the_programme(lang):
+    """PIN (V3C EK15, PATH C): privacy s4 carries main's 'OpenAI may keep data sent to its API in abuse-monitoring
+    logs for up to 30 days.' (the AR twin from the V3C fixture) exactly once, as the LAST sentence of the OpenAI
+    paragraph and after 'Data shared this way is governed by OpenAI's terms rather than the 30-day
+    abuse-monitoring limit below.' in the same paragraph (so 'below' resolves); the 'Since then, OpenAI does not
+    use ...' sentence (EN, AR) is absent from the four sources and their landing regions."""
     s4 = _s4(lang)
-    want = SINCE_EN if lang == "en" else SINCE_AR
+    keep, gov = _v3c_text("live", "P4k", lang), _v3c_text("live", "P4g", lang)
+    since = SINCE_EN if lang == "en" else SINCE_AR
     problems = []
-    if s4 is None:
-        problems.append("privacy s4 missing")
-    elif s4.count(want) != 1:
-        problems.append(f"privacy s4 carries the OpenAI no-training sentence {s4.count(want)} times (want 1)")
-    assert not problems, _report(f"G-a ({lang}): OpenAI's no-training sentence:", problems)
+    if s4 is None or keep is None or gov is None:
+        problems.append("privacy s4 or the V3C fixture entries P4k / P4g missing")
+    else:
+        if s4.count(keep) != 1:
+            problems.append(f"privacy s4 carries OpenAI's 30-day sentence {s4.count(keep)} times (want 1)")
+        paragraphs = [p for p in s4.split("\n") if keep in p]
+        for para in paragraphs:
+            sents = [" ".join(s.split()) for s in _sentences(para)]
+            if sents[-1:] != [" ".join(keep.split())]:
+                problems.append("OpenAI's 30-day sentence is not the last sentence of its paragraph")
+            if gov not in para or para.index(gov) > para.index(keep):
+                problems.append("the governed sentence does not precede the 30-day sentence in the same paragraph")
+    for rel in _docs(lang):
+        for where, text in ((rel, _read(rel)), (PAGE_OF[rel], _region(_read(PAGE_OF[rel])))):
+            if text is not None and " ".join(since.split()) in " ".join(text.split()):
+                problems.append(f"{where}: carries the 'Since then' no-training sentence")
+    assert not problems, _report(f"G-a ({lang}): OpenAI's 30-day sentence:", problems)
 
 
 # =============================================================================================
@@ -305,14 +329,15 @@ def _ar_affirmative_use(sentence):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_g_b_no_openai_training_permission_outside_the_history_sentence(lang):
-    """PIN: no sentence of the privacy policy or the Terms (sources and landing regions) that names OpenAI
-    and training grants OpenAI a present or future use of the data ('OpenAI may use ... to train', EN; the
-    AR 'qad tastakhdim' / an un-negated 'tastakhdim' / a permission verb), except the ONE dated history
-    sentence of privacy s4 (allow-listed by its exact text, dated from the fill-in data). Fix round 2
-    (F2-2(b), S3): the EN permission verbs cover 'may train' as well as 'may use', and a sentence naming
-    'its models' counts like one naming training ('OpenAI may train its models on ...' is refused)."""
-    history = _history_sentence(lang)
-    problems = [] if history else ["AI_SWITCH_DATE(_AR) is not recorded in the fill-in data"]
+    """PIN (name kept; V3C EK16, PATH C): no sentence of the privacy policy or the Terms (sources and landing
+    regions) that names OpenAI and training grants OpenAI a present or future use of the data ('OpenAI may use
+    ... to train', EN; the AR 'qad tastakhdim' / an un-negated 'tastakhdim' / a permission verb), except the THREE
+    restored programme sentences, allow-listed by their exact text from the V3C fixture: privacy s2 (S2), privacy
+    s4 with the scope phrase (P4s) and Terms s8 (S4). Fix round 2 (F2-2(b), S3): the EN permission verbs cover
+    'may train' as well as 'may use', and a sentence naming 'its models' counts like one naming training."""
+    allowed = [_v3c_text("live", "S2", lang), _v3c_text("ruled", "P4s", lang), _v3c_text("live", "S4", lang)]
+    problems = [] if all(allowed) else ["the V3C fixture lacks the S2 / P4s / S4 entries"]
+    allowed = {" ".join(a.split()) for a in allowed if a}
     for rel in _docs(lang):
         for where, text in ((rel, _read(rel)), (PAGE_OF[rel], _region(_read(PAGE_OF[rel])))):
             if text is None:
@@ -320,7 +345,7 @@ def test_g_b_no_openai_training_permission_outside_the_history_sentence(lang):
                 continue
             for sentence in _sentences(text):
                 s = " ".join(sentence.split())
-                if "OpenAI" not in s or (history and s == " ".join(history.split())):
+                if "OpenAI" not in s or s in allowed:
                     continue
                 if lang == "en" and (TRAIN_EN.search(s) or MODELS_EN.search(s)) and PERMIT_EN.search(s):
                     problems.append(f"{where}: OpenAI may use the data to train: {s[:120]!r}")
@@ -335,16 +360,28 @@ def test_g_b_no_openai_training_permission_outside_the_history_sentence(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_g_c_pre_switch_carve_out_sentence(lang):
-    """PIN: privacy s4 keeps, exactly once, the sentence that data shared with OpenAI under the programme
-    before the switch date remains governed by OpenAI's terms (the s5 carve-out points at it)."""
+    """PIN (name kept; V3C EK17, PATH C): privacy s4 carries main's governed sentence 'Data shared this way is
+    governed by OpenAI's terms rather than the 30-day abuse-monitoring limit below.' (the AR twin from the V3C
+    fixture) exactly once; the dated pre-switch carve-out sentence (EN, AR) is absent from the four sources and
+    their landing regions; Terms s13 carries its unchanged deletion sentence ('... data already shared with
+    OpenAI under its data-sharing programme, which is governed by OpenAI's terms ...') exactly once."""
     s4 = _s4(lang)
-    want = CARVE_EN if lang == "en" else CARVE_AR
+    gov, t95 = _v3c_text("live", "P4g", lang), _v3c_text("live", "T95", lang)
+    carve = CARVE_EN if lang == "en" else CARVE_AR
     problems = []
-    if s4 is None:
-        problems.append("privacy s4 missing")
-    elif s4.count(want) != 1:
-        problems.append(f"privacy s4 carries the pre-switch carve-out sentence {s4.count(want)} times (want 1)")
-    assert not problems, _report(f"G-c ({lang}): the pre-switch carve-out:", problems)
+    if s4 is None or gov is None or t95 is None:
+        problems.append("privacy s4 or the V3C fixture entries P4g / T95 missing")
+    else:
+        if s4.count(gov) != 1:
+            problems.append(f"privacy s4 carries the governed sentence {s4.count(gov)} times (want 1)")
+        terms = _read(TERMS_EN if lang == "en" else TERMS_AR) or ""
+        if terms.count(t95) != 1 or t95 not in (_section(terms, "13") or ""):
+            problems.append("Terms s13 does not carry the deletion sentence about OpenAI's programme once")
+    for rel in _docs(lang):
+        for where, text in ((rel, _read(rel)), (PAGE_OF[rel], _region(_read(PAGE_OF[rel])))):
+            if text is not None and " ".join(carve.split()) in " ".join(text.split()):
+                problems.append(f"{where}: carries the dated pre-switch carve-out sentence")
+    assert not problems, _report(f"G-c ({lang}): the governed sentence:", problems)
 
 
 # =============================================================================================
@@ -462,8 +499,9 @@ def test_g_g_terms_s7_sponsored_label_clause(lang):
 @pytest.mark.parametrize("lang", LANGS)
 def test_g_h_dated_change_notice_at_the_top(lang):
     """RED until F1-5 lands: the privacy policy and the Terms carry, before section 1, ONE dated notice
-    paragraph 'Changes on <AI_SWITCH_DATE>' (EN verbatim per document; AR: the dated head and its
-    elements: Anthropic, OpenAI's data-sharing programme ended on that date, your permission again), dated
+    paragraph 'Changes on <AI_SWITCH_DATE>' (EN verbatim per document; AR: exactly the line recorded in the V3C
+    fixture (V3C EK18 / C5), with Anthropic and 'your permission again' and without OpenAI, the programme name
+    or 'ended'), dated
     from the fill-in data, and the landing regions carry it too (the 'on our website' notice of privacy
     s15 / Terms s14; the in-App notice is the consent v3 re-ask after the OTA)."""
     date = _switch_date(lang)
@@ -475,6 +513,9 @@ def test_g_h_dated_change_notice_at_the_top(lang):
             continue
         if lang == "en":
             want = NOTICE_EN[rel].format(date=date)
+            recorded = _v3c_text("ruled", "N1" if rel == PRIVACY_EN else "N2", "en")
+            if recorded is None or recorded.format(date=date) != want:
+                problems.append(f"{rel}: the pinned EN notice differs from the recorded V3C line")
             lines = [line for line in front.split("\n") if line.startswith("**Changes on ")]
             if lines != [want]:
                 problems.append(f"{rel}: the front matter carries {len(lines)} 'Changes on' notices, want exactly: {want[:90]!r}")
@@ -487,10 +528,16 @@ def test_g_h_dated_change_notice_at_the_top(lang):
             lines = [line for line in front.split("\n") if line.startswith(head)]
             if len(lines) != 1:
                 problems.append(f"{rel}: the front matter carries {len(lines)} dated AR notices (want 1)")
+            recorded = _v3c_text("ruled", "N1" if rel == PRIVACY_AR else "N2", "ar")
+            if recorded is None or lines != [recorded.format(date=date)]:
+                problems.append(f"{rel}: the AR notice line is not the recorded V3C line")
             for line in lines:
                 for label, needle in NOTICE_ELEMENTS_AR.items():
                     if needle not in line:
                         problems.append(f"{rel}: the AR notice lacks {label}")
+                for label, needle in NOTICE_FORBIDDEN_AR.items():
+                    if needle in _nomarks(line):
+                        problems.append(f"{rel}: the AR notice carries {label}")
             region = _region(_read(PAGE_OF[rel]))
             if region is None or head.replace("**", "") not in region:
                 problems.append(f"{PAGE_OF[rel]}: the landing region does not carry the dated AR notice")
@@ -726,19 +773,246 @@ def test_g_n_privacy_s14_random_install_identifier():
 
 
 def test_g_o_data_shared_with_openai_common_construction():
-    """PIN (ARFIX R9, edits P2 x2): the AR privacy s4 and s5 each name 'the data that was shared with
-    OpenAI' in the common construction; the rare passive is absent from the AR policy and the AR Terms."""
+    """PIN (ARFIX R9; V3C EK19, PATH C: the two ARFIX P2 spans are replaced by restored live sentences, IT26-9
+    (a)): the AR privacy s4 carries main's governed sentence once and s5 main's carve-out line once (both from
+    the V3C fixture); the rare passive is absent from the AR policy and the AR Terms."""
     secs, ptext = _ar_sections(PRIVACY_AR, "4", "5")
     ttext = _read(TERMS_AR)
     problems = []
-    for n in ("4", "5"):
-        if secs[n] is None:
-            problems.append(f"privacy s{n} missing")
-        elif _nomarks(secs[n]).count(SHARED_NEW_AR) != 1:
-            problems.append(f"privacy s{n} does not carry the common construction once")
+    for n, rid in (("4", "P4g"), ("5", "C5")):
+        live = _v3c_text("live", rid, "ar")
+        if secs[n] is None or live is None:
+            problems.append(f"privacy s{n} or the V3C fixture entry {rid} missing")
+        elif secs[n].count(live) != 1:
+            problems.append(f"privacy s{n} does not carry main's restored sentence {rid} once")
     for label, text in (("the AR policy", ptext), ("the AR Terms", ttext)):
         if text is None:
             problems.append(f"{label} missing")
         elif SHARED_OLD_AR in _nomarks(text):
             problems.append(f"{label} still carries the rare passive")
     assert not problems, _report("G-o: data shared with OpenAI:", problems)
+
+
+# =============================================================================================
+# V3C-1..V3C-5 -- PATH C of item 26 (RULINGS_V3C_S81_12 V3C-6 (2)): the live version-2 wording for
+# OpenAI kept beside Anthropic, and the Terms s6 verify-before-relying sentence. The restored and the
+# ruled sentences come from the recorded fixture tests/fixtures/legal_v3c_live_sentences.json (main's
+# bytes with main's path:line; the ruled sentences from the round's expected files); a row never reads git.
+# =============================================================================================
+
+V3C_FIXTURE = "tests/fixtures/legal_v3c_live_sentences.json"
+EN_CATALOG_V3C = "SmartCompareApp/src/i18n/en.json"
+V3C_ENDED_EN = re.compile(r"(?i)\bended\b")
+V3C_STORY_EN = ("has ended", "Since then, OpenAI does not use", "took part in OpenAI")
+V3C_PROGRAMME_EN = re.compile(r"(?i)\bOpenAI\b|\bdata[- ]sharing programme\b|\bthe programme\b")
+V3C_STORY_AR = {
+    "our part ended": "\u0627\u0646\u062a\u0647\u062a \u0645\u0634\u0627\u0631\u0643\u062a\u0646\u0627",
+    "and since that date": "\u0648\u0645\u0646\u0630 \u0630\u0644\u0643 \u0627\u0644\u062a\u0627\u0631\u064a\u062e",
+    "and we used to take part": "\u0648\u0643\u0646\u0627 \u0646\u0634\u0627\u0631\u0643",
+}
+V3C_UNSCOPED_EN = ("for all comparisons", "This applies to every comparison")
+V3C_UNSCOPED_AR = {
+    "in all comparisons": "\u0641\u064a \u062c\u0645\u064a\u0639 \u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0627\u062a",
+    "to every comparison": "\u0639\u0644\u0649 \u0643\u0644 \u0645\u0642\u0627\u0631\u0646\u0629",
+}
+V3C_LIVE_IDS = ("S1", "S2", "B1", "P4g", "P4r", "P4k", "C5", "S3", "S4", "J8")
+
+
+def _v3c_fixture():
+    value = _read(V3C_FIXTURE)
+    try:
+        data = json.loads(value) if value is not None else None
+    except ValueError:
+        data = None
+    return data if isinstance(data, dict) else {}
+
+
+def _v3c_entry(block, rid, lang):
+    for entry in _v3c_fixture().get(block) or []:
+        if isinstance(entry, dict) and entry.get("id") == rid and entry.get("lang") == lang:
+            return entry
+    return None
+
+
+def _v3c_norm(text):
+    return " ".join((text or "").split())
+
+
+def _v3c_places(lang):
+    """(label, text) for the four sources, their landing regions and the consent / step-5 copy."""
+    places = []
+    for rel in _docs(lang):
+        places.append((rel, _read(rel)))
+        places.append((PAGE_OF[rel], _region(_read(PAGE_OF[rel]))))
+    catalog = _catalog(AR_CATALOG if lang == "ar" else EN_CATALOG_V3C)
+    for key in sorted(k for k in catalog if k.startswith("aiConsent.") or k.startswith("onboarding.s5.")):
+        if isinstance(catalog[key], str):
+            places.append((f"catalog {key}", catalog[key]))
+    return places
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_v3c_no_ended_story_about_openai(lang):
+    """RED until V3C: no sentence of the four legal sources, their landing regions or the aiConsent.* /
+    onboarding.s5.* copy tells OpenAI's data-sharing programme as ENDED (EN: 'ended' in a sentence naming
+    OpenAI or the programme, 'has ended', 'Since then, OpenAI does not use', 'took part in OpenAI'; AR,
+    marks-insensitive: 'our part ended', 'and since that date', 'and we used to take part')."""
+    problems = []
+    for where, text in _v3c_places(lang):
+        if text is None:
+            problems.append(f"{where}: missing or no legal region")
+            continue
+        if lang == "en":
+            for sentence in _sentences(text):
+                s = _v3c_norm(sentence)
+                if V3C_ENDED_EN.search(s) and V3C_PROGRAMME_EN.search(s):
+                    problems.append(f"{where}: a sentence tells the programme as ended: {s[:120]!r}")
+            for needle in V3C_STORY_EN:
+                if needle in _v3c_norm(text):
+                    problems.append(f"{where}: carries {needle!r}")
+        else:
+            flat = _nomarks(_v3c_norm(text))
+            for label, needle in V3C_STORY_AR.items():
+                if needle in flat:
+                    problems.append(f"{where}: carries the AR '{label}'")
+    assert not problems, _report(f"V3C-1 ({lang}): no ended story about OpenAI:", problems)
+
+
+@pytest.mark.parametrize("rid", V3C_LIVE_IDS)
+@pytest.mark.parametrize("lang", LANGS)
+def test_v3c_restored_sentences_equal_live(lang, rid):
+    """RED until V3C: each sentence restored from the LIVE version-2 text (recorded from main 6b909e0a's
+    bytes, path:line in the fixture) occurs exactly once in its named section of its source and as many
+    times in the landing region as in the source (the consent sentence J8: exactly once in aiConsent.body)."""
+    entry = _v3c_entry("live", rid, lang)
+    problems = []
+    if not entry or not isinstance(entry.get("text"), str) or not entry["text"].strip():
+        problems.append(f"{V3C_FIXTURE}: no live entry {rid}-{lang}")
+        assert not problems, _report(f"V3C-2 ({rid}-{lang}):", problems)
+    want = entry["text"]
+    if entry.get("key"):
+        body = _catalog(entry["file"]).get(entry["key"])
+        if not isinstance(body, str):
+            problems.append(f"{entry['file']}: {entry['key']} missing")
+        elif body.count(want) != 1:
+            problems.append(f"{entry['file']} {entry['key']} carries the live sentence {body.count(want)} times (want 1)")
+    else:
+        source = _read(entry["file"])
+        section = _section(source, entry.get("section"))
+        if section is None:
+            problems.append(f"{entry['file']}: section {entry.get('section')} missing")
+        elif section.count(want) != 1:
+            problems.append(f"{entry['file']} s{entry['section']} carries the live sentence {section.count(want)} times (want 1)")
+        page = PAGE_OF.get(entry["file"])
+        region = _region(_read(page)) if page else None
+        if region is None:
+            problems.append(f"{page}: the landing region is missing")
+        else:
+            n_src = _v3c_norm(source).count(_v3c_norm(want))
+            n_reg = _v3c_norm(region).count(_v3c_norm(want.lstrip("- ")))
+            if n_reg < 1 or n_reg != n_src:
+                problems.append(f"{page}: the region carries the live sentence {n_reg} times (the source {n_src})")
+    assert not problems, _report(f"V3C-2 ({rid}-{lang}): the restored live sentence:", problems)
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_v3c_s4_scope_phrase(lang):
+    """RED until V3C: privacy s4 carries the restored programme sentence with the ruled scope ('for the
+    requests OpenAI processes'; the AR twin from the fixture) exactly once, in the source and the landing
+    region; main's unscoped 'for all comparisons' (AR 'in all comparisons') is absent from both."""
+    entry = _v3c_entry("ruled", "P4s", lang)
+    rel = PRIVACY_EN if lang == "en" else PRIVACY_AR
+    s4, region = _s4(lang), _region(_read(PAGE_OF[rel]))
+    problems = []
+    if not entry:
+        problems.append(f"{V3C_FIXTURE}: no ruled entry P4s-{lang}")
+    if s4 is None or region is None:
+        problems.append("privacy s4 or the landing region missing")
+    if not problems:
+        want = entry["text"]
+        if s4.count(want) != 1:
+            problems.append(f"privacy s4 carries the scoped programme sentence {s4.count(want)} times (want 1)")
+        if _v3c_norm(region).count(_v3c_norm(want)) != 1:
+            problems.append(f"{PAGE_OF[rel]}: the region does not carry the scoped programme sentence once")
+        head = "We take part in OpenAI's data-sharing programme for the requests OpenAI processes:"
+        if lang == "en" and s4.count(head) != 1:
+            problems.append("privacy s4 does not open the programme sentence with the scope phrase once")
+        for where, text in (("privacy s4", s4), (PAGE_OF[rel], region)):
+            if lang == "en" and "for all comparisons" in text:
+                problems.append(f"{where}: carries main's unscoped 'for all comparisons'")
+            if lang == "ar" and V3C_UNSCOPED_AR["in all comparisons"] in _nomarks(text):
+                problems.append(f"{where}: carries main's unscoped AR 'in all comparisons'")
+    assert not problems, _report(f"V3C-3 ({lang}): the scope phrase of privacy s4:", problems)
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_v3c_s4_applies_sentence_scoped(lang):
+    """RED until V3C (C2): privacy s4 carries the adapted 'applies' sentence ('This applies to every request
+    OpenAI processes, and the App has no separate setting for it.'; the AR twin from the fixture) exactly
+    once, directly after the governed sentence and directly before the in-return sentence, in the source
+    and in the landing region; main's 'every comparison' form and 'for all comparisons' (and their AR
+    twins) are absent from the four sources and their regions."""
+    applies, gov, ret = (_v3c_entry("ruled", "C2", lang), _v3c_entry("live", "P4g", lang), _v3c_entry("live", "P4r", lang))
+    rel = PRIVACY_EN if lang == "en" else PRIVACY_AR
+    s4, region = _s4(lang), _region(_read(PAGE_OF[rel]))
+    problems = []
+    if not (applies and gov and ret):
+        problems.append(f"{V3C_FIXTURE}: the C2 / P4g / P4r entries are missing")
+    if s4 is None or region is None:
+        problems.append("privacy s4 or the landing region missing")
+    if not problems:
+        triple = " ".join((gov["text"], applies["text"], ret["text"]))
+        if s4.count(applies["text"]) != 1:
+            problems.append(f"privacy s4 carries the applies sentence {s4.count(applies['text'])} times (want 1)")
+        if s4.count(triple) != 1:
+            problems.append("privacy s4: the applies sentence is not between the governed and the in-return sentences")
+        if _v3c_norm(region).count(_v3c_norm(triple)) != 1:
+            problems.append(f"{PAGE_OF[rel]}: the region does not carry governed + applies + in-return once")
+    for where, text in _v3c_places(lang):
+        if text is None or where.startswith("catalog"):
+            continue
+        if lang == "en":
+            for needle in V3C_UNSCOPED_EN:
+                if needle in _v3c_norm(text):
+                    problems.append(f"{where}: carries main's unscoped {needle!r}")
+        else:
+            for label, needle in V3C_UNSCOPED_AR.items():
+                if needle in _nomarks(_v3c_norm(text)):
+                    problems.append(f"{where}: carries main's unscoped AR '{label}'")
+    assert not problems, _report(f"V3C-4 ({lang}): the scoped applies sentence:", problems)
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_v3c_terms_s6_verify_before_relying(lang):
+    """RED until V3C (D3, TR-8): the Terms carry the verify-before-relying sentence (EN 'Check what matters
+    to you against the retailer's or the manufacturer's own information before you rely on it.'; the AR
+    twin from the fixture) exactly once in the whole document, inside section 6, directly after the
+    section's first sentence and directly before the prices sentence, by exact text, in the source and in
+    the landing region."""
+    entry = _v3c_entry("ruled", "D3", lang)
+    rel = TERMS_EN if lang == "en" else TERMS_AR
+    text, region = _read(rel), _region(_read(PAGE_OF[rel]))
+    problems = []
+    if not entry or not all(isinstance(entry.get(k), str) for k in ("text", "after", "before")):
+        problems.append(f"{V3C_FIXTURE}: no ruled entry D3-{lang}")
+    if text is None or region is None:
+        problems.append(f"{rel} or its landing region missing")
+    if not problems:
+        want = entry["text"]
+        s6 = _section(text, "6") or ""
+        if lang == "en" and want != "Check what matters to you against the retailer's or the manufacturer's own information before you rely on it.":
+            problems.append("the recorded EN D3 sentence is not the ruled text")
+        if text.count(want) != 1:
+            problems.append(f"{rel} carries the D3 sentence {text.count(want)} times (want 1)")
+        sents = [_v3c_norm(s) for s in _sentences(s6)]
+        if _v3c_norm(want) not in sents or sents.index(_v3c_norm(want)) != 1:
+            problems.append("the D3 sentence is not the second sentence of Terms s6")
+        elif sents[0] != _v3c_norm(entry["after"]) or sents[2] != _v3c_norm(entry["before"]):
+            problems.append("the D3 sentence is not between s6's first sentence and the prices sentence")
+        prices = "Prices" if lang == "en" else "\u0627\u0644\u0623\u0633\u0639\u0627\u0631"
+        if prices not in entry["before"]:
+            problems.append("the recorded following sentence is not the prices sentence")
+        triple = _v3c_norm(" ".join((entry["after"], want, entry["before"])))
+        if _v3c_norm(region).count(_v3c_norm(want)) != 1 or _v3c_norm(region).count(triple) != 1:
+            problems.append(f"{PAGE_OF[rel]}: the region does not carry the D3 sentence once in place")
+    assert not problems, _report(f"V3C-5 ({lang}): Terms s6 verify before relying:", problems)

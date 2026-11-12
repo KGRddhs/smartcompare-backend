@@ -4,7 +4,8 @@
  * Spec: sc-s81-s12/.qa-s80/S81-12_UNIT_SPEC.md section 5 (client rows C1-C5), as amended by
  * RULINGS_S81_12.md: R-S12-1 (the consent v3 sheet names BOTH AI processors, Anthropic and
  * OpenAI; until the move is complete "some or all requests, including photos" go to OpenAI),
- * R-S12-4 (OpenAI's data-sharing programme ended: no training claim remains in the copy),
+ * R-S12-4 as re-ruled by RULINGS_V3C_S81_12 (PATH C of item 26: main's training sentence returns
+ * after the transition sentence; EK-C1),
  * R-S12-8 (no catalog key added or removed), R-S08-3 (consent stays per account).
  *
  * NOT MEASURED in the RED run: sc-s81-s12 has no SmartCompareApp/node_modules (R-S12-12);
@@ -15,9 +16,9 @@
  *       current copy (sha256 of EN title + EN body + AR title + AR body joined by newlines)
  *   C2  a stored v2 record no longer counts; the next Agree writes a v3 record (distinct userId per
  *       case, the UB-R11 isolation: the AsyncStorage mock store is emptied before every case)
- *   C3  the v3 EN / AR body: four sentences, names Anthropic and OpenAI, the OpenAI transition
- *       sentence precedes the final not-sent sentence, no training claim, no opt-out wording, no
- *       Arabic diacritics except inside the brand token
+ *   C3  the v3 EN / AR body (EK-C1, V3C): five sentences, names Anthropic and OpenAI, the OpenAI
+ *       transition sentence, then main's training sentence, then the final not-sent sentence, no
+ *       opt-out wording, no Arabic diacritics except inside the brand token
  *   C4  the rendered consent sheet names Anthropic (and OpenAI)
  *   C5  Step05Trust renders the new "what reaches our AI providers" heading (fallback, EN, AR)
  *
@@ -115,26 +116,28 @@ describe('S81-12 C2 - a stored v2 record no longer counts', () => {
 });
 
 describe('S81-12 C3 - the v3 consent body (EN and AR)', () => {
-  it('EN: four sentences, both providers, transition before the final not-sent sentence, no training or opt-out claim', () => {
+  it('EN: five sentences, both providers, transition then the training sentence then the final not-sent sentence, no opt-out claim', () => {
     const body = EN['aiConsent.body'];
     const sentences = body.split(SENTENCE_SPLIT).filter((s) => s.trim());
-    expect(sentences.length).toBe(4);
+    expect(sentences.length).toBe(5);
     expect(body).toMatch(/\bAnthropic\b/);
     expect(body).toMatch(/\bOpenAI\b/);
     expect(sentences[2]).toMatch(/\bOpenAI\b/);
     expect(sentences[2]).toMatch(/\bsome or all\b/);
-    for (const rx of NOT_SENT_EN) expect(sentences[3]).toMatch(rx);
-    expect(body).not.toMatch(TRAINING_CLAIM_EN);
+    expect(sentences[3]).toMatch(TRAINING_CLAIM_EN);
+    expect(body.match(new RegExp(TRAINING_CLAIM_EN.source, 'gi'))?.length).toBe(1);
+    for (const rx of NOT_SENT_EN) expect(sentences[4]).toMatch(rx);
     expect(body).not.toMatch(OPT_OUT_EN);
   });
 
-  it('AR: four sentences, both providers named, no diacritics outside the brand token', () => {
+  it('AR: five sentences, both providers named, the transition and the training sentences name OpenAI, no diacritics outside the brand token', () => {
     const body = AR['aiConsent.body'];
     const sentences = body.split(SENTENCE_SPLIT).filter((s) => s.trim());
-    expect(sentences.length).toBe(4);
+    expect(sentences.length).toBe(5);
     expect(body).toContain('Anthropic');
     expect(body).toContain('OpenAI');
     expect(sentences[2]).toContain('OpenAI');
+    expect(sentences[3]).toContain('OpenAI');
     expect(DIACRITICS_AR.test(body.split(BRAND_AR).join(''))).toBe(false);
   });
 });

@@ -20,33 +20,35 @@ Row map (RED = fails at base 98d85433 on an AssertionError only; PIN = green at 
        guidance once (EN / AR)                                         RED
   R1b  the R-S12-1 dual-provider sentence verbatim in privacy s2 and Terms s8 (EN);
        both names in privacy s2 / s5 and Terms s8 (AR)                  RED
-  R2   no present-tense "we take part in OpenAI's data-sharing programme" in any
-       source or region; ONE history sentence in privacy s4 (R-S12-4)  RED
-  R3   the bare not-sold promise; the "Apart from OpenAI's programme" qualifier gone RED
-  R4   privacy s5: one Anthropic and one OpenAI bullet, the dated carve-out, the
-       email-delivery fragment (D9)                                     RED
+  R2   (V3C EK7) the present-tense programme sentence once in privacy s2, s4 (scoped)
+       and Terms s8; no ended story in any source or region (PATH C)   RED
+  R3   (V3C EK8) the not-sold promise in main's carve-out form only   RED
+  R4   privacy s5: one Anthropic and one OpenAI bullet, main's undated carve-out
+       (V3C EK9), the email-delivery fragment (D9)                      RED
   R6   privacy s6: the catalogue crawler named by its published user-agent page
        (R-S12-2), operator entry, licensed data, Sponsored               RED
   R7   privacy s12: the AI-disclosure sentence after the minors text      RED
   R8   Terms s7 Sponsored + catalogue; Terms s8 no "Our AI provider is OpenAI" RED
   R9   processors.json: the anthropic row public and named (R-S12-11);
        PUBLIC_NAME_IDS in both test files; the openai row unchanged     RED
-  R10  fill-in data and variants shape (d3 'A', retired forks, dormant forks and
+  R10  fill-in data and variants shape (V3C EK10: d3 'C', main's forks back, dormant forks and
        clauses, the new placeholder keys)                               RED
   R11  the device-rule texts are dormant until DEVICE_QUOTA_RESET is recorded (temp copy) RED
   R12  the compare-run and auth-throttle bullets are dormant until recorded; the
        compare-run bullet stays linked to the account (R-S12-9) (temp copy) RED
-  R13  AI_SWITCH_DATE (EN, AR) == the effective date == TERMS_VERSION    RED
+  R13  AI_SWITCH_DATE (EN, AR) == the effective date == TERMS_VERSION; it dates the notice
+       only (V3C EK11)                                                  RED
   R14  consent v3 sources: AI_CONSENT_VERSION 3, setup mirror 3, the copy names both
-       providers, the fence pins version 3 and the recomputed digest   RED
+       providers and carries main's training sentence after the transition sentence
+       (V3C EK12), the fence pins version 3 and the recomputed digest   RED
   R15  onboarding Step 5 copy names the AI providers; Step05Trust defaults == en.json RED
-  R16  OpenAI census (R-S12-7): OpenAI only in privacy s2/s4/s5 and Terms s8/s13, only
+  R16  OpenAI census (R-S12-7; V3C EK13): OpenAI only in privacy s2/s3.6 bullet/s4/s5 and Terms s8/s13, only
        inside the allowed sentence classes; regions carry the source counts RED
   R17  privacy s14 (R-S12-10 as amended by R-S08-3)                      RED
   R18  kb_feedback pseudonymous device key disclosure dormant (R-S12-18) (temp copy) RED
   R19  COMPARE_RUN_RETENTION / AUTH_THROTTLE_RETENTION join RETENTION_KEYS (R-S12-9) RED
-  H1   HOLD (red by design until the merge window): tests/fixtures/legal_v3_window.json
-       records the sharing-off date == TERMS_VERSION == AI_SWITCH_DATE (R-S12-6) RED
+  H1   HOLD (red by design until the window commit): tests/fixtures/legal_v3_window.json
+       records the window date == TERMS_VERSION == AI_SWITCH_DATE (R-S12-6; V3C EK14) RED
   H1b  the H1 comparison proven on a temp copy (equal -> clean; each side mutated -> red;
        a missing file is a problem, never an exception)                 PIN
   P1   fill-in dry run idempotent, landing regions current               PIN
@@ -186,6 +188,31 @@ BASE_TERMS_S4_EN = (
     "in section 9 add to the monthly limit)."
 )
 TRAINING_CLAIM_EN = re.compile(r"(?i)\binform the evaluation and training of its models\b")
+# --- V3C (PATH C of item 26, RULINGS_V3C_S81_12 V3C-6): the restored present-tense programme sentence --------
+SCOPED_EN = re.compile(r"(?i)\bwe take part in OpenAI'?s data[- ]sharing programme for the requests OpenAI processes:")
+SCOPED_AR = re.compile(
+    "(?<!" + AR_LETTER + ")\u0648?\u0646\u0634\u0627\u0631\u0643 \u0641\u064a \u0628\u0631\u0646\u0627\u0645\u062c "
+    "\u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0644\u062f\u0649 OpenAI "
+    "\u0641\u064a \u0627\u0644\u0637\u0644\u0628\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0639\u0627\u0644\u062c\u0647\u0627 OpenAI:"
+)  # ... the data-sharing programme at OpenAI in the requests that OpenAI processes:
+ENDED_EN = (
+    r"(?i)\bprogramme ended\b",
+    r"(?i)\bour part in (?:it|the programme) (?:has )?ended\b",
+    r"Since then, OpenAI does not use",
+)
+ENDED_AR = {
+    "our part ended": "\u0627\u0646\u062a\u0647\u062a \u0645\u0634\u0627\u0631\u0643\u062a\u0646\u0627",
+    "and since that date OpenAI does not use": (
+        "\u0648\u0645\u0646\u0630 \u0630\u0644\u0643 \u0627\u0644\u062a\u0627\u0631\u064a\u062e \u0644\u0627 "
+        "\u062a\u0633\u062a\u062e\u062f\u0645 OpenAI"
+    ),
+    "and we used to take part": "\u0648\u0643\u0646\u0627 \u0646\u0634\u0627\u0631\u0643",
+}
+MARKS_AR = re.compile("[\u064b-\u0652\u0670\u0640]")  # harakat, tanween, shadda, sukun, dagger alif, tatweel
+V3C_FIXTURE = "tests/fixtures/legal_v3c_live_sentences.json"
+# main 6b909e0a's forks (V3C EK10, OPTION F), by digest (_jsha): d3_training en / ar A + B, and openai_retention.
+MAIN_D3_AB_SHA256 = "1a96f76c08107b07fdb693fa7acfb685" "2471a1e0294dabce233eedba6919402e"
+MAIN_RETENTION_FORK_SHA256 = "9df7d8b9357b742878fd9ca686807a95" "5b7d04b7f69edfdf36889a60fe3fc0f5"
 
 # Synthetic dormant values (test-only, never a real fact; Arabic: Western digits).
 SYN_RESET_EN = "midnight test time (UTC+3)"
@@ -395,6 +422,16 @@ def _catalog(rel):
     return value if isinstance(value, dict) else {}
 
 
+def _v3c_text(rid, lang, block="live"):
+    """The text of a V3C fixture entry (tests/fixtures/legal_v3c_live_sentences.json), or None (never raises)."""
+    data = _json(V3C_FIXTURE)
+    for entry in (data.get(block) if isinstance(data, dict) else None) or []:
+        if isinstance(entry, dict) and entry.get("id") == rid and entry.get("lang") == lang:
+            text = entry.get("text")
+            return text if isinstance(text, str) and text.strip() else None
+    return None
+
+
 def _load(rel, name):
     """A repo script loaded by path (fill_in_legal / the renderer import nothing outside the stdlib)."""
     spec = importlib.util.spec_from_file_location(name, REPO / rel)
@@ -531,43 +568,79 @@ def test_r1b_dual_provider_sentence_in_privacy_s2_s5_and_terms_s8(lang):
 
 @pytest.mark.parametrize("lang", ["en", "ar"])
 def test_r2_no_present_tense_sharing_and_one_history_sentence(lang):
-    """RED: no present-tense "we take part in OpenAI's data-sharing programme" in the four legal
-    sources or their landing regions; privacy s4 carries the SINGLE past-tense history sentence
-    (EN "... programme ended on <date>", AR: one dated sentence) -- R-S12-4."""
+    """RED, amended V3C (EK7, PATH C of item 26; node id kept): the present-tense programme sentence, scoped.
+    The present-tense "we take part in OpenAI's data-sharing programme" (EN; the AR twin) occurs exactly once
+    in privacy s2, exactly once in privacy s4 (there followed by the scope 'for the requests OpenAI
+    processes:'; AR the scope twin) and exactly once in Terms s8, and each landing region carries the same
+    count as its source; no source or region tells the programme as ended (EN 'programme ended', 'our part in
+    it / the programme (has) ended', 'Since then, OpenAI does not use'; AR marks-insensitive 'our part ended',
+    'and since that date OpenAI does not use', 'and we used to take part')."""
     docs = (PRIVACY_EN, TERMS_EN) if lang == "en" else (PRIVACY_AR, TERMS_AR)
     rx = PRESENT_SHARING_EN if lang == "en" else PRESENT_SHARING_AR
     problems = []
-    for rel in docs:
-        for where, text in ((rel, _read(rel)), (PAGE_OF[rel], _region(_read(PAGE_OF[rel])))):
-            if text is None:
-                problems.append(f"{where}: missing or no legal region")
-            elif rx.search(text):
-                problems.append(f"{where}: present-tense data-sharing sentence remains")
+    for rel, number in ((docs[0], "2"), (docs[0], "4"), (docs[1], "8")):
+        body = _section(_read(rel), number) or ""
+        n = len(rx.findall(body))
+        if n != 1:
+            problems.append(f"{rel} s{number} carries the present-tense programme sentence {n} times (want 1)")
     s4 = _section(_read(docs[0]), "4") or ""
-    if lang == "en":
-        hits = re.findall(r"\bprogramme ended on (?:" + "|".join(EN_MONTHS) + r")\s+[0-9]{1,2},\s*[0-9]{4}", s4)
-        if len(hits) != 1:
-            problems.append(f"privacy s4 has {len(hits)} 'programme ended on <date>' sentences (want 1)")
-    elif len(AR_DATE.findall(s4)) != 1 or "OpenAI" not in s4:
-        problems.append(f"AR privacy s4 has {len(AR_DATE.findall(s4))} dated sentences (want the 1 history sentence)")
-    assert not problems, _report(f"R2 ({lang}): the data-sharing programme is described as ended:", problems)
+    scoped = SCOPED_EN if lang == "en" else SCOPED_AR
+    if len(scoped.findall(s4)) != 1:
+        problems.append("privacy s4: the programme sentence does not carry the scope 'for the requests OpenAI processes'")
+    for rel in docs:
+        text = _read(rel)
+        for where, body in ((rel, text), (PAGE_OF[rel], _region(_read(PAGE_OF[rel])))):
+            if body is None:
+                problems.append(f"{where}: missing or no legal region")
+                continue
+            if where != rel and len(rx.findall(" ".join(body.split()))) != len(rx.findall(" ".join((text or "").split()))):
+                problems.append(f"{where}: the region carries a different count of the programme sentence than its source")
+            if lang == "en":
+                for pattern in ENDED_EN:
+                    if re.search(pattern, body):
+                        problems.append(f"{where}: carries the ended story {pattern!r}")
+            else:
+                flat = MARKS_AR.sub("", body)
+                for label, needle in ENDED_AR.items():
+                    if needle in flat:
+                        problems.append(f"{where}: carries the AR ended story '{label}'")
+    assert not problems, _report(f"R2 ({lang}): the present-tense programme sentence, scoped:", problems)
 
 
 @pytest.mark.parametrize("lang", ["en", "ar"])
 def test_r3_bare_not_sold_promise(lang):
-    """RED: privacy s2 and Terms s8 state the bare not-sold promise; the "Apart from OpenAI's
-    data-sharing programme" qualifier (an exception that has ended) is gone from every source and region."""
+    """RED, amended V3C (EK8 + C6; node id kept): privacy s2 and Terms s8 each state the not-sold promise
+    exactly once in main's carve-out form ("Apart from OpenAI's data-sharing programme described below, we
+    do not sell or otherwise exchange your personal data for anything of value"; AR: the carve-out opening of
+    main's sentence from the V3C fixture followed by the promise); the bare sentence-initial promise ("We do
+    not sell or otherwise exchange", capital W) is absent from the four sources and their regions; AR: in every
+    section of both documents and in both regions the promise occurs only directly after the carve-out
+    opening (the counts are equal)."""
     priv, terms = (PRIVACY_EN, TERMS_EN) if lang == "en" else (PRIVACY_AR, TERMS_AR)
-    promise, apart = (NOT_SOLD_EN, APART_EN) if lang == "en" else (NOT_SOLD_AR, APART_AR)
     problems = []
+    if lang == "en":
+        carve, promise = APART_EN + " described below, we do not sell or otherwise exchange your personal data for anything of value", NOT_SOLD_EN
+    else:
+        s1 = _v3c_text("S1", "ar") or ""
+        i = s1.find(NOT_SOLD_AR)
+        carve, promise = (s1[:i + len(NOT_SOLD_AR)] if i > 0 else None), NOT_SOLD_AR
+        if carve is None:
+            problems.append("the V3C fixture S1 (ar) does not carry the carve-out form")
+            carve = APART_AR + " " + NOT_SOLD_AR
     for where, body in (("privacy s2", _section(_read(priv), "2")), ("terms s8", _section(_read(terms), "8"))):
-        if promise not in (body or ""):
-            problems.append(f"{where} lacks the bare not-sold promise")
+        if (body or "").count(carve) != 1:
+            problems.append(f"{where} does not carry the carve-out form of the not-sold promise once")
     for rel in (priv, terms):
-        for where, text in ((rel, _read(rel) or ""), (PAGE_OF[rel], _region(_read(PAGE_OF[rel])) or "")):
-            if apart in text:
-                problems.append(f"{where} still qualifies the promise with OpenAI's programme")
-    assert not problems, _report(f"R3 ({lang}): the not-sold promise:", problems)
+        text = _read(rel) or ""
+        places = [(f"{rel} s{n}", body) for n, body in _sections_of(text).items()]
+        places.append((PAGE_OF[rel], " ".join((_region(_read(PAGE_OF[rel])) or "").split())))
+        for where, body in places:
+            if lang == "en":
+                if promise in body:
+                    problems.append(f"{where} carries the bare sentence-initial not-sold promise")
+            elif body.count(promise) != body.count(carve):
+                problems.append(f"{where}: the AR not-sold promise occurs outside the carve-out form")
+    assert not problems, _report(f"R3 ({lang}): the not-sold promise in main's carve-out form:", problems)
 
 
 # =============================================================================================
@@ -576,21 +649,23 @@ def test_r3_bare_not_sold_promise(lang):
 
 @pytest.mark.parametrize("lang", ["en", "ar"])
 def test_r4_privacy_s5_two_ai_bullets_and_dated_carveout(lang):
-    """RED: privacy s5 has exactly one Anthropic and one OpenAI bullet, and the carve-out is dated
-    (data shared with OpenAI before the switch date); EN also carries the email-delivery fragment (D9)."""
+    """RED, amended V3C (EK9; node id kept): privacy s5 has exactly one Anthropic and one OpenAI bullet; the
+    carve-out is main's undated line ('Except as section 4 describes for OpenAI and as this section describes
+    for our mailbox provider, ...'; the AR twin from the V3C fixture) exactly once, and s5 carries NO date;
+    EN also carries the email-delivery fragment (D9)."""
     s5 = _section(_read(PRIVACY_EN if lang == "en" else PRIVACY_AR), "5") or ""
     problems = []
     for name in ("Anthropic", "OpenAI"):
         n = len(re.findall(r"(?m)^- \*\*" + name + r":\*\*", s5))
         if n != 1:
             problems.append(f"s5 has {n} '- **{name}:**' bullets (want 1)")
-    if lang == "en":
-        if not re.search(r"\bdata shared with OpenAI before (?:" + "|".join(EN_MONTHS) + r")\s+[0-9]{1,2},\s*[0-9]{4}", s5):
-            problems.append("the s5 carve-out does not say 'data shared with OpenAI before <date>'")
-        if "directly or through an email-delivery provider" not in s5:
-            problems.append("the sign-in-provider bullet lacks ', directly or through an email-delivery provider' (D9)")
-    elif not AR_DATE.search(s5):
-        problems.append("the AR s5 carve-out carries no date")
+    line = _v3c_text("C5", lang)
+    if line is None or s5.split("\n").count(line) != 1:
+        problems.append("s5 does not carry main's undated carve-out line once")
+    if (EN_DATE if lang == "en" else AR_DATE).findall(s5):
+        problems.append("s5 carries a date")
+    if lang == "en" and "directly or through an email-delivery provider" not in s5:
+        problems.append("the sign-in-provider bullet lacks ', directly or through an email-delivery provider' (D9)")
     assert not problems, _report(f"R4 ({lang}): privacy section 5:", problems)
 
 
@@ -725,20 +800,36 @@ def test_r9_manifest_anthropic_row_public_and_named():
 # =============================================================================================
 
 def test_r10_fill_in_data_and_variants_shape():
-    """RED: d3 'A' (R-S12-4); forks d3_training / openai_retention retired; the dormant forks
-    free_limits / referral_rewards / usage_counters and clauses COMPARE_RUNS_CLAUSE /
-    AUTH_THROTTLE_CLAUSE exist (EN + AR, if_null ""); the ten new placeholder keys exist, the eight
-    dormant ones null, AI_SWITCH_DATE / _AR recorded; openai_store_pinned stays true (R-S12-17)."""
+    """RED, amended V3C (EK10, PATH C OPTION F): d3 'C' (main's answer); openai_store_pinned stays true
+    (R-S12-17); the forks d3_training (answer 'd3', inline 'A', docs ['privacy'], en / ar A and B equal to
+    main's by digest, C = the V3C scoped paragraph built from the fixture: the scoped programme sentence, the
+    governed sentence, the adapted applies sentence, the in-return sentence) and openai_retention (main's
+    block, by digest) are back; the dormant forks free_limits / referral_rewards / usage_counters and clauses
+    COMPARE_RUNS_CLAUSE / AUTH_THROTTLE_CLAUSE exist (EN + AR, if_null ""); the ten new placeholder keys
+    exist, the eight dormant ones null, AI_SWITCH_DATE / _AR recorded."""
     data, variants = _data(), _variants()
     forks, clauses, ph = variants.get("forks") or {}, variants.get("clauses") or {}, _placeholders()
     problems = []
-    if data.get("d3") != "A":
-        problems.append(f"d3 is {data.get('d3')!r} (want 'A': sharing OFF from the switch date)")
+    if data.get("d3") != "C":
+        problems.append(f"d3 is {data.get('d3')!r} (want 'C': PATH C, main's answer)")
     if data.get("openai_store_pinned") is not True:
         problems.append("openai_store_pinned must stay true (R-S12-17)")
-    for name in ("d3_training", "openai_retention"):
-        if name in forks:
-            problems.append(f"fork {name} is not retired")
+    d3f, ret = forks.get("d3_training"), forks.get("openai_retention")
+    if not isinstance(d3f, dict):
+        problems.append("fork d3_training is missing (V3C OPTION F returns it)")
+    else:
+        if d3f.get("answer") != "d3" or d3f.get("inline") != "A" or d3f.get("docs") != ["privacy"]:
+            problems.append("fork d3_training: answer / inline / docs are not main's ('d3', 'A', ['privacy'])")
+        ab = {lang: {k: (d3f.get(lang) or {}).get(k) for k in ("A", "B")} for lang in ("en", "ar")}
+        if _jsha(ab) != MAIN_D3_AB_SHA256:
+            problems.append("fork d3_training: the A / B variants differ from main's")
+        for lang in ("en", "ar"):
+            parts = [_v3c_text("P4s", lang, "ruled"), _v3c_text("P4g", lang), _v3c_text("C2", lang, "ruled"), _v3c_text("P4r", lang)]
+            want = " ".join(parts) if all(parts) else None
+            if want is None or (d3f.get(lang) or {}).get("C") != want:
+                problems.append(f"fork d3_training: {lang}.C is not the V3C scoped paragraph")
+    if not isinstance(ret, dict) or _jsha(ret) != MAIN_RETENTION_FORK_SHA256:
+        problems.append("fork openai_retention is missing or differs from main's block")
     for name, doc in NEW_FORKS.items():
         fork = forks.get(name)
         if not isinstance(fork, dict):
@@ -954,9 +1045,11 @@ def test_r19_dormant_retention_keys_refuse_a_fixed_period_until_cleanup_live():
 # =============================================================================================
 
 def test_r13_switch_date_equals_effective_date_and_terms_version():
-    """RED: AI_SWITCH_DATE (EN "<Month> <D>, <YYYY>") and AI_SWITCH_DATE_AR ("<D> <Gulf month> <YYYY>")
-    parse to the same ISO date as the T6 effective-date anchors and consent_service.TERMS_VERSION, and
-    the filled privacy s4 (EN and AR) carries that date."""
+    """RED, amended V3C (EK11; node id kept, V3C-2 OQ-5): AI_SWITCH_DATE (EN "<Month> <D>, <YYYY>") and
+    AI_SWITCH_DATE_AR ("<D> <Gulf month> <YYYY>") parse to the same ISO date as the T6 effective-date anchors
+    and consent_service.TERMS_VERSION; the placeholder now dates the NOTICE only: the notice line of the
+    privacy policy and of the Terms (EN and AR) carries the value, privacy s4 and s5 carry no date at all,
+    and the value occurs in each document only on its effective-date line and its notice line."""
     ph = _placeholders()
     tv = _terms_version()
     en_value, ar_value = ph.get("AI_SWITCH_DATE"), ph.get("AI_SWITCH_DATE_AR")
@@ -972,11 +1065,20 @@ def test_r13_switch_date_equals_effective_date_and_terms_version():
     for rel, parse in ((PRIVACY_EN, _en_date), (TERMS_EN, _en_date), (PRIVACY_AR, _ar_date), (TERMS_AR, _ar_date)):
         if parse(_read(rel)) != tv:
             problems.append(f"{rel}: the effective-date anchor differs from TERMS_VERSION")
-    if isinstance(en_value, str) and en_value not in (_section(_read(PRIVACY_EN), "4") or ""):
-        problems.append("privacy s4 does not carry the AI_SWITCH_DATE value")
-    if isinstance(ar_value, str) and ar_value not in (_section(_read(PRIVACY_AR), "4") or ""):
-        problems.append("AR privacy s4 does not carry the AI_SWITCH_DATE_AR value")
-    assert not problems, _report("R13: the switch date:", problems)
+    for rel, value, rx in ((PRIVACY_EN, en_value, EN_DATE), (TERMS_EN, en_value, EN_DATE),
+                           (PRIVACY_AR, ar_value, AR_DATE), (TERMS_AR, ar_value, AR_DATE)):
+        text = _read(rel) or ""
+        dated = [line for line in text.split("\n") if isinstance(value, str) and value in line]
+        notice = [line for line in dated if line.startswith("**")]
+        if len(notice) != 1:
+            problems.append(f"{rel}: the notice line does not carry the AI_SWITCH_DATE value once")
+        if len(dated) != 2 or not isinstance(value, str) or text.count(value) != 2 or (notice and dated[1] != notice[0]):
+            problems.append(f"{rel}: the date occurs on {len(dated)} lines (want the effective-date line, then the notice line)")
+    for rel, rx in ((PRIVACY_EN, EN_DATE), (PRIVACY_AR, AR_DATE)):
+        for number in ("4", "5"):
+            if rx.findall(_section(_read(rel), number) or ""):
+                problems.append(f"{rel} s{number} carries a date (nothing about OpenAI is dated, R-V3C-3)")
+    assert not problems, _report("R13: AI_SWITCH_DATE dates the notice:", problems)
 
 
 # =============================================================================================
@@ -984,9 +1086,12 @@ def test_r13_switch_date_equals_effective_date_and_terms_version():
 # =============================================================================================
 
 def test_r14_consent_v3_version_copy_and_fence():
-    """RED: AI_CONSENT_VERSION 3 in aiConsent.ts and the jest setup mirror; aiConsent.body names both
-    providers (EN: 'some or all' requests on OpenAI, R-S12-1), no longer claims OpenAI trains on the data,
-    and ends with the not-sent sentence; the fence pins version 3 and the digest of the current copy."""
+    """RED, amended V3C (EK12, PATH C): AI_CONSENT_VERSION 3 in aiConsent.ts and the jest setup mirror;
+    aiConsent.body names both providers (EN: 'some or all' requests on OpenAI, R-S12-1); the EN body has five
+    sentences and carries main's training sentence (TRAINING_CLAIM_EN) exactly once, directly after the
+    transition sentence (it names OpenAI and 'some or all') and directly before the not-sent final sentence;
+    the AR body carries main's AR sentence (the V3C fixture J8) once at the same index, is not the v2 text;
+    the fence pins version 3 and the digest of the current copy."""
     problems = []
     ts = _read(AI_CONSENT_TS) or ""
     m = re.search(r"export\s+const\s+AI_CONSENT_VERSION\s*=\s*([0-9]+)\s*;", ts)
@@ -1005,13 +1110,21 @@ def test_r14_consent_v3_version_copy_and_fence():
             problems.append(f"AR consent body does not name {name}")
     if not re.search(r"\bsome or all\b", body_en):
         problems.append("EN consent body does not say 'some or all' requests may go to OpenAI (R-S12-1)")
-    if TRAINING_CLAIM_EN.search(body_en):
-        problems.append("EN consent body still says OpenAI uses the data to train its models")
-    if _sha(body_ar) == BASE_AR_CONSENT_BODY_SHA256:
-        problems.append("AR consent body is the v2 text")
     sentences = _sentences(body_en)
+    if len(sentences) != 5:
+        problems.append(f"EN consent body has {len(sentences)} sentences (want 5)")
+    elif len(TRAINING_CLAIM_EN.findall(body_en)) != 1 or not TRAINING_CLAIM_EN.search(sentences[3]):
+        problems.append("EN consent body does not carry main's training sentence once as sentence 4")
+    elif not ("OpenAI" in sentences[2] and re.search(r"\bsome or all\b", sentences[2])):
+        problems.append("the training sentence does not directly follow the transition sentence")
     if not sentences or not all(re.search(p, sentences[-1], re.I) for p in NOT_SENT_EN.values()):
         problems.append("EN consent body does not end with the not-sent sentence")
+    j8 = _v3c_text("J8", "ar")
+    ar_sentences = _sentences(body_ar)
+    if j8 is None or body_ar.count(j8) != 1 or len(ar_sentences) != 5 or ar_sentences[3] != j8:
+        problems.append("AR consent body does not carry main's AR training sentence once as sentence 4")
+    if _sha(body_ar) == BASE_AR_CONSENT_BODY_SHA256:
+        problems.append("AR consent body is the v2 text")
     fence = _read(FENCE_TEST) or ""
     v = re.search(r"PINNED\s*=\s*\{\s*version:\s*([0-9]+)", fence)
     s = re.search(r"sha256:\s*'([0-9a-f]{64})'", fence)
@@ -1061,10 +1174,12 @@ def test_r15_onboarding_step5_names_the_ai_providers():
 # R16 -- OpenAI census (R-S12-7)
 # =============================================================================================
 
-OPENAI_SECTIONS = {PRIVACY_EN: {"2", "4", "5"}, PRIVACY_AR: {"2", "4", "5"}, TERMS_EN: {"8", "13"}, TERMS_AR: {"8", "13"}}
+# V3C EK13: privacy s3 is admitted for main's restored s3.6 legal-basis bullet only (checked by exact text in R16).
+OPENAI_SECTIONS = {PRIVACY_EN: {"2", "3", "4", "5"}, PRIVACY_AR: {"2", "3", "4", "5"}, TERMS_EN: {"8", "13"}, TERMS_AR: {"8", "13"}}
 OPENAI_SENTENCE_CLASSES_EN = (
     ("dual-provider / transition (names Anthropic)", r"\bAnthropic\b"),
-    ("history (the programme in the past)", r"(?i)\bprogramme ended\b|\btook part\b|\bdata[- ]sharing programme\b"),
+    ("the programme (present, scoped; V3C EK13)", r"(?i)\bdata[- ]sharing programme\b|\bthis sharing\b"),
+    ("the carve-out (main's form; V3C EK13)", r"\bExcept as section 4 describes for OpenAI\b"),
     ("carve-out / deletion (data shared with OpenAI)", r"(?i)\bshared with OpenAI\b"),
     ("OpenAI's own retention and no-training facts", r"(?i)\babuse-monitoring\b|\bdoes not use\b|\bno longer\b"),
 )
@@ -1088,21 +1203,35 @@ def _sections_of(text):
 
 @pytest.mark.parametrize("lang", ["en", "ar"])
 def test_r16_openai_census(lang):
-    """RED: R-S12-7 -- 'OpenAI' appears only in privacy s2 / s4 / s5 and Terms s8 / s13 (never in privacy
-    s3.2, s3.3, s3.6 or s8: the four sites the base names it), EN sentences only of the allowed classes
-    (dual-provider, transition, history, carve-out, deletion, OpenAI's own retention), and every landing
-    region names OpenAI exactly as often as its source."""
+    """RED, amended V3C (EK13, PATH C): R-S12-7 -- 'OpenAI' appears only in privacy s2 / s3 / s4 / s5 and Terms
+    s8 / s13; in privacy s3 ONLY inside main's restored legal-basis bullet of s3.6 (the V3C fixture B1, once;
+    never in s3.2, s3.3 or s8); EN sentences only of the allowed classes (dual-provider, transition, the
+    programme in the present tense (scoped), main's carve-out, deletion, OpenAI's own retention, and the
+    adapted applies sentence of s4 by its exact text), and every landing region names OpenAI exactly as often
+    as its source."""
     docs = (PRIVACY_EN, TERMS_EN) if lang == "en" else (PRIVACY_AR, TERMS_AR)
     problems = []
+    b1, applies = _v3c_text("B1", lang), _v3c_text("C2", lang, "ruled")
+    if b1 is None or applies is None:
+        problems.append("the V3C fixture lacks B1 / C2")
     for rel in docs:
         text = _read(rel) or ""
         for number, body in _sections_of(text).items():
             n = body.count("OpenAI")
             if n and number not in OPENAI_SECTIONS[rel]:
                 problems.append(f"{rel} s{number} names OpenAI {n} times (allowed only in {sorted(OPENAI_SECTIONS[rel])})")
+            if n and number == "3" and rel in (PRIVACY_EN, PRIVACY_AR):
+                s36 = _subsection(text, "3.6") or ""
+                if b1 is None or body.count(b1) != 1 or s36.count(b1) != 1 or n != b1.count("OpenAI"):
+                    problems.append(f"{rel} s3 names OpenAI outside the restored s3.6 legal-basis bullet")
+                continue
             if n and lang == "en" and number in OPENAI_SECTIONS[rel]:
                 for sentence in _sentences(body):
-                    if "OpenAI" in sentence and not any(re.search(p, sentence) for _, p in OPENAI_SENTENCE_CLASSES_EN):
+                    if "OpenAI" not in sentence:
+                        continue
+                    if number == "4" and applies and " ".join(sentence.split()) == " ".join(applies.split()):
+                        continue
+                    if not any(re.search(p, sentence) for _, p in OPENAI_SENTENCE_CLASSES_EN):
                         problems.append(f"{rel} s{number}: OpenAI outside the allowed sentences: {sentence[:90]!r}")
         region = _region(_read(PAGE_OF[rel]))
         if region is None or region.count("OpenAI") != text.count("OpenAI"):
@@ -1148,38 +1277,38 @@ def test_r17_privacy_s14_ai_permission_and_device_identifiers(lang):
 # =============================================================================================
 
 def _h1_problems(root):
-    """Problems that keep the PR held: the merge-window record vs TERMS_VERSION vs AI_SWITCH_DATE(_AR)."""
+    """Problems that keep the PR held: the window record vs TERMS_VERSION vs AI_SWITCH_DATE(_AR)."""
     problems = []
     raw = _read(WINDOW, root)
     if raw is None:
-        return [f"{WINDOW} is missing (the merge-window record, R-S12-6)"]
+        return [f"{WINDOW} is missing (the window record: the window date, V3C EK14)"]
     try:
         record = json.loads(raw)
     except ValueError:
         return [f"{WINDOW} is not JSON"]
-    value = record.get("openai_sharing_off_on") if isinstance(record, dict) else None
+    value = record.get("window_date") if isinstance(record, dict) else None
     if not (isinstance(value, str) and ISO_DATE.match(value)):
-        problems.append(f"{WINDOW}: openai_sharing_off_on is {value!r} (the owner's sharing-off date, ISO)")
+        problems.append(f"{WINDOW}: window_date is {value!r} (the window date the owner approves, ISO)")
     tv = _terms_version(root)
     if tv is None:
         problems.append("TERMS_VERSION not readable")
     elif value != tv:
-        problems.append(f"the sharing-off date {value!r} != TERMS_VERSION {tv!r}")
+        problems.append(f"the window date {value!r} != TERMS_VERSION {tv!r}")
     ph = (_data(root).get("placeholders") or {})
     en_iso = _en_date(ph.get("AI_SWITCH_DATE")) if isinstance(ph.get("AI_SWITCH_DATE"), str) else None
     ar_iso = _ar_date(ph.get("AI_SWITCH_DATE_AR")) if isinstance(ph.get("AI_SWITCH_DATE_AR"), str) else None
     if en_iso != value or ar_iso != value:
-        problems.append(f"AI_SWITCH_DATE {en_iso} / AI_SWITCH_DATE_AR {ar_iso} != the sharing-off date {value!r}")
+        problems.append(f"AI_SWITCH_DATE {en_iso} / AI_SWITCH_DATE_AR {ar_iso} != the window date {value!r}")
     return problems
 
 
 def test_h1_merge_window_recorded():
-    """HOLD, RED BY DESIGN until the merge window (R-S12-6): the owner turned OFF OpenAI organisation data
-    sharing (names-only ledger line) and the orchestrator recorded that date in
-    tests/fixtures/legal_v3_window.json equal to TERMS_VERSION and AI_SWITCH_DATE(_AR) (re-date recipe G).
-    The PR does not merge while this row is red."""
+    """HOLD, RED BY DESIGN until the window commit records the WINDOW DATE (PATH C, RULINGS_ITEM26_S81_12
+    IT26-9 (c); V3C EK14): the orchestrator records the window date the owner approves in
+    tests/fixtures/legal_v3_window.json ({"window_date": "<YYYY-MM-DD>"}) equal to TERMS_VERSION and
+    AI_SWITCH_DATE(_AR) (re-date recipe G). The PR does not merge while this row is red."""
     problems = _h1_problems(REPO)
-    assert not problems, _report("H1 (hold): the merge window is not recorded:", problems)
+    assert not problems, _report("H1 (hold): the window date is not recorded:", problems)
 
 
 def _h1_tree(root, record, en, ar, tv):
@@ -1189,7 +1318,7 @@ def _h1_tree(root, record, en, ar, tv):
     (root / CONSENT_SERVICE).write_text(f'TERMS_VERSION = "{tv}"\n', encoding="utf-8")
     (root / FILL_IN).write_text(json.dumps({"placeholders": {"AI_SWITCH_DATE": en, "AI_SWITCH_DATE_AR": ar}}), encoding="utf-8")
     if record is not ...:
-        (root / WINDOW).write_text(json.dumps({"_comment": "synthetic", "openai_sharing_off_on": record}), encoding="utf-8")
+        (root / WINDOW).write_text(json.dumps({"_comment": "synthetic", "window_date": record}), encoding="utf-8")
 
 
 def test_h1b_hold_logic_proven_on_temp_copies(tmp_path):

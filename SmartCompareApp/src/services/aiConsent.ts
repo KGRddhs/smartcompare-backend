@@ -38,13 +38,15 @@
  * clashes with the sheet's own dismissal.
  *
  * The sheet copy must stay true of what the code sends — see the aiConsent.*
- * keys and the evidence in the U3 PR. It must NOT promise an opt-out: there is
- * no per-user AI-sharing control (the Profile toggle is gone). S81-12 (consent
- * v3): the body names both AI providers, Anthropic and OpenAI, and says that
- * until the move to Anthropic is complete some or all requests, including
- * photos, are processed by OpenAI; OpenAI's data-sharing programme (decision
- * D3 = C, S75 U3b) ended on the AI switch date, so the v2 training sentence is
- * gone. The version moved 2 -> 3, so every user is asked once more.
+ * keys and the evidence in the U3 PR. It must NOT promise an opt-out: under
+ * decision D3 = C (S75 U3b) the organisation shares the compare inputs and
+ * outputs with OpenAI, the body discloses that in one sentence, and there is
+ * no per-user AI-sharing control (the Profile toggle is gone).
+ * S81-12 (consent v3): the body names both AI providers, Anthropic and OpenAI,
+ * and says that until the move to Anthropic is complete some or all requests,
+ * including photos, are processed by OpenAI; the training sentence stays
+ * directly after that transition sentence (V3C, PATH C). The version moved
+ * 2 -> 3 because the providers changed, so every user is asked once more.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

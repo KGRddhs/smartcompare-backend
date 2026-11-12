@@ -689,7 +689,7 @@
   "notifications.prePrompt.allow": "Allow notifications",
   "notifications.prePrompt.notNow": "Not now",
   "aiConsent.title": "Your comparison is written with AI",
-  "aiConsent.body": "To identify the products and write your comparison, MYEZ sends the product names, links (with the text of those pages) or photos you take or pick to its AI providers, Anthropic and OpenAI. It may also send the preferences on your profile (including ones suggested from your onboarding answers), such as priorities and budget level, and your country, language and area. We are moving this processing to Anthropic; until the move is complete, some or all requests, including photos, are processed by OpenAI. Your name, email and account details are not sent.",
+  "aiConsent.body": "To identify the products and write your comparison, MYEZ sends the product names, links (with the text of those pages) or photos you take or pick to its AI providers, Anthropic and OpenAI. It may also send the preferences on your profile (including ones suggested from your onboarding answers), such as priorities and budget level, and your country, language and area. We are moving this processing to Anthropic; until the move is complete, some or all requests, including photos, are processed by OpenAI. OpenAI may use these inputs and the outputs it generates from them to identify usage patterns, measure model quality and inform the evaluation and training of its models. Your name, email and account details are not sent.",
   "aiConsent.link": "Read more in the Privacy Policy",
   "aiConsent.agree": "Agree and continue",
   "aiConsent.notNow": "Not now",

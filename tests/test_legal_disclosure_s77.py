@@ -48,6 +48,7 @@ D3C_FIXTURE = "tests/fixtures/legal_d3c_u8.json"
 D3C_TESTS = "tests/test_legal_docs_u8_d3c.py"
 RENDERER = "scripts/render_legal_landing.py"
 FILL_SCRIPT = "scripts/fill_in_legal.py"
+V3C_FIXTURE = "tests/fixtures/legal_v3c_live_sentences.json"  # V3C (D2 ADAPTED)
 VARIANTS = "scripts/legal_variants_u8.json"
 FILL_IN = "tests/fixtures/legal_fill_in_u8.json"
 PREFILL = "tests/fixtures/legal_prefill_u8"
@@ -76,27 +77,14 @@ EM_DASH = chr(0x2014)
 # ---------------------------------------------------------------------------
 
 # RL10: the general promise, then the spec's disclosure sentence(s).
-# S81-12 (LEGAL-V3, rulings R-S12-1 / R-S12-4; a deliberate pin change of D1-D4, whose bodies D5 / D10 read
-# through these constants unchanged): OpenAI's data-sharing programme ended on the AI switch date, so the general
-# promise is bare (R3 of tests/test_s81_12_legal_v3.py) and the disclosure tells the programme in the past tense.
-# The S77 sentences moved to RETIRED_EN (never deleted).
-GENERAL_S77_EN = (
+GENERAL_EN = (
     "Apart from OpenAI's data-sharing programme described below, we do not sell or otherwise exchange your personal "
     "data for anything of value, and we do not share it with data brokers or advertisers."
 )
-P2_DISCLOSURE_S77_EN = (
+P2_DISCLOSURE_EN = (
     "We take part in OpenAI's data-sharing programme (section 4): OpenAI may use the inputs we send it and the outputs "
     "it generates from them to evaluate and train its models, and in return OpenAI gives us some free use of its "
     "service."
-)
-GENERAL_EN = (
-    "We do not sell or otherwise exchange your personal data for anything of value, and we do not share it with "
-    "data brokers or advertisers."
-)
-P2_DISCLOSURE_EN = (
-    "We took part in OpenAI's data-sharing programme, under which OpenAI could use the inputs we sent it and the "
-    "outputs it generated from them to evaluate and train its models in return for some free use of its service; "
-    "our part in it has ended (section 4)."
 )
 P2_NEW_EN = GENERAL_EN + " " + P2_DISCLOSURE_EN
 P2_OLD_EN = (
@@ -108,12 +96,7 @@ NARROW_EN = "We do not sell your personal data to data brokers or advertisers, a
 S2_KEYWORDS_EN = (r"data-sharing programme", r"evaluate and train its models", r"in return", r"free use of its service")
 
 P4_ANCHOR_EN = "This applies to every comparison, and the App has no separate setting for it."
-# S81-12: the exchange is told in the past, in the dated history sentence of privacy s4 (its date-free head).
-EXCHANGE_S77_EN = "In return for this sharing, OpenAI gives us some free use of its service."
-EXCHANGE_EN = (
-    "We took part in OpenAI's data-sharing programme, which let OpenAI use the inputs we sent it and the outputs it "
-    "generated from them to evaluate and train its models in return for some free use of its service;"
-)
+EXCHANGE_EN = "In return for this sharing, OpenAI gives us some free use of its service."
 PHOTOS_EN = (
     "Please photograph products only, and do not include people, documents, payment cards or other personal or "
     "health details in your photos or searches."
@@ -150,14 +133,10 @@ OWN_TERMS_S77_EN = (
 )
 OWN_TERMS_OLD_EN = "Retailer websites (section 6) and the sign-in providers Apple and Google act under their own terms."
 
-T8_DISCLOSURE_S77_EN = (
+T8_DISCLOSURE_EN = (
     "We take part in OpenAI's data-sharing programme, as section 4 of our Privacy Policy describes: OpenAI may use the "
     "inputs we send it and the outputs it generates from them to evaluate and train its models, and in return OpenAI "
     "gives us some free use of its service."
-)
-T8_DISCLOSURE_EN = (
-    "We took part in OpenAI's data-sharing programme, as section 4 of our Privacy Policy describes; our part in it "
-    "has ended."
 )
 T8_TAIL_EN = "; none of it identifies you. " + GENERAL_EN + " " + T8_DISCLOSURE_EN
 T8_OLD_TAIL_EN = "; none of it identifies you, and your personal data is never sold."
@@ -188,12 +167,6 @@ RETIRED_EN = (
     OWN_TERMS_S77_EN,
     S7_S77_EN,
     "and to Google as our mailbox provider, which handles email under its own terms (section 5).",
-    # S81-12 (R-S12-4): the S77 present-tense programme sentences and the programme qualifier of the promise.
-    GENERAL_S77_EN,
-    P2_DISCLOSURE_S77_EN,
-    EXCHANGE_S77_EN,
-    P4_ANCHOR_EN,
-    T8_DISCLOSURE_S77_EN,
 )
 
 # Landing (spec L1, L3, L4).
@@ -363,17 +336,15 @@ def _en_not_sold_problems(text):
 
 
 def _ar_not_sold_problems(text, fx):
-    """RL10 (AR, structure) as amended by S81-12 (R-S12-4; R3 of tests/test_s81_12_legal_v3.py): every AR 'we do not
-    sell your personal data' is not followed by the narrowing qualifier (to data brokers or advertisers) and is no
-    longer qualified by OpenAI's programme (that exception ended on the AI switch date): the AR 'apart from
-    OpenAI's programme' head may not sit in its sentence."""
-    head, qualifier, apart = fx["not_sold_head_ar"], fx["narrow_qualifier_ar"], fx["apart_programme_ar"]
+    """RL10 (AR, structure): every AR 'we do not sell your personal data' is not followed by the narrowing qualifier
+    (to data brokers or advertisers) and sits in a sentence that names OpenAI (the programme exception)."""
+    head, qualifier = fx["not_sold_head_ar"], fx["narrow_qualifier_ar"]
     problems = []
     for m in re.finditer(re.escape(head), text):
         if text[m.end():].startswith(qualifier):
             problems.append("AR not-sold head followed by the narrowing qualifier at %d" % m.start())
-        if apart in _sentence_around(text, m.start(), m.end()):
-            problems.append("AR not-sold head at %d is still qualified by OpenAI's programme (it ended)" % m.start())
+        if "OpenAI" not in _sentence_around(text, m.start(), m.end()):
+            problems.append("AR not-sold head at %d is not in a sentence naming OpenAI (no programme exception)" % m.start())
     return problems
 
 
@@ -389,9 +360,8 @@ def _texts_with_snapshot(rel):
 
 
 def _ar_general_problems(where, section, disclosure, fx, after=None):
-    """RL10 AR structure inside one section: the disclosure sentence once; an AR not-sold head that names data brokers
-    and advertisers, BEFORE the disclosure (and after `after` when given), never narrowed. S81-12 (R-S12-4): the
-    promise no longer names OpenAI (the programme exception ended; the disclosure tells it in the past)."""
+    """RL10 AR structure inside one section: the disclosure sentence once; an AR not-sold head that names OpenAI,
+    data brokers and advertisers, BEFORE the disclosure (and after `after` when given), never narrowed."""
     problems = []
     if section.count(disclosure) != 1:
         problems.append(f"{where}: the AR disclosure sentence is there {section.count(disclosure)} time(s), not once")
@@ -405,6 +375,8 @@ def _ar_general_problems(where, section, disclosure, fx, after=None):
     for name in ("brokers_ar", "advertisers_ar"):
         if fx[name] not in sentence:
             problems.append(f"{where}: the AR general promise lacks {name}")
+    if "OpenAI" not in sentence:
+        problems.append(f"{where}: the AR general promise does not name OpenAI (the programme exception)")
     if after is not None and not (after in section and section.index(after) < hits[-1].start()):
         problems.append(f"{where}: the AR general promise does not follow {_esc(after[:40])!r}")
     problems += _ar_not_sold_problems(section, fx)
@@ -423,7 +395,7 @@ def test_s77_d1_privacy_s2_discloses_the_openai_exchange(lang):
     'data-sharing programme', 'evaluate and train its models', 'in return', 'free use of its service'. AR: the
     spec's AR disclosure sentence occurs once in s2; the AR general promise (the not-sold head in a sentence naming
     OpenAI, data brokers and advertisers, never narrowed) precedes it; the aggregated sentence follows it in the same
-    paragraph. RED at base: the sentences are absent. Amended S81-12 (R-S12-4): the general promise is bare and the disclosure is the past-tense history sentence."""
+    paragraph. RED at base: the sentences are absent."""
     fx, d3c = _fx(), _d3c()
     aggregated = d3c.PRIVACY_AGG_EN if lang == "en" else _d3c_fx()["ug12_ar"]["privacy_aggregated"]
     problems = []
@@ -454,36 +426,58 @@ def test_s77_d1_privacy_s2_discloses_the_openai_exchange(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_s77_d2_privacy_s4_states_the_exchange_and_the_photo_guidance(lang):
-    """D2, amended S81-12 (R-S12-1 / R-S12-4, a deliberate pin change; node name kept): the live privacy s4 holds the
-    exchange, told in the past (the date-free head of the history sentence, EXCHANGE_EN / the fixture's
-    privacy_s4_exchange_ar), dated in the same line with the fill-in data's AI_SWITCH_DATE / _AR, and the photo
-    guidance, exactly once each and in that order; the forks d3_training and openai_retention are retired from the
-    variants file; the S77 exchange sentence and the 'no separate setting' anchor are gone. RED against the base
-    bytes (the C fork is selected there)."""
+    """D2, ADAPTED by V3C (PATH C of item 26, RULINGS_V3C_S81_12 V3C-6 (1); node name kept): the live privacy s4
+    holds, each exactly once and in this order inside ONE paragraph, the scoped programme sentence, the governed
+    sentence, the adapted 'applies' sentence (C2), the exchange sentence and the openai_retention sentence
+    (forks.openai_retention.<lang>.true), and the photo guidance exactly once in the paragraph directly after it
+    (the head's own paragraph, advice for every AI request: V3C OQ-2); the V3C sentences come from
+    tests/fixtures/legal_v3c_live_sentences.json; forks.d3_training.<lang>.C ends with ' ' + exchange; variants A
+    and B carry neither; main's unscoped 'no separate setting' anchor ('every comparison') is absent."""
     fx = _fx()
-    placeholders = _json(FILL_IN)["placeholders"]
+    variants = _json(VARIANTS)
+    v3c = _json(V3C_FIXTURE) or {}
+
+    def entry(block, rid):
+        for item in v3c.get(block) or []:
+            if isinstance(item, dict) and item.get("id") == rid and item.get("lang") == lang:
+                return item.get("text")
+        return None
+
     if lang == "en":
-        exchange, photos, date = EXCHANGE_EN, PHOTOS_EN, placeholders.get("AI_SWITCH_DATE")
-        retired = (EXCHANGE_S77_EN, P4_ANCHOR_EN)
+        anchor, exchange, photos = P4_ANCHOR_EN, EXCHANGE_EN, PHOTOS_EN
     else:
-        exchange, photos = fx["privacy_s4_exchange_ar"], fx["privacy_s4_photos_ar"]
-        date, retired = placeholders.get("AI_SWITCH_DATE_AR"), (fx["privacy_s4_exchange_s77_ar"], fx["privacy_s4_anchor_ar"])
+        anchor, exchange, photos = fx["privacy_s4_anchor_ar"], fx["privacy_s4_exchange_ar"], fx["privacy_s4_photos_ar"]
+    retention = variants["forks"]["openai_retention"][lang]["true"]
+    seq = [entry("ruled", "P4s"), entry("live", "P4g"), entry("ruled", "C2"), exchange, retention]
     text = _read(PRIVACY[lang])
     s4 = _section(text, 4)
     problems = []
-    for name, sentence in (("exchange", exchange), ("photos", photos)):
-        if text.count(sentence) != 1 or sentence not in s4:
-            problems.append(f"{PRIVACY[lang]} s4: the {name} sentence is not there exactly once")
+    if not all(isinstance(s, str) and s for s in seq):
+        problems.append(f"{V3C_FIXTURE}: the P4s / P4g / C2 entries are missing")
+    else:
+        names = ("scoped programme", "governed", "applies", "exchange", "retention", "photo guidance")
+        for name, sentence in zip(names, seq + [photos]):
+            if text.count(sentence) != 1 or sentence not in s4:
+                problems.append(f"{PRIVACY[lang]} s4: the {name} sentence is not there exactly once")
     if not problems:
-        line = s4[s4.index(exchange):].split("\n", 1)[0]
-        if not (isinstance(date, str) and date and date in line):
-            problems.append(f"{PRIVACY[lang]} s4: the exchange is not dated with AI_SWITCH_DATE in its line")
-        if s4.index(exchange) > s4.index(photos):
-            problems.append(f"{PRIVACY[lang]} s4: the photo guidance precedes the exchange")
-    forks = _json(VARIANTS)["forks"]
-    problems += [f"{VARIANTS}: fork {name} is not retired" for name in ("d3_training", "openai_retention") if name in forks]
-    problems += [f"{PRIVACY[lang]}: retired S77 wording {_esc(r[:50])!r}" for r in retired if r in text]
+        paras = [p for p in s4.split("\n") if p.strip()]
+        para = [p for p in paras if exchange in p][0]
+        order = [para.find(s) for s in seq]
+        if -1 in order or order != sorted(order):
+            problems.append(f"{PRIVACY[lang]} s4: not scoped < governed < applies < exchange < retention in one paragraph ({order})")
+        i = paras.index(para)
+        if i + 1 >= len(paras) or photos not in paras[i + 1] or photos in para:
+            problems.append(f"{PRIVACY[lang]} s4: the photo guidance is not in the paragraph after the OpenAI paragraph")
+    if anchor in text:
+        problems.append(f"{PRIVACY[lang]}: main's unscoped 'every comparison' anchor is back")
+    fork = variants["forks"]["d3_training"][lang]
+    if not fork.get("C", "").endswith(" " + exchange):
+        problems.append(f"{VARIANTS}: forks.d3_training.{lang}.C does not end with the exchange sentence")
+    for variant in ("A", "B"):
+        if exchange in fork.get(variant, "") or photos in fork.get(variant, ""):
+            problems.append(f"{VARIANTS}: forks.d3_training.{lang}.{variant} carries the C-only exchange text")
     assert not problems, [_esc(p) for p in problems]
+
 
 # ---------------------------------------------------------------------------
 # D3 terms s8 (RL10)
@@ -495,7 +489,7 @@ def test_s77_d3_terms_s8_discloses_the_openai_exchange(lang):
     """D3 (RL10): terms s8, live and snapshot. EN: the tail '; none of it identifies you. ' + general promise +
     ' ' + terms disclosure sentence occurs exactly once in s8, after the licence sentence. AR: the 'none of it
     identifies you.' sentence, then the AR general promise (structure as D1), then the spec's AR terms disclosure
-    sentence, each after the licence sentence. RED at base. Amended S81-12 (R-S12-4): the general promise is bare and the disclosure is the past-tense history sentence."""
+    sentence, each after the licence sentence. RED at base."""
     fx, d3c = _fx(), _d3c()
     problems = []
     for where, text in _texts_with_snapshot(TERMS[lang]):
@@ -527,7 +521,7 @@ def test_s77_d4_no_bare_not_sold_sentence():
     inside the general promise and nothing says 'personal data is never sold'; every AR not-sold head is never
     followed by the narrowing qualifier and names OpenAI in its sentence; no retired EN / AR wording occurs. Positive
     control: the check flags the base P2 sentence, the base T8 tail, the spec's Option-B narrowing (EN + AR) and a
-    bare AR head. RED at base: the bare sentences are present. Amended S81-12 (R-S12-4): the AR control now flags the S77 programme-qualified promise; the bare head passes."""
+    bare AR head. RED at base: the bare sentences are present."""
     fx = _fx()
     # Positive control first (it holds at base and after the change).
     assert _en_not_sold_problems(P2_OLD_EN), "control: the base P2 sentence must be flagged"
@@ -535,9 +529,7 @@ def test_s77_d4_no_bare_not_sold_sentence():
     assert _en_not_sold_problems(NARROW_EN), "control: the Option-B narrowing must be flagged"
     assert not _en_not_sold_problems(P2_NEW_EN) and not _en_not_sold_problems(T8_TAIL_EN), "control: RL10 text passes"
     assert _ar_not_sold_problems(fx["narrow_promise_ar"], fx), "control: the AR narrowing must be flagged"
-    # S81-12 (R-S12-4): the bare AR head is the required v3 form; the S77 programme-qualified promise is flagged.
-    assert not _ar_not_sold_problems(fx["not_sold_head_ar"] + ".", fx), "control: the bare AR head (v3) passes"
-    assert _ar_not_sold_problems(fx["general_promise_s77_ar"], fx), "control: the S77 qualified promise must be flagged"
+    assert _ar_not_sold_problems(fx["not_sold_head_ar"] + ".", fx), "control: a bare AR head must be flagged"
     assert [r for r in fx["retired_ar"] if r], "control: the retired AR list is empty"
     texts = []
     for rel in LEGAL_SOURCES:
