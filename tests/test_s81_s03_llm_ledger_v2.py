@@ -193,7 +193,7 @@ B5_BASE_TOTAL_COST = 0.017175
 # Re-recorded DELIBERATELY by MON1 LLM-CREDENTIAL-HEALTH (gate GC-4 E1): the
 # credential-health hooks H1-H4 (the note_failure / note_success observers on both
 # branches; gating unchanged).
-K1_GUARDED_AST_SHA = "372cee1c8" + "d448ee35656cc891f83bc96902dc08ddf2e2ceb1fe5a928ab5733aa"
+K1_GUARDED_AST_SHA = "d93d6b0a0" + "38826f6977c28d43e7b8f70dcdb30ad48d2258d87fd6c730eedd4ce"
 K2_OPENAI_PRICING_LF_SHA = "0406b617bd91b2a1ea5a5bac" + "d37fd48e28e106ed99991bfec9087d144ec14094"
 
 # The base literal of OPENAI_COST_NOTE (admin_routes.py:133-139 at 95cf6f86).

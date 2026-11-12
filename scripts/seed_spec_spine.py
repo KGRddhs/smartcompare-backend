@@ -378,6 +378,10 @@ async def extract_spine_specs(
 
     prompt = _seed_prompt(brand, name, pages)
     try:
+        # S81-12d: with ENABLE_OPENAI_EGRESS_STOP ON in this shell, no OpenAI call
+        # is made; the existing except arm below logs and returns {}.
+        from app.services import api_budget_service as _abs
+        _abs.stop_openai_egress_if_enabled("script")
         response = await get_client().chat.completions.create(
             model=standard_model(),
             messages=[

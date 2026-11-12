@@ -60,10 +60,18 @@ def probe_interval() -> float:
 
 def _metadata_call(provider: str):
     """The awaitable of one metadata call, or None when the provider has no
-    credential to probe. Raises when the client cannot be built."""
+    credential to probe. Raises when the client cannot be built.
+
+    S81-12d (GATE GC-5, H5): while ENABLE_OPENAI_EGRESS_STOP is ON the openai
+    branch raises OpenAIEgressStoppedError before any client is built, so nothing
+    reaching this function can call OpenAI (the in-use rule already keeps the
+    probe pass away from it). No log line of its own."""
+    from app.services import api_budget_service as _abs
     from app.services import model_config
 
     if provider == "openai":
+        if _abs.openai_egress_stop_enabled():
+            raise _abs.OpenAIEgressStoppedError(_abs.OPENAI_EGRESS_STOP_MESSAGE)
         from app.services import openai_service
 
         client = openai_service.get_client().with_options(

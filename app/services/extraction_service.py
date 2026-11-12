@@ -2857,7 +2857,7 @@ Primary concern: {neutralize_prompt_tags(f"{concern}")}
         # type, GC-3) so both compare entries map it to the coded 503
         # LLM_UNAVAILABLE. Every role flag OFF: the base delivery below.
         # S81-04c: role flags OFF the class logs the same WARNING by type and keeps the base delivery.
-        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError):
+        if _llm_router.any_role_enabled() and isinstance(e, _llm_breaker.LLMUnavailableError) and not isinstance(e, _llm_breaker.OpenAIEgressStoppedError):
             logger.warning("Comparison generation error: %s", type(e).__name__)
             raise
         if isinstance(e, _llm_breaker.LLMUnavailableError):
