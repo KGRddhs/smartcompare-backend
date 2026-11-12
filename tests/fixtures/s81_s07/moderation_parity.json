@@ -1,0 +1,802 @@
+[
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m001",
+  "lang": "ar",
+  "shape": "l4",
+  "text": "\u064a\u0633\u0644 | \u064a\u0633\u0644 \u0648\u0628\u064a\u0648\u0645 | 100 \u0645\u0644"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m002",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Dior Poison wins on longevity over Guerlain Shalimar; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m003",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Calvin Klein Obsession wins on longevity over Armani Acqua di Gio; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m004",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0645\u0648\u062c\u0644\u064a\u0631 \u0627\u0646\u062c\u064a\u0644 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0644\u0627\u0646\u0643\u0648\u0645\u064a \u0644\u0627 \u0641\u064a\u064a \u064a\u0633\u062a \u0628\u064a\u0644\u0644\u064a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m005",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Kilian Good Girl Gone Bad wins on longevity over Le Labo Santal 33; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m006",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Etat Libre Orange Sex Lab wins on longevity over Amouage Interlude; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m007",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u062c\u064a\u0641\u064a\u0646\u0643\u0647\u064a \u062c\u064a\u0646\u062a\u0644\u064a\u0645\u0627\u0646 \u0633\u0648\u0643\u064a\u064a\u062a\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u064a\u0646\u064a\u062a\u064a\u0648 \u0648\u0648\u062f \u0641\u0648\u0631 \u062c\u0631\u064a\u0627\u062a\u0646\u064a\u0633\u0633; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m008",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Tom | Tom Ford Lost Cherry | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m009",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Kilian Love Dont Be Shy wins on longevity over Mugler Alien; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m010",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u062c\u0648\u0644\u064a\u064a\u062a\u062a\u064a \u0647\u0627\u0633 \u0627 \u062c\u0648\u0646 \u0646\u0648\u062a \u0627 \u0628\u064a\u0631\u0641\u0648\u0645\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0641\u064a\u0643\u062a\u0648\u0631 \u0631\u0648\u0644\u0641 \u0641\u0644\u0648\u0648\u064a\u0631\u0628\u0648\u0645\u0628; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m011",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Byredo Bal d Afrique wins on longevity over Bvlgari Aqva; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m012",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Mugler Alien Goddess wins on longevity over Issey Miyake L Eau d Issey; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m013",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u062f\u064a\u0648\u0631 \u0647\u064a\u0628\u0646\u0648\u062a\u064a\u0643 \u0628\u0648\u064a\u0633\u0648\u0646 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u062f\u0627\u0641\u064a\u062f\u0648\u0641\u0641 \u0643\u0648\u0648\u0644 \u0648\u0627\u062a\u064a\u0631; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m014",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Tom Ford Black Orchid wins on longevity over Chloe Eau de Parfum; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m015",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Kilian | Kilian Forbidden Games | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m016",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u062c\u0648\u0643\u0643\u064a \u062c\u0648\u064a\u0644\u062a\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0645\u0627\u0646\u0643\u064a\u0631\u0627 \u0643\u064a\u062f\u0631\u0627\u062a \u0628\u0648\u064a\u0633\u064a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m017",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Versace Crystal Noir wins on longevity over Rasasi Hawas; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m018",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Escentric Molecule 01 wins on longevity over Creed Aventus; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m019",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0641\u064a\u0643\u062a\u0648\u0631 \u0631\u0648\u0644\u0641 \u0633\u0628\u064a\u0643\u064a\u0628\u0648\u0645\u0628 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0647\u064a\u0631\u0645\u064a\u0633 \u062a\u064a\u0631\u0631\u064a \u062f \u0647\u064a\u0631\u0645\u064a\u0633; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m020",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Thierry Mugler Womanity wins on longevity over Versace Eros; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m021",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: YSL Opium wins on longevity over Jo Malone Wood Sage; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m022",
+  "lang": "ar",
+  "shape": "l4",
+  "text": "\u062f\u064a\u0648\u0631 | \u062f\u064a\u0648\u0631 \u0628\u0648\u064a\u0633\u0648\u0646 | 100 \u0645\u0644"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m023",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Calvin Klein Obsession wins on longevity over Xerjoff Naxos; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m024",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Mugler Angel wins on longevity over Burberry Hero; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m025",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0628\u0627\u0643\u0648 \u0631\u0627\u0628\u0627\u0646\u0646\u064a 1 \u0645\u064a\u0644\u0644\u064a\u0648\u0646 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u062c\u064a\u0641\u064a\u0646\u0643\u0647\u064a \u062c\u064a\u0646\u062a\u0644\u064a\u0645\u0627\u0646; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m026",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Mugler Alien wins on longevity over Narciso Rodriguez For Her; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m027",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Narciso Rodriguez For Her wins on longevity over Hugo Boss Bottled; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m028",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0643\u0627\u0631\u0648\u0644\u064a\u0646\u0627 \u0647\u064a\u0631\u0631\u064a\u0631\u0627 \u062c\u0648\u0648\u062f \u062c\u064a\u0631\u0644 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0643\u0627\u0631\u062a\u064a\u064a\u0631 \u062f\u064a\u0643\u0644\u0627\u0631\u0627\u062a\u064a\u0648\u0646; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m029",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Viktor | Viktor Rolf Flowerbomb | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m030",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Hugo Boss Bottled wins on longevity over Calvin Klein Eternity; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m031",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0645\u0648\u0646\u062a\u0628\u0644\u0627\u0646\u0643 \u064a\u0643\u0628\u0644\u0648\u0631\u064a\u0631 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0645\u0627\u0631\u0643 \u062c\u0627\u0643\u0648\u0628\u0633 \u062f\u0627\u064a\u0633\u064a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m032",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Bvlgari Aqva wins on longevity over Elizabeth Arden Red Door; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m033",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Cartier Declaration wins on longevity over Montale Black Aoud; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m034",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u062f\u0648\u0644\u0643\u064a \u062c\u0627\u0628\u0628\u0627\u0646\u0627 \u0644\u064a\u062c\u0647\u062a \u0628\u0644\u0648\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u062f\u064a\u0648\u0631 \u0633\u0627\u0648\u0641\u0627\u062c\u064a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m035",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Issey Miyake L Eau d Issey wins on longevity over Tom Ford Oud Wood; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m036",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Azzaro | Azzaro Wanted | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m037",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0631\u0627\u0644\u0628\u0647 \u0644\u0627\u0648\u0631\u064a\u0646 \u0628\u0648\u0644\u0648 \u0628\u0644\u0648\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u064a\u0633\u0644 \u0644\u064a\u0628\u0631\u064a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m038",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Davidoff Cool Water wins on longevity over Byredo Gypsy Water; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m039",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Calvin Klein Eternity wins on longevity over Kilian Angels Share; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m040",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0643\u064a\u0646\u0632\u0648 \u0641\u0644\u0648\u0648\u064a\u0631 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0628\u0627\u0631\u0641\u0648\u0645\u0633 \u062f\u064a \u0645\u0627\u0631\u0644\u064a \u0644\u0627\u064a\u062a\u0648\u0646; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m041",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Chloe Eau de Parfum wins on longevity over Gucci Bloom; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m042",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Marc Jacobs Daisy wins on longevity over Paco Rabanne 1 Million; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m043",
+  "lang": "ar",
+  "shape": "l4",
+  "text": "\u064a\u0633\u062a\u064a\u064a | \u064a\u0633\u062a\u064a\u064a \u0644\u0627\u0648\u062f\u064a\u0631 \u0628\u064a\u0627\u0648\u062a\u064a\u0641\u0648\u0644 | 100 \u0645\u0644"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m044",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Clinique Happy wins on longevity over Montblanc Explorer; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m045",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Elizabeth Arden Red Door wins on longevity over Dolce Gabbana Light Blue; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m046",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0646\u064a\u0633\u0647\u0627\u0646\u064a \u0647\u0627\u0643\u064a\u0641\u0627\u062a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0631\u0627\u0644\u0628\u0647 \u0644\u0627\u0648\u0631\u064a\u0646 \u0628\u0648\u0644\u0648 \u0628\u0644\u0648\u064a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m047",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Mancera Cedrat Boise wins on longevity over Kenzo Flower; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m048",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Montale Black Aoud wins on longevity over Estee Lauder Beautiful; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m049",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0644\u0627\u062a\u062a\u0627\u0641\u0627 \u0643\u0647\u0627\u0645\u0631\u0627\u0647 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0646\u064a\u0633\u0647\u0627\u0646\u064a \u0647\u0627\u0643\u064a\u0641\u0627\u062a; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m050",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Rasasi | Rasasi Hawas | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m051",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Dior Sauvage wins on longevity over Chanel Bleu de Chanel; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m052",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0643\u0647\u0627\u0646\u064a\u0644 \u0628\u0644\u064a\u0648 \u062f\u064a \u0643\u0647\u0627\u0646\u064a\u0644 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u062c\u0648\u064a\u0631\u0644\u0627\u064a\u0646 \u0633\u0647\u0627\u0644\u064a\u0645\u0627\u0631; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m053",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Creed Aventus wins on longevity over Armani Acqua di Gio; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m054",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Tom Ford Oud Wood wins on longevity over Lancome La Vie Est Belle; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m055",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u062c\u0648\u064a\u0631\u0644\u0627\u064a\u0646 \u0633\u0647\u0627\u0644\u064a\u0645\u0627\u0631 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0644\u064a \u0644\u0627\u0628\u0648 \u0633\u0627\u0646\u062a\u0627\u0644 33; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m056",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Hermes Terre d Hermes wins on longevity over Amouage Interlude; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m057",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Prada | Prada Luna Rossa | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m058",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0627\u0631\u0645\u0627\u0646\u064a \u0627\u0643\u0642\u0648\u0627 \u062f\u064a \u062c\u064a\u0648 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0641\u0627\u0644\u064a\u0646\u062a\u064a\u0646\u0648 \u0648\u0648\u0645\u0648; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m059",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Versace Eros wins on longevity over Mugler Alien; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m060",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: YSL Libre wins on longevity over Viktor Rolf Flowerbomb; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m061",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0644\u0627\u0646\u0643\u0648\u0645\u064a \u0644\u0627 \u0641\u064a\u064a \u064a\u0633\u062a \u0628\u064a\u0644\u0644\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0628\u0641\u0644\u062c\u0627\u0631\u064a \u0627\u0642\u0641\u0627; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m062",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Jo Malone Wood Sage wins on longevity over Issey Miyake L Eau d Issey; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m063",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Byredo Gypsy Water wins on longevity over Davidoff Cool Water; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m064",
+  "lang": "ar",
+  "shape": "l4",
+  "text": "\u0644\u064a | \u0644\u064a \u0644\u0627\u0628\u0648 \u0633\u0627\u0646\u062a\u0627\u0644 33 | 100 \u0645\u0644"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m065",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Maison Margiela Jazz Club wins on longevity over Clinique Happy; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m066",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Kilian Angels Share wins on longevity over Mancera Cedrat Boise; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m067",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0627\u0645\u0648\u0648\u0627\u062c\u064a \u064a\u0646\u062a\u064a\u0631\u0644\u0648\u062f\u064a \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0631\u0627\u0633\u0627\u0633\u064a \u0647\u0627\u0648\u0627\u0633; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m068",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Xerjoff Naxos wins on longevity over Creed Aventus; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m069",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Parfums de Marly Layton wins on longevity over Hermes Terre d Hermes; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m070",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u064a\u0646\u064a\u062a\u064a\u0648 \u0648\u0648\u062f \u0641\u0648\u0631 \u062c\u0631\u064a\u0627\u062a\u0646\u064a\u0633\u0633 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0641\u064a\u0631\u0633\u0627\u0643\u064a \u064a\u0631\u0648\u0633; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m071",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Burberry | Burberry Hero | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m072",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Gucci Bloom wins on longevity over Maison Margiela Jazz Club; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m073",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0641\u0627\u0644\u064a\u0646\u062a\u064a\u0646\u0648 \u0648\u0648\u0645\u0648 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0643\u064a\u0631\u062c\u0648\u0641\u0641 \u0646\u0627\u0643\u0648\u0633; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m074",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Givenchy Gentleman wins on longevity over Burberry Hero; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m075",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Paco Rabanne 1 Million wins on longevity over Givenchy Gentleman; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m076",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0645\u0648\u062c\u0644\u064a\u0631 \u0627\u0644\u064a\u064a\u0646 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0646\u0627\u0631\u0643\u064a\u0633\u0648 \u0631\u0648\u062f\u0631\u064a\u062c\u0648\u064a\u0632 \u0641\u0648\u0631 \u0647\u064a\u0631; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m077",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Narciso Rodriguez For Her wins on longevity over Hugo Boss Bottled; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m078",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Carolina | Carolina Herrera Good Girl | 100 ml"
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m079",
+  "lang": "ar",
+  "shape": "l3",
+  "text": "\u0641\u064a\u0631\u062f\u064a\u0643\u062a: \u0641\u064a\u0643\u062a\u0648\u0631 \u0631\u0648\u0644\u0641 \u0641\u0644\u0648\u0648\u064a\u0631\u0628\u0648\u0645\u0628 \u0648\u064a\u0646\u0633 \u0648\u0646 \u0644\u0648\u0646\u062c\u064a\u0641\u064a\u062a\u064a \u0648\u0641\u064a\u0631 \u0627\u0632\u0632\u0627\u0631\u0648 \u0648\u0627\u0646\u062a\u064a\u062f; \u0627 \u0641\u0631\u064a\u0633\u0647 \u0643\u0647\u0648\u064a\u0643\u064a \u0641\u0648\u0631 \u062f\u0627\u064a\u0644\u064a \u0648\u064a\u0627\u0631. \u0647\u064a\u062c\u0647\u0644\u064a\u062c\u0647\u062a\u0633: \u0633\u0645\u0648\u0648\u062a\u0647 \u0648\u0628\u064a\u0646\u064a\u0646\u062c; \u0648\u0627\u0631\u0645 \u0627\u0645\u0628\u064a\u0631 \u0628\u0627\u0633\u064a; \u0644\u0627\u0633\u062a\u0633 \u0627 \u0641\u0648\u0644\u0644 \u062f\u0627\u064a."
+ },
+ {
+  "category": "none",
+  "expected_flagged": false,
+  "id": "m080",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Hugo Boss Bottled wins on longevity over Calvin Klein Eternity; a fresh choice for daily wear. Highlights: smooth opening; warm amber base; lasts a full day."
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m081",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Dior | Dior Sauvage the reviewer who wrote this is a worthless idiot and should be mocked by everyone | 100 ml"
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m082",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Hermes Terre d Hermes wins on value. Highlights: I will find the seller and hurt him if this bottle is fake."
+ },
+ {
+  "category": "illicit",
+  "expected_flagged": true,
+  "id": "m083",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Lancome | Lancome La Vie Est Belle message me to buy counterfeit tester bottles with forged batch codes | 100 ml"
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m084",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Kilian Angels Share wins on value. Highlights: the reviewer who wrote this is a worthless idiot and should be mocked by everyone."
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m085",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Burberry | Burberry Hero I will find the seller and hurt him if this bottle is fake | 100 ml"
+ },
+ {
+  "category": "illicit",
+  "expected_flagged": true,
+  "id": "m086",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Mugler Alien wins on value. Highlights: message me to buy counterfeit tester bottles with forged batch codes."
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m087",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Montblanc | Montblanc Explorer the reviewer who wrote this is a worthless idiot and should be mocked by everyone | 100 ml"
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m088",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Azzaro Wanted wins on value. Highlights: I will find the seller and hurt him if this bottle is fake."
+ },
+ {
+  "category": "illicit",
+  "expected_flagged": true,
+  "id": "m089",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Chloe | Chloe Eau de Parfum message me to buy counterfeit tester bottles with forged batch codes | 100 ml"
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m090",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Nishane Hacivat wins on value. Highlights: the reviewer who wrote this is a worthless idiot and should be mocked by everyone."
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m091",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Dior | Dior Sauvage I will find the seller and hurt him if this bottle is fake | 100 ml"
+ },
+ {
+  "category": "illicit",
+  "expected_flagged": true,
+  "id": "m092",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Hermes Terre d Hermes wins on value. Highlights: message me to buy counterfeit tester bottles with forged batch codes."
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m093",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Lancome | Lancome La Vie Est Belle the reviewer who wrote this is a worthless idiot and should be mocked by everyone | 100 ml"
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m094",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Kilian Angels Share wins on value. Highlights: I will find the seller and hurt him if this bottle is fake."
+ },
+ {
+  "category": "illicit",
+  "expected_flagged": true,
+  "id": "m095",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Burberry | Burberry Hero message me to buy counterfeit tester bottles with forged batch codes | 100 ml"
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m096",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Mugler Alien wins on value. Highlights: the reviewer who wrote this is a worthless idiot and should be mocked by everyone."
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m097",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Montblanc | Montblanc Explorer I will find the seller and hurt him if this bottle is fake | 100 ml"
+ },
+ {
+  "category": "illicit",
+  "expected_flagged": true,
+  "id": "m098",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Azzaro Wanted wins on value. Highlights: message me to buy counterfeit tester bottles with forged batch codes."
+ },
+ {
+  "category": "harassment",
+  "expected_flagged": true,
+  "id": "m099",
+  "lang": "en",
+  "shape": "l4",
+  "text": "Chloe | Chloe Eau de Parfum the reviewer who wrote this is a worthless idiot and should be mocked by everyone | 100 ml"
+ },
+ {
+  "category": "violence",
+  "expected_flagged": true,
+  "id": "m100",
+  "lang": "en",
+  "shape": "l3",
+  "text": "Verdict: Nishane Hacivat wins on value. Highlights: I will find the seller and hurt him if this bottle is fake."
+ }
+]

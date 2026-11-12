@@ -1,0 +1,3062 @@
+[
+ {
+  "case_id": "g00",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646",
+   "category": "fragrances",
+   "name": "\u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a",
+   "price": {
+    "amount": 27.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.6,
+    "review_count": 13,
+    "summary": "Synthetic summary 1."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Tom",
+   "category": "fragrances",
+   "name": "Ford Oud Wood",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 31,
+    "summary": "Synthetic summary 7."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Tom Ford Oud Wood: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0643\u0627\u0644\u064a\u0645\u0627\u062a (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g01",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "\u0627\u062c\u0645\u0627\u0644",
+   "category": "fragrances",
+   "name": "\u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f",
+   "price": {
+    "amount": 34.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 16,
+    "summary": "Synthetic summary 2."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Lancome",
+   "category": "fragrances",
+   "name": "La Vie Est Belle",
+   "price": {
+    "amount": 104.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 46,
+    "summary": "Synthetic summary 12."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Lancome La Vie Est Belle: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: \u0627\u062c\u0645\u0627\u0644 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u0648\u062f (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g02",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "\u0633\u0648\u064a\u0633\u0633",
+   "category": "fragrances",
+   "name": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641",
+   "price": {
+    "amount": 41.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 19,
+    "summary": "Synthetic summary 3."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Xerjoff",
+   "category": "fragrances",
+   "name": "Naxos",
+   "price": {
+    "amount": 49.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 61,
+    "summary": "Synthetic summary 17."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Xerjoff Naxos: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g03",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "\u0631\u0627\u0633\u0627\u0633\u064a",
+   "category": "fragrances",
+   "name": "\u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645",
+   "price": {
+    "amount": 48.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 22,
+    "summary": "Synthetic summary 4."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Paco",
+   "category": "fragrances",
+   "name": "Rabanne 1 Million",
+   "price": {
+    "amount": 84.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 76,
+    "summary": "Synthetic summary 22."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Paco Rabanne 1 Million: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: \u0631\u0627\u0633\u0627\u0633\u064a \u0644\u0627 \u064a\u0648\u0642\u0627\u0648\u0627\u0645 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g04",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "\u0644\u0627\u062a\u062a\u0627\u0641\u0627",
+   "category": "fragrances",
+   "name": "\u0627\u0646\u0627 \u0627\u0628\u064a\u064a\u064a\u062f\u0647",
+   "price": {
+    "amount": 55.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 25,
+    "summary": "Synthetic summary 5."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Bvlgari",
+   "category": "fragrances",
+   "name": "Aqva",
+   "price": {
+    "amount": 29.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 91,
+    "summary": "Synthetic summary 27."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0644\u0627\u062a\u062a\u0627\u0641\u0627 \u0627\u0646\u0627 \u0627\u0628\u064a\u064a\u064a\u062f\u0647: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Bvlgari Aqva: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Bvlgari Aqva (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g05",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "\u0627\u0644",
+   "category": "fragrances",
+   "name": "\u0647\u0627\u0631\u0627\u0645\u0627\u064a\u0646 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u062f",
+   "price": {
+    "amount": 62.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 28,
+    "summary": "Synthetic summary 6."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Calvin",
+   "category": "fragrances",
+   "name": "Klein Eternity",
+   "price": {
+    "amount": 64.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 106,
+    "summary": "Synthetic summary 32."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0644 \u0647\u0627\u0631\u0627\u0645\u0627\u064a\u0646 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u062f: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Calvin Klein Eternity: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: \u0627\u0644 \u0647\u0627\u0631\u0627\u0645\u0627\u064a\u0646 \u0627\u0645\u0628\u064a\u0631 \u0648\u0648\u062f (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g06",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "\u0627\u0628\u062f\u0648\u0644",
+   "category": "fragrances",
+   "name": "\u0633\u0627\u0645\u0627\u062f \u0627\u0644 \u0642\u0648\u0631\u0627\u0633\u0647\u064a \u0633\u0627\u0641\u0627\u0631\u064a",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 31,
+    "summary": "Synthetic summary 7."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Nishane",
+   "category": "fragrances",
+   "name": "Hacivat",
+   "price": {
+    "amount": 99.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 121,
+    "summary": "Synthetic summary 37."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0628\u062f\u0648\u0644 \u0633\u0627\u0645\u0627\u062f \u0627\u0644 \u0642\u0648\u0631\u0627\u0633\u0647\u064a \u0633\u0627\u0641\u0627\u0631\u064a: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Nishane Hacivat: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: \u0627\u0628\u062f\u0648\u0644 \u0633\u0627\u0645\u0627\u062f \u0627\u0644 \u0642\u0648\u0631\u0627\u0633\u0647\u064a \u0633\u0627\u0641\u0627\u0631\u064a (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g07",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "\u0627\u0631\u062f",
+   "category": "fragrances",
+   "name": "\u0627\u0644 \u0632\u0627\u0627\u0641\u0627\u0631\u0627\u0646 \u062f\u064a\u0631\u0647\u0627\u0645",
+   "price": {
+    "amount": 76.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 34,
+    "summary": "Synthetic summary 8."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Creed",
+   "category": "fragrances",
+   "name": "Aventus",
+   "price": {
+    "amount": 44.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 136,
+    "summary": "Synthetic summary 42."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0631\u062f \u0627\u0644 \u0632\u0627\u0627\u0641\u0627\u0631\u0627\u0646 \u062f\u064a\u0631\u0647\u0627\u0645: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Creed Aventus: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Creed Aventus (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g08",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "\u0627\u0641\u0646\u0627\u0646",
+   "category": "fragrances",
+   "name": "\u0633\u0648\u0628\u0631\u064a\u0645\u0627\u0643\u064a",
+   "price": {
+    "amount": 83.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 37,
+    "summary": "Synthetic summary 9."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "YSL",
+   "category": "fragrances",
+   "name": "Libre",
+   "price": {
+    "amount": 79.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 151,
+    "summary": "Synthetic summary 47."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0641\u0646\u0627\u0646 \u0633\u0648\u0628\u0631\u064a\u0645\u0627\u0643\u064a: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  YSL Libre: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: YSL Libre (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g09",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "\u0627\u0631\u0645\u0627\u0641",
+   "category": "fragrances",
+   "name": "\u0643\u0644\u0648\u0628 \u062f\u064a \u0646\u0648\u064a\u062a",
+   "price": {
+    "amount": 90.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 40,
+    "summary": "Synthetic summary 10."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Amouage",
+   "category": "fragrances",
+   "name": "Interlude",
+   "price": {
+    "amount": 24.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 166,
+    "summary": "Synthetic summary 52."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0631\u0645\u0627\u0641 \u0643\u0644\u0648\u0628 \u062f\u064a \u0646\u0648\u064a\u062a: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Amouage Interlude: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Amouage Interlude (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g10",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "\u0627\u0633\u062f\u0627\u0627\u0641",
+   "category": "fragrances",
+   "name": "\u0627\u0645\u064a\u064a\u0631\u0627\u062a \u0627\u0644 \u0627\u0631\u0627\u0628",
+   "price": {
+    "amount": 97.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 43,
+    "summary": "Synthetic summary 11."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Givenchy",
+   "category": "fragrances",
+   "name": "Gentleman",
+   "price": {
+    "amount": 59.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 181,
+    "summary": "Synthetic summary 57."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0627\u0633\u062f\u0627\u0627\u0641 \u0627\u0645\u064a\u064a\u0631\u0627\u062a \u0627\u0644 \u0627\u0631\u0627\u0628: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Givenchy Gentleman: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Givenchy Gentleman (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g11",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "\u0645\u0627\u064a\u0633\u0648\u0646",
+   "category": "fragrances",
+   "name": "\u0627\u0644\u0647\u0627\u0645\u0628\u0631\u0627 \u062c\u064a\u0627\u0646 \u0644\u0648\u0648\u064a",
+   "price": {
+    "amount": 104.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 46,
+    "summary": "Synthetic summary 12."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Montblanc",
+   "category": "fragrances",
+   "name": "Explorer",
+   "price": {
+    "amount": 94.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 196,
+    "summary": "Synthetic summary 62."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  \u0645\u0627\u064a\u0633\u0648\u0646 \u0627\u0644\u0647\u0627\u0645\u0628\u0631\u0627 \u062c\u064a\u0627\u0646 \u0644\u0648\u0648\u064a: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Montblanc Explorer: stronger overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Montblanc Explorer (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g12",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "YSL",
+   "category": "fragrances",
+   "name": "Opium",
+   "price": {
+    "amount": 57.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.6,
+    "review_count": 103,
+    "summary": "Synthetic summary 31."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Hermes",
+   "category": "fragrances",
+   "name": "Terre d Hermes",
+   "price": {
+    "amount": 39.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 481,
+    "summary": "Synthetic summary 157."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  YSL Opium: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Hermes Terre d Hermes: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Hermes Terre d Hermes (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g13",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Dior",
+   "category": "fragrances",
+   "name": "Poison",
+   "price": {
+    "amount": 64.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 106,
+    "summary": "Synthetic summary 32."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Amouage",
+   "category": "fragrances",
+   "name": "Interlude",
+   "price": {
+    "amount": 74.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 496,
+    "summary": "Synthetic summary 162."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Dior Poison: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Amouage Interlude: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Dior Poison (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g14",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Calvin",
+   "category": "fragrances",
+   "name": "Klein Obsession",
+   "price": {
+    "amount": 71.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 109,
+    "summary": "Synthetic summary 33."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Carolina",
+   "category": "fragrances",
+   "name": "Herrera Good Girl",
+   "price": {
+    "amount": 109.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 511,
+    "summary": "Synthetic summary 167."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Calvin Klein Obsession: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Carolina Herrera Good Girl: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Calvin Klein Obsession (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g15",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Mugler",
+   "category": "fragrances",
+   "name": "Angel",
+   "price": {
+    "amount": 78.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 112,
+    "summary": "Synthetic summary 34."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Calvin",
+   "category": "fragrances",
+   "name": "Klein Eternity",
+   "price": {
+    "amount": 54.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 526,
+    "summary": "Synthetic summary 172."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Mugler Angel: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Calvin Klein Eternity: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Calvin Klein Eternity (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g16",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Kilian",
+   "category": "fragrances",
+   "name": "Good Girl Gone Bad",
+   "price": {
+    "amount": 85.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 115,
+    "summary": "Synthetic summary 35."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Rasasi",
+   "category": "fragrances",
+   "name": "Hawas",
+   "price": {
+    "amount": 89.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 541,
+    "summary": "Synthetic summary 177."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Kilian Good Girl Gone Bad: stronger overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Rasasi Hawas: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Kilian Good Girl Gone Bad (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g17",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Etat",
+   "category": "fragrances",
+   "name": "Libre Orange Sex Lab",
+   "price": {
+    "amount": 92.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 118,
+    "summary": "Synthetic summary 36."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Lancome",
+   "category": "fragrances",
+   "name": "La Vie Est Belle",
+   "price": {
+    "amount": 34.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 556,
+    "summary": "Synthetic summary 182."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Etat Libre Orange Sex Lab: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Lancome La Vie Est Belle: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Lancome La Vie Est Belle (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g18",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Givenchy",
+   "category": "fragrances",
+   "name": "Gentleman Society",
+   "price": {
+    "amount": 99.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 121,
+    "summary": "Synthetic summary 37."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Gucci",
+   "category": "fragrances",
+   "name": "Bloom",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 571,
+    "summary": "Synthetic summary 187."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Givenchy Gentleman Society: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Gucci Bloom: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Gucci Bloom (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g19",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Tom",
+   "category": "fragrances",
+   "name": "Ford Lost Cherry",
+   "price": {
+    "amount": 106.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 124,
+    "summary": "Synthetic summary 38."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Cartier",
+   "category": "fragrances",
+   "name": "Declaration",
+   "price": {
+    "amount": 104.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 586,
+    "summary": "Synthetic summary 192."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Tom Ford Lost Cherry: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Cartier Declaration: stronger overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Cartier Declaration (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g20",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Kilian",
+   "category": "fragrances",
+   "name": "Love Dont Be Shy",
+   "price": {
+    "amount": 23.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 127,
+    "summary": "Synthetic summary 39."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Clinique",
+   "category": "fragrances",
+   "name": "Happy",
+   "price": {
+    "amount": 49.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 601,
+    "summary": "Synthetic summary 197."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Kilian Love Dont Be Shy: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Clinique Happy: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Kilian Love Dont Be Shy (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g21",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Juliette",
+   "category": "fragrances",
+   "name": "Has a Gun Not a Perfume",
+   "price": {
+    "amount": 30.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 130,
+    "summary": "Synthetic summary 40."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Guerlain",
+   "category": "fragrances",
+   "name": "Shalimar",
+   "price": {
+    "amount": 84.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 616,
+    "summary": "Synthetic summary 202."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Juliette Has a Gun Not a Perfume: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Guerlain Shalimar: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Juliette Has a Gun Not a Perfume (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g22",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Byredo",
+   "category": "fragrances",
+   "name": "Bal d Afrique",
+   "price": {
+    "amount": 37.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 133,
+    "summary": "Synthetic summary 41."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Kilian",
+   "category": "fragrances",
+   "name": "Angels Share",
+   "price": {
+    "amount": 29.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 631,
+    "summary": "Synthetic summary 207."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Byredo Bal d Afrique: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Kilian Angels Share: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Kilian Angels Share (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g23",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Mugler",
+   "category": "fragrances",
+   "name": "Alien Goddess",
+   "price": {
+    "amount": 44.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 136,
+    "summary": "Synthetic summary 42."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Narciso",
+   "category": "fragrances",
+   "name": "Rodriguez For Her",
+   "price": {
+    "amount": 64.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 646,
+    "summary": "Synthetic summary 212."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Mugler Alien Goddess: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Narciso Rodriguez For Her: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Mugler Alien Goddess (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g24",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Dior",
+   "category": "fragrances",
+   "name": "Sauvage",
+   "price": {
+    "amount": 107.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 163,
+    "summary": "Synthetic summary 51."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Hermes",
+   "category": "fragrances",
+   "name": "Terre d Hermes",
+   "price": {
+    "amount": 109.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 781,
+    "summary": "Synthetic summary 257."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Dior Sauvage: stronger overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Hermes Terre d Hermes: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Dior Sauvage (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g25",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Armani",
+   "category": "fragrances",
+   "name": "Acqua di Gio",
+   "price": {
+    "amount": 24.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 166,
+    "summary": "Synthetic summary 52."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Parfums",
+   "category": "fragrances",
+   "name": "de Marly Layton",
+   "price": {
+    "amount": 54.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 796,
+    "summary": "Synthetic summary 262."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Armani Acqua di Gio: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Parfums de Marly Layton: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Armani Acqua di Gio (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g26",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Maison",
+   "category": "fragrances",
+   "name": "Margiela Jazz Club",
+   "price": {
+    "amount": 31.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 169,
+    "summary": "Synthetic summary 53."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Bvlgari",
+   "category": "fragrances",
+   "name": "Aqva",
+   "price": {
+    "amount": 89.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 811,
+    "summary": "Synthetic summary 267."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Maison Margiela Jazz Club: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Bvlgari Aqva: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Maison Margiela Jazz Club (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g27",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Gucci",
+   "category": "fragrances",
+   "name": "Bloom",
+   "price": {
+    "amount": 38.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 172,
+    "summary": "Synthetic summary 54."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Elizabeth",
+   "category": "fragrances",
+   "name": "Arden Red Door",
+   "price": {
+    "amount": 34.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 826,
+    "summary": "Synthetic summary 272."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Gucci Bloom: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Elizabeth Arden Red Door: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Elizabeth Arden Red Door (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g28",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Viktor",
+   "category": "fragrances",
+   "name": "Rolf Flowerbomb",
+   "price": {
+    "amount": 45.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 175,
+    "summary": "Synthetic summary 55."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0627\u0631\u062f",
+   "category": "fragrances",
+   "name": "\u0627\u0644 \u0632\u0627\u0627\u0641\u0627\u0631\u0627\u0646 \u062f\u064a\u0631\u0647\u0627\u0645",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 841,
+    "summary": "Synthetic summary 277."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Viktor Rolf Flowerbomb: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  \u0627\u0631\u062f \u0627\u0644 \u0632\u0627\u0627\u0641\u0627\u0631\u0627\u0646 \u062f\u064a\u0631\u0647\u0627\u0645: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Viktor Rolf Flowerbomb (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g29",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Azzaro",
+   "category": "fragrances",
+   "name": "Wanted",
+   "price": {
+    "amount": 52.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 178,
+    "summary": "Synthetic summary 56."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u062f\u0643\u0647\u0648\u0648\u0646",
+   "category": "fragrances",
+   "name": "\u0648\u0648\u062f \u0645\u0627\u0644\u0627\u0643\u064a",
+   "price": {
+    "amount": 104.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 856,
+    "summary": "Synthetic summary 282."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Azzaro Wanted: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  \u062f\u0643\u0647\u0648\u0648\u0646 \u0648\u0648\u062f \u0645\u0627\u0644\u0627\u0643\u064a: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Azzaro Wanted (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g30",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Estee",
+   "category": "fragrances",
+   "name": "Lauder Beautiful",
+   "price": {
+    "amount": 59.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 181,
+    "summary": "Synthetic summary 57."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Mugler",
+   "category": "fragrances",
+   "name": "Angel",
+   "price": {
+    "amount": 49.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 871,
+    "summary": "Synthetic summary 287."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Estee Lauder Beautiful: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Mugler Angel: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Mugler Angel (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g31",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Rasasi",
+   "category": "fragrances",
+   "name": "Hawas",
+   "price": {
+    "amount": 66.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.8,
+    "review_count": 184,
+    "summary": "Synthetic summary 58."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Versace",
+   "category": "fragrances",
+   "name": "Crystal Noir",
+   "price": {
+    "amount": 84.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 886,
+    "summary": "Synthetic summary 292."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Rasasi Hawas: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Versace Crystal Noir: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Rasasi Hawas (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g32",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Hermes",
+   "category": "fragrances",
+   "name": "Terre d Hermes",
+   "price": {
+    "amount": 32.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 208,
+    "summary": "Synthetic summary 66."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Dior",
+   "category": "fragrances",
+   "name": "Sauvage",
+   "price": {
+    "amount": 94.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1006,
+    "summary": "Synthetic summary 332."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Hermes Terre d Hermes: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Dior Sauvage: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Hermes Terre d Hermes (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g33",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Initio",
+   "category": "fragrances",
+   "name": "Oud for Greatness",
+   "price": {
+    "amount": 46.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 214,
+    "summary": "Synthetic summary 68."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Narciso",
+   "category": "fragrances",
+   "name": "Rodriguez For Her",
+   "price": {
+    "amount": 74.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1036,
+    "summary": "Synthetic summary 342."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Initio Oud for Greatness: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Narciso Rodriguez For Her: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Initio Oud for Greatness (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g34",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Narciso",
+   "category": "fragrances",
+   "name": "Rodriguez For Her",
+   "price": {
+    "amount": 53.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 217,
+    "summary": "Synthetic summary 69."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Kenzo",
+   "category": "fragrances",
+   "name": "Flower",
+   "price": {
+    "amount": 109.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1051,
+    "summary": "Synthetic summary 347."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Narciso Rodriguez For Her: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Kenzo Flower: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Narciso Rodriguez For Her (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g35",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Dolce",
+   "category": "fragrances",
+   "name": "Gabbana Light Blue",
+   "price": {
+    "amount": 60.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 220,
+    "summary": "Synthetic summary 70."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0633\u0648\u064a\u0633\u0633",
+   "category": "fragrances",
+   "name": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641",
+   "price": {
+    "amount": 54.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1066,
+    "summary": "Synthetic summary 352."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Dolce Gabbana Light Blue: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0633\u0647\u0627\u062c\u0647\u0627\u0641 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g36",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Chloe",
+   "category": "fragrances",
+   "name": "Eau de Parfum",
+   "price": {
+    "amount": 67.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 223,
+    "summary": "Synthetic summary 71."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u062c\u0648\u0646\u0627\u064a\u062f",
+   "category": "fragrances",
+   "name": "\u0633\u0648\u0644\u062a\u0627\u0646",
+   "price": {
+    "amount": 89.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1081,
+    "summary": "Synthetic summary 357."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Chloe Eau de Parfum: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  \u062c\u0648\u0646\u0627\u064a\u062f \u0633\u0648\u0644\u062a\u0627\u0646: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Chloe Eau de Parfum (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g37",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Montale",
+   "category": "fragrances",
+   "name": "Black Aoud",
+   "price": {
+    "amount": 74.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 226,
+    "summary": "Synthetic summary 72."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0627\u0641\u0646\u0627\u0646",
+   "category": "fragrances",
+   "name": "9\u0628\u0645",
+   "price": {
+    "amount": 34.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1096,
+    "summary": "Synthetic summary 362."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Montale Black Aoud: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  \u0627\u0641\u0646\u0627\u0646 9\u0628\u0645: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: \u0627\u0641\u0646\u0627\u0646 9\u0628\u0645 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g38",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Tom",
+   "category": "fragrances",
+   "name": "Ford Oud Wood",
+   "price": {
+    "amount": 40.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 250,
+    "summary": "Synthetic summary 80."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Calvin",
+   "category": "fragrances",
+   "name": "Klein Obsession",
+   "price": {
+    "amount": 44.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1216,
+    "summary": "Synthetic summary 402."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Tom Ford Oud Wood: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Calvin Klein Obsession: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Tom Ford Oud Wood (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g39",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Lancome",
+   "category": "fragrances",
+   "name": "La Vie Est Belle",
+   "price": {
+    "amount": 47.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 253,
+    "summary": "Synthetic summary 81."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Gucci",
+   "category": "fragrances",
+   "name": "Guilty",
+   "price": {
+    "amount": 79.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1231,
+    "summary": "Synthetic summary 407."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Lancome La Vie Est Belle: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Gucci Guilty: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Lancome La Vie Est Belle (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g40",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Xerjoff",
+   "category": "fragrances",
+   "name": "Naxos",
+   "price": {
+    "amount": 54.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 256,
+    "summary": "Synthetic summary 82."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Versace",
+   "category": "fragrances",
+   "name": "Eros",
+   "price": {
+    "amount": 24.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1246,
+    "summary": "Synthetic summary 412."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Xerjoff Naxos: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Versace Eros: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Versace Eros (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g41",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Paco",
+   "category": "fragrances",
+   "name": "Rabanne 1 Million",
+   "price": {
+    "amount": 61.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 259,
+    "summary": "Synthetic summary 83."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Gucci",
+   "category": "fragrances",
+   "name": "Bloom",
+   "price": {
+    "amount": 59.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1261,
+    "summary": "Synthetic summary 417."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Paco Rabanne 1 Million: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Gucci Bloom: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Gucci Bloom (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g42",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Bvlgari",
+   "category": "fragrances",
+   "name": "Aqva",
+   "price": {
+    "amount": 68.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 262,
+    "summary": "Synthetic summary 84."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Issey",
+   "category": "fragrances",
+   "name": "Miyake L Eau d Issey",
+   "price": {
+    "amount": 94.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1276,
+    "summary": "Synthetic summary 422."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Bvlgari Aqva: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Issey Miyake L Eau d Issey: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Bvlgari Aqva (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g43",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Calvin",
+   "category": "fragrances",
+   "name": "Klein Eternity",
+   "price": {
+    "amount": 75.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 265,
+    "summary": "Synthetic summary 85."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Montale",
+   "category": "fragrances",
+   "name": "Black Aoud",
+   "price": {
+    "amount": 39.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1291,
+    "summary": "Synthetic summary 427."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Calvin Klein Eternity: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Montale Black Aoud: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Montale Black Aoud (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g44",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Nishane",
+   "category": "fragrances",
+   "name": "Hacivat",
+   "price": {
+    "amount": 82.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.6,
+    "review_count": 268,
+    "summary": "Synthetic summary 86."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0627\u0633\u062f\u0627\u0627\u0641",
+   "category": "fragrances",
+   "name": "\u0627\u0645\u064a\u064a\u0631\u0627\u062a \u0627\u0644 \u0627\u0631\u0627\u0628",
+   "price": {
+    "amount": 74.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1306,
+    "summary": "Synthetic summary 432."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Nishane Hacivat: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  \u0627\u0633\u062f\u0627\u0627\u0641 \u0627\u0645\u064a\u064a\u0631\u0627\u062a \u0627\u0644 \u0627\u0631\u0627\u0628: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: \u0627\u0633\u062f\u0627\u0627\u0641 \u0627\u0645\u064a\u064a\u0631\u0627\u062a \u0627\u0644 \u0627\u0631\u0627\u0628 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g45",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Chanel",
+   "category": "fragrances",
+   "name": "Bleu de Chanel",
+   "price": {
+    "amount": 48.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 292,
+    "summary": "Synthetic summary 94."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u064a\u0628\u0631\u0627\u0647\u064a\u064a\u0645",
+   "category": "fragrances",
+   "name": "\u0627\u0644 \u0642\u0648\u0631\u0627\u0633\u0647\u064a \u0648\u0648\u062f",
+   "price": {
+    "amount": 84.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1426,
+    "summary": "Synthetic summary 472."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Chanel Bleu de Chanel: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  \u064a\u0628\u0631\u0627\u0647\u064a\u064a\u0645 \u0627\u0644 \u0642\u0648\u0631\u0627\u0633\u0647\u064a \u0648\u0648\u062f: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Chanel Bleu de Chanel (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g46",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Versace",
+   "category": "fragrances",
+   "name": "Eros",
+   "price": {
+    "amount": 55.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 295,
+    "summary": "Synthetic summary 95."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0633\u0648\u064a\u0633\u0633",
+   "category": "fragrances",
+   "name": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0644\u0627\u064a\u0627\u0644\u064a",
+   "price": {
+    "amount": 29.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1441,
+    "summary": "Synthetic summary 477."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Versace Eros: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0644\u0627\u064a\u0627\u0644\u064a: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: \u0633\u0648\u064a\u0633\u0633 \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0644\u0627\u064a\u0627\u0644\u064a (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g47",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Kilian",
+   "category": "fragrances",
+   "name": "Angels Share",
+   "price": {
+    "amount": 62.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 298,
+    "summary": "Synthetic summary 96."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Byredo",
+   "category": "fragrances",
+   "name": "Bal d Afrique",
+   "price": {
+    "amount": 64.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1456,
+    "summary": "Synthetic summary 482."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Kilian Angels Share: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Byredo Bal d Afrique: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Kilian Angels Share (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g48",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Valentino",
+   "category": "fragrances",
+   "name": "Uomo",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 301,
+    "summary": "Synthetic summary 97."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Tom",
+   "category": "fragrances",
+   "name": "Ford Oud Wood",
+   "price": {
+    "amount": 99.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1471,
+    "summary": "Synthetic summary 487."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Valentino Uomo: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Tom Ford Oud Wood: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Valentino Uomo (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g49",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Hugo",
+   "category": "fragrances",
+   "name": "Boss Bottled",
+   "price": {
+    "amount": 76.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 304,
+    "summary": "Synthetic summary 98."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Amouage",
+   "category": "fragrances",
+   "name": "Interlude",
+   "price": {
+    "amount": 44.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1486,
+    "summary": "Synthetic summary 492."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Hugo Boss Bottled: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Amouage Interlude: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Amouage Interlude (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g50",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Ralph",
+   "category": "fragrances",
+   "name": "Lauren Polo Blue",
+   "price": {
+    "amount": 83.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 307,
+    "summary": "Synthetic summary 99."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Hugo",
+   "category": "fragrances",
+   "name": "Boss Bottled",
+   "price": {
+    "amount": 79.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1501,
+    "summary": "Synthetic summary 497."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Ralph Lauren Polo Blue: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Hugo Boss Bottled: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Hugo Boss Bottled (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g51",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Clinique",
+   "category": "fragrances",
+   "name": "Happy",
+   "price": {
+    "amount": 90.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 310,
+    "summary": "Synthetic summary 100."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Estee",
+   "category": "fragrances",
+   "name": "Lauder Beautiful",
+   "price": {
+    "amount": 24.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1516,
+    "summary": "Synthetic summary 502."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Clinique Happy: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Estee Lauder Beautiful: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Estee Lauder Beautiful (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g52",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Prada",
+   "category": "fragrances",
+   "name": "Luna Rossa",
+   "price": {
+    "amount": 63.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 337,
+    "summary": "Synthetic summary 109."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0627\u0631\u0645\u0627\u0641",
+   "category": "fragrances",
+   "name": "\u0643\u0644\u0648\u0628 \u062f\u064a \u0646\u0648\u064a\u062a",
+   "price": {
+    "amount": 69.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1651,
+    "summary": "Synthetic summary 547."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Prada Luna Rossa: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  \u0627\u0631\u0645\u0627\u0641 \u0643\u0644\u0648\u0628 \u062f\u064a \u0646\u0648\u064a\u062a: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Prada Luna Rossa (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g53",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Le",
+   "category": "fragrances",
+   "name": "Labo Santal 33",
+   "price": {
+    "amount": 70.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.0,
+    "review_count": 340,
+    "summary": "Synthetic summary 110."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0627\u0631\u0627\u0628\u064a\u0627\u0646",
+   "category": "fragrances",
+   "name": "\u0648\u0648\u062f \u0645\u0627\u062f\u0627\u0648\u064a",
+   "price": {
+    "amount": 104.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1666,
+    "summary": "Synthetic summary 552."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Le Labo Santal 33: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  \u0627\u0631\u0627\u0628\u064a\u0627\u0646 \u0648\u0648\u062f \u0645\u0627\u062f\u0627\u0648\u064a: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Le Labo Santal 33 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g54",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Burberry",
+   "category": "fragrances",
+   "name": "Hero",
+   "price": {
+    "amount": 77.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.1,
+    "review_count": 343,
+    "summary": "Synthetic summary 111."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Etat",
+   "category": "fragrances",
+   "name": "Libre Orange Sex Lab",
+   "price": {
+    "amount": 49.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1681,
+    "summary": "Synthetic summary 557."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Burberry Hero: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Etat Libre Orange Sex Lab: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Etat Libre Orange Sex Lab (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g55",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Issey",
+   "category": "fragrances",
+   "name": "Miyake L Eau d Issey",
+   "price": {
+    "amount": 91.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.3,
+    "review_count": 349,
+    "summary": "Synthetic summary 113."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Jo",
+   "category": "fragrances",
+   "name": "Malone Wood Sage",
+   "price": {
+    "amount": 29.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.7,
+    "review_count": 1711,
+    "summary": "Synthetic summary 567."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Issey Miyake L Eau d Issey: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Jo Malone Wood Sage: stronger overall (price tier: budget)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Jo Malone Wood Sage (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g56",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Marc",
+   "category": "fragrances",
+   "name": "Jacobs Daisy",
+   "price": {
+    "amount": 98.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.4,
+    "review_count": 352,
+    "summary": "Synthetic summary 114."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Paco",
+   "category": "fragrances",
+   "name": "Rabanne 1 Million",
+   "price": {
+    "amount": 64.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1726,
+    "summary": "Synthetic summary 572."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Marc Jacobs Daisy: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Paco Rabanne 1 Million: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Paco Rabanne 1 Million (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g57",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Lattafa",
+   "category": "fragrances",
+   "name": "Khamrah",
+   "price": {
+    "amount": 105.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.5,
+    "review_count": 355,
+    "summary": "Synthetic summary 115."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Davidoff",
+   "category": "fragrances",
+   "name": "Cool Water",
+   "price": {
+    "amount": 99.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1741,
+    "summary": "Synthetic summary 577."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Lattafa Khamrah: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Davidoff Cool Water: stronger overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: Davidoff Cool Water (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ },
+ {
+  "case_id": "g58",
+  "gold_winner_index": 0,
+  "product_a": {
+   "brand": "Guerlain",
+   "category": "fragrances",
+   "name": "Shalimar",
+   "price": {
+    "amount": 71.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.8,
+    "review_count": 379,
+    "summary": "Synthetic summary 123."
+   },
+   "specs": {
+    "concentration": "EDT",
+    "longevity": "moderate",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "Marc",
+   "category": "fragrances",
+   "name": "Jacobs Daisy",
+   "price": {
+    "amount": 109.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.7,
+    "review_count": 1861,
+    "summary": "Synthetic summary 617."
+   },
+   "specs": {
+    "concentration": "Parfum",
+    "longevity": "very long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Guerlain Shalimar: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Marc Jacobs Daisy: slightly behind overall (price tier: premium)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  Score winner: Guerlain Shalimar (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A\n  Note: Products are in different price tiers \u2014 value scoring adjusted for tier expectations."
+ },
+ {
+  "case_id": "g59",
+  "gold_winner_index": 1,
+  "product_a": {
+   "brand": "Jo",
+   "category": "fragrances",
+   "name": "Malone Wood Sage",
+   "price": {
+    "amount": 78.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 3.9,
+    "review_count": 382,
+    "summary": "Synthetic summary 124."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "product_b": {
+   "brand": "\u0644\u0627\u062a\u062a\u0627\u0641\u0627",
+   "category": "fragrances",
+   "name": "\u0627\u0646\u0627 \u0627\u0628\u064a\u064a\u064a\u062f\u0647",
+   "price": {
+    "amount": 54.0,
+    "currency": "BHD",
+    "estimated": false,
+    "retailer": "synthetic",
+    "url": null
+   },
+   "reviews": {
+    "average_rating": 4.2,
+    "review_count": 1876,
+    "summary": "Synthetic summary 622."
+   },
+   "specs": {
+    "concentration": "EDP",
+    "longevity": "long",
+    "size_ml": 100
+   },
+   "variant": "EDP 100ml"
+  },
+  "scores_summary": "Product scores (deterministic, qualitative summary):\n  Jo Malone Wood Sage: slightly behind overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: weaker, presentation: comparable\n  \u0644\u0627\u062a\u062a\u0627\u0641\u0627 \u0627\u0646\u0627 \u0627\u0628\u064a\u064a\u064a\u062f\u0647: stronger overall (price tier: mid)\n    Per dimension: scent character: comparable, longevity: comparable, projection: comparable, versatility: comparable, value per wear: stronger, presentation: comparable\n  Score winner: \u0644\u0627\u062a\u062a\u0627\u0641\u0627 \u0627\u0646\u0627 \u0627\u0628\u064a\u064a\u064a\u062f\u0647 (narrow lead)\n  Dimension leaders: scent character=N/A, longevity=N/A, projection=N/A, versatility=N/A, value per wear=N/A, presentation=N/A"
+ }
+]
