@@ -4704,6 +4704,7 @@ class StructuredComparisonService:
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
                 comparison_quality=_verdict_quality,
+                score_winner_index=scoring_result.get("winner_index"),
                 **({"output_lang": output_lang} if output_lang else {}),
             )
             if orchestrator_timings is not None:
@@ -5565,6 +5566,7 @@ class StructuredComparisonService:
                 scores_summary=scores_summary, category=category_used,
                 demographics_profile=demographics_profile,
                 comparison_quality=_verdict_quality,
+                score_winner_index=scoring_result.get("winner_index"),
                 **({"output_lang": output_lang} if output_lang else {}),
             )
             if _full_deadline_on:

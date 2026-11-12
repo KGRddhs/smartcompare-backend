@@ -2549,6 +2549,22 @@ def _verdict_safe_product(
     return safe
 
 
+# S81-07c (spec V2 / V3): the deterministic scorer's winner is GIVEN to the verdict
+# model, which only explains it. generate_comparison appends this block right after
+# the scores block (before the preferences / cohort block) only when
+# score_winner_index is an int 0 or 1 and a scores summary is present; any other
+# value leaves the system text byte-identical. It names no product: an int index and
+# the PRODUCT 1 / PRODUCT 2 position labels the user message already uses.
+_FIXED_WINNER_BLOCK = (
+    "\n## Fixed Winner\n"
+    "The deterministic scoring above picked PRODUCT {label} as the winner. "
+    'Set "winner_index" to {index}. '
+    "Do not re-decide the winner from ratings, review counts, prices or any other field, "
+    "and never present the other product as the winner. "
+    "Name what the other product does better in key_tradeoff.\n"
+)
+
+
 async def generate_comparison(
     product1: Dict,
     product2: Dict,
@@ -2560,6 +2576,7 @@ async def generate_comparison(
     demographics_profile: Optional[Dict[str, Any]] = None,
     comparison_quality: str = "normal",
     output_lang: Optional[str] = None,
+    score_winner_index: Optional[int] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """Generate detailed comparison between two products.
 
@@ -2574,6 +2591,11 @@ async def generate_comparison(
     'weak' injects the thin-evidence hedging clause. Callers that predate
     the signal (url_extraction_service) default to 'normal' — byte-identical
     to the previous hardcode.
+
+    `score_winner_index` (S81-07c): the deterministic scorer's winner index; an int 0
+    or 1 with a scores summary appends _FIXED_WINNER_BLOCK right after the scores block
+    (the model explains the given winner), any other value leaves the system text
+    byte-identical.
     """
     try:
         client = get_client()
@@ -2613,6 +2635,11 @@ async def generate_comparison(
 Your verdict MUST be consistent with the scores above. If Product A wins on reviews, your text must reflect that. Do NOT contradict the scoring data.
 If this is a cross-tier comparison, frame it as "different products for different needs" rather than "expensive vs cheap."
 """
+            # S81-07c (V2): the given winner, only for a valid int index (a bool is not one).
+            if type(score_winner_index) is int and score_winner_index in (0, 1):
+                system_msg += _FIXED_WINNER_BLOCK.format(
+                    label=score_winner_index + 1, index=score_winner_index
+                )
 
         if user_preferences:
             system_msg += _build_preferences_prompt(

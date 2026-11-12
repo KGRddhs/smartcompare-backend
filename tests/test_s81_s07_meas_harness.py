@@ -2470,7 +2470,7 @@ def _decision_run(mod, monkeypatch, tmp_path, fail):
                 hx.clock[0] += 0.1 * (r + 1)
             if fail and k == 2 and r < 3:
                 return _msg("not json")
-            if fail and k == 7 and r == 0:
+            if fail and k == 15 and r == 0:  # S81-07c: a schema site (disambiguate) since image_tier3 is (b)
                 return _status_exc(400)
             if fail and k == 16 and r == 3:
                 return _conn_exc(timeout=True)
@@ -2522,7 +2522,9 @@ def test_r87_decision_path_pass(monkeypatch, tmp_path, clean_env):
     assert sites["verdict"]["max_tokens_hits"] == 3
     assert sum(v["max_tokens_hits"] for k, v in sites.items() if k != "verdict") == 0
     assert (sites["parse"]["json_n"], sites["parse"]["json_valid"]) == (20, 20)
-    assert (sites["image_tier3"]["schema_n"], sites["image_tier3"]["schema_accepted"]) == (40, 40)
+    assert (sites["disambiguate"]["schema_n"], sites["disambiguate"]["schema_accepted"]) == (20, 20)
+    assert (sites["image_tier3"]["schema_n"], sites["image_tier3"]["json_n"],
+            sites["image_tier3"]["json_valid"]) == (0, 40, 40)
     assert text["A4_refusal_names"]["refusals"] == 1 and text["A4_refusal_names"]["refusals_arabic"] == 0
     assert text["A6_verdict_eval"]["agreement"] == 1.0 and text["A6_verdict_eval"]["mismatches"] == 0
     assert hx.results("moderation")["settings"]["M1_parity"]["fail_closed"] == 0
@@ -2545,7 +2547,8 @@ def test_r88_decision_path_fail(monkeypatch, tmp_path, clean_env):
     text = hx.results("text")["settings"]
     sites = text["A1_sites"]["sites"]
     assert (sites["parse"]["json_n"], sites["parse"]["json_valid"]) == (20, 17)
-    assert (sites["image_tier3"]["schema_n"], sites["image_tier3"]["schema_accepted"]) == (40, 39)
+    assert (sites["disambiguate"]["schema_n"], sites["disambiguate"]["schema_accepted"]) == (20, 19)
+    assert (sites["image_tier3"]["schema_n"], sites["image_tier3"]["json_n"]) == (0, 40)
     assert sites["url_extract"]["timeouts"] == 1
     a4 = text["A4_refusal_names"]
     n_ar = sum(1 for g in _a4_groups() if g["ar"])

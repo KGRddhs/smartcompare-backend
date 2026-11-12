@@ -1688,7 +1688,10 @@ async def _a1_round(r, cp):
                {"title": _full(pb), "link": "https://example.com/b", "snippet": cp["snippets_b"][0]}]))],
         [it("reviews", "a", lambda: es.extract_reviews(pa["brand"], pa["name"], pa["variant"], ca, "fragrances")),
          it("reviews", "b", lambda: es.extract_reviews(pb["brand"], pb["name"], pb["variant"], cb, "fragrances"))],
-        it("verdict", "x", lambda: es.generate_comparison(pa, pb, "bahrain", None, None, ss, "fragrances")),
+        # S81-07c (V5): request parity with production, which passes the scorer's winner index:
+        # here the higher of the two synthetic scores above (75 > 72), product b = index 1.
+        it("verdict", "x", lambda: es.generate_comparison(pa, pb, "bahrain", None, None, ss, "fragrances",
+                                                          score_winner_index=1)),
         it("price_training", "x", lambda: es.extract_price_from_training_data(pa["brand"], pa["name"],
                                                                               pa["variant"], "bahrain")),
         it("specs_targeted", "x", lambda: osvc.extract_specs_targeted(pa["brand"], pa["name"], pa["variant"],
@@ -1785,8 +1788,10 @@ async def _plan_text(ctx):
                 ctx.gold[case["case_id"]] = case["gold_winner_index"]
             for rep in range(ctx.a["reps"]):
                 for case in gold:
+                    # S81-07c (V5): the case's scorer winner (the gold field), as production passes it.
                     req = await _capture("verdict", lambda c=case: es.generate_comparison(
-                        c["product_a"], c["product_b"], "bahrain", None, None, c["scores_summary"], "fragrances"))
+                        c["product_a"], c["product_b"], "bahrain", None, None, c["scores_summary"], "fragrances",
+                        score_winner_index=c["gold_winner_index"]))
                     items.append({"site": "verdict", "case_id": case["case_id"], "rep": rep, "kind": "create",
                                   "request": req, "gold": case["gold_winner_index"]})
             plan.append((s, items))

@@ -76,7 +76,7 @@ ENTRY_ROLES_BASE = ("text", "verdict", "critic", "moderation")
 # site -> [role, claude_max_tokens, expects_json, schema is None]
 SITES_BASE = {
     "classify": ["text", 32, False, True], "critique": ["critic", 512, True, True],
-    "disambiguate": ["text", 256, True, False], "image_tier3": ["text", 256, True, False],
+    "disambiguate": ["text", 256, True, False], "image_tier3": ["text", 256, True, True],
     "parse": ["text", 768, True, True], "price": ["text", 512, True, True],
     "price_training": ["text", 384, True, True], "reviews": ["text", 1024, True, True],
     "specs": ["text", 1536, True, True], "specs_synthesized": ["text", 512, True, True],
