@@ -1464,14 +1464,24 @@ _REQ = dict(model="claude-haiku-5-5", max_tokens=8, messages=[{"role": "user", "
 
 
 def _fake_profile(tmp_path, monkeypatch, token):
-    base = tmp_path / "Anthropic"
-    (base / "configs").mkdir(parents=True)
-    (base / "credentials").mkdir(parents=True)
-    (base / "configs" / "default.json").write_text(json.dumps({"authentication": {"type": "user_oauth"}}),
-                                                   encoding="utf-8")
-    (base / "credentials" / "default.json").write_text(json.dumps({"type": "oauth_token", "access_token": token}),
-                                                       encoding="utf-8")
-    (base / "active_config").write_text("default", encoding="utf-8")
+    # The SDK's profile folder: %APPDATA%/Anthropic on Windows, ~/.config/anthropic on Linux and macOS
+    # (M-11). The same fake profile is written at both; on POSIX the SDK refuses a credentials file that
+    # group or others can read or write, so the folders get 0o700 and the files 0o600.
+    for base in (tmp_path / "Anthropic", tmp_path / ".config" / "anthropic"):
+        made = [base, base / "configs", base / "credentials"]
+        if base.parent != tmp_path:
+            made.insert(0, base.parent)
+        (base / "configs").mkdir(parents=True)
+        (base / "credentials").mkdir(parents=True)
+        files = [base / "configs" / "default.json", base / "credentials" / "default.json", base / "active_config"]
+        files[0].write_text(json.dumps({"authentication": {"type": "user_oauth"}}), encoding="utf-8")
+        files[1].write_text(json.dumps({"type": "oauth_token", "access_token": token}), encoding="utf-8")
+        files[2].write_text("default", encoding="utf-8")
+        if os.name == "posix":
+            for folder in made:
+                os.chmod(folder, 0o700)
+            for f in files:
+                os.chmod(f, 0o600)
     for name in ("APPDATA", "HOME", "USERPROFILE", "XDG_CONFIG_HOME"):
         monkeypatch.setenv(name, str(tmp_path))
     for name in list(os.environ):
