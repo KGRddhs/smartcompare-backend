@@ -439,3 +439,60 @@ def test_g14_moderation_success_clears_a_401_and_only_after_the_call(
     st = _state()
     assert st["state"] == "ok" and st["source"] == "moderation"
     assert _states(alert_rec) == ["rejected", "ok"]
+
+
+# ---------------------------------------------------------------------------
+# Final round (RULINGS_REBASE_MON1 RB-MON1F-3): G15 pins the stamp of a late
+# (pending) event (the re-verifier's surviving mutant RV9); G16 pins that the
+# test reset clears the pending marks (the surviving mutant RV12).
+# ---------------------------------------------------------------------------
+
+
+def test_g15_a_late_event_stamps_the_cooldown(
+    monkeypatch, caplog, alert_rec  # noqa: F811
+):
+    """F1-1 / F1-2: the late (pending) event is an emitted event, so it stamps the
+    fixed window of its (kind, provider, state). A flap back into the same state
+    inside ALERT_COOLDOWN_SECONDS after the late event sends NO second event (the
+    suppressed WARNING is logged instead)."""
+    leaf, t = _clocked(monkeypatch, 110000.0)
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=0 rejected emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=5 ok emitted
+    t[0] += 5
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=10 suppressed, pending
+    t[0] = 110000.0 + 950
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=950 late rejected sent
+    assert _states(alert_rec) == ["rejected", "ok", "rejected"]
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=955 ok: 950 s after t=5, emitted
+    assert _states(alert_rec) == ["rejected", "ok", "rejected", "ok"]
+    t[0] += 5
+    caplog.clear()  # the t=10 suppression logged its own line
+    with caplog.at_level(logging.INFO):
+        # t=960: 10 s after the late event, 960 s after the first rejected event.
+        leaf.note_failure("openai", auth401(), "dispatch")
+    assert _states(alert_rec) == ["rejected", "ok", "rejected", "ok"]
+    lines = [r for r in caplog.records if SUPPRESSED_RE.fullmatch(r.getMessage())]
+    assert len(lines) == 1, [r.getMessage() for r in caplog.records]
+    got = SUPPRESSED_RE.fullmatch(lines[0].getMessage())
+    assert (got.group(1), got.group(2)) == ("openai", "rejected")
+    assert _state()["state"] == "rejected"
+
+
+def test_g16_the_test_reset_clears_the_pending_marks(
+    monkeypatch, alert_rec  # noqa: F811
+):
+    """The conftest reset seam clears the pending marks with the state and the
+    cool-down stamps, so no held event leaks from one test into the next."""
+    leaf, t = _clocked(monkeypatch, 120000.0)
+    pending = _need(leaf, "_PENDING")
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=0 rejected emitted
+    t[0] += 5
+    leaf.note_success("openai", "dispatch")  # t=5 ok emitted
+    t[0] += 5
+    leaf.note_failure("openai", auth401(), "dispatch")  # t=10 suppressed, pending
+    assert ("openai", "rejected") in pending, dict(pending)
+    leaf._reset_credential_health_state()
+    assert dict(pending) == {}
+    assert leaf.health_snapshot() == {}
