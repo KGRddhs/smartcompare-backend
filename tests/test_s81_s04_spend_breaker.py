@@ -1928,7 +1928,9 @@ def test_p05_flag_off_health_has_no_spend_key(monkeypatch):
     asyncio.run(abs_mod.guarded_llm_create(client, model=MINI, messages=_msg("x"), max_tokens=10))
     body = _health()
     assert "llm_spend" not in body and "llm_spend_fail_open" not in body
-    assert set(body) <= BASE_HEALTH_KEYS
+    # MON1 E2 (gate GC-4): the served dispatch above records the OpenAI credential
+    # outcome, so the unflagged MON1 entries may appear; nothing else may.
+    assert set(body) <= BASE_HEALTH_KEYS | {"llm_credential", "serper_keys"}
     assert body["status"] == "healthy" and body["message"] == "MYEZ API is running"
 
 

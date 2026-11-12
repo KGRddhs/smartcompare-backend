@@ -61,3 +61,8 @@ tests/test_s81_d03_deny_and_guards.py
 tests/test_s81_s05_request_context.py
 app/services/llm_router.py
 tests/test_s81_s06_router_gate_rows.py
+app/services/llm_credential_health.py
+app/services/llm_credential_probe.py
+tests/test_inc_mon1_credential_health.py
+tests/test_inc_mon1_probe.py
+tests/test_inc_mon1_gate_rows.py

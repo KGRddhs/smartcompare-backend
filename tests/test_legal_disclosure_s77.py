@@ -48,6 +48,7 @@ D3C_FIXTURE = "tests/fixtures/legal_d3c_u8.json"
 D3C_TESTS = "tests/test_legal_docs_u8_d3c.py"
 RENDERER = "scripts/render_legal_landing.py"
 FILL_SCRIPT = "scripts/fill_in_legal.py"
+V3C_FIXTURE = "tests/fixtures/legal_v3c_live_sentences.json"  # V3C (D2 ADAPTED)
 VARIANTS = "scripts/legal_variants_u8.json"
 FILL_IN = "tests/fixtures/legal_fill_in_u8.json"
 PREFILL = "tests/fixtures/legal_prefill_u8"
@@ -425,30 +426,53 @@ def test_s77_d1_privacy_s2_discloses_the_openai_exchange(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_s77_d2_privacy_s4_states_the_exchange_and_the_photo_guidance(lang):
-    """D2: the live privacy s4 holds the exchange sentence and the photo guidance exactly once each, after the 'no
-    separate setting' sentence and before the openai_retention sentence (forks.openai_retention.<lang>.true);
-    forks.d3_training.<lang>.C ends with ' ' + exchange + ' ' + photos; variants A and B carry neither. The snapshot
-    keeps variant A (not checked). RED at base: absent."""
+    """D2, ADAPTED by V3C (PATH C of item 26, RULINGS_V3C_S81_12 V3C-6 (1); node name kept): the live privacy s4
+    holds, each exactly once and in this order inside ONE paragraph, the scoped programme sentence, the governed
+    sentence, the adapted 'applies' sentence (C2), the exchange sentence and the openai_retention sentence
+    (forks.openai_retention.<lang>.true), and the photo guidance exactly once in the paragraph directly after it
+    (the head's own paragraph, advice for every AI request: V3C OQ-2); the V3C sentences come from
+    tests/fixtures/legal_v3c_live_sentences.json; forks.d3_training.<lang>.C ends with ' ' + exchange; variants A
+    and B carry neither; main's unscoped 'no separate setting' anchor ('every comparison') is absent."""
     fx = _fx()
     variants = _json(VARIANTS)
+    v3c = _json(V3C_FIXTURE) or {}
+
+    def entry(block, rid):
+        for item in v3c.get(block) or []:
+            if isinstance(item, dict) and item.get("id") == rid and item.get("lang") == lang:
+                return item.get("text")
+        return None
+
     if lang == "en":
         anchor, exchange, photos = P4_ANCHOR_EN, EXCHANGE_EN, PHOTOS_EN
     else:
         anchor, exchange, photos = fx["privacy_s4_anchor_ar"], fx["privacy_s4_exchange_ar"], fx["privacy_s4_photos_ar"]
     retention = variants["forks"]["openai_retention"][lang]["true"]
+    seq = [entry("ruled", "P4s"), entry("live", "P4g"), entry("ruled", "C2"), exchange, retention]
     text = _read(PRIVACY[lang])
     s4 = _section(text, 4)
     problems = []
-    for name, sentence in (("exchange", exchange), ("photos", photos)):
-        if text.count(sentence) != 1 or sentence not in s4:
-            problems.append(f"{PRIVACY[lang]} s4: the {name} sentence is not there exactly once")
+    if not all(isinstance(s, str) and s for s in seq):
+        problems.append(f"{V3C_FIXTURE}: the P4s / P4g / C2 entries are missing")
+    else:
+        names = ("scoped programme", "governed", "applies", "exchange", "retention", "photo guidance")
+        for name, sentence in zip(names, seq + [photos]):
+            if text.count(sentence) != 1 or sentence not in s4:
+                problems.append(f"{PRIVACY[lang]} s4: the {name} sentence is not there exactly once")
     if not problems:
-        order = [s4.find(s) for s in (anchor, exchange, photos, retention)]
+        paras = [p for p in s4.split("\n") if p.strip()]
+        para = [p for p in paras if exchange in p][0]
+        order = [para.find(s) for s in seq]
         if -1 in order or order != sorted(order):
-            problems.append(f"{PRIVACY[lang]} s4: not anchor < exchange < photos < retention ({order})")
+            problems.append(f"{PRIVACY[lang]} s4: not scoped < governed < applies < exchange < retention in one paragraph ({order})")
+        i = paras.index(para)
+        if i + 1 >= len(paras) or photos not in paras[i + 1] or photos in para:
+            problems.append(f"{PRIVACY[lang]} s4: the photo guidance is not in the paragraph after the OpenAI paragraph")
+    if anchor in text:
+        problems.append(f"{PRIVACY[lang]}: main's unscoped 'every comparison' anchor is back")
     fork = variants["forks"]["d3_training"][lang]
-    if not fork.get("C", "").endswith(" " + exchange + " " + photos):
-        problems.append(f"{VARIANTS}: forks.d3_training.{lang}.C does not end with the exchange + photo guidance")
+    if not fork.get("C", "").endswith(" " + exchange):
+        problems.append(f"{VARIANTS}: forks.d3_training.{lang}.C does not end with the exchange sentence")
     for variant in ("A", "B"):
         if exchange in fork.get(variant, "") or photos in fork.get(variant, ""):
             problems.append(f"{VARIANTS}: forks.d3_training.{lang}.{variant} carries the C-only exchange text")
@@ -997,8 +1021,9 @@ SITE_ADDRESS_RE = re.compile(r"qaren\.app|getmyez\.com")
 # Mirror of SmartCompareApp/__tests__/landing.brand.s69.test.ts ADDRESS_COUNTS for privacy.html and ar/privacy.html,
 # moved 10 -> 11 by the RF2 sentence (jest cannot run in this worktree), and 11 -> 14 by S78 (P22, re-measured
 # 2026-10-14): the interim postal line names privacy@getmyez.com in s1 and s16 and s5 adds the on-request sentence.
-# A later P.O. Box re-fill moves it 14 -> 12 (re-measure then).
-PRIVACY_PAGE_ADDRESSES = 14
+# A later P.O. Box re-fill moves it 14 -> 12 (re-measure then). S81-12 (gate GC-4, a deliberate re-pin): privacy s6
+# names the crawler's user-agent page https://getmyez.com/bot/ (R-S12-2), +1 per privacy page: 14 -> 15.
+PRIVACY_PAGE_ADDRESSES = 15
 
 
 @pytest.mark.parametrize("lang", LANGS)

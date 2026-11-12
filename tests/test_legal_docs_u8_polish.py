@@ -126,6 +126,9 @@ COMPLETE_VALUES = {
     "CONTROLLER_COUNTRY": "Bahrain",
     "RETENTION_CLEANUP_LIVE": "false",
     "REFERRAL_PUSH_DISPLAY_NAME_ONLY": "true",
+    # S81-12 (gate GC-8): the synthetic date of the v3 notices (privacy and Terms; V3C: they date nothing else).
+    "AI_SWITCH_DATE": "November 2, 2026",
+    "AI_SWITCH_DATE_AR": "2 \u0646\u0648\u0641\u0645\u0628\u0631 2026",
 }
 AR_DPO_VALUE = "\u062c\u064a\u0646 \u062f\u0648\u060c dpo@example.com"
 AR_COUNSEL_VALUE = "- **\u0639\u0642\u062f:** \u062d\u0633\u0627\u0628\u0643."

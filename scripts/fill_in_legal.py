@@ -119,6 +119,8 @@ BOOL_STRING_PLACEHOLDERS = (RETENTION_CLEANUP_LIVE, REFERRAL_PUSH_DISPLAY_NAME_O
 DOCUMENTED_COUNTRY = "Bahrain"
 RETENTION_KEYS = (
     "SECURITY_LOG_RETENTION", "SECURITY_LOG_RETENTION_AR", "ANON_LOG_RETENTION", "ANON_LOG_RETENTION_AR",
+    # S81-12 (R-S12-9): the dormant compare-run and auth-throttle periods (S81-22, S81-24) follow the same rule.
+    "COMPARE_RUN_RETENTION", "COMPARE_RUN_RETENTION_AR", "AUTH_THROTTLE_RETENTION", "AUTH_THROTTLE_RETENTION_AR",
 )
 # A fixed retention period names a number or a duration (UL8: only once the cleanup is live).
 _FIXED_PERIOD = re.compile(

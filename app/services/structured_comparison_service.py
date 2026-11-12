@@ -1894,6 +1894,29 @@ def _phase2_min_residual_seconds() -> float:
     return _float_knob("PHASE2_MIN_RESIDUAL_SECONDS", 8.0)
 
 
+def _phase2_cached_rating_enabled() -> bool:
+    """INC-X8 PHASE2-CACHED-RATING (ENABLE_PHASE2_CACHED_RATING, default OFF,
+    read per call)."""
+    return _flag_on("ENABLE_PHASE2_CACHED_RATING")
+
+
+def _phase2_cached_rating(full_name: str, cache: Any) -> Dict[str, Any]:
+    """INC-X8: the free tier of rating_service.get_verified_rating and nothing
+    else: `extract_rating_from_shopping` over the product's IN-MEMORY shopping
+    rows, accepted only when it found a rating whose confidence is not "low"
+    (the same acceptance rule as get_verified_rating's tier 0). Pure and
+    synchronous: no network, no LLM, no await. Anything else -> the default
+    empty rating dict (the base result of a skipped Phase 2)."""
+    empty = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+    rows = cache.get(full_name, []) if isinstance(cache, dict) else []
+    if not rows:
+        return empty
+    found = extract_rating_from_shopping(full_name, rows)
+    if found and found.get("rating") and (found.get("rating_source") or {}).get("confidence") != "low":
+        return found
+    return empty
+
+
 def _tail_reserve_seconds() -> float:
     """S78-TG (TG2): the post-Phase-1 tail the Tier-2/3 residual guard keeps free
     (default 6.5 s = the measured 6.1 s Phase-1 end -> moderation). Read per call;
@@ -5858,60 +5881,26 @@ class StructuredComparisonService:
             logger.debug("cohort_profile derivation skipped: %s", exc)
         return None
 
-    # Governorate values treated as "missing" for the cohort proof line —
-    # mirrors cohort_service.SKIP_SENTINELS + the extraction_service block's
-    # ("Prefer not to say", "") guard. No region line for these.
-    _COHORT_GOV_SKIP = frozenset(
-        ["", "Prefer not to say", "أفضل عدم الإجابة", "أفضل عدم الإجابة "]
-    )
-
     @staticmethod
     def _build_cohort_summary(
         demographics_profile: Optional[Dict[str, Any]],
     ) -> Optional[Dict[str, Any]]:
-        """Phase 3.1 — build the `cohort_summary` root block for the FE cohort
-        proof line ("N shoppers in {governorate} leaned the same way").
+        """INC-X9 COHORT-LINE-RETIRE (2026-11-11, unflagged): the cohort line is
+        retired.
 
-        Sources both fields from the persisted demographics snapshot (written by
-        auth_routes.save_demographics at demographics-submission time):
-          - peer_count  = demographics_profile["cohort_match"]["n"] — the REAL
-            survey sample size N from cohort_priors.json (NOT invented);
-          - governorate = demographics_profile["governorate"] — the user's typed
-            governorate from onboarding Step 04.
-
-        Gating mirrors `was_cohort_block_active` (ENABLE_COHORT_PERSONALIZATION
-        flag + match_quality in the inject set + a confidence + a cohort_key) so
-        a cohort line is emitted only when cohort personalization actually ran.
-        Additionally requires peer_count > 0 and a non-sentinel governorate so
-        the FE CohortBadge (hides when peer_count <= 0 or !governorate) never
-        renders an empty line.
-
-        Returns None when the data isn't present/renderable (→ caller omits the
-        key, badge hides). Fail-soft: any error → None; a cohort line must never
-        break a comparison.
+        This helper used to build the `cohort_summary` root block {peer_count,
+        governorate} that the store binary renders as "+N shoppers in
+        <governorate> leaned the same way". N was the sign-up survey group size
+        (demographics_profile["cohort_match"]["n"]), not agreement on the pair,
+        so the line was false; the owner ruled the badge removed (2026-10-22).
+        It now returns None for every input, so no text / streaming / camera /
+        partial response carries `cohort_summary` (the builder's existing omit
+        path). The signature and the three call sites are kept; the builder
+        still accepts a dict or None. ENABLE_COHORT_PERSONALIZATION, the
+        verdict-prompt cohort block and `metadata.cohort_injected` are
+        unchanged.
         """
-        try:
-            if not demographics_profile:
-                return None
-            # Flag + match-quality + confidence + cohort_key gate (single source
-            # of truth — the cohort-injection predicate from extraction_service).
-            if not was_cohort_block_active(demographics_profile):
-                return None
-
-            cohort_match = demographics_profile.get("cohort_match") or {}
-            n = cohort_match.get("n", 0)
-            if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
-                return None
-
-            governorate = demographics_profile.get("governorate")
-            gov = str(governorate).strip() if governorate is not None else ""
-            if gov in StructuredComparisonService._COHORT_GOV_SKIP:
-                return None
-
-            return {"peer_count": n, "governorate": gov}
-        except Exception as exc:  # noqa: BLE001 — cohort proof line is best-effort
-            logger.debug("cohort_summary build skipped: %s", exc)
-            return None
+        return None
 
     async def _fetch_behavior_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Fetch user's behavioral profile from Supabase."""
@@ -6705,6 +6694,22 @@ class StructuredComparisonService:
                 continue
             if key == "_rating_data":
                 rating_data = phase2_results[i]
+
+        # INC-X8 (ENABLE_PHASE2_CACHED_RATING, default OFF, the FIRST conjunct):
+        # when the residual guard skipped Phase 2 for this product, give it the
+        # rating its in-memory shopping rows already hold (no network, no LLM,
+        # no await; the smart-fallback refill stays skipped). A KB full hit keeps
+        # the card rating (S81-18 H6). OFF: the block is skipped, byte-identical.
+        if _phase2_cached_rating_enabled() and _phase2_skip and not _kb_full:
+            try:
+                rating_data = _phase2_cached_rating(
+                    full_name, self._shopping_items_cache if _fc_view is None else _fc_view)
+                _x8_outcome = "hit" if rating_data.get("rating") else "miss"
+            except Exception as _x8_err:  # noqa: BLE001 -- a rating must never break the product
+                rating_data = {"rating": None, "review_count": None, "rating_verified": False, "rating_source": None}
+                _x8_outcome = "error:" + type(_x8_err).__name__
+            logger.info("[L2.6] phase 2 cached rating outcome=%s product=%d",
+                        _x8_outcome, partial_slot if partial_slot is not None else 0)
 
         result["rating"] = rating_data.get("rating")
         result["review_count"] = rating_data.get("review_count")

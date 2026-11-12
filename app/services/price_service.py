@@ -7802,6 +7802,54 @@ def _vd_feminine_query_unconfirmed(q: VariantDescriptor, c: VariantDescriptor) -
     return q.gender == "women" and c.gender != "women"
 
 
+# INC-X10 LISTING-MATCH-GUARD (ENABLE_LISTING_MATCH_GUARD, default OFF, read per
+# call). The base gender axis rejects only a CONTRADICTION (both sides stated),
+# so a one-sided marker passes: the incident row e2320ca7 priced "Versace Eros
+# EDP" from a "Versace Eros for Women EDP 100ml" listing (Eros Pour Femme, a
+# different perfume). A one-sided marker alone cannot decide ("La Vie Est Belle
+# ... for Women" is the right listing for an unmarked query), and a symmetric
+# token rule over-rejects women's-base lines (see _feminine_query_unconfirmed).
+# So the rule needs LINE knowledge: a small table of fragrance lines that have an
+# opposite-gender sibling, each with its default (unmarked) side. A query that
+# names a table line and states no gender word, against a candidate title that
+# states exactly one side other than the line's default, is a "gender" mismatch.
+# The four lines are product knowledge (owner-vetoable in the PR body); a new
+# line is a data-only follow-up with its own rows.
+_GENDER_FLIP_LINES: Tuple[Tuple[FrozenSet[str], str], ...] = (
+    (frozenset({"versace", "eros"}), "men"),
+    (frozenset({"versace", "dylan", "blue"}), "men"),
+    (frozenset({"creed", "aventus"}), "men"),
+    (frozenset({"dolce", "gabbana", "light", "blue"}), "women"),
+)
+_GENDER_LINE_MEN_WORDS = _GENDER_MEN_TOKENS | _PRONOUN_MEN_TOKENS
+_GENDER_LINE_WOMEN_WORDS = _GENDER_WOMEN_TOKENS | _PRONOUN_WOMEN_TOKENS
+
+
+def listing_match_guard_enabled() -> bool:
+    """INC-X10: ENABLE_LISTING_MATCH_GUARD, read per call (house idiom)."""
+    return os.getenv("ENABLE_LISTING_MATCH_GUARD", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def _vd_gender_line_flip(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """INC-X10: True when the candidate states the opposite side of a gender-flip
+    line the (gender-free) query names. The flag read is the FIRST statement, so
+    flag OFF reads no descriptor field and never iterates the table."""
+    if not listing_match_guard_enabled():
+        return False
+    q_words = q.fold_tokens
+    if q_words & (_GENDER_LINE_MEN_WORDS | _GENDER_LINE_WOMEN_WORDS):
+        return False  # the query states a gender: the base axes decide
+    c_men = bool(c.fold_tokens & _GENDER_LINE_MEN_WORDS)
+    c_women = bool(c.fold_tokens & _GENDER_LINE_WOMEN_WORDS)
+    if c_men == c_women:
+        return False  # no side stated, or both (unisex wording)
+    c_side = "men" if c_men else "women"
+    for line_words, default_side in _GENDER_FLIP_LINES:
+        if line_words <= q_words:
+            return c_side != default_side
+    return False
+
+
 def _vd_color_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
     """Fashion colourway (_color_mismatch): the query's stated colours must
     ALL appear in the candidate (query-subset); one-sided tolerated."""
@@ -7885,6 +7933,8 @@ def _descriptor_axis_mismatch(q: VariantDescriptor, c: VariantDescriptor,
             return "category_type_added"
         if (cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion") and (
                 _vd_gender_mismatch(q, c) or _vd_feminine_query_unconfirmed(q, c)):
+            return "gender"
+        if cat == "fragrances" and _vd_gender_line_flip(q, c):  # INC-X10 H1
             return "gender"
         if cat == "fashion" and _vd_color_mismatch(q, c):
             return "color"
@@ -8409,6 +8459,11 @@ def _descriptor_backstop_axes_verdict(
     if cat in _FRAGRANCE_BEAUTY_CATEGORIES or cat == "fashion":
         if _vd_gender_mismatch(q, c):
             return "gender"
+    # INC-X10 H2 (ENABLE_LISTING_MATCH_GUARD): the same line rule on the cache
+    # read and the display, so a 7-day cached wrong-side listing cannot outlive
+    # the flip.
+    if cat == "fragrances" and _vd_gender_line_flip(q, c):
+        return "gender"
     # Prefixed clothing-size (fashion): both state a "Size L"-form letter and
     # share none. Bare letters stay ambiguous (not extracted) as at selection.
     if cat == "fashion" and _vd_disjoint(q.clothing_sizes, c.clothing_sizes):

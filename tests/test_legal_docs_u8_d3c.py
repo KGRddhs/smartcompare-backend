@@ -63,6 +63,11 @@ AI quality / Data Sharing Program"): privacy section 4 matches every pattern of
 T8_C_REQUIRED_EN (case-insensitive) and none of T8_C_FORBIDDEN_EN; the AR half lives in the
 fixture (t8_c_ar). Each rule node first proves the rule rejects the A and B texts.
 
+S81-12 LEGAL-V3 (2026-10-29) and V3C (PATH C of item 26, RULINGS_V3C_S81_12; node names kept): the synthetic
+data gains AI_SWITCH_DATE / _AR (the dated notice of the v3 texts; gate GC-8: the temp-copy rows get the new keys,
+never deletions), the Terms s8 licence names 'our AI providers' (F1-6, EF6a); everything else is main's form again
+(the d3 forks are back with the scoped C paragraph, d3 'C'), and (a) also checks every fork's own variants.
+
 Pure ASCII: Arabic lives in tests/fixtures/legal_d3c_u8.json (the GREEN additions use escapes); failure
 messages escape it.
 Hermetic: temp copies only; the dry-run writes nothing and never touches the checkout.
@@ -149,6 +154,7 @@ COMPLETE_VALUES_EN = {
     "CONTROLLER_COUNTRY": "Bahrain",
     "RETENTION_CLEANUP_LIVE": "false",
     "REFERRAL_PUSH_DISPLAY_NAME_ONLY": "true",
+    "AI_SWITCH_DATE": "November 2, 2026",  # S81-12: synthetic notice date (the AR twin is in the fixture)
 }
 
 
@@ -254,7 +260,8 @@ def test_d3c_a_c_text_restates_the_consent_sheet_sentence():
 
 def test_d3c_a_c_text_is_locatable_by_the_fork_machinery():
     """(a) fill_in_legal locates a fork by its variant text (exactly once): C may not contain, or be
-    contained in, the A or B text or either openai_retention text."""
+    contained in, the A or B text or either openai_retention text; and (S81-12, kept by V3C C4) no non-empty
+    variant of any fork contains another variant of the same fork (EN and AR, the dormant forks included)."""
     variants = _json(VARIANTS)
     problems = []
     for lang in ("en", "ar"):
@@ -262,6 +269,12 @@ def test_d3c_a_c_text_is_locatable_by_the_fork_machinery():
         others = {f"d3 {k}": variants["forks"]["d3_training"][lang][k] for k in ("A", "B")}
         others.update({f"retention {k}": t for k, t in variants["forks"]["openai_retention"][lang].items()})
         problems += [f"{lang}: C collides with {name}" for name, text in others.items() if text in c_text or c_text in text]
+    # S81-12 (kept by V3C C4): no non-empty variant of any fork may contain another variant of the same fork.
+    for name, fork in sorted(variants["forks"].items()):
+        for lang in ("en", "ar"):
+            texts = {k: v for k, v in (fork.get(lang) or {}).items() if isinstance(v, str) and v}
+            problems += [f"{name} {lang}: {k1} is inside {k2}" for k1, v1 in texts.items() for k2, v2 in texts.items()
+                         if k1 != k2 and v1 in v2]
     assert not problems, problems
 
 
@@ -544,10 +557,11 @@ def test_d3c_h_no_per_user_sharing_setting_is_claimed():
 TERMS_HISTORY_EN = (
     "Your account's comparison history is yours to view, share and delete, and is handled under our Privacy Policy."
 )
+# S81-12 fix round 1 (RULINGS_FIX1_S81_12 F1-6, a deliberate pin change, E-row EF6a): the Terms s8 licence names 'our AI providers'.
 TERMS_LICENCE_EN = (
     "You grant us a worldwide, royalty-free licence to use the content you submit to MYEZ (your queries, "
     "photos, links, feedback and preferences) to operate, secure and improve the service, to create "
-    "de-identified comparison and preference datasets, and to obtain comparisons from our AI provider as our "
+    "de-identified comparison and preference datasets, and to obtain comparisons from our AI providers as our "
     "Privacy Policy describes."
 )
 # FIX round 4 (UF14; the owner: "comparison data and preference data, never personal"): ownership attaches to the

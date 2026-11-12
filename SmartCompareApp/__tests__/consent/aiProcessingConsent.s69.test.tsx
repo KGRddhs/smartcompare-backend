@@ -694,6 +694,7 @@ describe('S69 U3 T1 — the sheet names OpenAI and links the Privacy Policy', ()
     expect(enSheet).not.toBeNull();
     const enText = textUnder(enSheet);
     expect(enText).toMatch(/OpenAI/);
+    expect(enText).toMatch(/Anthropic/); // S81-12 (E6): both providers
     expect(enText).toMatch(/\bMYEZ\b/);
     expect(enText).not.toMatch(/Qaren/);
     en.screen.unmount();
@@ -705,6 +706,7 @@ describe('S69 U3 T1 — the sheet names OpenAI and links the Privacy Policy', ()
     expect(arSheet).not.toBeNull();
     const arText = textUnder(arSheet);
     expect(arText).toMatch(/OpenAI/);
+    expect(arText).toMatch(/Anthropic/); // S81-12 (E6)
     expect(arText).toContain('ميّز');
   });
 
@@ -767,6 +769,7 @@ describe('S69 U3 T1 — aiConsent.* copy in both catalogs', () => {
   it('T1.22 the body tells the truth: OpenAI, MYEZ, names/links/photos, preferences, and that name + email are not sent (EN + AR)', () => {
     const enBody = EN['aiConsent.body'] ?? '';
     expect(enBody).toMatch(/OpenAI/);
+    expect(enBody).toMatch(/Anthropic/); // S81-12 (E6): consent v3 names both providers
     expect(enBody).toMatch(/\bMYEZ\b/);
     expect(enBody).toMatch(/product name/i);
     expect(enBody).toMatch(/link/i);
@@ -778,6 +781,7 @@ describe('S69 U3 T1 — aiConsent.* copy in both catalogs', () => {
 
     const arBody = AR['aiConsent.body'] ?? '';
     expect(arBody).toMatch(/OpenAI/);
+    expect(arBody).toMatch(/Anthropic/); // S81-12 (E6)
     expect(MYEZ_AR_WORD.test(arBody)).toBe(true);
     // «تفضيل» — preferences
     expect(arBody).toContain('تفضيل');

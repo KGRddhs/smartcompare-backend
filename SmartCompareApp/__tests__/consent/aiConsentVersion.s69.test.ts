@@ -30,10 +30,20 @@ const EN: Record<string, string> = require('../../src/i18n/en.json');
 const AR: Record<string, string> = require('../../src/i18n/ar.json');
 
 // S75 U3b (decision D3 = C): the body gained the OpenAI data-use sentence in
-// EN and AR (a MATERIAL change), so the version is 2 and the digest is re-recorded.
+// EN and AR (a MATERIAL change), so the version became 2.
+// S81-12 (consent v3, a MATERIAL change): the body names both AI providers,
+// Anthropic and OpenAI, says that until the move to Anthropic is complete some
+// or all requests, including photos, are processed by OpenAI, so the version
+// is 3 and the digest is re-recorded in the same edit. The training sentence
+// stays (S81-12 V3C, PATH C of item 26: OpenAI's data-sharing programme is
+// still disclosed), directly after the transition sentence.
+// S81-12 ARFIX (2026-11-12): the AR body's tense fix ('we are currently working
+// on moving') changes no meaning, and v3 reached no phone: digest alone, version 3.
+// S81-12 V3C (2026-11-12): main's training sentence returns beside the transition
+// sentence; v3 reached no phone, so the digest is re-recorded with version 3.
 const PINNED = {
-  version: 2,
-  sha256: '372c50484085fa859a576a62367c743365735fab6dda31f336552a4ae2a21a02',
+  version: 3,
+  sha256: '040af0c5904061a42e2750537fd0f4b305763e33e632ff890c9e5a1064a9886a',
 };
 
 function consentCopyDigest(): string {
