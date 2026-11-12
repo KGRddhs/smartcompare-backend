@@ -31,3 +31,10 @@ Invoke `/synack-build-orchestrator` for the MYEZ INCIDENT FIX LANE. You are the 
 - Measure the plan usage at the start (get_usage) and tell the relay the burn rate; a lane that launches freely can stop every session before the owner's window.
 - Queued relay notes can contradict each other (stop it / let it finish). The standing box rule decides: at most two gate-heavy workflows on the box, the main lane's window first. After any stop: no orphan process, the real worktree clean, the drafts kept, the token count to the relay.
 - Two orchestrators can be alive in one lane (the owner may write to the older one). Agree in one message who holds the slot and who files on the docs branch; bk.py adds the whole folder.
+
+## ADDENDUM 1 (2026-11-12 about 06:50; it supersedes the lines above where they differ)
+
+- S81-12d: the main lane's confirmation of the section J exception ARRIVED (filed verbatim; ruling J-11 adds its one request). NOTHING is owed before the RED relaunch except the relay's two "open" messages.
+- INC-X6 HONEST-BARS: its three documents are FILED under specs/ (the brief b2fe0777..., the spec 703c3ce3..., the review a426b309...) and RULED: specs/RULINGS_INC_X6.md (X6-R1..R21). The one design decision: the confidence map is lost on warm enriched cache hits and on KB-served specs, so the unit also builds a carry of that map under a second dark flag (X6-R3), unless the main lane answers that it owns that fix (asked through the relay). NEXT: a read-only spec amendment round with a limited re-review ("budget open" needed), then its RED after the lane's earlier units. DEFECT_LEDGER_INCIDENT.md is current to this addendum.
+- S92-FIX launches nothing more. The briefs of X5, X7 and X4 are this lane's (wf/wf_inc_brief_chain.js in the copied scratchpad), when the budget opens.
+- THIS BOX REJECTS A BASH COMMAND OVER ABOUT 7 KB WHOLE (it shows as a quote error and nothing runs): write long bodies with the Write tool into the scratchpad and keep each shell call short.
