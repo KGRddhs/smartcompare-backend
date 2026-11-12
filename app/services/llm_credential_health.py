@@ -333,9 +333,16 @@ def _anthropic_roles_on() -> bool:
 def providers_in_use() -> Tuple[str, ...]:
     """openai when OPENAI_API_KEY is set (presence only: the value is never stored,
     compared or logged); anthropic when ANTHROPIC_API_KEY is set AND an
-    ENABLE_ANTHROPIC_* role flag is ON (llm_router.any_role_enabled)."""
+    ENABLE_ANTHROPIC_* role flag is ON (llm_router.any_role_enabled).
+
+    S81-12d (ruling K-2 3.11): openai is NOT in use while ENABLE_OPENAI_EGRESS_STOP
+    is ON (read per call by module attribute through a function-local import:
+    api_budget_service imports this leaf at module top). The last recorded openai
+    state is kept, never erased."""
+    from app.services import api_budget_service as _abs
+
     out = []
-    if _present(os.getenv("OPENAI_API_KEY")):
+    if _present(os.getenv("OPENAI_API_KEY")) and not _abs.openai_egress_stop_enabled():
         out.append("openai")
     if _present(os.getenv("ANTHROPIC_API_KEY")) and _anthropic_roles_on():
         out.append("anthropic")
