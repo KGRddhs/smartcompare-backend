@@ -1,6 +1,6 @@
 # S81-07: what the measurement run needs from the owner (session 93, 2026-11-12)
 
-State (2026-11-12 16:15): the harness is on the branch feature/s81-07-meas-claude-gate at commit 1c3fc375, with the current main (445f8de3) brought in; its pull request #402 is open as a draft and all seven checks are green (17:14). No live call was ever made. The run uses this commit in the unit worktree; if main moves before the run, the main lane brings it in again first.
+State (2026-11-12 17:20): the harness is MERGED to main (pull request #402, merge commit c6ebbd2e). The unit worktree stands at 1c3fc375, whose files are identical to the merge commit's, so the run uses that worktree as it is. No live call was ever made.
 
 ## 1. His Anthropic TEST key, in a file he creates himself
 
@@ -77,3 +77,27 @@ REPORTED, NOT A BAR: the cost per synthetic compare (p50, p95) and the compares 
 ## 10. What was still to do before the run: DONE on 2026-11-12
 
 Main was brought into the unit branch, five small findings were taken in, the regression comparison against the new main was measured (one pinned list in another lane's test was re-pinned on purpose), and the branch was pushed as draft pull request #402. The pull request merges on the relay's word; the run does not wait for the merge.
+
+## 11. The exact commands on this machine (only <KEYFILE> is open)
+
+Proved with dry runs from that worktree on 2026-11-12 (no key, exit 0). In a Claude Code shell the harness also names ANTHROPIC_BASE_URL, so it is in the unset list; if a refusal line names another variable, add `-u <that name>`.
+
+Text (622 calls, cap 4.00 USD, at most 90 minutes):
+
+```bash
+cd C:/Users/SynAckITPC/Documents/AI/sc-s81-s07 && MEAS_ANTHROPIC_TEST_KEY="$(cat <KEYFILE>)" env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u ANTHROPIC_BASE_URL C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m scripts.meas_claude_gate text --out C:/Users/SynAckITPC/MYEZ-meas/s81-07-run1
+```
+
+Moderation (200 calls, cap 2.00 USD, at most 20 minutes):
+
+```bash
+cd C:/Users/SynAckITPC/Documents/AI/sc-s81-s07 && MEAS_ANTHROPIC_TEST_KEY="$(cat <KEYFILE>)" env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u ANTHROPIC_BASE_URL C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m scripts.meas_claude_gate moderation --out C:/Users/SynAckITPC/MYEZ-meas/s81-07-run1
+```
+
+The report (no key and no assignment; it reads the folder):
+
+```bash
+cd C:/Users/SynAckITPC/Documents/AI/sc-s81-s07 && env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u ANTHROPIC_BASE_URL C:/Users/SynAckITPC/Documents/AI/.venv-qaren/Scripts/python.exe -m scripts.meas_claude_gate report --out C:/Users/SynAckITPC/MYEZ-meas/s81-07-run1
+```
+
+The output folder is outside every repository and the harness creates it; keep the same folder for every stage. The harness is silent on success: read the exit code, then REPORT.md in that folder. Do not switch the worktree's branch before the run.
