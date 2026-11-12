@@ -141,3 +141,8 @@ Invoke `/synack-build-orchestrator` for MYEZ session 94: continue the session-81
 - WHAT THE CLAUDE PATH STILL NEEDS, in order (the relay's and the owner's unless marked): the second update; the request context flag with the pepper (the owner creates DEVICE_KEY_PEPPER himself); the S81-07 measurement (this lane's READY pack, then the owner's run with his test key); the Claude text and verdict flips, one canary window each. The incident lane merges G-INC-1, MON1 and S81-12d after this merge, in the relay's order; the main lane accepted the named exception for the egress-stop class at the two re-raising arms.
 - CARRIED OWNER STEP: the OpenAI organisation data-sharing setting stays ON until S81-12b publishes.
 - AT EVERY BOUNDARY: one line to the relay with the round's tokens and the measured context.
+
+## ADDENDUM 17 (the after-merge chain is done on the relay's side; 2026-11-12 09:25)
+- The relay deployed and verified everything after the merge of #378 (backend at ea47cbfb, the four landing pages, the App Privacy label MATCH, the second production update group d84dac11 with exactly the six client files). NOT yet seen on the owner's phone: by his proof standard the legal window is published, not proven.
+- S81-12b carries two forward notes (DEFECT_LEDGER): reconcile privacy section 2 'We do not show third-party ads' with the Sponsored links of section 6 before the Sponsored unit ships, and re-check the store label then.
+- The incident lane now has its merge window (G-INC-1, then MON1, one gate round at a time beside the S81-07 fix round). EVERY merge moves main: the relay passes each new main; recompute the base constants of S81-07, NT1 and CL3 from the main of the moment before any round.
