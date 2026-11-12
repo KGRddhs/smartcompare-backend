@@ -28,6 +28,12 @@ publication notice of F1-5:
       the free-comparison limits only), EN verbatim + the AR twin, once in s14 and in the landing privacy
       pages (RULINGS_REBASE_S81_12 RB12-6, RULINGS_FIX1_S81_12 F2-7; the S81-08 appreview m6)
   (j) privacy s6: the F1-7 crawler hedge 'When we run it, our catalogue crawler', EN + AR (F2-2(d)) (S1)
+  (k)-(o) the ARFIX round (RULINGS_ARFIX_S81_12 AF-5 (a), the owner's native-read answer of 2026-11-12):
+      (k) the in-progress tense of the move to Anthropic (privacy s2 + s4, Terms s8, aiConsent.body);
+      (l) the onboarding step-5 'never sends' clause; (m) privacy s6 'links' of pictures and pages and the
+      bot address without the trailing slash; (n) privacy s14 'the random install identifier'; (o) privacy
+      s4 + s5 the common construction for 'data shared with OpenAI'. Arabic is compared marks-insensitively
+      (U+064B..U+0652, U+0670 and U+0640 stripped by _nomarks).
 
 Each row fails on its mutant (applied through the U8 machinery on byte copies: snapshot edit ->
 restore -> scripts/fill_in_legal.py) with an AssertionError; the mutation tables are in the fix-round
@@ -45,13 +51,16 @@ import pytest
 
 from tests.test_legal_docs_u8 import D3_HISTORY_AR, D3_HISTORY_EN
 from tests.test_s81_12_legal_v3 import (
+    AR_CATALOG,
     AR_LETTER,
     BOT_URL,
+    BOT_URL_AR,
     PAGE_OF,
     PRIVACY_AR,
     PRIVACY_EN,
     TERMS_AR,
     TERMS_EN,
+    _catalog,
     _placeholders,
     _read,
     _region,
@@ -89,7 +98,7 @@ PERMIT_AR = re.compile(
 CARVE_EN = "Data shared with OpenAI under the programme before that date remains governed by OpenAI's terms."
 CARVE_AR = (
     "\u0648\u062a\u0638\u0644 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u062a\u064a "
-    "\u0634\u0648\u0631\u0643\u062a \u0645\u0639 OpenAI \u0636\u0645\u0646 \u0647\u0630\u0627 "
+    "\u062a\u0645\u062a \u0645\u0634\u0627\u0631\u0643\u062a\u0647\u0627 \u0645\u0639 OpenAI \u0636\u0645\u0646 \u0647\u0630\u0627 "
     "\u0627\u0644\u0628\u0631\u0646\u0627\u0645\u062c \u0642\u0628\u0644 \u0630\u0644\u0643 "
     "\u0627\u0644\u062a\u0627\u0631\u064a\u062e \u062e\u0627\u0636\u0639\u0629 \u0644\u0634\u0631\u0648\u0637 OpenAI."
 )
@@ -564,20 +573,172 @@ def test_g_i2_s14_keychain_fallback_identifier_clause(lang):
 @pytest.mark.parametrize("lang", LANGS)
 def test_g_j_crawler_sentence_hedged(lang):
     """PIN (F2-2(d), kills S1): privacy s6 has exactly one sentence naming the published user-agent page
-    (https://getmyez.com/bot/), and that sentence opens with the F1-7 hedge (EN 'When we run it, our
-    catalogue crawler'; AR the hedged opening as the machinery renders it); the hedge appears once in s6."""
+    (EN https://getmyez.com/bot/; AR the canonical https://getmyez.com/bot, ARFIX CLASS U), and that
+    sentence opens with the F1-7 hedge (EN 'When we run it, our catalogue crawler'; AR the hedged opening
+    as the machinery renders it); the hedge appears once in s6."""
     s6 = _section(_read(PRIVACY_EN if lang == "en" else PRIVACY_AR), "6")
     hedge = CRAWLER_HEDGE_EN if lang == "en" else CRAWLER_HEDGE_AR
+    bot_url = BOT_URL if lang == "en" else BOT_URL_AR
     problems = []
     if s6 is None:
         problems.append("privacy s6 missing")
         s6 = ""
-    hits = [s for s in _sentences(s6) if BOT_URL in s]
+    hits = [s for s in _sentences(s6) if bot_url in s]
     if len(hits) != 1:
-        problems.append(f"privacy s6 has {len(hits)} sentences naming {BOT_URL} (want 1)")
+        problems.append(f"privacy s6 has {len(hits)} sentences naming {bot_url} (want 1)")
     for sentence in hits:
         if not sentence.startswith(hedge):
             problems.append(f"the crawler sentence is not hedged: {sentence[:120]!r}")
     if s6.count(hedge) != 1:
         problems.append(f"privacy s6 carries the crawler hedge {s6.count(hedge)} times (want 1)")
     assert not problems, _report(f"G-j ({lang}): the crawler hedge:", problems)
+
+
+# =============================================================================================
+# (k)-(o) -- the ARFIX round (RULINGS_ARFIX_S81_12 AF-5 (a)): the ruled Arabic meaning corrections
+# =============================================================================================
+
+ARFIX_MARKS = re.compile("[\u064b-\u0652\u0670\u0640]")  # harakat, tanween, shadda, sukun, dagger alif, tatweel
+# (k) R2: 'and we are currently working on moving this processing' / the old 'and we move this processing'
+MOVE_NEW_AR = (
+    "\u0648\u0646\u0639\u0645\u0644 \u062d\u0627\u0644\u064a\u0627 \u0639\u0644\u0649 "
+    "\u0646\u0642\u0644 \u0647\u0630\u0647 \u0627\u0644\u0645\u0639\u0627\u0644\u062c\u0629"
+)
+MOVE_OLD_AR = "\u0648\u0646\u0646\u0642\u0644 \u0647\u0630\u0647 \u0627\u0644\u0645\u0639\u0627\u0644\u062c\u0629"
+# (l) R1: 'and it never sends your name, your email address or your account details' / the old 'without your name'
+NEVER_SENDS_AR = {
+    "never sends your name": "\u0648\u0644\u0627 \u064a\u0631\u0633\u0644 \u0623\u0628\u062f\u0627 \u0627\u0633\u0645\u0643",
+    "your email address": "\u0628\u0631\u064a\u062f\u0643 \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a",
+    "your account details": "\u0628\u064a\u0627\u0646\u0627\u062a \u062d\u0633\u0627\u0628\u0643",
+}
+WITHOUT_NAME_AR = "\u062f\u0648\u0646 \u0627\u0633\u0645\u0643"
+# (m) R3: 'and the links of product pictures on the web and the links of the pages they came from'
+LINKS_NEW_AR = (
+    "\u0648\u0631\u0648\u0627\u0628\u0637 \u0635\u0648\u0631 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a "
+    "\u0639\u0644\u0649 \u0627\u0644\u0648\u064a\u0628 \u0648\u0631\u0648\u0627\u0628\u0637 "
+    "\u0627\u0644\u0635\u0641\u062d\u0627\u062a \u0627\u0644\u062a\u064a \u062c\u0627\u0621\u062a \u0645\u0646\u0647\u0627"
+)
+TITLES_OLD_AR = "\u0648\u0639\u0646\u0627\u0648\u064a\u0646 \u0635\u0648\u0631 \u0627\u0644\u0645\u0646\u062a\u062c\u0627\u062a"
+BOT_ON_OUR_SITE_AR = BOT_URL_AR + " \u0641\u064a \u0645\u0648\u0642\u0639\u0646\u0627"  # <address> on our site
+# (n) R5: 'combined the random install identifier with' / the old 'combined that random identifier with'
+INSTALL_ID_NEW_AR = (
+    "\u0643\u0627\u0646\u062a \u062a\u062c\u0645\u0639 \u0645\u0639\u0631\u0641 "
+    "\u0627\u0644\u062a\u062b\u0628\u064a\u062a \u0627\u0644\u0639\u0634\u0648\u0627\u0626\u064a \u0645\u0639"
+)
+THAT_ID_OLD_AR = "\u0630\u0644\u0643 \u0627\u0644\u0645\u0639\u0631\u0641 \u0627\u0644\u0639\u0634\u0648\u0627\u0626\u064a"
+# (o) R9: 'the data that was shared with OpenAI' (the common construction) / the rare passive
+SHARED_NEW_AR = (
+    "\u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u062a\u064a \u062a\u0645\u062a "
+    "\u0645\u0634\u0627\u0631\u0643\u062a\u0647\u0627 \u0645\u0639 OpenAI"
+)
+SHARED_OLD_AR = "\u0634\u0648\u0631\u0643\u062a"
+
+
+def _nomarks(text):
+    """The text with the Arabic marks stripped (the ARFIX comparisons are marks-insensitive)."""
+    return ARFIX_MARKS.sub("", text or "")
+
+
+def _ar_sections(rel, *numbers):
+    text = _read(rel)
+    return {n: _section(text, n) for n in numbers}, text
+
+
+def test_g_k_move_to_anthropic_in_progress_tense():
+    """PIN (ARFIX R2, edits P1 x2 / T1 / J1): the move to Anthropic is told as in progress ('and we are
+    currently working on moving this processing') in the AR privacy s2 and s4, the AR Terms s8 and the AR
+    aiConsent.body; the old verb form ('and we move this processing') is absent from all four."""
+    problems = []
+    secs, ptext = _ar_sections(PRIVACY_AR, "2", "4")
+    tsecs, _ = _ar_sections(TERMS_AR, "8")
+    body = _catalog(AR_CATALOG).get("aiConsent.body")
+    places = {
+        "privacy s2": secs["2"],
+        "privacy s4": secs["4"],
+        "Terms s8": tsecs["8"],
+        "aiConsent.body": body if isinstance(body, str) else None,
+    }
+    for label, text in places.items():
+        if text is None:
+            problems.append(f"{label} missing")
+            continue
+        if _nomarks(text).count(MOVE_NEW_AR) != 1:
+            problems.append(f"{label} does not carry the in-progress wording once")
+        if MOVE_OLD_AR in _nomarks(text):
+            problems.append(f"{label} still carries the old verb form")
+    if _nomarks(ptext).count(MOVE_NEW_AR) != 2:
+        problems.append("the AR privacy policy does not carry the in-progress wording exactly twice")
+    assert not problems, _report("G-k: the in-progress tense of the move to Anthropic:", problems)
+
+
+def test_g_l_onboarding_step5_never_sends_clause():
+    """PIN (ARFIX R1, edit J2): onboarding.s5.privacy_anon_body says the App never sends your name, your
+    email address or your account details; the old 'without your name, your mail or your account' clause
+    is absent."""
+    body = _catalog(AR_CATALOG).get("onboarding.s5.privacy_anon_body")
+    problems = []
+    if not isinstance(body, str):
+        problems.append("onboarding.s5.privacy_anon_body missing")
+        body = ""
+    for label, needle in NEVER_SENDS_AR.items():
+        if needle not in _nomarks(body):
+            problems.append(f"the step-5 body lacks {label}")
+    if WITHOUT_NAME_AR in _nomarks(body):
+        problems.append("the step-5 body still carries the old 'without your name' clause")
+    assert not problems, _report("G-l: the onboarding step-5 privacy body:", problems)
+
+
+def test_g_m_privacy_s6_links_and_canonical_bot_address():
+    """PIN (ARFIX R3 + R4, edits P3 / P4): the AR privacy s6 names the LINKS of product pictures and of the
+    pages they came from (not their titles), and the bot address without the trailing slash, followed by
+    'on our site'; the string getmyez.com/bot/ is absent from the whole AR policy."""
+    secs, text = _ar_sections(PRIVACY_AR, "6")
+    s6 = secs["6"]
+    problems = []
+    if s6 is None:
+        problems.append("privacy s6 missing")
+        s6 = ""
+    if _nomarks(s6).count(LINKS_NEW_AR) != 1:
+        problems.append("privacy s6 does not carry the 'links' phrase once")
+    if TITLES_OLD_AR in _nomarks(s6):
+        problems.append("privacy s6 still names the titles of product pictures")
+    if _nomarks(s6).count(BOT_ON_OUR_SITE_AR) != 1:
+        problems.append(f"privacy s6 does not name {BOT_URL_AR} followed by 'on our site' once")
+    if "getmyez.com/bot/" in (text or ""):
+        problems.append("the AR policy still carries getmyez.com/bot/ (the trailing slash)")
+    assert not problems, _report("G-m: privacy s6 links and the bot address:", problems)
+
+
+def test_g_n_privacy_s14_random_install_identifier():
+    """PIN (ARFIX R5, edit P5): the AR privacy s14 transition clause says the older form combined the
+    random INSTALL identifier with the software version; the ambiguous 'that random identifier' is absent."""
+    secs, _ = _ar_sections(PRIVACY_AR, "14")
+    s14 = secs["14"]
+    problems = []
+    if s14 is None:
+        problems.append("privacy s14 missing")
+        s14 = ""
+    if _nomarks(s14).count(INSTALL_ID_NEW_AR) != 1:
+        problems.append("privacy s14 does not carry the 'random install identifier' phrase once")
+    if THAT_ID_OLD_AR in _nomarks(s14):
+        problems.append("privacy s14 still carries 'that random identifier'")
+    assert not problems, _report("G-n: privacy s14 the random install identifier:", problems)
+
+
+def test_g_o_data_shared_with_openai_common_construction():
+    """PIN (ARFIX R9, edits P2 x2): the AR privacy s4 and s5 each name 'the data that was shared with
+    OpenAI' in the common construction; the rare passive is absent from the AR policy and the AR Terms."""
+    secs, ptext = _ar_sections(PRIVACY_AR, "4", "5")
+    ttext = _read(TERMS_AR)
+    problems = []
+    for n in ("4", "5"):
+        if secs[n] is None:
+            problems.append(f"privacy s{n} missing")
+        elif _nomarks(secs[n]).count(SHARED_NEW_AR) != 1:
+            problems.append(f"privacy s{n} does not carry the common construction once")
+    for label, text in (("the AR policy", ptext), ("the AR Terms", ttext)):
+        if text is None:
+            problems.append(f"{label} missing")
+        elif SHARED_OLD_AR in _nomarks(text):
+            problems.append(f"{label} still carries the rare passive")
+    assert not problems, _report("G-o: data shared with OpenAI:", problems)

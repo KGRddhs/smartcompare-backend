@@ -129,6 +129,7 @@ CRAWLER_EN = (
     "https://getmyez.com/bot/, reads merchant pages whose robots.txt permits it"
 )
 BOT_URL = "https://getmyez.com/bot/"
+BOT_URL_AR = BOT_URL.rstrip("/")  # EK6 (RULINGS_ARFIX_S81_12 AF-5 (b)): the Arabic names the canonical address
 # --- R-S12-10 (amended): privacy s14 -------------------------------------------------------
 S14_EN_REQUIRED = {
     "AI permission record removed with the account": r"(?i)\bdeleting your account (?:also )?removes the AI permission record\b",
@@ -616,9 +617,11 @@ def test_r6_privacy_s6_catalogue_crawler_and_sponsored(lang):
             if not re.search(pattern, s6):
                 problems.append(f"s6 lacks {label}")
     else:
-        for label, needle in (("the bot page address", BOT_URL), ("robots.txt", "robots.txt"), ("Sponsored", SPONSORED_AR)):
+        for label, needle in (("the bot page address", BOT_URL_AR), ("robots.txt", "robots.txt"), ("Sponsored", SPONSORED_AR)):
             if needle not in s6:
                 problems.append(f"AR s6 lacks {label}")
+        if BOT_URL in s6:
+            problems.append("AR s6 names the bot page address with the trailing slash")
     assert not problems, _report(f"R6 ({lang}): privacy section 6:", problems)
 
 

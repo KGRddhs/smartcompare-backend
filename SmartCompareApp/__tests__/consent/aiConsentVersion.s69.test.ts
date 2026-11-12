@@ -36,9 +36,11 @@ const AR: Record<string, string> = require('../../src/i18n/ar.json');
 // or all requests, including photos, are processed by OpenAI, and drops the
 // training sentence (the data-sharing programme ended), so the version is 3
 // and the digest is re-recorded in the same edit.
+// S81-12 ARFIX (2026-11-12): the AR body's tense fix ('we are currently working
+// on moving') changes no meaning, and v3 reached no phone: digest alone, version 3.
 const PINNED = {
   version: 3,
-  sha256: '77ac63480d9ccbf5ff18687534f64105d12f32d6ca00e4f16a7c4a04653ebcc1',
+  sha256: 'adfc77d2bc53aaedf8f9577203b4a8f9b9d0cefd9d71f67df8c684648b3c1230',
 };
 
 function consentCopyDigest(): string {
