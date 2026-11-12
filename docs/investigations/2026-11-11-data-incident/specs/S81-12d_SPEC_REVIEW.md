@@ -1,0 +1,78 @@
+# S81-12d SPEC REVIEW (adversarial; OPENAI-EGRESS-STOP)
+
+- Reviewer: adversarial spec reviewer (Opus 5.5), 2026-11-12. READ-ONLY round (H5 c): no pytest, jest, tsc or eslint ran; no scratch worktree; measurement by `git show` / `git grep` at the base and reads of the pinned venv.
+- Spec: .qa-s80/S81-12d_UNIT_SPEC.md, sha256 01e9dc32e9ea01dd66ca80e01131bb82d819b2a2adaaf2778e8afd1cabb283c8 (re-hashed first: MATCH). Worktree HEAD = 6b909e0a92067d6b3562eee325e4956c116441f7 (the base).
+- Inputs read: inc-common.txt header H0-H7, S81_12D_BRIEF.md (R-12D-1..12, Q1..Q8), S93_RULINGS_ITEM26_2026-11-12.md, MON1_UNIT_SPEC.md (hooks 2.3), the incident report, ledger line 316 (names only).
+
+## VERDICT: APPROVE_WITH_CHANGES
+
+The design holds on every point measured: the census is exact, the stop point is correct for both chokepoint branches, the moderation hook sits after the Claude branch, every role-ON arm is gated on `any_role_enabled()`, the camera exception lands on the existing coded 503 with both refunds, and nothing else on the request path keys on the SDK exception class. Nothing BLOCKS the design. Two REQUIRED corrections (C1 the price-warmer / deployment-commit owner step, C2 the FULL configuration of the RED rows) must be in the spec before RED freezes; the rest are minors and stated-limit wording.
+
+## 1. Claims re-measured and CONFIRMED (file:line at 6b909e0a)
+
+- Chokepoint: `guarded_llm_create` app/services/api_budget_service.py:957; `kwargs["store"] = False` :991; extra_body scrub :992-994; `spend_ticket = None` :995; spend admit :996-1000; flag-OFF create :1002; flag-ON admission denial :1007-1011; create :1013. A stop between :994 and :995 precedes the spend admit, both preflight branches, both creates and every record.
+- Census (Q1): `git grep` over app/ and scripts/ for chat.completions, moderations., embeddings., .responses., .images., .files., .batches., .audio., models.retrieve/list, AsyncOpenAI(, OpenAI(, api.openai.com, .beta., with_raw_response, /v1/chat, module-level openai.* calls. The ONLY OpenAI dispatch statements: api_budget_service.py:1002, :1013, content_safety_service.py:259, scripts/seed_spec_spine.py:381, scripts/shadow_experiments.py:999. Every `batches.*` hit is `ac.messages.batches.*` (anthropic) in cron_compare_judge.py / seed_kb_batch.py. Only four app modules import openai (api_budget_service, extraction_service, openai_service, url_extraction_service); no script imports it.
+- The 15 routed sites: extraction_service.py:1404, 1544, 1611, 1773, 1825, 1890, 2696, 2738; image_service.py:187; openai_service.py:477, 649, 768, 843, 905; url_extraction_service.py:960; all pass `_llm_breaker.guarded_llm_create`.
+- Router: `route` (llm_router.py about :1086-1123) role OFF -> `return await dispatch(client, **kwargs)`; decision "openai" -> the same; every except arm re-raises or returns a Claude result: NO Anthropic-to-OpenAI fallback. `decide_moderation` raises ConsentUpdateRequiredError on "refuse" (:1129-1135).
+- Every class-sensitive arm on the request path: image_routes.py:395/397/412; extraction_service.py:1575/1577, :2833/:2836; url_extraction_service.py:988/994, :1399, :1470; structured_comparison_service.py:4198, :4897, :5808. Each non-logging branch is gated on `_llm_router.any_role_enabled()` except image_routes.py:412 (the ruled camera exception); the S81-04c twins only log. No `isinstance(e, openai.AuthenticationError / APIStatusError)` outside the breaker classifiers (api_budget_service.py:905, :925-935) and llm_router.py:859-871 (anthropic). So with role flags OFF, today's AuthenticationError and a LLMUnavailableError subclass take the same value branch everywhere except the camera (Q2 / Q4 confirmed).
+- Verdict fallback matcher extraction_service.py:2718-2722 keys on "429" / "rate" / "quota" in str(e).lower(); the proposed message lower-cased contains none. shadow_experiments.py:1001-1004 keys on "429" / "rate limit" / "ratelimit" / RateLimitError: none match.
+- Camera: image_routes.py:390-417; both refunds :400-401 precede the class test :412; HTTPException(503, {code LLM_UNAVAILABLE, error LLM_UNAVAILABLE_FRIENDLY_MESSAGE}). error_handler.py:172-250 lifts a structured detail's code (STATUS_CODE_MAP 503 = FEATURE_DISABLED is only the fallback for a codeless detail). sentry_service.py:723 excludes 503 from failed_request_status_codes; :737 LoggingIntegration(level=ERROR).
+- Both live bundles: SmartCompareApp/src/services/failureClassification.ts at 683f56c0 and f1e20c39 is identical in the camera block (:79 CAMERA_ENGINE_OUTAGE_CODES = {LLM_UNAVAILABLE, INTERNAL_ERROR, SERVER_ERROR}; :82-94 a coded 503 is an engine outage). So the 500 -> 503 change keeps the same client state; the spec's "no screen change" reading in 8b is right.
+- Moderation: content_safety_service.py:234-270, try :247, decide_moderation :252, inline imports :255-257, get_client :258, create :259, fail-open WARNING :269; module top stdlib-only (:12-18).
+- Libraries (pinned venv, read): openai 3.3.1 `_send_request` -> `self._client.send` (openai/_base_client.py:1624-1631); httpx2 2.12.0 `AsyncClient.send` (httpx2/_client.py:1787).
+- Railway processes: only railway.json (web) and railway.warmer.json can reach C1 / C3; cron_learning / cron_kb_coverage / cron_robots_registry import kb_seed_common, pure kb_serve helpers and robots_registry only.
+- The P1 deploy-log detector is real: logging_config.py:47-50 quiets httpx, httpcore, uvicorn.access and urllib3 but NOT httpx2; httpx2/_client.py:1923 logs 'HTTP Request: %s %s "%s %d %s"' at INFO; the incident's evidence is such a line (15:02:57.903Z "POST https://api.openai.com/v1/chat/completions ... 401"). Valid while LOG_LEVEL stays INFO (app/main.py:15). The spec should cite this (C5).
+- Pins: the ONLY digest over guarded_llm_create is K1 (tests/test_s81_s03_llm_ledger_v2.py:193, read by :2484-2492; ast.dump includes the docstring, so the 3.1 docstring sentence moves it too). U3c 01 / 01b / 04 (test_u3c_store_false_pin.py:298-347, :461-497), S81-04 R37 (test_s81_s04_spend_breaker.py:1619-1650), M1 / M5 (test_model_config_enforced.py:116-160, AST over app/ only) and S81-06 R39b (test_s81_s06_anthropic_router.py:2545-2551, a substring order check) stay green under the 2.3 bytes. No test enumerates LLMUnavailableError subclasses by AST; no `[OPENAI_EGRESS]` tag collides (the [OPENAI_CACHE] filters are a different tag).
+
+## 2. Refuted claims
+
+- RF1 (8.3 step 2 and the 8.2 block's owner step (2), "so the date covers every service that can reach OpenAI"). The flag set on price-warmer is INERT unless that service's running deployment already contains this unit: railway.warmer.json:3-8 limits build.watchPatterns to scripts/cron_warm_price_cache.py and railway.warmer.json, so a merge to main does NOT redeploy price-warmer; CLAUDE.md:341 (#98) records that the warmer "can now run against stale service code" and that `railway redeploy -s price-warmer` re-runs the same deployment. A variable on a pre-unit deployment changes nothing, and a later ENABLE_PRICE_CACHE_WARMER flip would send compares to OpenAI while the ledger says the stop is ON. (Whether a Railway variable change rebuilds from the latest commit is NOT measurable here; the spec must not rely on it.)
+- RF2 (8b P2 "the request line of POST /api/v1/image/identify answers 503"). The app writes no access line: logging_config.py:49 sets uvicorn.access to WARNING and no middleware logs a status. The status is visible only in Railway's HTTP (edge) log view, not the deploy log.
+- RF3 (8b P1 "ONE [OPENAI_EGRESS] ... chat_completions and ONE ... moderations line" in "the deploy log for those minutes"). The latch logs at the FIRST stopped call per process after the redeploy; any user compare before the owner's lands it earlier, so "those minutes" can hold no stop line while the stop works. Check "since the deployment started".
+- RF4 (2.7 "The ONLY runtime difference is one os.getenv per C1 / C2 / C3 attempt"). H2 also executes an inline `from app.services import api_budget_service as _abs` (a sys.modules lookup) and each hook adds a call frame. Unobservable on any wire, log or recorder, but inexact.
+- RF5 (L3 "two threads racing the first stop may each log"). The helper has no await between the membership test and `add`, and guarded_llm_create / moderate_output run on the event loop (web: one worker, one loop), so the latch is atomic there; L3 cannot happen on web. Drop L3 or, to meet R-12D-7's "at most once" literally in every process, guard the latch with a threading.Lock (no await, no I/O).
+- RF6 (2.5 / 8b "failureClassification.ts:79-94"). The file is SmartCompareApp/src/services/failureClassification.ts (Set :79, isCameraEngineOutage :82-94).
+
+## 3. Corrections
+
+- C1 REQUIRED (RF1). Owner step 2 and the block's step (2) become: before ENABLE_OPENAI_EGRESS_STOP is set on price-warmer, the relay confirms read-only (the deployment's commit) that the price-warmer deployment contains the S81-12d merge; if not, a deliberate deploy of price-warmer from main (not `railway redeploy`) on the owner's yes, then the variable. Add a step 0 for web: the relay confirms the web deployment's commit contains the merge before filing the dated line (the incident's open item on deployment 50e2721b shows this is not automatic knowledge). The dated line names each service's commit; the legal date (IT26-7) is the day both checks pass.
+- C2 REQUIRED (Q6 / B1 "the FULL configuration (a synthetic credential present, EVERY knob set)"). Section 5 omits knobs that shape the dispatch: add OPENAI_MAX_RETRIES and OPENAI_FALLBACK_MAX_RETRIES at non-default values (the OFF rows then pin one 401 request, no SDK retry), OPENAI_BASE_URL set explicitly to the stock URL as one parameter (llm_provider normalisation), the LLM_SPEND_* knobs and LLM_BREAKER_CACHE_TTL, ENABLE_VISION_IDENTITY_V2 ON as a parameter of E04 and of the S12D-14 vision rows (site :477), ENABLE_URL_MODE_V2 ON as a parameter of E05, ENABLE_FULL_STREAM_DEADLINE ON as a parameter of E03. Each added parameter freezes its OFF base literal in E08.
+- C3 (RF2) P2 backing: "503 (today 500) in Railway's HTTP log for POST /api/v1/image/identify; in the deploy log the WARNING `[IMAGE] Vision call failed: OpenAIEgressStoppedError` (today an ERROR with the 401 text)".
+- C4 (RF3) P1: stop lines checked since the deployment started; the per-call positive markers for the owner's minutes are the arms' `<prefix>: OpenAIEgressStoppedError` WARNINGs and the moderation WARNING carrying the constant, beside ZERO `HTTP Request: POST https://api.openai.com` lines.
+- C5 cite the detector in 8b (section 1 last bullet); say the zero-lines check is meaningful only while LOG_LEVEL is INFO, and take one BEFORE read (a compare just before the flip showing the 401 request lines) as the positive control.
+- C6 S12D-20 census: exclude anthropic calls by the callee chain (a `.messages.` segment), not by receiver names `ac` / `_anthropic*`; a renamed anthropic client would fail the census falsely, and an OpenAI client named `ac` would be skipped silently.
+- C7 RF4 / RF5 / RF6 wording (2.7, L3, 2.5 / 8b path).
+- C8 E1: the header says new digests are base64 or built at run time; E1 keeps the split-hex style. The GREEN agent checks both halves of the new K1 literal for an 8-digit run (the added-line sweep) and splits differently if one appears.
+- C9 H4 placement (after the store write vs before it) is behaviourally indistinguishable (both raise before any create); no row kills that move. List it in section 6 as an equivalent survivor for the gate to rule.
+- C10 8.1 pointer anchor: CLAUDE.md:341 ends with the Railway config-as-code paragraph, so "after its newest sentence" is ambiguous; anchor it directly after the sentence "S81-04c REFUSAL-LOG-HYGIENE adds no flag (log-only under R-A1 (b)): the ... block." (or the newest S81 pointer sentence at the then-main).
+- C11 P4 (saved rows keep zero OpenAI calls and zero cost) is a non-regression read (today's rows already show zero), not evidence of the stop; label it so.
+
+## 4. Blocking issues
+
+None for the design. C1 and C2 are REQUIRED before the RED round freezes (C2 changes RED rows; C1 changes the owner steps and the PROOF the legal date rests on).
+
+## 5. Contract risks
+
+- K1 None for the response contract: no key added, removed, renamed or retyped in any flag state; the camera 503 is an envelope both bundles render as the engine-unavailable state; no new public path, no /health change, no middleware or limiter touched, no background task, no credential or URL in the new log text (the message is a constant naming the flag).
+- K2 L1 is understated. IT26-2 F3: the pre-v3 path matters "after the Claude flips"; both live bundles carry AI_CONSENT_VERSION 2 (CLAUDE.md, U3b), so on the day a role flag flips with ENABLE_OPENAI_PRE_V3 ON, EVERY installed client is consent < 3. With the stop ON each such text compare runs the full scrape (the parse arm :1575 only logs, the compare continues) and ends in the coded LLM_UNAVAILABLE at the verdict re-raise (extraction_service.py:2833-2835): Serper / render spend per compare, no delivery. "Not a production state today" is true; at the next planned flip it is not.
+- K3 C4 / C5 stop only with the flag in the operator's shell (L7); the dated line should say "services", not "the code".
+
+## 6. Pin collisions
+
+Only E1 (K1, tests/test_s81_s03_llm_ledger_v2.py:193). Measured non-collisions: U3c 01 / 01b / 01c / 04; S81-04 R37 (admit index < W1-3 admission index, unchanged); M1 / M5; R39b (H2's comment text contains neither "decide_moderation()" nor "moderations.create"); G13 / R39 (no new guarded_llm_create call); U8d R8 (WARNING only); the s22b R2 scanner; the app-wide AST walkers of test_retro_w0_4*.py and test_s81_d03 (unrelated call names). Keep the 3.1 census-comment line free of the literal "moderations.create" (belt and braces).
+
+## 7. PROOF ON THE PHONE assessment
+
+Has the H6 shape (pair, visible state, backing check, "merged, NOT yet proven") and honestly records that P2's screen does not change. It could pass while the problem remains in two ways, both closed by C1 / C4 / C5: the price-warmer variable typed onto a stale deployment (RF1); a zero-request-lines read with no positive control (LOG_LEVEL above INFO, or the stop line looked for in the wrong minutes).
+
+## 8. Deferred runs (DEFERRED TO RED; commands as the spec states them, prefix P of 1.10)
+
+B1-B6 of 1.10; the CI-order set 7.3 in both orders; the mutation table 6; the comm set 7.2 (763 files, 31 chunks, base and head); the fourteen client fences by path (7.1 item 8). This review ran none.
+
+## 9. Questions for the orchestrator
+
+1. C1: can the relay name (read-only) the commit of the running price-warmer and web deployments, and is a deliberate price-warmer deploy from main acceptable in the flip window? If not, replace owner step 2 with "ENABLE_PRICE_CACHE_WARMER may not flip ON until the price-warmer deployment contains S81-12d and the stop is set there", and date the legal text on web alone.
+2. K2: under the stop, should a pre-v3 decision get today's deterministic result (needs a role-aware class at the chokepoint, which reopens the camera 500, OQ-5) or should the flip order require ENABLE_OPENAI_PRE_V3 OFF whenever the stop is ON (no code; the entry refusal fires before any scrape)? The reviewer recommends the flip-order rule, written into the 8.2 block.
+3. OQ-1 (part B scripts): the reviewer agrees IN.
+4. OQ-4: keep P2 as "the screen stays the engine-unavailable state" plus the Railway HTTP-log status (C3); a device read before the flip is optional.
+5. C2: confirm the added knob parameters may enlarge E08's frozen literal set.
