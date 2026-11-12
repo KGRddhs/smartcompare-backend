@@ -1,6 +1,6 @@
 # S81-07: what the measurement run needs from the owner (session 93, 2026-11-12)
 
-State (2026-11-12 16:15): the harness is on the branch feature/s81-07-meas-claude-gate at commit 110b3331, with the current main (445f8de3) brought in, and its pull request #402 is open as a draft. No live call was ever made. The run uses this commit in the unit worktree; if main moves before the run, the main lane brings it in again first.
+State (2026-11-12 16:15): the harness is on the branch feature/s81-07-meas-claude-gate at commit 1c3fc375, with the current main (445f8de3) brought in; its pull request #402 is open as a draft and all seven checks are green (17:14). No live call was ever made. The run uses this commit in the unit worktree; if main moves before the run, the main lane brings it in again first.
 
 ## 1. His Anthropic TEST key, in a file he creates himself
 
