@@ -2,9 +2,9 @@
 
 **MYEZ**
 
-*Effective date: October 29, 2026*
+*Effective date: November 12, 2026*
 
-**Changes on October 29, 2026:** we added Anthropic as one of our AI providers (section 8), and the App will ask again for your permission to send your requests to our AI providers.
+**Changes on November 12, 2026:** we added Anthropic as one of our AI providers (section 8), and the App will ask again for your permission to send your requests to our AI providers.
 
 ## 1. Agreement and who we are
 
