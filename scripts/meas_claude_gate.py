@@ -24,6 +24,7 @@ The dry run carries NO assignment at all:
 import asyncio
 import hashlib
 import importlib
+import ipaddress
 import json
 import logging
 import math
@@ -326,7 +327,16 @@ def _host_name(host):
 
 
 def _is_loopback_name(h):
-    return h is not None and (h in ("localhost", "::1") or h.startswith("127."))
+    """M-4 m5: loopback is the literal name localhost or a host that PARSES as a loopback IP address
+    (127.0.0.0/8 or ::1); a name that merely starts with '127.' is any other host name."""
+    if h is None:
+        return False
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
 
 
 def host_allowed(host, port):
@@ -589,10 +599,13 @@ class Dispatcher:
         self.sent_ids = set()  # F-4 (a): the call_ids this process actually sent
         self.last = {}  # call_id -> its latest done line of this process
 
-    def write_tail(self, setting, round_id, span_ms, censored):
-        """F-4 (b): the tail span of a round whose tail legs were sent in this process, into the ledger."""
+    def write_tail(self, setting, round_id, span_ms, censored, failed=False):
+        """F-4 (b): the tail span of a round whose tail legs were sent in this process, into the ledger.
+        M-4 m6: a censored round (a timed-out leg) and an excluded round (a leg that failed in any other way)
+        carry no span; censored true marks the first, censored false with a null span the second."""
         self._write({"state": "tail", "stage": self.stage, "setting": setting, "round": round_id,
-                     "span_ms": None if censored else span_ms, "censored": bool(censored), "ts": _ts()})
+                     "span_ms": None if (censored or failed) else span_ms, "censored": bool(censored),
+                     "ts": _ts()})
 
     def _write(self, obj):
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1465,8 +1478,14 @@ class _Ctx:
         tails = {}
         for x in lines:
             if x.get("state") == "tail" and x.get("setting") == setting:
-                tails[x.get("round")] = math.inf if x.get("censored") or x.get("span_ms") is None                     else float(x["span_ms"])
-        spans = [tails[k] for k in sorted(tails)]
+                if x.get("censored"):
+                    tails[x.get("round")] = math.inf
+                elif x.get("span_ms") is None:
+                    tails[x.get("round")] = None  # M-4 m6: a failed tail leg excludes the round
+                else:
+                    tails[x.get("round")] = float(x["span_ms"])
+        spans = [tails[k] for k in sorted(tails) if tails[k] is not None]
+        n_failed = sum(1 for k in tails if tails[k] is None)
         done = [x for x in lines if x.get("state") == "done" and x.get("setting") == setting]
         round_of = {}
         per_round = {}
@@ -1495,6 +1514,7 @@ class _Ctx:
         share = {"pooled": _ratio(sum(v[0] for v in tok.values()), sum(v[1] for v in tok.values())),
                  "sites": {k: _ratio(v[0], v[1]) for k, v in sorted(tok.items())}}
         return {"tail_span_ms": spans, "tail_n_censored": sum(1 for x in spans if math.isinf(x)),
+                "tail_n_failed": n_failed,
                 "cost_per_compare": cost, "cache_read_share": share}
 
     def write_results(self, crash):
@@ -1802,8 +1822,12 @@ async def _run_a1(ctx, d, setting, rounds):
                     ids = tail_ids + [call_id_for(d.stage, setting, "verdict", item["case_id"], 0)]
                     # F-4 (a): only a round whose tail legs were all SENT in this process has a span
                     if all(c in d.sent_ids for c in ids):
-                        censored = any((d.last.get(c) or {}).get("error_class") == "APITimeoutError" for c in ids)
-                        d.write_tail(setting, item["case_id"].split(":")[0], span, censored)
+                        legs = [d.last.get(c) or {} for c in ids]
+                        censored = any(x.get("error_class") == "APITimeoutError" for x in legs)
+                        # M-4 m6: a span only when the three tail legs all SUCCEEDED; a timed-out leg censors
+                        # (it wins over another failure: fail-closed); any other failed leg excludes the round
+                        failed = not censored and not all(x.get("ok") is True for x in legs)
+                        d.write_tail(setting, item["case_id"].split(":")[0], span, censored, failed)
 
 
 async def _plan_moderation(ctx):
@@ -1989,14 +2013,22 @@ def _write_top_report(ctx):
     vp = timeout_proposal(vlat) if vlat else None
     tp = timeout_proposal(tail, 95) if tail else None
     knobs = _current_knobs()
-    lines.append("- ANTHROPIC_CLASSIFY_LLM_TIMEOUT: current %s, proposed %s (p99 x 1.25, n = %d, censored %d)"
-                 % (knobs["classify"], _prop(cp), len(cls), sum(1 for x in cls if math.isinf(x))))
+    lines.append("- ANTHROPIC_CLASSIFY_LLM_TIMEOUT: current %s, proposed %s (p99 x 1.25, n = %d, censored %d); %s"
+                 % (knobs["classify"], _prop(cp), len(cls), sum(1 for x in cls if math.isinf(x)), KNOB_VALUE_LABEL))
     lines.append("- ANTHROPIC_VISION_TIMEOUT_SECONDS: current %s, proposed %s (p99 of vision_v2 x 1.25, n = %d, "
-                 "censored %d)" % (knobs["vision"], _prop(vp), len(vlat), sum(1 for x in vlat if math.isinf(x))))
+                 "censored %d); %s" % (knobs["vision"], _prop(vp), len(vlat), sum(1 for x in vlat if math.isinf(x)),
+                                      KNOB_VALUE_LABEL))
     lines.append("- ANTHROPIC_TAIL_RESERVE_SECONDS: current %s, proposed %s (p95 of tail_span x 1.25, n = %d, "
-                 "censored %d; LLM legs only: no search, no scoring)"
-                 % (knobs["tail"], _prop(tp), len(tail), sum(1 for x in tail if math.isinf(x))))
+                 "censored %d, rounds excluded for a failed tail leg %d; LLM legs only: no search, no scoring); %s"
+                 % (knobs["tail"], _prop(tp), len(tail), sum(1 for x in tail if math.isinf(x)),
+                    int(a1.get("tail_n_failed") or 0), KNOB_VALUE_LABEL))
     (ctx.out / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
+# M-4 m3: in a real run every ANTHROPIC_* name refuses the start, so the values read from the router are the
+# code defaults; the report says so at the end of each knob line (R87 / R82 pin the line heads).
+KNOB_VALUE_LABEL = ("current = the code default (a production override is not visible to this run: every "
+                    "ANTHROPIC_* name refuses the start)")
 
 
 def _current_knobs():

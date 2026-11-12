@@ -2618,3 +2618,129 @@ def test_r92_retry_after_floor(monkeypatch, tmp_path, clean_env, value):
                  behaviour=lambda kw, n: _status_exc(429, headers={"retry-after": value}) if n == 1 else _msg())
     hx.run("text", "--settings", "A1_sites", "--max-calls", "2")
     assert hx.sleeps[:1] == [1]
+
+
+# --------------------------------------------------------------------------
+# MERGE round rows (RULINGS_MERGE_S81_07 M-4; sanctioned amendments, listed in
+# the MERGE section of the amendments file)
+# --------------------------------------------------------------------------
+def test_r93_loopback_is_a_parsed_address():
+    """M-4 m5: a host counts as loopback only when it is the literal name localhost or parses as an IP address
+    that is a loopback address (127.0.0.0/8 or ::1). A NAME that merely starts with '127.' is any other host
+    name: refused by the guard in live mode and in loopback-only mode, as str and as bytes."""
+    import socket
+    mod = _mod()
+    ha = mod.host_allowed
+    for host in ("127.evil.example", b"127.evil.example", "127.0.0.1.evil.example", "127.example"):
+        assert ha(host, 443) is False and ha(host, 9) is False, host
+    for host in ("127.0.0.1", b"127.0.0.1", "127.1.2.3", "::1", b"::1", "localhost", b"LOCALHOST"):
+        assert ha(host, 9) is True, host
+    seen = []
+    real = socket.getaddrinfo
+    socket.getaddrinfo = lambda *a, **k: seen.append(a[0]) or []
+    try:
+        for live in (True, False):
+            seen.clear()
+            ctx, state = _GuardCtx(), {"restore": []}
+            mod._install_host_guard(ctx, state, live)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                for host in ("127.evil.example", b"127.evil.example"):
+                    assert _try(socket.getaddrinfo, host, 443) == "host_refused", (live, host)
+                assert seen == [], live
+                assert _try(s.connect, ("127.evil.example", 443)) == "host_refused", live
+                for host in ("127.0.0.1", "127.1.2.3", "::1", "localhost"):
+                    assert _try(socket.getaddrinfo, host, 443) == "passed", (live, host)
+                assert seen == ["127.0.0.1", "127.1.2.3", "::1", "localhost"], live
+                assert ctx.hosts_refused.count("127.evil.example") == 3, (live, ctx.hosts_refused)
+            finally:
+                s.close()
+                for fn in reversed(state["restore"]):
+                    fn()
+    finally:
+        socket.getaddrinfo = real
+
+
+def test_r94_unmatched_intent_counts_in_its_round_cost(hx, monkeypatch, canary):
+    """M-4 m1 (mutant N11; F-5 (a)): on a hand-computed ledger, a round that holds an unmatched intent (a killed
+    call, re-sent and completed as attempt 2) counts that intent's worst case in the round's cost."""
+    hx.behaviour = lambda kw, n: _msg(inp=100, out=20)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16")
+    p = hx.out / "text" / "spend.jsonl"
+    lines = hx_lines(hx.out)
+    first_done = [x for x in lines if x.get("state") == "done"][0]
+    assert first_done["site"] == "classify" and first_done["ok"] is True
+    cid = first_done["call_id"]
+    killed_worst = 0.25
+    rewritten = []
+    for x in lines:
+        if x.get("call_id") == cid and x.get("state") in ("sent", "done"):
+            if x["state"] == "sent":
+                killed = dict(x)
+                killed["attempt"] = 1
+                killed["worst_usd"] = killed_worst
+                rewritten.append(killed)
+            x = dict(x)
+            x["attempt"] = 2
+        rewritten.append(x)
+    p.write_text("".join(json.dumps(x, sort_keys=True) + "\n" for x in rewritten), encoding="utf-8",
+                 newline="\n")
+    lines = hx_lines(hx.out)
+    r00 = [x for x in lines if x.get("state") == "done" and x["setting"] == "A1_sites"]
+    assert len(r00) == 16 and {_round_of(x) for x in r00} == {"r00"}
+    by_hand = sum(x["usd"] for x in r00) + killed_worst
+    hx.behaviour = lambda kw, n: _msg(inp=100, out=20)
+    monkeypatch.setenv(VAR, canary)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16")
+    lines = hx_lines(hx.out)
+    assert [x for x in _intents(lines) if x["call_id"] == cid and x["attempt"] == 1] != []
+    r01 = [x for x in lines if x.get("state") == "done" and _round_of(x) == "r01"]
+    assert len(r01) == 16
+    c01 = sum(x["usd"] for x in r01)
+    assert by_hand > c01 > 0
+    cost = hx.results("text")["settings"]["A1_sites"].get("cost_per_compare")
+    assert isinstance(cost, dict) and cost.get("n") == 2
+    assert cost["p95_usd"] == pytest.approx(by_hand, abs=1e-9)
+    assert cost["p50_usd"] == pytest.approx(c01, abs=1e-9)
+
+
+def test_r95_failed_tail_leg_excludes_its_round(hx):
+    """M-4 m6: a round gives a tail span only when its three tail legs all SUCCEEDED; a timed-out leg censors
+    the round (+infinity, R81); a leg that failed in any other way (an error status, a connection error)
+    excludes the round from the percentiles, and the proposal line prints the number of such rounds beside the
+    censored count."""
+    fail = {9: _status_exc(500), 26: _status_exc(400), 43: _conn_exc()}
+    hx.behaviour = _clocked(hx, extra=lambda kw, n: fail[n] if n in fail else _msg())
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "64")
+    a1 = hx.results("text")["settings"]["A1_sites"]
+    assert len(a1["tail_span_ms"]) == 1 and math.isfinite(a1["tail_span_ms"][0]), a1["tail_span_ms"]
+    assert a1["tail_span_ms"] == [3000.0]
+    assert a1.get("tail_n_censored") == 0 and a1.get("tail_n_failed") == 3
+    tails = [x for x in hx_lines(hx.out) if x.get("state") == "tail"]
+    assert [(x["round"], x["span_ms"], x["censored"]) for x in tails] == [
+        ("r00", None, False), ("r01", None, False), ("r02", None, False), ("r03", 3000.0, False)]
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    line = _line(rep, "- ANTHROPIC_TAIL_RESERVE_SECONDS")
+    assert "n = 1, censored 0, rounds excluded for a failed tail leg 3" in line
+
+
+def test_r96_knob_values_labelled_code_default(hx):
+    """M-4 m3: in a real run the three knob values read from the router are the CODE DEFAULTS (every
+    ANTHROPIC_* name refuses the start, so a production override is not visible): the report lines, and the
+    CLAUDE.md block, say 'code default' (at the END of each knob line: R82 and R87 pin the line heads). R82
+    pins that the value is READ from the router."""
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16")
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    label = ("); current = the code default (a production override is not visible to this run: every "
+             "ANTHROPIC_* name refuses the start)")
+    for prefix in ("- ANTHROPIC_CLASSIFY_LLM_TIMEOUT", "- ANTHROPIC_VISION_TIMEOUT_SECONDS",
+                   "- ANTHROPIC_TAIL_RESERVE_SECONDS"):
+        line = _line(rep, prefix)
+        assert line.endswith(label), line
+        assert line.index(": current ") < line.index(", proposed ") < line.index(label)
+    block = " ".join(_claude_md_s07_block())
+    assert "CURRENT values" not in block
+    assert "code-default values of `ANTHROPIC_CLASSIFY_LLM_TIMEOUT`" in block
+    assert "a production override is not visible to this run" in block
