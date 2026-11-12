@@ -201,6 +201,24 @@ def _reset_serper_budget_gate_memo(monkeypatch):
     yield
 
 
+# MON1 LLM-CREDENTIAL-HEALTH -- the per-process credential state and the Serper
+# key-pool state appear on /health once an outcome is recorded. A test that raises a
+# real AuthenticationError through a chokepoint (or makes a multi-key Serper
+# selection) would otherwise leave `llm_credential` / `serper_keys` on every later
+# /health body and redden the superset pins order-dependently (the P73 class).
+# Reset both before each test; import-guarded like the fixture above.
+@pytest.fixture(autouse=True)
+def _reset_credential_health_state():
+    try:
+        from app.services import llm_credential_health, serper_service
+    except Exception:  # pragma: no cover -- defensive import
+        yield
+        return
+    llm_credential_health._reset_credential_health_state()
+    serper_service._reset_serper_keys_state()
+    yield
+
+
 # B3 (test-infra hygiene) — event-loop pollution guard.
 # Several sync tests still drive coroutines via the deprecated
 # `asyncio.get_event_loop().run_until_complete(...)` (e.g.

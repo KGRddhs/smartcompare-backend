@@ -28,6 +28,8 @@ from app.services.api_budget_service import (
     record_success,
 )
 from app.services.cache_service import _redis_offload_enabled
+# MON1 LLM-CREDENTIAL-HEALTH: the stdlib-only leaf that sends the one alert event.
+from app.services import llm_credential_health as _cred_health
 # Session 70 OAI_OBS R3.3 — the five search ERROR sites log a CONSTANT
 # %-template with exc_summary(e): an httpx timeout/connect error has an EMPTY
 # str(e), so the f-string lines carried only their prefix (one Sentry issue
@@ -241,6 +243,64 @@ def _mark_serper_key_exhausted(key: str) -> None:
         )
 
 
+# MON1 LLM-CREDENTIAL-HEALTH (unflagged observer): the key-pool state of the
+# LAST multi-key selection, for /health `serper_keys`. COUNTS ONLY: never a key,
+# a key prefix or an index. Written from `_active_serper_key`'s multi-key branch
+# with no extra Redis command (the reads there are the existing exhaustion GETs).
+_serper_keys_state: Optional[Dict[str, Any]] = None
+_serper_keys_lock = threading.Lock()
+
+
+def _note_serper_selection(configured: int, keys: List[str], none_left: bool) -> None:
+    """Record one multi-key selection; on the none_left False -> True transition
+    log one WARNING and send ONE alert event (search is dead); on True -> False log
+    one INFO line. Never raises."""
+    global _serper_keys_state
+    try:
+        from datetime import datetime, timezone
+
+        marked = sum(
+            1 for k in keys if _serper_key_prefix8(k) in _serper_exhausted_logged
+        )
+        at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with _serper_keys_lock:
+            prev = _serper_keys_state
+            was_none_left = bool(prev and prev.get("none_left"))
+            _serper_keys_state = {
+                "configured": int(configured),
+                "marked_exhausted": int(marked),
+                "none_left": bool(none_left),
+                "at": at,
+            }
+        if none_left and not was_none_left:
+            logger.warning(
+                "[SERPER_KEYS] no healthy key left configured=%d", int(configured)
+            )
+            _cred_health.emit_alert("serper_keys", "serper", "exhausted", None)
+        elif was_none_left and not none_left:
+            logger.info(
+                "[SERPER_KEYS] a healthy key is available again configured=%d",
+                int(configured),
+            )
+    except Exception:  # noqa: BLE001 -- an observer never breaks key selection
+        pass
+
+
+def serper_keys_snapshot() -> Dict[str, Any]:
+    """The /health `serper_keys` entry: {} until a multi-key selection ran in this
+    process. A pure read: no Redis command, no network."""
+    with _serper_keys_lock:
+        state = _serper_keys_state
+        return {"serper_keys": dict(state)} if state else {}
+
+
+def _reset_serper_keys_state() -> None:
+    """Test seam (conftest calls it before every test)."""
+    global _serper_keys_state
+    with _serper_keys_lock:
+        _serper_keys_state = None
+
+
 def _active_serper_key(exclude: Optional[set] = None) -> Optional[str]:
     """The active Serper key.
 
@@ -262,11 +322,17 @@ def _active_serper_key(exclude: Optional[set] = None) -> Optional[str]:
     keys = _resolve_serper_keys()
     if len(keys) <= 1:
         return keys[0] if keys else None
+    skipped = False
     for key in keys:
         if exclude and key in exclude:
+            skipped = True
             continue
         if not _is_serper_key_exhausted(key):
+            _note_serper_selection(len(keys), keys, False)
             return key
+    # MON1: "no healthy key left" only when no key was skipped by `exclude`
+    # (a fail-fast skip is a timeout, not an exhaustion).
+    _note_serper_selection(len(keys), keys, not skipped)
     return None
 
 

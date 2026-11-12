@@ -43,6 +43,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services import api_budget_service as _abs
+from app.services import llm_credential_health as _cred_health
 from app.services import llm_pricing as _llm_pricing
 from app.services import llm_spend_breaker as _llm_spend_breaker
 from app.services import model_config as _model_config
@@ -985,6 +986,9 @@ async def guarded_anthropic_create(
         Exception
     ) as exc:  # noqa: BLE001 -- classified by class and status, never message
         transient, status = _classify(exc)
+        _cred_health.note_failure(
+            "anthropic", exc, "moderation" if site == "moderation" else "dispatch"
+        )
         if transient:
             await _breaker_write(_abs.record_failure)
         elif probe and status is not None:
@@ -999,6 +1003,9 @@ async def guarded_anthropic_create(
             transient,
         )
         raise AnthropicDispatchError(type(exc).__name__, status, transient) from None
+    _cred_health.note_success(
+        "anthropic", "moderation" if site == "moderation" else "dispatch"
+    )
     latency_ms = int((_monotonic() - t0) * 1000)
     stop_reason = getattr(resp, "stop_reason", None)
     record = _llm_pricing.anthropic_usage_record(

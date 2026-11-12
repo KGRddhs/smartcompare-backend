@@ -5,6 +5,7 @@ Professional product comparison API with multiple input methods
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 # Load environment variables FIRST
@@ -354,6 +355,21 @@ def anthropic_breaker_health_snapshot() -> dict:
     return _module_snapshot("app.services.llm_router", "breaker_snapshot")
 
 
+def llm_credential_health_snapshot() -> dict:
+    """MON1 (unflagged): `llm_credential` {provider: {state, last_status, at, source,
+    count}}, present only once this process recorded a provider outcome (state
+    names, a status code, a timestamp and a count only; deliberate on the public
+    /health, the brightdata_auth precedent). A pure read: no I/O."""
+    return _module_snapshot("app.services.llm_credential_health", "health_snapshot")
+
+
+def serper_keys_health_snapshot() -> dict:
+    """MON1 (unflagged): `serper_keys` {configured, marked_exhausted, none_left, at},
+    present only once a multi-key Serper selection ran in this process. Counts
+    only, never a key or a key prefix; no Redis command."""
+    return _module_snapshot("app.services.serper_service", "serper_keys_snapshot")
+
+
 async def _loop_lag_heartbeat() -> None:
     """Sleep on the interval and record how far each wake-up overshot it.
 
@@ -375,6 +391,22 @@ async def _start_loop_lag_heartbeat() -> None:
     _loop_lag_task = asyncio.create_task(_loop_lag_heartbeat())
 
 
+# MON1: the DARK credential probe (ENABLE_LLM_CREDENTIAL_PROBE, read per tick by the
+# task itself; OFF it builds no client and does no I/O). A plain task, not a
+# fire_and_forget registry task, so the drain below never waits on it.
+_llm_probe_task = None
+
+
+@app.on_event("startup")
+async def _start_llm_credential_probe() -> None:
+    global _llm_probe_task
+    from app.services import llm_credential_probe as _probe
+
+    _llm_probe_task = asyncio.create_task(
+        _probe.run_forever(), name="llm_credential_probe"
+    )
+
+
 @app.on_event("shutdown")
 async def _stop_loop_lag_heartbeat() -> None:
     global _loop_lag_task
@@ -388,6 +420,24 @@ async def _stop_loop_lag_heartbeat() -> None:
         # Suppressed at the CANCELLER; the coroutine itself still propagates.
         pass
     _loop_lag_task = None
+
+
+@app.on_event("shutdown")
+async def _stop_llm_credential_probe() -> None:
+    """MON1: cancel the probe task (sleeping, or inside one bounded call); it ends
+    within one loop turn, so the 30 > 20 + 8 drain arithmetic below is unchanged."""
+    global _llm_probe_task
+    task = _llm_probe_task
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception:  # noqa: BLE001 -- shutdown never fails on the probe
+        pass
+    _llm_probe_task = None
 
 
 # W1-6 (LS-FAILURE-MODES-COST-05) -- drain the fire-and-forget tasks on shutdown.
@@ -634,7 +684,8 @@ async def health_check():
     updated with that deploy. The two loop-lag numbers are a
     pure dict read of state the heartbeat already wrote -- no await, no I/O.
     This is Railway's deploy healthcheck with a 30 s timeout and must not become
-    a thing that can fail.
+    a thing that can fail. MON1 adds `llm_credential` and `serper_keys`, each
+    present only once this process recorded an outcome (pure dict reads).
     """
     return {
         "status": "healthy",
@@ -646,7 +697,32 @@ async def health_check():
         **brightdata_auth_health_snapshot(),
         **llm_spend_health_snapshot(),
         **anthropic_breaker_health_snapshot(),
+        **llm_credential_health_snapshot(),
+        **serper_keys_health_snapshot(),
     }
+
+
+def _llm_credential_monitor_view():
+    """(status_code, body) of the credential leaf's monitor view; fails OPEN to 200
+    when the leaf is absent or raises (a monitor bug must not page the owner)."""
+    fn = getattr(sys.modules.get("app.services.llm_credential_health"), "monitor_view", None)
+    if fn is None:
+        return 200, {"status": "ok", "providers": {}}
+    try:
+        return fn()
+    except Exception:  # noqa: BLE001 -- the monitor path must never raise
+        return 200, {"status": "ok", "providers": {}}
+
+
+@app.get("/health/llm", include_in_schema=False)
+@limiter.exempt
+async def llm_credential_health():
+    """MON1 uptime-monitor path (GET only): 200 while no in-use LLM provider is
+    known rejected or out of credit, else 503 with an explicit code
+    (LLM_CREDENTIAL_UNUSABLE; LLM_CREDENTIAL_UNKNOWN with the probe ON and no
+    outcome after the grace period). Never a codeless 503; no I/O."""
+    status_code, body = _llm_credential_monitor_view()
+    return JSONResponse(status_code=status_code, content=body)
 
 
 if __name__ == "__main__":

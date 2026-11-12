@@ -190,7 +190,10 @@ B5_BASE_TOTAL_COST = 0.017175
 # Re-recorded DELIBERATELY by S81-04 (gate GC-8, R-S03-10): the two spend-breaker
 # insertions in guarded_llm_create (the admit before the W1-3 admission, the
 # record_openai_response_soon after each served tail's ledger record).
-K1_GUARDED_AST_SHA = "844692b2f" + "c86027a87add39de447c47b48e6c234a2d8d10e21d8a218c730bb9f"
+# Re-recorded DELIBERATELY by MON1 LLM-CREDENTIAL-HEALTH (gate GC-4 E1): the
+# credential-health hooks H1-H4 (the note_failure / note_success observers on both
+# branches; gating unchanged).
+K1_GUARDED_AST_SHA = "372cee1c8" + "d448ee35656cc891f83bc96902dc08ddf2e2ceb1fe5a928ab5733aa"
 K2_OPENAI_PRICING_LF_SHA = "0406b617bd91b2a1ea5a5bac" + "d37fd48e28e106ed99991bfec9087d144ec14094"
 
 # The base literal of OPENAI_COST_NOTE (admin_routes.py:133-139 at 95cf6f86).
@@ -2483,7 +2486,8 @@ def test_i4_camera_merge_fault_delivers_with_one_warning(monkeypatch, caplog):
 # ===========================================================================
 def test_k1_guarded_llm_create_untouched():
     """PIN (K1): sha256 of ast.dump(guarded_llm_create) on CPython 3.12
-    (re-recorded by S81-04 for the spend-breaker admit/record, R-S03-10)."""
+    (re-recorded by S81-04 for the spend-breaker admit/record, R-S03-10; re-recorded
+    by MON1 for the credential-health hooks H1-H4, the S81-04 precedent)."""
     src = (APP_DIR / "services" / "api_budget_service.py").read_text(encoding="utf-8")
     nodes = [n for n in ast.walk(ast.parse(src))
              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "guarded_llm_create"]

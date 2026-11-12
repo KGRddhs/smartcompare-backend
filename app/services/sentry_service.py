@@ -700,6 +700,81 @@ def capture_result_status(result, input_type, *, vision_ms=None, compare_ms=None
         logger.warning("[RESULT_STATUS] telemetry skipped: %s", type(exc).__name__)
 
 
+# MON1 LLM-CREDENTIAL-HEALTH: the ONE alert-grade event per credential state change
+# (llm_credential) or per "no healthy Serper key left" (serper_keys). A constant
+# message, a fixed fingerprint and closed-set tags an owner-side rule matches on;
+# never an exception text, a key, a URL or request data.
+_CREDENTIAL_ALERT_MESSAGE = "credential_state"
+_CREDENTIAL_ALERT_KINDS = frozenset({"llm_credential", "serper_keys"})
+_CREDENTIAL_ALERT_PROVIDERS = frozenset({"openai", "anthropic", "serper"})
+# "test" is the owner's manual trigger (R-MON1-26): no application path passes it.
+_CREDENTIAL_ALERT_STATES = frozenset({"ok", "rejected", "quota", "exhausted", "test"})
+
+
+def _strip_alert_scope(scope) -> None:
+    """Empty a scope of request data (R-MON1-20, measured on sentry-sdk 2.68.1):
+    Scope.clear() keeps the event processors, and the Starlette integration's
+    request processor lives there, so the processor list is emptied too. The list
+    is a private attribute: read through getattr, and a missing one raises so the
+    caller takes its fail-safe path."""
+    scope.clear()
+    processors = getattr(scope, "_event_processors", None)
+    if not isinstance(processors, list):
+        raise AttributeError("_event_processors")
+    processors.clear()
+
+
+def capture_credential_alert(kind, provider, state, status) -> None:
+    """Send ONE Sentry message for a credential state change. Level error (also for
+    the manual `test` state, so the owner's rule fires on it), info for a recovery
+    to `ok`. Emitted in a scope that carries no request region, no transaction name
+    and no request-scoped tag; if that scope recipe fails for ANY reason, exactly
+    one event is still sent from the current scope (whose request region is what
+    `_before_send` leaves) and one constant WARNING is logged. Never raises."""
+    sent = False
+    try:
+        if (
+            kind not in _CREDENTIAL_ALERT_KINDS
+            or provider not in _CREDENTIAL_ALERT_PROVIDERS
+            or state not in _CREDENTIAL_ALERT_STATES
+        ):
+            return
+        status_tag = (
+            str(status)
+            if isinstance(status, int) and not isinstance(status, bool)
+            else "none"
+        )
+        level = "info" if state == "ok" else "error"
+        tags = {"alert": kind, "provider": provider, "state": state, "status": status_tag}
+        fingerprint = [kind, provider, state]
+        import sentry_sdk
+
+        try:
+            with sentry_sdk.isolation_scope() as iso_scope:
+                _strip_alert_scope(iso_scope)
+                with sentry_sdk.new_scope() as current_scope:
+                    _strip_alert_scope(current_scope)
+                    sentry_sdk.capture_message(
+                        _CREDENTIAL_ALERT_MESSAGE,
+                        level=level,
+                        tags=tags,
+                        fingerprint=fingerprint,
+                    )
+                    sent = True
+            return
+        except Exception:  # noqa: BLE001 -- the fail-safe below still sends one event
+            if sent:
+                return
+            logger.warning(
+                "[LLM_CREDENTIAL] alert scope recipe unavailable; sent from the current scope"
+            )
+        sentry_sdk.capture_message(
+            _CREDENTIAL_ALERT_MESSAGE, level=level, tags=tags, fingerprint=fingerprint
+        )
+    except Exception as exc:  # noqa: BLE001 -- an alert never breaks the caller
+        logger.warning("[LLM_CREDENTIAL] alert skipped: %s", type(exc).__name__)
+
+
 def init_sentry():
     """Initialize Sentry SDK. No-op if SENTRY_DSN not set."""
     global _INFRA_HOSTS
