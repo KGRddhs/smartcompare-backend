@@ -1,0 +1,32 @@
+# NEXT_SESSION_PROMPT_S95_FIX (written 2026-11-12 about 20:20 by the S94-FIX orchestrator, Claude Opus 5.5, Claude Code session 3a6455f8-8bb9-48b6-8805-76a15f5f3dc7; kept current by addenda at the end: read them and the newest lines of ledger_incident.md first)
+
+Invoke `/synack-build-orchestrator` for the MYEZ INCIDENT FIX LANE. You are the successor of S94-FIX. NEXT_SESSION_PROMPT_S94_FIX.md and its ADDENDA 1 to 4 still bind for the roles, the standing rules, the lessons and the read-first rules; THIS file is the state.
+
+## Read first
+
+- The file-read rule stands: never a file-read tool, never `cat` and never a `cd` on a path inside a checkout or worktree under `C:/Users/SynAckITPC/Documents/AI/` (a read injects that checkout's CLAUDE.md; a `cd` in a Bash call also moves the session's working directory). Docs: `git -C C:/Users/SynAckITPC/Documents/AI/sc-docs-inc archive HEAD docs/investigations/2026-11-11-data-incident | tar -x -C <scratchpad>/docsx`; code: `git -C <checkout> show <sha>:<path>`, `git grep`, or a script with a fixed root (S94's wt.py: hash / grep / lines / copy / ls).
+- Then: ledger_incident.md (the newest lines), specs/RULINGS_REPLAY_S81_12D.md (RP-1 to RP-7), specs/GATE_S81_12D.md, the two adversary reports specs/S81-12d_ADV1_correctness.md and specs/S81-12d_ADV1_privacy_and_egress.md, specs/S81-12d_PR_BODY_FINAL.md.
+- COPY the S94-FIX scratchpad before any run: `C:/Users/SYNACK~1/AppData/Local/Temp/claude/cde30765822f13ce/3a6455f8-8bb9-48b6-8805-76a15f5f3dc7/scratchpad` (harness/, wf/, record/inc/, bk.py, wt.py, setup_harness.py). setup_harness.py copies and re-points the session id (set OLD_ID to S94's id and NEW_ID to yours): OWN in harness/gate.py, SESSION in harness/harvest.py and harness/stall_monitor.py, the paths in wf/inc-common.txt and wf/inc-header.txt. Set the trailer in bk.py to your model.
+
+## Standing rules (the relay = local_bd1bd114-007c-4e66-b40f-0d4a0576d4b4, "MYEZ session-81 orchestrator")
+
+- Every gate run of this lane starts through harness/gate.py (tags start with inc-); the runner pyt.py is never called directly and nothing waits inside a runner (ADDENDUM 4 of the S94 prompt).
+- THE RELAY'S WAIT RULE (2026-11-12 about 18:05): every turn end of a side session wakes the relay for a full turn on the Fable meter. Wait for a batch with ONE completion notice (a background command that exits at the end, or the workflow's own notice); no per-result monitor; never end a turn with a progress line. Message the relay ONLY at: a commit, the adversaries' verdicts, the PR with CI green and the request for the merge word, a real blocker.
+- The owner's standing authorization of 2026-11-12 covers the gates of the agreed plan at the recommendation; never a secret, a phone proof, a ToS verdict or new scope. You never flip a flag, set a variable, read a production value, handle a key or merge without the relay's dated word. Never `pr_rest.py watch` (it merges on green).
+- BUDGET: re-measure with get_usage first (at 18:50 on 2026-11-12: all models 68 pct, Fable 77 pct; the weekly window resets 2026-11-18 about 16:00 local). After S81-12d NOTHING of this lane launches until the relay's next budget reading.
+
+## State
+
+- S81-12d OPENAI-EGRESS-STOP: PR #403 https://github.com/KGRddhs/smartcompare-backend/pull/403, branch fix/s81-12d-openai-egress-stop, head d0a1fd7086cb37b4e8aa09bb8a076eef3ffc5599, base main c6ebbd2ed593081cb6241915c36ae29af4c29bca (unmoved at the push). Both adversaries SOUND (no blocking, no major); their minors are in the PR body as wording fixes and stated limits. CI: 7 checks pending when the PR opened (20:15). NEXT: the relay verifies CI and sends the dated merge word; then ONE own check (origin/main still c6ebbd2e, else a replay round first; the PR head = d0a1fd70; the 7 checks green), `python harness/pr_rest.py merge 403`, the new main sha to the relay at once, a ledger line.
+- After the merge the flag ships OFF; its flip is the relay's own window: owner step 0 (the web deployment's commit contains the merge, AND no Railway service deploys from the legacy backend/ tree, names only), P0 the positive control, the flip on the owner's yes, the zero-request read, the dated ledger line. L4 is owner-facing: OPENAI_API_KEY must STAY SET (unset, openai_service fails at import and the web service does not start).
+- Carried to the next CLAUDE.md touch (stated limits of #403): the K1 comment of tests/test_s81_s03_llm_ledger_v2.py (S81-12d re-pinned E1), the S81-12d block's L4 and OFF-delta sentences, MON1's "(no flag moves it out)" line.
+- A candidate follow-up, not filed as a unit (the relay decides): harden test_s12d_20's RP-2 exemption to the exact callee chain self.client.models.retrieve (both adversaries' minor), and widen the census suffixes (with_raw_response, with_streaming_response, parse, stream).
+- Worktree sc-inc-12d: on the branch at d0a1fd70, clean; the node_modules junction at sc-inc-12d/SmartCompareApp/node_modules is LIVE (unlink it with `cmd /c rmdir` before any removal; never a recursive delete).
+- The rest of the lane, unchanged and held by the budget ration: INC-X1 (specs/RULINGS_INC_X1.md; a spec amendment round, then the RED), INC-X6 (specs/RULINGS_INC_X6.md; a spec amendment round), the page briefs X5, X7, X4.
+
+## Lessons of S94-FIX (binding)
+
+- A replay that re-uses a chunked whole-tree record must re-run every file that can see the new main's change, and must not trust chunk boundaries for process-state leaks: CI runs ONE alphabetical process. The recorded chunks never put frozen file A (chunk 23) and test_s81_s24 (chunk 24) in one process; a mixed delta chunk did, and exposed a spend-breaker state leak that would have turned the PR's CI red (RP-7). For a unit whose tests touch process-global state (the spend breaker, the router, MON1's credential health), run its files and then the alphabetically later files that read that state, in one process, before the commit.
+- A census row frozen on one base can go red on the next main through another lane's new file (RP-2, the S81-07 harness's models.retrieve on an Anthropic client): after a main moves, re-run the unit's own files first.
+- difflib on CLAUDE.md-sized byte strings is quadratic and hangs: compare the known inserted pieces instead.
+- Orchestrating on Opus 5.5 worked for a replay plus a commit plus two adversaries: about 0.5 million orchestrator context and 1.06 million agent tokens.
