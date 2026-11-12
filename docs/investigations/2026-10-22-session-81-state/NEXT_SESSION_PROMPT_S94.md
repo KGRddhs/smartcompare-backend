@@ -68,3 +68,7 @@ Invoke `/synack-build-orchestrator` for MYEZ session 94: continue the session-81
 - GATE SLOTS: the incident lane's successor runs no pytest and no jest until THIS lane tells the relay that the PATH C fix round has passed: send that word at once when it does.
 - The bot page check is closed (both address forms answer 200, no redirect).
 - PRODUCTION FLAGS OF RECORD: ENABLE_LEGACY_FINGERPRINT_READER ON, ENABLE_LLM_LEDGER_V2 ON, ENABLE_LLM_SPEND_BREAKER ON since 2026-11-12 05:18:59 local (the relay; canary OPEN until a compare runs); every other S81 flag OFF.
+
+## ADDENDUM 5 (item 10 and S81-12d; the ledger line of 2026-11-12 05:38)
+- ITEM 10 has a working answer (the relay, under the standing authorization, at the incident lane's recommendation): a phone below consent version 3 gets today's result without AI text, with nothing sent to OpenAI, once a Claude role is ON; one small add-on unit behind S81-12d; the incident lane's successor rules it TOGETHER WITH THIS LANE (expect its questions on the router's consent arm, a FOCUS surface of S81-06).
+- S81-12d = the dark flag ENABLE_OPENAI_EGRESS_STOP; it can go ON any time before the first Claude flip with no visible change. The PATH C texts stay true when it does (they over-state OpenAI's role until S81-12b). The day it goes ON on the web service is the date S81-12b's texts will carry: keep the relay's dated line of that flip.
