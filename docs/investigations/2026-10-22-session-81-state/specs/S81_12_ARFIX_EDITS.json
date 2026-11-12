@@ -1,0 +1,82 @@
+[
+ {
+  "id": "J2",
+  "risk": "R1 never + email",
+  "file": "SmartCompareApp/src/i18n/ar.json",
+  "line": 561,
+  "old": "، دون اسمك أو بريدك أو حسابك.",
+  "new": "، ولا يرسل أبدا اسمك أو بريدك الإلكتروني أو بيانات حسابك."
+ },
+ {
+  "id": "J1",
+  "risk": "R2 tense",
+  "file": "SmartCompareApp/src/i18n/ar.json",
+  "line": 689,
+  "old": "وننقل هذه المعالجة",
+  "new": "ونعمل حاليا على نقل هذه المعالجة"
+ },
+ {
+  "id": "P1",
+  "risk": "R2 tense",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 17,
+  "old": "وننقل هذه المعالجة",
+  "new": "ونعمل حاليًا على نقل هذه المعالجة"
+ },
+ {
+  "id": "P1",
+  "risk": "R2 tense",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 66,
+  "old": "وننقل هذه المعالجة",
+  "new": "ونعمل حاليًا على نقل هذه المعالجة"
+ },
+ {
+  "id": "P2",
+  "risk": "R9 passive",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 76,
+  "old": "البيانات التي شوركت مع OpenAI",
+  "new": "البيانات التي تمت مشاركتها مع OpenAI"
+ },
+ {
+  "id": "P2",
+  "risk": "R9 passive",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 97,
+  "old": "البيانات التي شوركت مع OpenAI",
+  "new": "البيانات التي تمت مشاركتها مع OpenAI"
+ },
+ {
+  "id": "P3",
+  "risk": "R3 page addresses",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 107,
+  "old": "وعناوين صور المنتجات على الويب وعناوين الصفحات التي جاءت منها",
+  "new": "وروابط صور المنتجات على الويب وروابط الصفحات التي جاءت منها"
+ },
+ {
+  "id": "P4",
+  "risk": "R4 bot URL slash",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 107,
+  "old": "https://getmyez.com/bot/ في موقعنا",
+  "new": "https://getmyez.com/bot في موقعنا"
+ },
+ {
+  "id": "P5",
+  "risk": "R5 identifier",
+  "file": "app/legal/privacy_policy_ar.md",
+  "line": 161,
+  "old": "كانت تجمع ذلك المعرّف العشوائي مع",
+  "new": "كانت تجمع معرّف التثبيت العشوائي مع"
+ },
+ {
+  "id": "T1",
+  "risk": "R2 tense",
+  "file": "app/legal/terms_of_service_ar.md",
+  "line": 57,
+  "old": "وننقل هذه المعالجة",
+  "new": "ونعمل حاليًا على نقل هذه المعالجة"
+ }
+]
