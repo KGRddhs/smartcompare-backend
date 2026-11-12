@@ -615,7 +615,7 @@ def test_r16_pricing_from_usage():
     assert mod.usd_from_usage("claude-unpriced-model", no_ws, 0.75) == 0.75
 
 
-def test_r17_worst_case_stop(hx):
+def test_r17_worst_case_stop(hx, monkeypatch, canary):
     assert hx.run("text", "--settings", "A1_sites", "--dry-run") == 0
     first = _plan(hx, "text")["settings"]["A1_sites"]
     assert first["worst_usd"] > 0
@@ -627,6 +627,7 @@ def test_r17_worst_case_stop(hx):
     assert w >= 4000 * 0.50 / 1e6
     assert b.reserve(w) is False
     out2 = hx.out.parent / "out2"
+    monkeypatch.setenv(VAR, canary)  # F-7 (a): the dry run above removed the variable; a live run sets it again
     code = hx.mod.main(["text", "--settings", "A1_sites", "--max-usd", "0.00001", "--out", str(out2)])
     assert code == 6
     assert hx.creates == []
@@ -866,6 +867,7 @@ def test_r33_verdict_eval_plan(monkeypatch, tmp_path, clean_env):
     hx = Harness(mod, monkeypatch, tmp_path, behaviour=lambda kw, n: _msg(json.dumps({"winner_index": wrong})))
     assert hx.run("text", "--dry-run", "--settings", "A6_verdict_eval") == 0
     assert _plan(hx, "text")["settings"]["A6_verdict_eval"]["calls"] == 120
+    monkeypatch.setenv(VAR, clean_env)  # F-7 (a): the dry run above removed the variable
     hx.run("text", "--settings", "A6_verdict_eval", "--max-calls", "1")
     assert hx.results("text")["settings"]["A6_verdict_eval"]["mismatches"] == 1
 
@@ -2091,3 +2093,528 @@ def test_p13_httpx2_request_hook_mechanism():
     c3 = httpx2.AsyncClient(transport=httpx2.MockTransport(h), event_hooks={"request": [sync_hook]})
     with pytest.raises(TypeError):
         asyncio.run(c3.get("https://api.anthropic.com/v1/messages"))
+
+
+# --------------------------------------------------------------------------
+# FIX1 rows (RULINGS_FIX1_S81_07 F-2..F-7; sanctioned amendments, listed in the
+# FIX section of the amendments file)
+# --------------------------------------------------------------------------
+def _claude_md_s07_block():
+    text = (REPO / "CLAUDE.md").read_text(encoding="utf-8")
+    lines = text.splitlines()
+    starts = [i for i, x in enumerate(lines) if "SESSION 81 unit (S81-07" in x]
+    assert starts, "the CLAUDE.md S81-07 block is missing"
+    out = []
+    for x in lines[starts[-1] + 1:]:
+        if x.startswith("## ") or x.startswith("**SESSION"):
+            break
+        out.append(x)
+    return out
+
+
+def _assignment_lines(lines):
+    return [x for x in lines if (VAR + "=") in x]
+
+
+def _assignment_before_env(line):
+    i = line.index(VAR + "=")
+    return re.search(r"\benv\s", line[i:]) is not None and re.search(r"\benv\s", line[:i]) is None
+
+
+def test_r76_run_command_assignment_before_env():
+    """F-2 (B1): every command line naming the credential variable carries the assignment BEFORE the command
+    word env (a shell prefix assignment), never after it (an argument of env.exe, visible in the process list);
+    the canonical template lives in the script's module docstring and the CLAUDE.md block copies it."""
+    _mod()
+    src = SCRIPT.read_text(encoding="utf-8").splitlines()
+    doc_end = [i for i, x in enumerate(src) if x.strip().endswith('"""')][0]
+    in_doc = _assignment_lines(src[:doc_end + 1])
+    assert in_doc, "no canonical run template in the module docstring"
+    assert _assignment_lines(src) == in_doc, "a credential assignment outside the docstring"
+    block = _assignment_lines(_claude_md_s07_block())
+    assert block, "the CLAUDE.md block carries no run command"
+    for line in in_doc + block:
+        assert _assignment_before_env(line), line
+    dry = [x for x in src[:doc_end + 1] + _claude_md_s07_block() if "--dry-run" in x and "env -u" in x]
+    assert dry and not _assignment_lines(dry)
+
+
+class _GuardCtx:
+    def __init__(self):
+        self.hosts_refused = []
+
+
+def _try(fn, *a):
+    mod = _mod()
+    try:
+        fn(*a)
+    except mod.StageStop as s:
+        return s.reason
+    return "passed"
+
+
+def test_r77_live_guard_admits_the_allowed_host_end_to_end(monkeypatch, tmp_path, clean_env):
+    """F-3 (M1): one live send through the REAL pinned transport (no fake client) with a fake resolver that
+    returns a loopback address, on the default loop and on a selector loop: the guard admits the allowed host,
+    the resolver wrapper is reached once for it, hosts_refused stays empty, the stage does not stop on
+    host_refused. Nothing leaves the machine (loopback only)."""
+    import socket
+    import sys
+    mod = _mod()
+    calls = []
+
+    def fake_gai(host, port, *a, **k):
+        calls.append((host, port))
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", int(port or 443)))]
+
+    async def nosleep(s):
+        return None
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_gai)
+    monkeypatch.setattr(mod, "_sleep", nosleep)
+    monkeypatch.setattr(mod, "_git_head", lambda: None)
+    loops = ["default"]
+    if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+        loops.append("selector")
+    for kind in loops:
+        calls.clear()
+        monkeypatch.setenv(VAR, clean_env)
+        out = tmp_path / ("out_" + kind)
+        prev = asyncio.get_event_loop_policy()
+        if kind == "selector":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        try:
+            code = mod.main(["text", "--out", str(out), "--settings", "A4_refusal_names", "--max-calls", "1"])
+        finally:
+            asyncio.set_event_loop_policy(prev)
+        res = json.loads((out / "text" / "results.json").read_text(encoding="utf-8"))
+        assert res["stop_reason"] != "host_refused", kind
+        assert res["settings"]["A4_refusal_names"]["hosts_refused"] == [], kind
+        names = [h.decode("ascii") if isinstance(h, bytes) else h for h, _ in calls]
+        assert names == ["api.anthropic.com"], (kind, names)
+        assert code == 6 and res["stop_reason"] == "max_calls", (kind, code)
+        assert socket.getaddrinfo is fake_gai
+
+
+def test_r78_other_host_refused_as_str_and_bytes():
+    """F-3 (a): the host is read as str or as IDNA bytes (ASCII); another name is refused before any resolution;
+    an undecodable host is refused."""
+    import socket
+    mod = _mod()
+    ha = mod.host_allowed
+    assert ha(b"api.anthropic.com", 443) is True and ha(bytearray(b"API.Anthropic.com"), 443) is True
+    assert ha(b"api.anthropic.com", 80) is False and ha(b"other.invalid", 443) is False
+    assert ha(b"\xff\xfe", 443) is False and ha("other.invalid", 443) is False
+    assert ha(b"127.0.0.1", 9) is True and ha(b"localhost", 9) is True
+    seen = []
+    real = socket.getaddrinfo
+    ctx, state = _GuardCtx(), {"restore": []}
+    socket.getaddrinfo = lambda *a, **k: seen.append(a) or []
+    try:
+        mod._install_host_guard(ctx, state, True)
+        try:
+            for host in ("other.invalid", b"other.invalid", b"\xff\xfe"):
+                assert _try(socket.getaddrinfo, host, 443) == "host_refused", host
+            assert seen == []
+            assert _try(socket.getaddrinfo, b"api.anthropic.com", 443) == "passed"
+            assert len(seen) == 1
+        finally:
+            for fn in reversed(state["restore"]):
+                fn()
+    finally:
+        socket.getaddrinfo = real
+    assert "other.invalid" in ctx.hosts_refused and not [h for h in ctx.hosts_refused if h.startswith("b'")]
+
+
+def test_r79_connect_admits_only_addresses_resolved_for_the_allowed_host(monkeypatch):
+    """F-3 (b): at the connect step the live guard admits only an address the guarded resolver returned for the
+    allowed host in this process, on port 443 (and loopback); every other literal is refused, and an address a
+    loopback name resolved to does not join the set."""
+    import socket
+    mod = _mod()
+    connects = []
+
+    def fake_gai(host, port, *a, **k):
+        name = host.decode("ascii") if isinstance(host, bytes) else host
+        ip = "192.0.2.7" if name == "api.anthropic.com" else "192.0.2.9"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_gai)
+    monkeypatch.setattr(socket.socket, "connect", lambda self, addr: connects.append(addr))
+    monkeypatch.setattr(socket.socket, "connect_ex", lambda self, addr: connects.append(addr) or 0)
+    ctx, state = _GuardCtx(), {"restore": []}
+    mod._install_host_guard(ctx, state, True)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        assert _try(s.connect, ("192.0.2.7", 443)) == "host_refused"
+        assert _try(s.connect, ("192.0.2.1", 443)) == "host_refused"
+        assert connects == []
+        assert _try(socket.getaddrinfo, b"api.anthropic.com", 443) == "passed"
+        assert _try(s.connect, ("192.0.2.7", 443)) == "passed"
+        assert _try(s.connect_ex, ("192.0.2.7", 443)) == "passed"
+        assert _try(s.connect, ("192.0.2.7", 80)) == "host_refused"
+        assert _try(s.connect, ("192.0.2.1", 443)) == "host_refused"
+        assert _try(socket.getaddrinfo, "localhost", 443) == "passed"
+        assert _try(s.connect, ("192.0.2.9", 443)) == "host_refused"
+        assert connects == [("192.0.2.7", 443), ("192.0.2.7", 443)]
+    finally:
+        s.close()
+        for fn in reversed(state["restore"]):
+            fn()
+
+
+def _clocked(hx, per_create=1.0, extra=None):
+    def beh(kw, n):
+        hx.clock[0] += per_create
+        if extra:
+            return extra(kw, n)
+        return _msg()
+    return beh
+
+
+def test_r80_resume_gives_the_same_tail_spans(monkeypatch, tmp_path, clean_env):
+    """F-4 (a)(b) (MAJ-2): a replayed round contributes no span; the spans come from the ledger, so a stopped
+    and resumed stage gives the spans (and the A1 site counts) of the uninterrupted stage. Kills A20 and A34."""
+    mod = _mod()
+    hx = Harness(mod, monkeypatch, tmp_path)
+    hx.behaviour = _clocked(hx)
+    a, b = tmp_path / "uninterrupted", tmp_path / "resumed"
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "32", "--out", str(a))
+    ra = json.loads((a / "text" / "results.json").read_text(encoding="utf-8"))["settings"]["A1_sites"]
+    monkeypatch.setenv(VAR, clean_env)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16", "--out", str(b))
+    monkeypatch.setenv(VAR, clean_env)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16", "--out", str(b))
+    rb = json.loads((b / "text" / "results.json").read_text(encoding="utf-8"))["settings"]["A1_sites"]
+    assert ra["tail_span_ms"] == [3000.0, 3000.0]
+    assert rb["tail_span_ms"] == ra["tail_span_ms"]
+    assert {k: v["n"] for k, v in rb["sites"].items()} == {k: v["n"] for k, v in ra["sites"].items()}
+    assert ra["sites"]["classify"]["n"] == 2
+    tails = [x for x in hx_lines(b) if x.get("state") == "tail"]
+    assert len(tails) == 2
+
+
+def hx_lines(out):
+    p = out / "text" / "spend.jsonl"
+    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def test_r81_timed_out_tail_leg_is_infinite_and_counted(hx):
+    """F-4 (c): a timed-out tail leg makes that round's span +infinity, and the proposal line prints the number
+    of censored samples."""
+    hx.behaviour = lambda kw, n: _conn_exc(timeout=True) if n == 11 else _msg()
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "32")
+    a1 = hx.results("text")["settings"]["A1_sites"]
+    assert a1["tail_span_ms"][0] == math.inf and len(a1["tail_span_ms"]) == 2
+    assert math.isfinite(a1["tail_span_ms"][1])
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    line = _line(rep, "- ANTHROPIC_TAIL_RESERVE_SECONDS")
+    assert "n = 2" in line and "censored 1" in line
+
+
+def test_r82_report_reads_the_current_knob_values(hx, monkeypatch):
+    """F-4 (d): the report prints the CURRENT knob values read from the router, never its own literals."""
+    router = _router()
+    monkeypatch.setattr(router, "classify_timeout", lambda base: 7.5)
+    monkeypatch.setattr(router, "vision_timeout", lambda: 33.0)
+    monkeypatch.setattr(router, "tail_reserve_seconds_for_request", lambda: 9.0)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16")
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    assert "- ANTHROPIC_CLASSIFY_LLM_TIMEOUT: current 7.5," in rep
+    assert "- ANTHROPIC_VISION_TIMEOUT_SECONDS: current 33.0," in rep
+    assert "- ANTHROPIC_TAIL_RESERVE_SECONDS: current 9.0," in rep
+
+
+def _line(rep, prefix):
+    found = [x for x in rep.splitlines() if x.startswith(prefix)]
+    assert len(found) == 1, prefix
+    return found[0]
+
+
+def _round_of(rec):
+    return rec["case_id"].split(":")[0]
+
+
+def _a1_costs(lines):
+    per = {}
+    for x in lines:
+        if x.get("state") == "done" and x["setting"] == "A1_sites":
+            per.setdefault(_round_of(x), []).append(x)
+    return per
+
+
+def test_r83_cost_per_synthetic_compare(hx):
+    """F-5 (a): the cost per synthetic compare = the booked usd of an A1 round's calls from the ledger;
+    nearest-rank p50 / p95 over the rounds that completed every call; n printed."""
+    hx.behaviour = lambda kw, n: _msg(inp=100 if n <= 16 else 5000, out=20 if n <= 16 else 400)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "40")
+    per = _a1_costs(hx.ledger("text"))
+    assert sorted(per) == ["r00", "r01", "r02"] and len(per["r02"]) == 8
+    c0 = sum(x["usd"] for x in per["r00"])
+    c1 = sum(x["usd"] for x in per["r01"])
+    assert c1 > c0 > 0
+    cost = hx.results("text")["settings"]["A1_sites"].get("cost_per_compare")
+    assert isinstance(cost, dict) and cost.get("n") == 2
+    assert cost["p50_usd"] == pytest.approx(c0, abs=1e-9) and cost["p95_usd"] == pytest.approx(c1, abs=1e-9)
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    line = _line(rep, "- Cost per synthetic compare")
+    assert "n = 2" in line and ("%.6f" % c0) in line and ("%.6f" % c1) in line
+
+
+def test_r84_compares_per_day_under_the_code_default_cap(hx):
+    """F-5 (b): compares per day = floor(cap / p95 cost) and floor(cap / p50 cost); the cap is the breaker's code
+    default (its pure bound function with the knob unset), labelled so, with the formula printed."""
+    from app.services import llm_spend_breaker as sb
+    cap = sb.cap_usd(sb.LANE_LIVE)
+    assert cap == sb.DEFAULT_CAPS_USD[sb.LANE_LIVE]
+    hx.behaviour = lambda kw, n: _msg(inp=100 if n <= 16 else 5000, out=20 if n <= 16 else 400)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "40")
+    cost = hx.results("text")["settings"]["A1_sites"].get("cost_per_compare")
+    assert isinstance(cost, dict) and cost.get("p95_usd")
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    line = _line(rep, "- Compares per day")
+    assert "code default, not the production value" in line
+    assert "floor(cap / p95)" in line and "floor(cap / p50)" in line
+    assert ("cap %s USD" % cap) in line
+    assert ("= %d" % math.floor(cap / cost["p95_usd"])) in line
+    assert ("= %d" % math.floor(cap / cost["p50_usd"])) in line
+
+
+def test_r85_cache_read_share(hx):
+    """F-5 (c): the cache_read share = cache-read input tokens / all input tokens (uncached + cache creation +
+    cache read), per A1 site and pooled, from the ledger."""
+    hx.behaviour = lambda kw, n: _msg(inp=100, cache_read=300 if n == 1 else 0)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "16")
+    share = hx.results("text")["settings"]["A1_sites"].get("cache_read_share")
+    assert isinstance(share, dict)
+    assert share["pooled"] == pytest.approx(300.0 / 1900.0, abs=1e-9)
+    assert share["sites"]["classify"] == pytest.approx(0.75, abs=1e-9)
+    assert share["sites"]["parse"] == 0.0 and share["sites"]["specs"] == 0.0
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    line = _line(rep, "- cache_read share")
+    assert "pooled 0.157894737" in line and "classify 0.75" in line
+
+
+def _a4_groups():
+    names = _fixture("fragrance_names.json")
+    rows = []
+    for i in range(100):
+        a, b = names[i], names[(i + 1) % 100]
+        rows.append({"ar": "ar" in (a["lang"], b["lang"]),
+                     "sensitive": "sensitive" in (a["group"], b["group"])})
+    return rows
+
+
+def test_r86_sensitive_subset_of_a4(hx):
+    """F-5 (d): the sensitive-looking subset of A4 (a case is in it when either name's fixture group is
+    'sensitive'): n and refusals, reported beside the Arabic clause."""
+    groups = _a4_groups()
+    sens = [i for i, g in enumerate(groups) if g["sensitive"]]
+    refuse = {sens[0], sens[3], 5}
+    hx.behaviour = lambda kw, n: _msg(stop="refusal") if (n - 1) in refuse else _msg()
+    hx.run("text", "--settings", "A4_refusal_names")
+    a4 = hx.results("text")["settings"]["A4_refusal_names"]
+    assert (a4.get("n_sensitive"), a4.get("refusals_sensitive")) == (len(sens), 2)
+    assert (a4["n"], a4["refusals"]) == (100, 3)
+    assert hx.run("report") == 0
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    line = _line(rep, "- A4 refusals")
+    assert ("sensitive-looking names n = %d, refusals = 2" % len(sens)) in line
+    assert ("Arabic-script names n = %d" % sum(1 for g in groups if g["ar"])) in line
+
+
+def _report_cells(path):
+    cells = {}
+    for x in path.read_text(encoding="utf-8").splitlines():
+        parts = [p.strip() for p in x.split("|")]
+        if len(parts) >= 5 and parts[1] in ("TEXT", "VERDICT", "SONNET_ESCALATION", "CRITIC", "MODERATION",
+                                            "VISION", "WEB_SEARCH"):
+            cells[parts[1]] = (parts[2], parts[3])
+    return cells
+
+
+def _mod_answer(flagged):
+    return json.dumps({"flagged": flagged, "category": "harassment" if flagged else "none", "uncertain": False})
+
+
+def _decision_run(mod, monkeypatch, tmp_path, fail):
+    """F-6: drive text (A1, A3, A4, A6), moderation and vision with the suite's fake client into one ledger
+    folder, then the report. Create order (text): 1-320 A1 (16 a round), 321-340 A3, 341-440 A4, 441-560 A6
+    (rep 0 cases 0-59, then rep 1)."""
+    gold = [c["gold_winner_index"] for c in _fixture("verdict_gold.json")]
+    cases = _fixture("moderation_parity.json")
+    benign = [i for i, c in enumerate(cases) if c["expected_flagged"] is False]
+    hx = Harness(mod, monkeypatch, tmp_path)
+
+    def text(kw, n):
+        if n <= 320:
+            r, k = (n - 1) // 16, (n - 1) % 16 + 1
+            if k == 1:
+                hx.clock[0] += 2.0
+            if k == 9:
+                hx.clock[0] += 0.1 * (r + 1)
+            if fail and k == 2 and r < 3:
+                return _msg("not json")
+            if fail and k == 7 and r == 0:
+                return _status_exc(400)
+            if fail and k == 16 and r == 3:
+                return _conn_exc(timeout=True)
+            if not fail and k == 11 and r < 3:
+                return _msg(stop="max_tokens")
+            return _msg()
+        if n <= 340:
+            return _status_exc(500) if fail and n == 325 else _msg()
+        if n <= 440:
+            i = n - 341
+            return _msg(stop="refusal") if i in ((5, 49, 85) if fail else (5,)) else _msg()
+        k = n - 441
+        rep, idx = k // 60, k % 60
+        wi = gold[idx]
+        if fail and rep == 1 and idx < 10:
+            wi = 1 - wi
+        return _msg(json.dumps({"winner_index": wi}))
+
+    hx.behaviour = text
+    hx.run("text", "--settings", "A1_sites,A3_sonnet_between_tools,A4_refusal_names,A6_verdict_eval")
+
+    def moderation(kw, n):
+        i = n - 1
+        if fail and i in benign[:2]:
+            return _msg(stop="refusal")
+        if fail and 10 <= i < 20:
+            hx.clock[0] += 4.0
+        return _msg(_mod_answer(cases[i]["expected_flagged"]))
+
+    hx.behaviour = moderation
+    monkeypatch.setenv(VAR, _make_canary())
+    hx.run("moderation")
+    hit = json.dumps({"products": [{"brand": "Dior", "name": "Sauvage"}]})
+    miss = json.dumps({"products": [{"brand": "Dior", "name": "Bleu"}]})
+    hx.behaviour = lambda kw, n: _msg(miss if fail and n in (5, 6) else hit)
+    monkeypatch.setenv(VAR, _make_canary())
+    hx.run("vision", "--set", str(_png_set(tmp_path / "photos", 3)))
+    assert hx.run("report") == 0
+    return hx
+
+
+def test_r87_decision_path_pass(monkeypatch, tmp_path, clean_env):
+    """F-6 (MAJ-1), the passing ledger: every metric a bar reads, by value, from a stage run; the verdict cell of
+    every role parsed from REPORT.md; the proposals from the ledger. Kills A03, A26, A35 (with R88), A36, A37."""
+    mod = _mod()
+    hx = _decision_run(mod, monkeypatch, tmp_path, fail=False)
+    text = hx.results("text")["settings"]
+    sites = text["A1_sites"]["sites"]
+    assert sites["verdict"]["max_tokens_hits"] == 3
+    assert sum(v["max_tokens_hits"] for k, v in sites.items() if k != "verdict") == 0
+    assert (sites["parse"]["json_n"], sites["parse"]["json_valid"]) == (20, 20)
+    assert (sites["image_tier3"]["schema_n"], sites["image_tier3"]["schema_accepted"]) == (40, 40)
+    assert text["A4_refusal_names"]["refusals"] == 1 and text["A4_refusal_names"]["refusals_arabic"] == 0
+    assert text["A6_verdict_eval"]["agreement"] == 1.0 and text["A6_verdict_eval"]["mismatches"] == 0
+    assert hx.results("moderation")["settings"]["M1_parity"]["fail_closed"] == 0
+    cells = _report_cells(hx.out / "REPORT.md")
+    assert cells == {"TEXT": ("GO", "-"), "VERDICT": ("GO", "-"), "SONNET_ESCALATION": ("GO", "-"),
+                     "CRITIC": ("NOT RUN", "-"), "MODERATION": ("GO", "-"), "VISION": ("GO", "-"),
+                     "WEB_SEARCH": ("NOT RUN", "-")}, cells
+    rep = (hx.out / "REPORT.md").read_text(encoding="utf-8")
+    assert "- ANTHROPIC_CLASSIFY_LLM_TIMEOUT: current 4.0, proposed 2.5 " in rep
+    assert "- ANTHROPIC_TAIL_RESERVE_SECONDS: current 6.5, proposed 2.5 " in rep
+    assert ("VISION hit rate = hits / n_scored: successful calls only (a failed call is not scored).") in rep
+    assert ("A6 mismatch rate = mismatches / n_scored: successful calls whose winner_index parsed only.") in rep
+
+
+def test_r88_decision_path_fail(monkeypatch, tmp_path, clean_env):
+    """F-6 (MAJ-1), the failing ledger: each role's bar crossed by a scripted fake; the metrics by value and the
+    verdict cell of every role. Kills A01, A02, A05, A06, A24, A27, A28, A35."""
+    mod = _mod()
+    hx = _decision_run(mod, monkeypatch, tmp_path, fail=True)
+    text = hx.results("text")["settings"]
+    sites = text["A1_sites"]["sites"]
+    assert (sites["parse"]["json_n"], sites["parse"]["json_valid"]) == (20, 17)
+    assert (sites["image_tier3"]["schema_n"], sites["image_tier3"]["schema_accepted"]) == (40, 39)
+    assert sites["url_extract"]["timeouts"] == 1
+    a4 = text["A4_refusal_names"]
+    n_ar = sum(1 for g in _a4_groups() if g["ar"])
+    assert (a4["n"], a4["refusals"], a4["n_arabic"], a4["refusals_arabic"]) == (100, 3, n_ar, 1)
+    a6 = text["A6_verdict_eval"]
+    assert (a6["n_scored"], a6["mismatches"]) == (120, 10)
+    assert a6["agreement"] == pytest.approx(50.0 / 60.0)
+    assert (text["A3_sonnet_between_tools"]["accepted"], text["A3_sonnet_between_tools"]["json_valid"]) == (19, 19)
+    m1 = hx.results("moderation")["settings"]["M1_parity"]
+    assert (m1["fail_closed"], m1["p95_s"], m1["false_positives"]) == (2, 4.0, 0)
+    v = hx.results("vision")["settings"]
+    assert v["V2_haiku_vision_v2"]["hit_rate"] == pytest.approx(1.0 / 3.0)
+    cells = _report_cells(hx.out / "REPORT.md")
+    assert cells["TEXT"] == ("NO-GO", "json_valid_site_min, schema_accept_min, refusals_a4_max, "
+                                      "refusals_a4_arabic_max, timeouts_max"), cells["TEXT"]
+    assert cells["VERDICT"] == ("NO-GO", "a6_agreement_min")
+    assert cells["SONNET_ESCALATION"] == ("NO-GO", "accepted_min")
+    assert cells["MODERATION"] == ("NO-GO", "fail_closed_max, p95_s")
+    assert cells["VISION"] == ("NO-GO", "haiku_hit_min, haiku_minus_sonnet_min")
+    assert cells["CRITIC"][0] == "NOT RUN" and cells["WEB_SEARCH"][0] == "NOT RUN"
+
+
+def test_r89_variable_removed_in_every_mode_before_a_child(hx, monkeypatch, canary):
+    """F-7 (a) (security m3): the credential variable leaves the process environment at start in EVERY mode,
+    the dry run included, before any child process is spawned: the git child of a dry run does not inherit it."""
+    mod = hx.mod
+    sp = _attr(mod, "subprocess")
+    seen = []
+
+    class _R:
+        returncode = 0
+        stdout = "ab" * 20
+
+    def rec(*a, **k):
+        env = k.get("env")
+        seen.append(VAR in (env if env is not None else os.environ))
+        return _R()
+
+    monkeypatch.setattr(sp, "run", rec)
+    assert hx.run("text", "--dry-run", "--settings", "A0_capabilities") == 0
+    assert seen and not any(seen) and VAR not in os.environ
+    for argv in (("report",), ("vision",), ("web_search",)):
+        monkeypatch.setenv(VAR, canary)
+        assert hx.run(*argv) == 0
+        assert VAR not in os.environ, argv
+    assert hx.key_reads == []
+
+
+def test_r90_unit_ceiling_clause_of_the_reservation():
+    """F-7 (b) (security m6, mutant S06): a reservation that fits the stage cap but crosses the unit ceiling is
+    refused."""
+    mod = _mod()
+    b = mod.Budget(4.0, 0.0, 14.0)
+    assert b.reserve(1.5) is False and b.reserved == 0.0
+    assert b.reserve(0.5) is True and b.reserve(0.6) is False
+    assert b.reserved == pytest.approx(0.5)
+
+
+def test_r91_completed_nontransient_call_never_resent(monkeypatch, tmp_path, clean_env):
+    """F-7 (c) (correctness m2, mutant A15): on a resume a call completed by a non-transient error (a 400) is
+    never sent again."""
+    mod = _mod()
+    hx = Harness(mod, monkeypatch, tmp_path, behaviour=lambda kw, n: _status_exc(400) if n == 1 else _msg())
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "1")
+    first = _done(hx.ledger("text"))
+    assert len(first) == 1 and first[0]["error_class"] == "BadRequestError"
+    hx.behaviour = lambda kw, n: _msg()
+    monkeypatch.setenv(VAR, clean_env)
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "2")
+    lines = hx.ledger("text")
+    assert len([x for x in _intents(lines) if x["call_id"] == first[0]["call_id"]]) == 1
+    assert [x["site"] for x in _done(lines)[1:]] == ["parse", "specs"]
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "0.2"])
+def test_r92_retry_after_floor(monkeypatch, tmp_path, clean_env, value):
+    """F-7 (c) (correctness m3, mutant A32): a retry-after of 0, below 1 or negative waits the 1 s floor."""
+    mod = _mod()
+    hx = Harness(mod, monkeypatch, tmp_path,
+                 behaviour=lambda kw, n: _status_exc(429, headers={"retry-after": value}) if n == 1 else _msg())
+    hx.run("text", "--settings", "A1_sites", "--max-calls", "2")
+    assert hx.sleeps[:1] == [1]

@@ -11,6 +11,15 @@ Stages (sub-commands): text, moderation, vision, web_search, report; each with i
 and report under --out (a folder OUTSIDE the repo). Every refusal is ONE stderr line naming variable NAMES
 only; the credential value never reaches argv, a log line, a report, a ledger row or an exception text.
 Imports at module top are stdlib only; app modules are imported only after the start checks.
+
+THE RUN COMMAND (RULINGS_FIX1_S81_07 F-2; the ONE canonical template, names and placeholders only, never a
+value: <WORKTREE> the unit worktree, <KEYFILE> the owner's key file, <PY> the .venv-qaren interpreter, <OUT> one
+absolute folder outside the repo, <NAME> each further refused name the refusal line lists). The credential
+assignment is a SHELL PREFIX ASSIGNMENT placed BEFORE the command word env; written after env it would be an
+argument of env and stay in the process list for the whole run:
+    cd <WORKTREE> && MEAS_ANTHROPIC_TEST_KEY="$(cat <KEYFILE>)" env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u <NAME> <PY> -m scripts.meas_claude_gate <stage> --out <OUT>
+The dry run carries NO assignment at all:
+    cd <WORKTREE> && env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u <NAME> <PY> -m scripts.meas_claude_gate <stage> --dry-run --out <OUT>
 """
 import asyncio
 import hashlib
@@ -85,6 +94,9 @@ LEDGER_DONE_KEYS = ("call_id", "attempt", "state", "stage", "setting", "site", "
                     "ok", "usd", "worst_usd", "input_tokens", "output_tokens", "cache_read_tokens",
                     "cache_write_tokens", "web_search_requests", "stop_reason", "error_class", "status",
                     "latency_ms", "ttft_ms", "ts")
+# F-4 (b): one line per A1 round whose tail legs were SENT in that process (a replayed round writes none);
+# span_ms is null and censored true when a tail leg timed out (+infinity, R-S07-19). Never booked.
+LEDGER_TAIL_KEYS = ("state", "stage", "setting", "round", "span_ms", "censored", "ts")
 A1_ROUND_ORDER = ("classify", "parse", ("specs", "specs", "price", "price", "image_tier3", "image_tier3"),
                   ("reviews", "reviews"), "verdict", "price_training", "specs_targeted", "specs_synthesized",
                   "disambiguate", "url_extract")
@@ -303,9 +315,25 @@ def timeout_proposal(samples, q=99):
     return ceil_half(p * 1.25)
 
 
+def _host_name(host):
+    """F-3 (a): the host as a lower-case str; IDNA bytes are decoded as ASCII; None when they do not decode."""
+    if isinstance(host, (bytes, bytearray)):
+        try:
+            return bytes(host).decode("ascii").strip().lower()
+        except UnicodeDecodeError:
+            return None
+    return str(host or "").strip().lower()
+
+
+def _is_loopback_name(h):
+    return h is not None and (h in ("localhost", "::1") or h.startswith("127."))
+
+
 def host_allowed(host, port):
-    h = str(host or "").strip().lower()
-    if h in ("localhost", "::1") or h.startswith("127."):
+    h = _host_name(host)
+    if h is None:
+        return False
+    if _is_loopback_name(h):
         return True
     try:
         p = int(port)
@@ -558,6 +586,13 @@ class Dispatcher:
         self.outcomes = []
         self.stop = None
         self.scrub = _Scrub(None)
+        self.sent_ids = set()  # F-4 (a): the call_ids this process actually sent
+        self.last = {}  # call_id -> its latest done line of this process
+
+    def write_tail(self, setting, round_id, span_ms, censored):
+        """F-4 (b): the tail span of a round whose tail legs were sent in this process, into the ledger."""
+        self._write({"state": "tail", "stage": self.stage, "setting": setting, "round": round_id,
+                     "span_ms": None if censored else span_ms, "censored": bool(censored), "ts": _ts()})
 
     def _write(self, obj):
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
@@ -623,6 +658,7 @@ class Dispatcher:
             usage = None
             resp = None
             sent = True
+            self.sent_ids.add(cid)
             try:
                 if kind == "count_tokens":
                     await self.client.messages.count_tokens(**request)
@@ -722,6 +758,7 @@ class Dispatcher:
         if ok or error_class in NON_TRANSIENT:
             self.completed[cid] = rec
         self.records.append(rec)
+        self.last[cid] = rec
         return rec
 
     def raw_path(self, cid):
@@ -828,11 +865,17 @@ def _read_ledgers(out):
                 obj = json.loads(line)
             except ValueError:
                 obj = None
-            if not isinstance(obj, dict) or obj.get("state") not in ("sent", "done"):
+            if not isinstance(obj, dict) or obj.get("state") not in ("sent", "done", "tail"):
                 raise _Refuse("refused: ledger_corrupt file=%s line=%d" % (p, n))
-            keys = LEDGER_INTENT_KEYS if obj["state"] == "sent" else LEDGER_DONE_KEYS
+            keys = {"sent": LEDGER_INTENT_KEYS, "done": LEDGER_DONE_KEYS, "tail": LEDGER_TAIL_KEYS}[obj["state"]]
             if not set(keys) <= set(obj):
                 raise _Refuse("refused: ledger_corrupt file=%s line=%d" % (p, n))
+            if obj["state"] == "tail":
+                v = obj["span_ms"]
+                if v is not None and (not isinstance(v, (int, float)) or isinstance(v, bool)
+                                      or not math.isfinite(v) or v < 0):
+                    raise _Refuse("refused: ledger_corrupt file=%s line=%d" % (p, n))
+                continue
             for k in ("usd", "worst_usd"):
                 if k in obj:
                     v = obj[k]
@@ -904,10 +947,11 @@ def _main(argv, state):
         not_runnable = "no_owner_line"
     live = not a["dry_run"] and stage != "report" and not_runnable is None
     value = None
+    raw = _read_key() if live else None
+    # GC-10 + F-7 (a): the credential leaves the environment at start in EVERY mode (the dry run, report and
+    # a NOT RUNNABLE stage included), right after the live read, before any child process; never restored
+    os.environ.pop(ENV_VAR_NAME, None)
     if live:
-        raw = _read_key()
-        # GC-10: the credential leaves the environment right after the read and is never restored
-        os.environ.pop(ENV_VAR_NAME, None)
         value = (raw or "").strip(_WS)
         raw = None
         if not value:
@@ -958,6 +1002,13 @@ def _main(argv, state):
     # GC-8: the network guard runs in every mode (live: the one host + loopback; otherwise loopback only)
     _install_host_guard(ctx, state, live)
     if stage == "report":
+        # F-4 (d): the report reads the CURRENT knob values from the router, so it imports the app modules
+        # under the same guards as every other stage (dotenv guard, placeholder, the post-import re-scan)
+        _install_guard_and_import(state)
+        names = [n for n in refused_names_present(os.environ)
+                 if not (n == "OPENAI_API_KEY" and os.environ.get(n) == OPENAI_IMPORT_PLACEHOLDER)]
+        if names:
+            raise _Refuse("refused: refused_env names=" + ",".join(names))
         _write_top_report(ctx)
         return EXIT_OK
     if not_runnable:
@@ -1020,8 +1071,14 @@ def _install_guard_and_import(state):
 
 
 def _loopback(host):
-    h = str(host or "").strip().lower()
-    return h in ("localhost", "::1") or h.startswith("127.")
+    return _is_loopback_name(_host_name(host))
+
+
+def _port_443(port):
+    try:
+        return int(port) == 443
+    except (TypeError, ValueError):
+        return False
 
 
 def _install_host_guard(ctx, state, live):
@@ -1030,18 +1087,33 @@ def _install_host_guard(ctx, state, live):
     real_conn = socket.socket.connect
     real_conn_ex = socket.socket.connect_ex
     real_cc = socket.create_connection
+    # F-3 (b): the addresses the guarded resolver returned for ALLOWED_HOST in this process (live mode only)
+    resolved = set()
 
     def allowed(host, port):
         return host_allowed(host, port) if live else _loopback(host)
 
+    def connect_allowed(host, port):
+        if _loopback(host):
+            return True
+        return live and _host_name(host) in resolved and _port_443(port)
+
     def refuse(host):
-        ctx.hosts_refused.append(str(host))
+        name = _host_name(host)
+        ctx.hosts_refused.append(name if name is not None else "<undecodable>")
         raise _stop("host_refused")
 
     def gai(host, port, *a, **k):
         if not allowed(host, port):
             refuse(host)
-        return real_gai(host, port, *a, **k)
+        res = real_gai(host, port, *a, **k)
+        if live and _host_name(host) == ALLOWED_HOST:
+            for row in res or []:
+                try:
+                    resolved.add(str(row[4][0]).strip().lower())
+                except (IndexError, TypeError):
+                    pass
+        return res
 
     def _addr(addr):
         if isinstance(addr, tuple) and len(addr) >= 2:
@@ -1050,19 +1122,20 @@ def _install_host_guard(ctx, state, live):
 
     def conn(self, addr):
         h, p = _addr(addr)
-        if not allowed(h, p):
+        if not connect_allowed(h, p):
             refuse(h)
         return real_conn(self, addr)
 
     def conn_ex(self, addr):
         h, p = _addr(addr)
-        if not allowed(h, p):
+        if not connect_allowed(h, p):
             refuse(h)
         return real_conn_ex(self, addr)
 
     def cc(address, *a, **k):
+        # create_connection resolves through the guarded getaddrinfo and connects through the wrapper above
         h, p = _addr(address)
-        if not allowed(h, p):
+        if not (allowed(h, p) or connect_allowed(h, p)):
             refuse(h)
         return real_cc(address, *a, **k)
 
@@ -1128,6 +1201,7 @@ class _Ctx:
         self.plan = None
         self.base_sha = None
         self.case_lang = {}
+        self.case_sensitive = {}
         self.gold = {}
         self.vision_expected = {}
         self.mod_expected = {}
@@ -1297,7 +1371,9 @@ class _Ctx:
                     "refusals": sum(1 for r in rs if r.get("stop_reason") == "refusal"),
                     "timeouts": sum(1 for r in rs if r.get("error_class") == "APITimeoutError"),
                     "p95_s": percentile(lat, 95), "p99_s": percentile(lat, 99)}
-            return {"sites": sites}
+            out = {"sites": sites}
+            out.update(self._a1_ledger_figures(setting))
+            return out
         if setting == "A2_ttft":
             ttft = [r["ttft_ms"] / 1000.0 for r in ps if r.get("ttft_ms") is not None]
             return {"ttft_p50_s": percentile(ttft, 50), "ttft_p95_s": percentile(ttft, 95)}
@@ -1306,8 +1382,11 @@ class _Ctx:
                     "json_valid": sum(1 for r in ps if r["ok"] and _parse_json(self._text(r)) is not None)}
         if setting == "A4_refusal_names":
             ar = [r for r in ps if self.case_lang.get(r["case_id"]) == "ar"]
+            sens = [r for r in ps if self.case_sensitive.get(r["case_id"])]
             return {"n": len(ps), "refusals": sum(1 for r in ps if r.get("stop_reason") == "refusal"),
-                    "n_arabic": len(ar), "refusals_arabic": sum(1 for r in ar if r.get("stop_reason") == "refusal")}
+                    "n_arabic": len(ar), "refusals_arabic": sum(1 for r in ar if r.get("stop_reason") == "refusal"),
+                    "n_sensitive": len(sens),
+                    "refusals_sensitive": sum(1 for r in sens if r.get("stop_reason") == "refusal")}
         if setting == "A6_verdict_eval":
             winners = {}
             mism = scored = valid = 0
@@ -1361,6 +1440,62 @@ class _Ctx:
                     "web_search_requests": sum(o["web_search_requests"] for o in outcomes),
                     "citations": sum(o["citations"] for o in outcomes)}
         return {}
+
+    def _ledger_lines(self):
+        """Every parsable line of this stage's ledger (every run of the folder); best effort."""
+        p = self.dir / "spend.jsonl"
+        out = []
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return out
+        for line in text.splitlines():
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                out.append(obj)
+        return out
+
+    def _a1_ledger_figures(self, setting):
+        """F-4 (b) the tail spans and F-5 (a) / (c) the cost per synthetic compare and the cache_read share,
+        all from the LEDGER (every run of the folder), never from process memory."""
+        lines = self._ledger_lines()
+        tails = {}
+        for x in lines:
+            if x.get("state") == "tail" and x.get("setting") == setting:
+                tails[x.get("round")] = math.inf if x.get("censored") or x.get("span_ms") is None                     else float(x["span_ms"])
+        spans = [tails[k] for k in sorted(tails)]
+        done = [x for x in lines if x.get("state") == "done" and x.get("setting") == setting]
+        round_of = {}
+        per_round = {}
+        completed = {}
+        for x in done:
+            rid = str(x.get("case_id") or "").split(":")[0]
+            round_of[x["call_id"]] = rid
+            per_round[rid] = per_round.get(rid, 0.0) + float(x.get("usd") or 0.0)
+            if x.get("ok") or x.get("error_class") in NON_TRANSIENT:
+                completed.setdefault(rid, set()).add(x["call_id"])
+        dones = {(x["call_id"], x.get("attempt")) for x in done}
+        for x in lines:
+            if x.get("state") == "sent" and x.get("setting") == setting and                     (x.get("call_id"), x.get("attempt")) not in dones and x.get("call_id") in round_of:
+                rid = round_of[x["call_id"]]
+                per_round[rid] = per_round.get(rid, 0.0) + float(x.get("worst_usd") or 0.0)
+        n_calls = sum(len(i) if isinstance(i, tuple) else 1 for i in A1_ROUND_ORDER)
+        costs = [per_round[rid] for rid in sorted(per_round) if len(completed.get(rid, ())) >= n_calls]
+        p50, p95 = percentile(costs, 50), percentile(costs, 95)
+        cost = {"n": len(costs), "p50_usd": None if p50 is None else round(p50, 9),
+                "p95_usd": None if p95 is None else round(p95, 9)}
+        tok = {}
+        for x in done:
+            t = tok.setdefault(x["site"], [0, 0])
+            t[0] += int(x.get("cache_read_tokens") or 0)
+            t[1] += int(x.get("input_tokens") or 0) + int(x.get("cache_write_tokens") or 0) +                 int(x.get("cache_read_tokens") or 0)
+        share = {"pooled": _ratio(sum(v[0] for v in tok.values()), sum(v[1] for v in tok.values())),
+                 "sites": {k: _ratio(v[0], v[1]) for k, v in sorted(tok.items())}}
+        return {"tail_span_ms": spans, "tail_n_censored": sum(1 for x in spans if math.isinf(x)),
+                "cost_per_compare": cost, "cache_read_share": share}
 
     def write_results(self, crash):
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -1611,6 +1746,8 @@ async def _plan_text(ctx):
                     a["name"], b["name"])))
                 lang = "ar" if "ar" in (a["lang"], b["lang"]) else "en"
                 ctx.case_lang["n%03d" % i] = lang
+                # F-5 (d): the sensitive-looking subset = a case whose either name's fixture group is 'sensitive'
+                ctx.case_sensitive["n%03d" % i] = "sensitive" in (a.get("group"), b.get("group"))
                 items.append({"site": "parse", "case_id": "n%03d" % i, "rep": 0, "kind": "create",
                               "request": req, "lang": lang})
             plan.append((s, items))
@@ -1637,15 +1774,16 @@ async def _plan_text(ctx):
 
 
 async def _run_a1(ctx, d, setting, rounds):
-    spans = ctx.settings[setting].setdefault("tail_span_ms", [])
     for r, rnd in enumerate(rounds):
         if r > 0:
             await _sleep(ROUND_SPACING_S)
         p2 = None
+        tail_ids = []
         for item in rnd:
             if isinstance(item, list):
                 if item[0]["site"] == "reviews":
                     p2 = _monotonic()
+                    tail_ids = [call_id_for(d.stage, setting, x["site"], x["case_id"], 0) for x in item]
                 # GC-6: sends already made are awaited to their done line (never cancelled); a stop is sticky
                 # in the dispatcher, so a task that had not sent yet raises it before reserving.
                 res = await asyncio.gather(*[d.send(x["request"], setting=setting, site=x["site"],
@@ -1660,7 +1798,12 @@ async def _run_a1(ctx, d, setting, rounds):
             else:
                 await d.send(item["request"], setting=setting, site=item["site"], case_id=item["case_id"], rep=0)
                 if item["site"] == "verdict" and p2 is not None:
-                    spans.append(round((_monotonic() - p2) * 1000.0, 3))
+                    span = round((_monotonic() - p2) * 1000.0, 3)
+                    ids = tail_ids + [call_id_for(d.stage, setting, "verdict", item["case_id"], 0)]
+                    # F-4 (a): only a round whose tail legs were all SENT in this process has a span
+                    if all(c in d.sent_ids for c in ids):
+                        censored = any((d.last.get(c) or {}).get("error_class") == "APITimeoutError" for c in ids)
+                        d.write_tail(setting, item["case_id"].split(":")[0], span, censored)
 
 
 async def _plan_moderation(ctx):
@@ -1834,22 +1977,75 @@ def _write_top_report(ctx):
         for name, s in sorted(((res.get(st) or {}).get("settings") or {}).items()):
             keep = {k: v for k, v in s.items() if k not in ("site_latency_ms", "outcomes", "cases")}
             lines.append("- %s / %s: %s" % (st, name, json.dumps(keep, sort_keys=True, default=str)))
-    lines += ["", "## Timeout knob proposals (a knob changes only by the owner's dated line)", ""]
     a1 = (res.get("text") or {}).get("settings", {}).get("A1_sites", {})
+    lines += ["", "## Reported figures (not bars)", ""]
+    lines += _figure_lines(res)
+    lines += ["", "## Timeout knob proposals (a knob changes only by the owner's dated line)", ""]
     cls = [x / 1000.0 if x is not None else math.inf for x in (a1.get("site_latency_ms") or {}).get("classify") or []]
-    tail = [x / 1000.0 for x in a1.get("tail_span_ms") or []]
+    tail = [float(x) / 1000.0 for x in a1.get("tail_span_ms") or []]
     v2 = (res.get("vision") or {}).get("settings", {}).get("V2_haiku_vision_v2", {})
     vlat = [x / 1000.0 if x is not None else math.inf for x in (v2.get("site_latency_ms") or {}).get("vision_v2") or []]
     cp = timeout_proposal(cls) if cls else None
     vp = timeout_proposal(vlat) if vlat else None
     tp = timeout_proposal(tail, 95) if tail else None
-    lines.append("- ANTHROPIC_CLASSIFY_LLM_TIMEOUT: current 4.0, proposed %s (p99 x 1.25, n = %d, censored %d)"
-                 % (_prop(cp), len(cls), sum(1 for x in cls if math.isinf(x))))
-    lines.append("- ANTHROPIC_VISION_TIMEOUT_SECONDS: current 20.0, proposed %s (p99 of vision_v2 x 1.25, n = %d, "
-                 "censored %d)" % (_prop(vp), len(vlat), sum(1 for x in vlat if math.isinf(x))))
-    lines.append("- ANTHROPIC_TAIL_RESERVE_SECONDS: current 6.5, proposed %s (p95 of tail_span x 1.25, n = %d; "
-                 "LLM legs only: no search, no scoring)" % (_prop(tp), len(tail)))
+    knobs = _current_knobs()
+    lines.append("- ANTHROPIC_CLASSIFY_LLM_TIMEOUT: current %s, proposed %s (p99 x 1.25, n = %d, censored %d)"
+                 % (knobs["classify"], _prop(cp), len(cls), sum(1 for x in cls if math.isinf(x))))
+    lines.append("- ANTHROPIC_VISION_TIMEOUT_SECONDS: current %s, proposed %s (p99 of vision_v2 x 1.25, n = %d, "
+                 "censored %d)" % (knobs["vision"], _prop(vp), len(vlat), sum(1 for x in vlat if math.isinf(x))))
+    lines.append("- ANTHROPIC_TAIL_RESERVE_SECONDS: current %s, proposed %s (p95 of tail_span x 1.25, n = %d, "
+                 "censored %d; LLM legs only: no search, no scoring)"
+                 % (knobs["tail"], _prop(tp), len(tail), sum(1 for x in tail if math.isinf(x))))
     (ctx.out / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
+def _current_knobs():
+    """F-4 (d): the current knob values, read from the router the run imported (never literals of this script).
+    classify_timeout returns its Claude-branch knob only when the text role decides anthropic, so the read
+    asks it on that branch."""
+    router = importlib.import_module("app.services.llm_router")
+    saved = router.decide
+    router.decide = lambda role: "anthropic"
+    try:
+        classify = router.classify_timeout(None)
+    finally:
+        router.decide = saved
+    return {"classify": classify, "vision": router.vision_timeout(), "tail": router.tail_reserve_seconds_for_request()}
+
+
+def _fmt_usd(x):
+    return "NOT MEASURED" if x is None else "%.6f" % x
+
+
+def _figure_lines(res):
+    """F-5 and F-7 (e): the ruled figures, each reported, not a bar."""
+    st = (res.get("text") or {}).get("settings") or {}
+    a1 = st.get("A1_sites") or {}
+    cost = a1.get("cost_per_compare") or {}
+    p50, p95 = cost.get("p50_usd"), cost.get("p95_usd")
+    out = ["- Cost per synthetic compare (an A1 round: the booked usd of its calls from the ledger, nearest-rank "
+           "over the rounds that completed every call): p50 %s USD, p95 %s USD (n = %d)"
+           % (_fmt_usd(p50), _fmt_usd(p95), int(cost.get("n") or 0))]
+    sb = importlib.import_module("app.services.llm_spend_breaker")
+    cap = sb.DEFAULT_CAPS_USD[sb.LANE_LIVE]
+
+    def per_day(c):
+        return "NOT MEASURED" if not c else "%d" % math.floor(cap / c)
+    out.append("- Compares per day under the breaker's live-lane cap (code default, not the production value; "
+               "recompute with the live value): cap %s USD; floor(cap / p95) = %s, floor(cap / p50) = %s"
+               % (cap, per_day(p95), per_day(p50)))
+    share = a1.get("cache_read_share") or {}
+    sites = ", ".join("%s %s" % (k, v) for k, v in sorted((share.get("sites") or {}).items()))
+    out.append("- cache_read share (cache-read input tokens / all input tokens: uncached + cache creation + "
+               "cache read; A1 sites, from the ledger): pooled %s; %s" % (share.get("pooled"), sites or "none"))
+    a4 = st.get("A4_refusal_names") or {}
+    out.append("- A4 refusals (the bars are R-S07-23; the sensitive subset is reported, not a bar): all n = %s, "
+               "refusals = %s; Arabic-script names n = %s, refusals = %s; sensitive-looking names n = %s, "
+               "refusals = %s" % (a4.get("n"), a4.get("refusals"), a4.get("n_arabic"), a4.get("refusals_arabic"),
+                                  a4.get("n_sensitive"), a4.get("refusals_sensitive")))
+    out.append("- VISION hit rate = hits / n_scored: successful calls only (a failed call is not scored).")
+    out.append("- A6 mismatch rate = mismatches / n_scored: successful calls whose winner_index parsed only.")
+    return out
 
 
 def _prop(x):
