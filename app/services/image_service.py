@@ -46,6 +46,9 @@ from app.services.openai_service import get_client
 from app.services.serper_service import search_images
 # D03 (ENABLE_DATA_GUARDS_V2): the ONE banned-host list (a stdlib-only leaf).
 from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
+# INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the picture-must-match guard
+# (a leaf), by MODULE ATTRIBUTE so a patch of a leaf function takes effect at call time.
+from app.services import image_relevance as _relevance
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +229,93 @@ def _log_img_tier(tier: str, outcome: str, t0: float) -> None:
 
 
 # ---------------------------------------------------------------------------
+# INC-I1 PICTURE-MUST-MATCH (ENABLE_IMAGE_RELEVANCE_GUARD): the guarded tier
+# helpers. Reached only when get_product_image_url built a RelevanceCall (the flag
+# reads ON and the caller handed the identity); the base helpers above are untouched.
+# ---------------------------------------------------------------------------
+_KG_IMAGE_KEYS = ("imageUrl", "image", "imageURL", "thumbnailUrl")
+
+
+def _first_image(item: Dict[str, Any], keys: tuple) -> Optional[str]:
+    """INC-I1: the first https value among ``keys`` that passes the base validator,
+    else the first base-valid one (an http value: the guard rejects it with reason
+    scheme and counts it), else None."""
+    fallback = None
+    for key in keys:
+        cand = item.get(key)
+        if _is_valid_image_url(cand):
+            url = cand.strip()
+            if url.startswith("https://"):
+                return url
+            if fallback is None:
+                fallback = url
+    return fallback
+
+
+def _extract_relevant_image_from_search(search_payload: Any, rel: Any) -> Optional[str]:
+    """INC-I1 Tier 1.5b under the guard: the base precedence (knowledge graph, organic,
+    images), every item tested: a knowledge graph by its title (its type serves the
+    fragrance word only; its website / description link and source feed the deny
+    only), an organic item by its title + link host, an images item by its title +
+    source and its link / domain host. The first accepted image, else None."""
+    if not isinstance(search_payload, dict):
+        return None
+    for kg_key in ("knowledgeGraph", "knowledge_graph"):
+        kg = search_payload.get(kg_key)
+        if not isinstance(kg, dict):
+            continue
+        url = _first_image(kg, _KG_IMAGE_KEYS)
+        if url and rel.accept(
+            "search_payload", url, texts=(kg.get("title"),),
+            fragrance_texts=(kg.get("type"),),
+            deny_only_hosts=(kg.get("website"), kg.get("descriptionLink")),
+            deny_only_texts=(kg.get("descriptionSource"),),
+        ):
+            return url
+    organic = _relevance.dict_items(search_payload.get("organic"), _relevance.SEARCH_ITEMS_MAX)
+    for item in organic:
+        url = _first_image(item, _ORGANIC_IMAGE_KEYS)
+        if url and rel.accept(
+            "search_payload", url, texts=(item.get("title"),), hosts=(item.get("link"),),
+        ):
+            return url
+    images = _relevance.dict_items(search_payload.get("images"), _relevance.SEARCH_ITEMS_MAX)
+    for item in images:
+        url = _first_image(item, _ORGANIC_IMAGE_KEYS)
+        if url and rel.accept(
+            "search_payload", url, texts=(item.get("title"), item.get("source")),
+            hosts=(item.get("link"), item.get("domain")),
+        ):
+            return url
+    return None
+
+
+def _relevant_serper_image(images: Any, rel: Any) -> Optional[str]:
+    """INC-I1 Tier 1 under the guard: walk ``images[:knob]`` in order and return the
+    first item whose imageUrl passes the base validator and the guard (its title +
+    source, its link / domain host); else None."""
+    for item in _relevance.dict_items(images, rel.num()):
+        cand = item.get("imageUrl")
+        if not _is_valid_image_url(cand):
+            continue
+        url = cand.strip()
+        if rel.accept(
+            "serper_images", url, texts=(item.get("title"), item.get("source")),
+            hosts=(item.get("link"), item.get("domain")),
+        ):
+            return url
+    return None
+
+
+def _log_img_relevance(rel: Any) -> None:
+    """INC-I1: the ONE [IMG_RELEVANCE] line of a guarded call: closed-set words and
+    one int; never a product name, URL, query, title or source text."""
+    slot, tier, outcome, n, reason = rel.summary()
+    logger.info("[IMG_RELEVANCE] product=%s tier=%s outcome=%s candidates=%d reason=%s",
+                slot, tier, outcome, n, reason)
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator — tier cascade
 # ---------------------------------------------------------------------------
 
@@ -236,6 +326,7 @@ async def get_product_image_url(
     page_scrape_image: Optional[str] = None,
     organic_results: Optional[List[Dict[str, Any]]] = None,
     search_payload: Optional[Dict[str, Any]] = None,
+    relevance: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """Resolve product image URL via tier cascade. Returns None on full miss.
 
@@ -248,6 +339,9 @@ async def get_product_image_url(
         search_payload: #21 — the unified Serper search payload (knowledgeGraph +
             organic). Tier 1.5b reads a FREE, budget-free, price-scrape-INDEPENDENT
             image from it (the fragrance-placeholder fix). None for legacy callers.
+        relevance: INC-I1 -- the identity for the picture-must-match guard
+            ({brand, line, category, slot}); scs passes it for text compares only,
+            and only under ENABLE_IMAGE_RELEVANCE_GUARD. None = the base cascade.
 
     Returns:
         A URL string (real image) or None (frontend should render placeholder).
@@ -256,12 +350,20 @@ async def get_product_image_url(
     if not name:
         return None
 
+    # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the guard runs for this
+    # call only when the caller handed the identity AND the flag reads ON; otherwise
+    # every tier below is the base path, byte for byte.
+    _rel = None
+    if relevance is not None and _relevance.guard_enabled():
+        _rel = _relevance.RelevanceCall(name, relevance)
+
     _t_call = time.perf_counter()
     # INC-X2a: the tier in flight and its start, for the cancellation line.
     _inflight = ["piggyback", _t_call]
     try:
         # ----- Tier 1.5 — piggyback page-scrape image (FREE, highest fidelity) -----
-        if page_scrape_image and _is_valid_image_url(page_scrape_image):
+        if page_scrape_image and _is_valid_image_url(page_scrape_image) and (
+                _rel is None or _rel.accept_scheme("piggyback", page_scrape_image.strip())):
             _log_img_tier("piggyback", "hit", _inflight[1])
             logger.info("[image] Tier 1.5 piggyback hit for %r", name[:60])
             return page_scrape_image.strip()
@@ -273,7 +375,8 @@ async def get_product_image_url(
         # fragrance placeholder when the price pends.
         _inflight[0] = "search_payload"
         _inflight[1] = time.perf_counter()
-        search_img = extract_image_from_search(search_payload)
+        search_img = (extract_image_from_search(search_payload) if _rel is None
+                      else _extract_relevant_image_from_search(search_payload, _rel))
         if search_img:
             _log_img_tier("search_payload", "hit", _inflight[1])
             logger.info("[image] Tier 1.5b unified-search image hit for %r", name[:60])
@@ -292,7 +395,12 @@ async def get_product_image_url(
         if _granted:
             _outcome = "miss"
             try:
-                response = await search_images(name, num_results=1)
+                if _rel is None:
+                    response = await search_images(name, num_results=1)
+                else:
+                    # INC-I1: the full name (+ perfume for the fragrance category) and
+                    # IMAGE_RELEVANCE_CANDIDATES results; still one credit per call.
+                    response = await search_images(_rel.query(), num_results=_rel.num())
             except Exception as e:
                 _outcome = "error:" + type(e).__name__
                 logger.warning("[image] Tier 1 Serper Images raised: %r", e)
@@ -303,7 +411,14 @@ async def get_product_image_url(
                 # Defensive: future Serper API drift may return `images` as a
                 # string / dict / int. We require a list before indexing — any
                 # other shape falls through to Tier 3 instead of crashing.
-                if isinstance(images, list) and images and isinstance(images[0], dict):
+                if _rel is not None:
+                    # INC-I1: the guard walks images[:knob]; images[0] alone never wins.
+                    candidate = _relevant_serper_image(images, _rel)
+                    if candidate is not None:
+                        _log_img_tier("serper_images", "hit", _inflight[1])
+                        logger.info("[image] Tier 1 Serper hit for %r", name[:60])
+                        return candidate
+                elif isinstance(images, list) and images and isinstance(images[0], dict):
                     candidate = images[0].get("imageUrl")
                     if _is_valid_image_url(candidate):
                         _log_img_tier("serper_images", "hit", _inflight[1])
@@ -316,7 +431,8 @@ async def get_product_image_url(
         # ----- Tier 3 — GPT extraction from organic results (paid) -----
         _inflight[0] = "llm_pick"
         _inflight[1] = time.perf_counter()
-        if organic_results:
+        # INC-I1: under the guard the LLM pick runs only when an organic result passes.
+        if organic_results and (_rel is None or _rel.organic_passes(organic_results)):
             _outcome = "miss"
             try:
                 gpt_url = await extract_image_via_gpt(name, organic_results)
@@ -324,7 +440,8 @@ async def get_product_image_url(
                 _outcome = "error:" + type(e).__name__
                 logger.warning("[image] Tier 3 orchestrator caught: %r", e)
                 gpt_url = None
-            if _is_valid_image_url(gpt_url):
+            if _is_valid_image_url(gpt_url) and (
+                    _rel is None or _rel.accept_pick(gpt_url.strip(), organic_results)):
                 _log_img_tier("llm_pick", "hit", _inflight[1])
                 logger.info("[image] Tier 3 GPT hit for %r", name[:60])
                 return gpt_url.strip()
@@ -342,3 +459,8 @@ async def get_product_image_url(
                     _inflight[0], int((time.perf_counter() - _inflight[1]) * 1000),
                     int((time.perf_counter() - _t_call) * 1000))
         raise
+    finally:
+        # INC-I1: exactly ONE [IMG_RELEVANCE] line per guarded call (a return, an
+        # uncaught exception or the 5 s cancellation); no await here.
+        if _rel is not None:
+            _log_img_relevance(_rel)

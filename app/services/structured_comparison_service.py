@@ -1594,6 +1594,10 @@ from app.services.image_service import get_product_image_url
 # reached through the module attribute so a patch of
 # image_service._is_valid_image_url takes effect here (fix-round ruling F1-6).
 from app.services import image_service
+# INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the picture-must-match
+# identity of the image task and the https rule of the page-image override, by
+# MODULE ATTRIBUTE (a patch of the leaf takes effect here).
+from app.services import image_relevance as _image_relevance
 from app.services.deny_hosts import data_guards_v2_enabled
 # D08 (ENABLE_IMAGE_PIPELINE_V2 / ENABLE_JSONLD_RATING): the stdlib leaf, by
 # MODULE ATTRIBUTE so the per-call flag readers, the robots seam and the clock
@@ -6267,6 +6271,10 @@ class StructuredComparisonService:
                     # fix; independent of the price-scrape + the Serper-Images
                     # budget). Falls back to Serper-Images/GPT when absent.
                     search_payload=unified_search,
+                    # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the identity
+                    # for the picture-must-match guard; flag OFF or a camera product ->
+                    # {} and the call is the base call.
+                    **_image_relevance.relevance_kwargs(brand, name, category, partial_slot, is_vision),
                 ), stage_timings),
                 timeout=_PHASE1_TIMEOUTS["image_url"],
             ))
@@ -6404,6 +6412,13 @@ class StructuredComparisonService:
             # are FREE (already paid by the price scrape) AND usually
             # higher fidelity (real product hero shot vs Serper thumbnail).
             page_img = result["price"].get("image_url")
+            # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call, checked FIRST; ruling
+            # I1-R14, text products only): under the guard an http (or non-string) page
+            # image never replaces the cascade picture. Flag OFF: the branches below.
+            if _image_relevance.guard_enabled() and not is_vision and not (
+                isinstance(page_img, str) and page_img.strip().startswith("https://")
+            ):
+                page_img = None
             # D03 (ruling C4): flag ON, the override goes through
             # image_service._is_valid_image_url, so a page image on a banned
             # host (fimgs.net) never replaces the cascade result. Flag OFF:
