@@ -259,8 +259,8 @@ describe('ResultsContent — render coverage', () => {
   it('renders NO rings card and NO em-dash placeholder in weird mode (Phase 2.1 prune)', () => {
     // Faithful-results Phase 2.1 — both the HeroRings (normal) and the
     // em-dash placeholder (the weird-mode stand-in for those rings) are gone.
-    // In weird mode the bars still render; the winner-reveal burst stays
-    // suppressed (gated `!isWeird`); weird meaning is carried by the verdict.
+    // In weird mode the bars still render and no reveal-burst slot exists
+    // (S95-LOGO removed the celebration); weird meaning is carried by the verdict.
     const sv2 = { ...mockScoringV2, comparison_quality: 'weird' };
     const { getByTestId, queryByTestId } = render(
       <ResultsContent {...baseProps} scoring_v2={sv2} />
@@ -279,9 +279,9 @@ describe('ResultsContent — render coverage', () => {
     expect(queryByTestId('results-scoring-v2')).toBeNull();
   });
 
-  it('renders RevealBurst slot when winnerRevealed=true and not weird', () => {
-    const { getByTestId } = render(<ResultsContent {...baseProps} />);
-    expect(getByTestId('results-v2-reveal-burst-slot')).toBeTruthy();
+  it('does NOT render the RevealBurst slot even when winnerRevealed=true (S95-LOGO)', () => {
+    const { queryByTestId } = render(<ResultsContent {...baseProps} />);
+    expect(queryByTestId('results-v2-reveal-burst-slot')).toBeNull();
   });
 
   it('does NOT render RevealBurst when winnerRevealed=false', () => {
