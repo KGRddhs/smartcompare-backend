@@ -120,6 +120,39 @@ def url_mode_v2_enabled() -> bool:
     )
 
 
+def url_winner_guard_enabled() -> bool:
+    """S95-LG URL-WINNER-GUARD (ENABLE_URL_WINNER_GUARD, default OFF), the house
+    idiom, read PER CALL (once per compare_from_urls call): a link compare scores
+    the pair, gives the verdict the scorer's winner and reconciles the prose."""
+    return os.getenv("ENABLE_URL_WINNER_GUARD", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# S95-LG (GATE GL-3): the scorer reads these top-level keys, normalize_product_data
+# nests the same values under "reviews" (top-level key, nested key).
+_URL_GUARD_LIFTED_KEYS = (("rating", "rating"), ("review_count", "count"))
+
+
+def _url_guard_scorer_inputs(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """S95-LG (GATE GL-3): the deterministic scorer's view of a link pair. The
+    scorer reads ``rating`` and ``review_count`` at the TOP level of a product while
+    normalize_product_data nests them under ``reviews`` (``rating`` / ``count``), so
+    each product gets a SHALLOW copy in which an absent or None top-level key takes
+    the nested value when that is present. No other key is lifted (``fact_check``
+    stays absent). The delivered product dicts are never touched."""
+    views: List[Dict[str, Any]] = []
+    for product in products:
+        view = dict(product)
+        reviews = product.get("reviews")
+        if isinstance(reviews, dict):
+            for top_key, nested_key in _URL_GUARD_LIFTED_KEYS:
+                if view.get(top_key) is None and reviews.get(nested_key) is not None:
+                    view[top_key] = reviews[nested_key]
+        views.append(view)
+    return views
+
+
 def _host_only(u: Any) -> str:
     """The hostname of a pasted link for a log line, never its path or query.
     '' for a non-str or malformed link: never raises (the _url_log_query shape)."""
@@ -1452,6 +1485,33 @@ async def compare_from_urls(
     for _p in products:
         _p["category"] = category_used
 
+    # S95-LG URL-WINNER-GUARD (ENABLE_URL_WINNER_GUARD, default OFF, read once per
+    # call): the text path's two steps for a link compare. The deterministic scorer
+    # scores the pair, the verdict is given its summary and winner (the S81-07c
+    # fixed-winner block), and a delivered verdict is reconciled below. Any scorer
+    # failure leaves the call unguarded (the base call, no new keyword). The scorer
+    # reads per-product shallow copies with the nested rating / review count lifted
+    # (GATE GL-3); the delivered products stay as extracted.
+    guard_scoring = None
+    if url_winner_guard_enabled():
+        try:
+            from app.services.scoring_service import get_scoring_service
+            from app.services.structured_comparison_service import _display_product_names
+            guard_service = get_scoring_service()
+            guard_result = guard_service.compute_scores(_url_guard_scorer_inputs(products))
+            guard_names = _display_product_names(products)
+            guard_summary = guard_service.build_scores_summary(guard_result, guard_names)
+            guard_scoring = (guard_service, guard_result, guard_names, guard_summary)
+        except Exception as exc:
+            logger.warning("[URL_GUARD] scorer failed type=%s", type(exc).__name__)
+            guard_scoring = None
+    verdict_kwargs: Dict[str, Any] = {}
+    if guard_scoring is not None:
+        verdict_kwargs = {
+            "scores_summary": guard_scoring[3],
+            "score_winner_index": guard_scoring[1].get("winner_index"),
+        }
+
     # Generate comparison (now told the resolved category instead of the default).
     # MB-RECONCILE-01 / PO-VERDICT-TRUTH-01: generate_comparison returns
     # ``(parsed, usage)`` on EVERY path (extraction_service.py `:2543` and the
@@ -1465,7 +1525,7 @@ async def compare_from_urls(
     # unpack would leave the route 500ing whenever the flag was off.
     try:
         comparison, _usage = await generate_comparison(
-            products[0], products[1], region, category=category_used
+            products[0], products[1], region, category=category_used, **verdict_kwargs
         )
     except _llm_breaker.LLMUnavailableError:
         # S81-06 (R-S06-2): generate_comparison re-raises only under a role flag
@@ -1494,6 +1554,20 @@ async def compare_from_urls(
             "code": "LLM_UNAVAILABLE",
             "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
         }
+
+    if guard_scoring is not None:
+        # S95-LG: a delivered verdict only (the non-delivery above returned first):
+        # the scorer's winner ships and no winner-facing string names the loser.
+        try:
+            from app.services.response_builder import reconcile_winner_prose
+            guard_service, guard_result, guard_names, _guard_summary = guard_scoring
+            guard_tradeoffs = guard_service.compute_tradeoff_pairs(
+                guard_result.get("dimension_winners", {}), guard_names,
+                guard_result.get("winner_index", 0), scores=guard_result.get("scores"),
+            )
+            reconcile_winner_prose(comparison, guard_result, guard_names, guard_tradeoffs)
+        except Exception as exc:
+            logger.warning("[URL_GUARD] reconcile failed type=%s", type(exc).__name__)
 
     if url_mode_v2:
         recommendation, key_differences = _v2_verdict_fill(comparison, products)
