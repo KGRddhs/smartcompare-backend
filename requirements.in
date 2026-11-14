@@ -34,4 +34,9 @@ certifi>=2026.10.19
 # S81-06 lock commit (2026-10-28, the #367 pattern): dnspython 2.8.0 (via email-validator)
 # carries CVE-2026-114605; pip-audit --strict blocks CI until the lock holds >= 2.9.0
 # (released 2026-10-09). Floor only: the resolver picks the newest allowed release.
-dnspython>=2.9.0
+# S95-DEP (2026-11-14, the certifi / #367 pattern): dnspython 2.9.0 carries CVE-2026-128089
+# (fix 2.9.2, released 2026-11-03) and soupsieve 2.9.2 (via beautifulsoup4) carries
+# CVE-2026-126190 / -126191 / -126192 / -126193 (all fixed by 4.0, released 2026-11-03);
+# pip-audit --strict blocks CI until the lock holds both. Floors only.
+dnspython>=2.9.2
+soupsieve>=4.0
