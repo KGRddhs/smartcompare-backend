@@ -17,7 +17,7 @@
  *  2. Hero pair        — two ProductCards + "vs" pill        (JSX 316-333)
  *  3. Why this fits you — eyebrow + verdict + runner-up cap
  *                        + PersonalizationChip subline        (JSX 336-346)
- *  4. Dimension bars   — DimensionBars + RevealBurst + sheet (JSX 348-353)
+ *  4. Dimension bars   - DimensionBars + sheet               (JSX 348-353)
  *                        (Faithful-results Phase 2.1 pruned the HeroRings
  *                         score-rings card + its weird-mode em-dash stand-in)
  *  5. Confidence pills — "What we know" eyebrow              (JSX 356-365)
@@ -29,7 +29,7 @@
  * hero → accordion which inverted the JSX ordering of scoring vs cohort
  * vs confidence. This REWRITE realigns the block sequence to the JSX
  * top-down while preserving every Bundle C/D/E scoring_v2 / personalization
- * / weird-mode / RevealBurst contract (verified by the existing test
+ * / weird-mode contract (verified by the existing test
  * suite — those testIDs and conditionals are reproduced verbatim, only
  * relocated within the scroll body).
  */
@@ -70,7 +70,6 @@ import { RunnerUpWinsCard } from './RunnerUpWinsCard';
 import { ConfidencePills } from './ConfidencePills';
 import { ConfidenceDetailsSheet } from './ConfidenceDetailsSheet';
 import { PersonalizationChip } from './PersonalizationChip';
-import { RevealBurst } from '../hero/RevealBurst';
 // W1 walk-fix 2026-06-18 — CategoryProfile now lives INSIDE the "Dig deeper"
 // accordion (ResultsAccordion), not as a standalone block here.
 import { ResultsAccordion } from './ResultsAccordion';
@@ -86,6 +85,7 @@ export interface ResultsContentProps {
   products: Product[];
   winnerIndex: 0 | 1;
   scoring_v2: any | undefined;
+  /** Kept for the call sites, not read since S95-LOGO. */
   comparisonId: string | undefined;
   /** S81-11 (R-S11-31): the cohort badge is deleted; kept optional + unused for the test baseProps. */
   cohortPeerCount?: number;
@@ -102,6 +102,7 @@ export interface ResultsContentProps {
   onPillPress: (leg: 'price' | 'reviews' | 'specs') => void;
   onCloseSheet: () => void;
 
+  /** Kept for the call sites, not read since S95-LOGO. */
   winnerRevealed: boolean;
   winnerScaleAnimStyle: ReturnType<typeof useAnimatedStyle>;
 
@@ -114,7 +115,7 @@ export interface ResultsContentProps {
 // winner reveal at 800ms, demographics timer at 2s, sheet/feedback/toast
 // state); without memo each one re-ran this whole ~757-line tree (plus
 // ResultsAccordion below it) on the JS thread — including at the exact
-// frame the winner spring + RevealBurst mount. With memo, only prop
+// frame the winner spring. With memo, only prop
 // changes (winnerRevealed, sheetLeg, feedbackSubmitted, ...) re-render
 // it; orchestrator-local state (share sheet, toast, demographics,
 // usageStatus) no longer reaches the tree. Requires the orchestrator to
@@ -124,7 +125,6 @@ export const ResultsContent = React.memo(function ResultsContent({
   products,
   winnerIndex,
   scoring_v2,
-  comparisonId,
   resultOrigin,
   isRTL,
   feedbackSubmitted,
@@ -133,7 +133,6 @@ export const ResultsContent = React.memo(function ResultsContent({
   sheetLeg,
   onPillPress,
   onCloseSheet,
-  winnerRevealed,
   winnerScaleAnimStyle,
   onBack,
   onShare,
@@ -516,38 +515,22 @@ export const ResultsContent = React.memo(function ResultsContent({
             weird-mode em-dash placeholder standing in for those rings) on top
             of the bars — neither is in the Qaren design-system Results layout
             (ResultsScreen.jsx), which shows three dimension bars directly. Both
-            are pruned. The winner-reveal celebration (RevealBurst, the emerald
-            "winner reveal" signal-color moment) is preserved — it is a
-            non-visual particle overlay, not the rings card — and stays gated
-            to normal-mode + winnerRevealed. ConfidenceDetailsSheet (opened by a
-            confidence-pill tap) also stays.
+            are pruned. The winner-reveal celebration (RevealBurst) is no
+            longer mounted on the result page (S95-LOGO: its MYEZ badge never
+            faded and stayed over the bars; the owner ruled the logo must not
+            show). ConfidenceDetailsSheet (opened by a confidence-pill tap)
+            stays.
 
             NO banner anywhere — per the five critical rules #1; weird-mode
             meaning is carried by the backend-rewritten verdict prose above. */}
         {scoring_v2 && scoring_v2.dimensions && scoring_v2.dimensions.length >= 3
           ? (() => {
-              const isWeird = scoring_v2.comparison_quality === 'weird';
               return (
                 <Animated.View
                   entering={FadeInDown.delay(300).duration(400)}
                   style={styles.sectionLean}
                   testID="results-scoring-v2"
                 >
-                  {!isWeird && winnerRevealed ? (
-                    <View
-                      style={styles.revealBurstSlot}
-                      pointerEvents="none"
-                      testID="results-v2-reveal-burst-slot"
-                    >
-                      <RevealBurst
-                        key={comparisonId || 'no-comparison-id'}
-                        fireOnce
-                        particleCount={6}
-                        size={220}
-                      />
-                    </View>
-                  ) : null}
-
                   {/* Walk-fix 2026-06-17 — when prices pend, drop BOTH `price`
                       and the price-derived `value` dim (no real data). (Belt-
                       and-suspenders: DimensionBars also drops any
@@ -863,21 +846,6 @@ const styles = StyleSheet.create({
   },
   // Task #24 — the inline runner-up caption styles (verdictCaption /
   // verdictRunnerUpEyebrow) moved into RunnerUpWinsCard.tsx.
-
-  // Winner-reveal celebration overlay. Absolute-fills the dimension-bars
-  // section card (its nearest positioned ancestor) so the emerald RevealBurst
-  // particles fire over the bars. Faithful-results Phase 2.1 removed the
-  // former relative `topMatchSlot` wrapper (it anchored the pruned HeroRings);
-  // the section View is itself the positioning context now.
-  revealBurstSlot: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });
 
 export default ResultsContent;

@@ -9,10 +9,10 @@
  *
  * Faithful-results Phase 2.1 — the score-rings "hero card" and its weird-mode
  * em-dash stand-in were PRUNED (neither is in the Qaren design-system Results
- * layout, `ResultsScreen.jsx`). The weird-mode CONCEPT survives: the source
- * still derives `isWeird` from `comparison_quality === 'weird'` and uses it to
- * suppress the winner-reveal celebration (RevealBurst). The weird meaning is
- * carried by the backend-rewritten verdict prose. Still NO banner anywhere.
+ * layout, `ResultsScreen.jsx`). S95-LOGO removed the winner-reveal celebration
+ * (RevealBurst) from the result page and with it the client's `isWeird` guard;
+ * the weird meaning is carried by the backend-rewritten verdict prose; still NO
+ * banner anywhere.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -31,22 +31,9 @@ const SOURCE = [
 ].join('\n');
 
 describe('ResultsScreen weird-mode hero suppression (spec § 2e)', () => {
-  it('reads scoring_v2.comparison_quality somewhere in the source', () => {
-    expect(SOURCE).toMatch(/scoring_v2[?.\s]*\.?comparison_quality/);
-  });
-
-  it('compares comparison_quality === "weird" to gate the celebration swap', () => {
-    // Either inline === check or a named const like isWeird; the literal
-    // must appear in the file for the gate to exist.
-    expect(SOURCE).toMatch(/['"]weird['"]/);
-  });
-
-  it('derives an isWeird guard that suppresses the winner-reveal celebration', () => {
-    // Faithful-results Phase 2.1 — the guard now gates RevealBurst (the
-    // emerald winner-reveal moment), not a rings/em-dash swap. The
-    // `!isWeird` form (or an equivalent comparison_quality !== "weird"
-    // check) must remain so weird comparisons stay calm.
-    expect(SOURCE).toMatch(/!isWeird|isWeird\s*\?|comparison_quality\s*!==\s*['"]weird['"]/);
+  it('S95-LOGO: the result page mounts no winner-reveal celebration, so no client weird-mode guard remains', () => {
+    expect(SOURCE).not.toMatch(/<RevealBurst\b/);
+    expect(SOURCE).not.toMatch(/revealBurstSlot/);
   });
 
   it('no longer renders the pruned em-dash hero placeholder', () => {
