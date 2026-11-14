@@ -57,41 +57,7 @@ Counts: 118 nodes in the two frozen RED files (RED 29 functions = 99 nodes, all 
 - The CI-order set (spec 7.3 + the two RED files, 14 files) in alphabetical and in reverse order: green both ways (the one netguard block is the known base node `test_comparison_response_image_url.py::TestOrchestratorWiring::test_organic_results_passed_to_image_service`, listed in `tests/.network_attempt_baseline.txt`).
 - Comm set (zero-regression gate): 712 files = the RED round's 710 (union rule at 731bcddf, sha256 5e2f0266...) + the two RED files; re-derived at head with the same rules and the new leaf as a seed (closure 85 modules incl. app/main.py; derived set = base + the two RED files, nothing else). 30 chunks of at most 25, bound 1200. HEAD failure ids: 28; base record ids: 28; **branch-only NEW: NONE**; base ids not failing at head: none.
 
-<details><summary>The comm chunk [pyt] lines</summary>
-
-```
-[pyt] tag=inc-i1-comm-head-01 start=2026-11-14 22:38:16 end=2026-11-14 22:38:47 elapsed=31s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-02 start=2026-11-14 22:40:13 end=2026-11-14 22:40:38 elapsed=25s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-03 start=2026-11-14 22:45:13 end=2026-11-14 22:45:38 elapsed=25s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-04 start=2026-11-14 22:45:45 end=2026-11-14 22:46:49 elapsed=64s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-05 start=2026-11-14 22:49:02 end=2026-11-14 22:49:17 elapsed=15s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-06 start=2026-11-14 22:49:24 end=2026-11-14 22:49:37 elapsed=13s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-07 start=2026-11-14 22:50:00 end=2026-11-14 22:50:20 elapsed=19s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-08 start=2026-11-14 22:50:27 end=2026-11-14 22:51:05 elapsed=39s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-09 start=2026-11-14 22:51:12 end=2026-11-14 22:52:09 elapsed=57s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-10 start=2026-11-14 22:52:16 end=2026-11-14 22:53:06 elapsed=50s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-11 start=2026-11-14 22:54:59 end=2026-11-14 22:55:26 elapsed=26s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-12 start=2026-11-14 22:55:33 end=2026-11-14 22:55:45 elapsed=12s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-13 start=2026-11-14 22:55:52 end=2026-11-14 22:56:11 elapsed=19s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-14 start=2026-11-14 22:56:18 end=2026-11-14 22:56:45 elapsed=27s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-15 start=2026-11-14 22:56:51 end=2026-11-14 22:57:28 elapsed=37s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-16 start=2026-11-14 22:57:35 end=2026-11-14 22:58:01 elapsed=26s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-17 start=2026-11-14 22:58:08 end=2026-11-14 22:58:21 elapsed=13s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-18 start=2026-11-14 23:06:48 end=2026-11-14 23:09:34 elapsed=166s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-19 start=2026-11-14 23:09:41 end=2026-11-14 23:11:04 elapsed=83s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-20 start=2026-11-14 23:11:11 end=2026-11-14 23:12:04 elapsed=54s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-21 start=2026-11-14 23:12:27 end=2026-11-14 23:14:36 elapsed=128s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-22 start=2026-11-14 23:14:42 end=2026-11-14 23:15:34 elapsed=51s bound=1200s status=FAIL rc=1
-[pyt] tag=inc-i1-comm-head-23 start=2026-11-14 23:15:41 end=2026-11-14 23:16:18 elapsed=37s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-24 start=2026-11-14 23:16:25 end=2026-11-14 23:17:11 elapsed=46s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-25 start=2026-11-14 23:17:17 end=2026-11-14 23:17:59 elapsed=41s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-26 start=2026-11-14 23:18:05 end=2026-11-14 23:18:41 elapsed=35s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-27 start=2026-11-14 23:18:48 end=2026-11-14 23:19:15 elapsed=27s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-28 start=2026-11-14 23:19:21 end=2026-11-14 23:19:56 elapsed=34s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-29 start=2026-11-14 23:21:07 end=2026-11-14 23:21:13 elapsed=6s bound=1200s status=OK rc=0
-[pyt] tag=inc-i1-comm-head-30 start=2026-11-14 23:21:20 end=2026-11-14 23:21:23 elapsed=3s bound=1200s status=OK rc=0
-```
-</details>
+- The 30 comm-chunk [pyt] lines are in specs/INC-I1_GREEN_REPORT.md on the docs branch docs/incident-2026-11-11 (filed 2026-11-15).
 
 - Lint: `ruff check --select E9,F63,F7,F82` clean on the four app files and the two RED files (ruff 0.16.5); `py_compile` clean; black 26.5.1 `--check` clean on the leaf and the two RED files (both join `.github/black-clean-paths.txt`, I1-R17); pure ASCII added lines (the only high bytes in the diff are the existing characters of the two rewritten CLAUDE.md lines); CRLF kept in the edited files (no whole-file diff).
 - Client fences (GC-10, the fourteen repository-reading suites by path, once, the last gate; jest 29.7.0 through the orchestrator's junction): `Test Suites: 1 failed, 13 passed, 14 total`; `Tests:       4 failed, 236 passed, 240 total`; `[jest] tag=inc-i1-fences start=2026-11-14 23:23:02 end=2026-11-14 23:23:10 rc=1`; the 4 failed nodes are the four accepted `config/nativeBundle.w37` drift nodes (d5, k2, k4, k5), as in the G-INC-1 and S81-12d records.
@@ -119,6 +85,7 @@ Counts: 118 nodes in the two frozen RED files (RED 29 functions = 99 nodes, all 
 - L-G2 `_first_image` prefers the first https key of an item; an item whose https value is on a banned host is rejected whole (`denied`), even when another key of the same item holds a clean https image.
 - L-G3 The GC-5 Q-4 camera exemption of the override https rule (D-G8) and the Q-3 empty-category reading (D-G7) carry no frozen row: the adversary may ask for gate rows (LC-4: a minor is a stated limit by default).
 - L-G4 The deny on titles (D-G5) uses `is_denied_source`'s whole-token match of the four banned labels; a product title that merely names one of those sites as a word is rejected (precision first).
+- CI, first run on 1c139d02 (2026-11-15): backend-tests failed ONE existing test, `tests/test_retro_w0_1.py::test_red_late_start_healthy_host_is_not_blacklisted` (line 572), with 30,430 passed; the six other checks were green. Not this unit: the test drives `app/utils/url_validator.py`, which this PR does not touch (the unit's diff against main c5b06958 lists eight files, none of them that module), and in CI's one alphabetical process it runs before every test file this PR adds. It is timing-dependent by construction (a late resolve finishing at the same instant as the caller's 2.0 s deadline) and is the same failure that the first runs of #403 and #404 showed and one re-run cleared each time. The failed job was re-run ONCE at 00:39 local (Bahrain); its result is in this head's checks. Its deflake is queued at the top of the main lane's list.
 
 ### Adversary (correctness, one lens; SAFE class): SOUND, 0 blocking, 0 major, 8 minors
 
