@@ -91,6 +91,8 @@ from app.services.api_budget_service import (
     record_failure,
     record_success,
 )
+# INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the PDP JSON-LD image seam.
+from app.services import image_relevance as _image_relevance
 
 logger = logging.getLogger(__name__)
 
@@ -464,6 +466,14 @@ async def _confirm_pdp(
     # the brand-omitting titles the matcher here accepted.
     if pdp_brand and exact_gate_enabled():
         price["brand"] = pdp_brand
+    # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call; OFF: no key, the base dict):
+    # the PDP's own Product JSON-LD image (its first https raster URL on a public,
+    # allowed host) rides the price dict, so the post-Phase-1 page-image override can
+    # show the priced product's own picture. The PDP's identity gates ran above.
+    if _image_relevance.guard_enabled():
+        _image = _image_relevance.first_https_raster(product.get("image"))
+        if _image:
+            price["image_url"] = _image
     return price
 
 

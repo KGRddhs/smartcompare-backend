@@ -205,9 +205,9 @@ describe('Bundle E S3 — scoring_v2 + personalization contract preserved', () =
     expect(RESULTS_CONTENT_SRC).toMatch(/<ConfidenceDetailsSheet/);
   });
 
-  it('orchestrator still renders RevealBurst keyed on comparisonId, fireOnce', () => {
-    expect(RESULTS_CONTENT_SRC).toMatch(/<RevealBurst/);
-    expect(RESULTS_CONTENT_SRC).toMatch(/fireOnce/);
+  it('result page mounts no RevealBurst (S95-LOGO)', () => {
+    expect(RESULTS_CONTENT_SRC).not.toMatch(/<RevealBurst/);
+    expect(RESULTS_CONTENT_SRC).not.toMatch(/from '\.\.\/hero\/RevealBurst'/);
   });
 
   it('orchestrator still emits trackEvents (event tracking preserved)', () => {

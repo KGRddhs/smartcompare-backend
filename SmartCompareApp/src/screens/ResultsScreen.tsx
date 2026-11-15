@@ -99,7 +99,6 @@ import { LoadingRings } from '../components/hero/LoadingRings';
 import { DimensionBars } from '../components/results/DimensionBars';
 import { TopMatchBadge } from '../components/results/TopMatchBadge';
 import { ResultsContent } from '../components/results/ResultsContent';
-import { RevealBurst } from '../components/hero/RevealBurst';
 import { FactualVerdict } from '../components/results/FactualVerdict';
 import { ConfidencePills } from '../components/results/ConfidencePills';
 import { ConfidenceDetailsSheet } from '../components/results/ConfidenceDetailsSheet';
