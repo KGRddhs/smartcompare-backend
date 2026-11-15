@@ -425,14 +425,81 @@ def test_v08_both_production_callers_pass_the_scorer_index():
         assert ast.dump(kws[0].value) == want, "line %d: %s" % (call.lineno, ast.unparse(kws[0].value))
 
 
+def _v09_inside_if_body(node, parents, test_src):
+    """True when `node` sits in the BODY (never the orelse) of an `if <test_src>:`."""
+    child = node
+    while child in parents:
+        parent = parents[child]
+        if (isinstance(parent, ast.If) and ast.unparse(parent.test) == test_src
+                and any(child is stmt for stmt in parent.body)):
+            return True
+        child = parent
+    return False
+
+
+def _v09_store_statements(func, parents, name):
+    """Every statement of `func` that binds `name`, in source order; each one must be a
+    plain one-target assignment (any other binding form fails the pin)."""
+    stmts = []
+    for node in ast.walk(func):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
+            stmt = parents[node]
+            plain = (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and stmt.targets[0] is node) or (
+                isinstance(stmt, ast.AnnAssign) and stmt.target is node)
+            assert plain, "line %d: %s is bound by %s" % (node.lineno, name, type(stmt).__name__)
+            stmts.append(stmt)
+    return sorted(stmts, key=lambda s: (s.lineno, s.col_offset))
+
+
 def test_v09_url_caller_unchanged():
-    """V09 PIN (V4): url_extraction_service.py's one generate_comparison call passes no
-    score_winner_index (products[0], products[1], region, category=category_used)."""
+    """V09 PIN (V4), RE-PINNED by S95-LG URL-WINNER-GUARD (GATE_S95_LG GL-2): S95-LG
+    supersedes the V4 ruling (the URL caller passed no score_winner_index).
+    url_extraction_service.py holds exactly one generate_comparison call, inside
+    compare_from_urls: positional products[0], products[1], region; keywords
+    category=category_used plus exactly one **verdict_kwargs. By AST, verdict_kwargs is
+    first bound to an empty dict literal and gains its two keys (scores_summary,
+    score_winner_index) only inside the guard branch (`if guard_scoring is not None:`,
+    where guard_scoring leaves None only inside `if url_winner_guard_enabled():`). The
+    OFF runtime call stays byte-identical (tests/test_s95_lg_url_winner_guard.py P1)."""
     calls = _calls_named(URL_PATH, "generate_comparison")
     assert len(calls) == 1, len(calls)
-    call = calls[0]
+    tree = ast.parse(URL_PATH.read_text(encoding="utf-8"))
+    funcs = [n for n in ast.walk(tree)
+             if isinstance(n, ast.AsyncFunctionDef) and n.name == "compare_from_urls"]
+    assert len(funcs) == 1, len(funcs)
+    func = funcs[0]
+    inside = [n for n in ast.walk(func) if isinstance(n, ast.Call) and _callee(n) == "generate_comparison"]
+    assert len(inside) == 1, "the generate_comparison call is not inside compare_from_urls"
+    call = inside[0]
     assert [ast.unparse(a) for a in call.args] == ["products[0]", "products[1]", "region"]
-    assert [(k.arg, ast.unparse(k.value)) for k in call.keywords] == [("category", "category_used")]
+    assert [(k.arg, ast.unparse(k.value)) for k in call.keywords] == [
+        ("category", "category_used"), (None, "verdict_kwargs")]
+    parents = {child: node for node in ast.walk(func) for child in ast.iter_child_nodes(node)}
+    reads = [n for n in ast.walk(func) if isinstance(n, ast.Name) and n.id == "verdict_kwargs"
+             and not isinstance(n.ctx, ast.Store)]
+    assert len(reads) == 1 and reads[0] is call.keywords[1].value, (
+        "verdict_kwargs is read or mutated outside the verdict call: lines %r" % [r.lineno for r in reads])
+    stores = _v09_store_statements(func, parents, "verdict_kwargs")
+    assert len(stores) >= 2, len(stores)
+    first = stores[0]
+    assert any(first is stmt for stmt in func.body), "line %d: not a top-level binding" % first.lineno
+    assert isinstance(first.value, ast.Dict) and not first.value.keys, (
+        "line %d: verdict_kwargs is first bound to %s" % (first.lineno, ast.unparse(first.value)))
+    for stmt in stores[1:]:
+        assert isinstance(stmt.value, ast.Dict), "line %d: %s" % (stmt.lineno, ast.unparse(stmt.value))
+        keys = [k.value if isinstance(k, ast.Constant) else None for k in stmt.value.keys]
+        assert sorted(keys, key=str) == ["score_winner_index", "scores_summary"], (stmt.lineno, keys)
+        assert _v09_inside_if_body(stmt, parents, "guard_scoring is not None"), (
+            "line %d: verdict_kwargs gains its keys outside the guard branch" % stmt.lineno)
+    guards = _v09_store_statements(func, parents, "guard_scoring")
+    assert guards and any(guards[0] is stmt for stmt in func.body), "guard_scoring: no top-level first binding"
+    for stmt in guards:
+        is_none = isinstance(stmt.value, ast.Constant) and stmt.value.value is None
+        if stmt is guards[0]:
+            assert is_none, "line %d: guard_scoring starts as %s" % (stmt.lineno, ast.unparse(stmt.value))
+        elif not is_none:
+            assert _v09_inside_if_body(stmt, parents, "url_winner_guard_enabled()"), (
+                "line %d: guard_scoring is set outside the predicate branch" % stmt.lineno)
 
 
 def test_v10_harness_a6_and_a1_request_parity(monkeypatch, tmp_path, sock_guard):

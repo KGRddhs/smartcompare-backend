@@ -120,6 +120,96 @@ def url_mode_v2_enabled() -> bool:
     )
 
 
+def url_winner_guard_enabled() -> bool:
+    """S95-LG URL-WINNER-GUARD (ENABLE_URL_WINNER_GUARD, default OFF), the house
+    idiom, read PER CALL (once per compare_from_urls call): a link compare scores
+    the pair, gives the verdict the scorer's winner and reconciles the prose."""
+    return os.getenv("ENABLE_URL_WINNER_GUARD", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# S95-LG (GATE GL-3): the scorer reads these top-level keys, normalize_product_data
+# nests the same values under "reviews" (top-level key, nested key).
+_URL_GUARD_LIFTED_KEYS = (("rating", "rating"), ("review_count", "count"))
+
+
+def _url_guard_lift_value(top_key: str, value: Any) -> Optional[float]:
+    """S95-LG (GATE GL-18): the value the scorer's view takes for one nested review
+    value, or None (not lifted). The value is parsed exactly as the result gate
+    parses link ratings: ``result_gate._url_number``, reused by import (a finite int
+    or float, never a bool, or an ASCII numeric string such as a JSON-LD
+    ``ratingValue`` of "4.7" or a ``reviewCount`` of "2,000"). ``rating``: lifted as
+    that float when 0 < v <= 5. ``review_count``: lifted as an int when the parsed
+    value is a whole number >= 0. Anything else (None, a bool, a word, NaN, an
+    infinity, a 0 or 7.5 rating, a negative or fractional count, or a value the parse
+    cannot read: it raises on an int beyond the float range) is not lifted, so the
+    scorer reads that signal as missing. Never raises."""
+    from app.services.result_gate import _url_number
+    try:
+        number = _url_number(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if number is None:
+        return None
+    if top_key == "rating":
+        return number if 0 < number <= 5 else None
+    if number >= 0 and number == int(number):
+        return int(number)
+    return None
+
+
+def _url_guard_scorer_inputs(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """S95-LG (GATE GL-3 / GL-18): the deterministic scorer's view of a link pair.
+    The scorer reads ``rating`` and ``review_count`` at the TOP level of a product
+    while normalize_product_data nests them under ``reviews`` (``rating`` /
+    ``count``), so each product gets a SHALLOW copy in which an absent or None
+    top-level key takes the nested value when that value parses as real
+    (``_url_guard_lift_value``: the parsed float rating, the int count). No other
+    key is lifted (``fact_check`` stays absent). The delivered product dicts are
+    never touched."""
+    views: List[Dict[str, Any]] = []
+    for product in products:
+        view = dict(product)
+        reviews = product.get("reviews")
+        if isinstance(reviews, dict):
+            for top_key, nested_key in _URL_GUARD_LIFTED_KEYS:
+                if view.get(top_key) is not None:
+                    continue
+                lifted = _url_guard_lift_value(top_key, reviews.get(nested_key))
+                if lifted is not None:
+                    view[top_key] = lifted
+        views.append(view)
+    return views
+
+
+def _url_guard_currency_mismatch(products: List[Dict[str, Any]]) -> bool:
+    """S95-LG (GATE GL-12): True when both link products carry a price amount and
+    their ``price.currency`` codes differ after ``.strip().upper()``. The scorer
+    compares the raw amounts with no currency conversion (scoring_service
+    ``_compute_raw_scores`` / ``_normalize_price``), so such a pair is not guarded:
+    the model's pick stands. An amount counts as carried exactly when the scorer
+    would read it (a truthy ``price.amount`` that converts to float); a code that is
+    not a str reads as no code. A missing amount on either side, or the same code:
+    False (the guard runs). Pure; never raises."""
+    amounts: List[Optional[float]] = []
+    codes: List[Optional[str]] = []
+    for product in products[:2]:
+        price = product.get("price") if isinstance(product, dict) else None
+        if not isinstance(price, dict):
+            price = {}
+        amount = price.get("amount")
+        try:
+            amounts.append(float(amount) if amount else None)
+        except (TypeError, ValueError, OverflowError):
+            amounts.append(None)
+        code = price.get("currency")
+        codes.append(code.strip().upper() if isinstance(code, str) else None)
+    if len(amounts) < 2 or amounts[0] is None or amounts[1] is None:
+        return False
+    return codes[0] != codes[1]
+
+
 def _host_only(u: Any) -> str:
     """The hostname of a pasted link for a log line, never its path or query.
     '' for a non-str or malformed link: never raises (the _url_log_query shape)."""
@@ -1452,6 +1542,42 @@ async def compare_from_urls(
     for _p in products:
         _p["category"] = category_used
 
+    # S95-LG URL-WINNER-GUARD (ENABLE_URL_WINNER_GUARD, default OFF, read once per
+    # call): the text path's two steps for a link compare. The deterministic scorer
+    # scores the pair, the verdict is given its summary and winner (the S81-07c
+    # fixed-winner block), and a delivered verdict is reconciled below. Any scorer
+    # failure leaves the call unguarded (the base call, no new keyword); a None
+    # scorer winner takes that same arm (build_scores_summary raises a TypeError
+    # indexing the names with it; unreachable while compute_scores returns an int),
+    # never the reconcile's legacy branch (GATE GL-16). The scorer reads per-product
+    # shallow copies with the nested rating / review count lifted when real (GATE
+    # GL-3 / GL-18: each value parsed as result_gate._url_number parses it); the
+    # delivered products stay as extracted. A cross-currency pair
+    # is not guarded (GATE GL-12): the scorer compares raw amounts with no
+    # conversion, so the base call ships the model's pick, with one constant line.
+    guard_scoring = None
+    if url_winner_guard_enabled():
+        if _url_guard_currency_mismatch(products):
+            logger.info("[URL_GUARD] skipped reason=currency_mismatch")
+        else:
+            try:
+                from app.services.scoring_service import get_scoring_service
+                from app.services.structured_comparison_service import _display_product_names
+                guard_service = get_scoring_service()
+                guard_result = guard_service.compute_scores(_url_guard_scorer_inputs(products))
+                guard_names = _display_product_names(products)
+                guard_summary = guard_service.build_scores_summary(guard_result, guard_names)
+                guard_scoring = (guard_service, guard_result, guard_names, guard_summary)
+            except Exception as exc:
+                logger.warning("[URL_GUARD] scorer failed type=%s", type(exc).__name__)
+                guard_scoring = None
+    verdict_kwargs: Dict[str, Any] = {}
+    if guard_scoring is not None:
+        verdict_kwargs = {
+            "scores_summary": guard_scoring[3],
+            "score_winner_index": guard_scoring[1].get("winner_index"),
+        }
+
     # Generate comparison (now told the resolved category instead of the default).
     # MB-RECONCILE-01 / PO-VERDICT-TRUTH-01: generate_comparison returns
     # ``(parsed, usage)`` on EVERY path (extraction_service.py `:2543` and the
@@ -1465,7 +1591,7 @@ async def compare_from_urls(
     # unpack would leave the route 500ing whenever the flag was off.
     try:
         comparison, _usage = await generate_comparison(
-            products[0], products[1], region, category=category_used
+            products[0], products[1], region, category=category_used, **verdict_kwargs
         )
     except _llm_breaker.LLMUnavailableError:
         # S81-06 (R-S06-2): generate_comparison re-raises only under a role flag
@@ -1494,6 +1620,30 @@ async def compare_from_urls(
             "code": "LLM_UNAVAILABLE",
             "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
         }
+
+    if guard_scoring is not None:
+        # S95-LG: a delivered verdict only (the non-delivery above returned first):
+        # the scorer's winner ships and no winner-facing string names the loser.
+        # GATE GL-14: the reconcile edits the delivered verdict dict in place, so it
+        # runs only after a deep snapshot; when any step raises, the dict's contents
+        # are restored from that snapshot (the same dict, cleared and refilled), so
+        # the delivery is exactly the verdict as the model wrote it.
+        import copy
+        verdict_snapshot = None
+        try:
+            verdict_snapshot = copy.deepcopy(comparison)
+            from app.services.response_builder import reconcile_winner_prose
+            guard_service, guard_result, guard_names, _guard_summary = guard_scoring
+            guard_tradeoffs = guard_service.compute_tradeoff_pairs(
+                guard_result.get("dimension_winners", {}), guard_names,
+                guard_result.get("winner_index", 0), scores=guard_result.get("scores"),
+            )
+            reconcile_winner_prose(comparison, guard_result, guard_names, guard_tradeoffs)
+        except Exception as exc:
+            if verdict_snapshot is not None:
+                comparison.clear()
+                comparison.update(verdict_snapshot)
+            logger.warning("[URL_GUARD] reconcile failed type=%s", type(exc).__name__)
 
     if url_mode_v2:
         recommendation, key_differences = _v2_verdict_fill(comparison, products)
