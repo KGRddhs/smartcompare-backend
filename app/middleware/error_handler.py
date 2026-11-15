@@ -93,6 +93,54 @@ def _result_gate_keys_enabled() -> bool:
     )
 
 
+def _product_resolver_keys_enabled() -> bool:
+    """ENABLE_PRODUCT_RESOLVER (INC-R1, default OFF), read PER CALL. A local one-liner
+    (the middleware never imports a service); it reads the SAME name as
+    product_resolver.product_resolver_enabled."""
+    return os.getenv("ENABLE_PRODUCT_RESOLVER", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+# INC-R1: the eight concentration labels (a tuple literal, so the middleware imports no
+# service; equal to product_resolver.CONCENTRATIONS) and a candidate item's keys.
+_RESOLVER_CONCENTRATIONS = (
+    "EDT", "EDP", "Parfum", "Extrait", "EDC", "Elixir", "Eau Fraiche", "Parfum Intense",
+)
+_RESOLVER_CANDIDATE_KEYS = ("brand", "line", "concentration")
+
+
+def _resolver_text_ok(value: object) -> bool:
+    return (isinstance(value, str) and 0 < len(value) <= 80
+            and all(ord(ch) >= 32 for ch in value))
+
+
+def _resolver_candidates(value: object):
+    """INC-R1: a fresh copy of a valid candidates value (exactly two lists of at most
+    four items, each exactly {brand, line, concentration}; brand and line non-empty
+    strings of at most 80 characters with no control character; the concentration None or
+    one of _RESOLVER_CONCENTRATIONS), else None: the key is dropped whole."""
+    if not isinstance(value, list) or len(value) != 2:
+        return None
+    out = []
+    for side in value:
+        if not isinstance(side, list) or len(side) > 4:
+            return None
+        items = []
+        for item in side:
+            if not isinstance(item, dict) or set(item) != set(_RESOLVER_CANDIDATE_KEYS):
+                return None
+            if not (_resolver_text_ok(item["brand"]) and _resolver_text_ok(item["line"])):
+                return None
+            concentration = item["concentration"]
+            if concentration is not None and concentration not in _RESOLVER_CONCENTRATIONS:
+                return None
+            items.append({"brand": item["brand"], "line": item["line"],
+                          "concentration": concentration})
+        out.append(items)
+    return out
+
+
 def _get_request_id(request: Request) -> str:
     """Extract request ID from request state."""
     return getattr(request.state, "request_id", "unknown")
@@ -243,6 +291,17 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             and detail.get("code") == "INSUFFICIENT_DATA"
             and detail.get("reason") in _RESULT_GATE_REASONS):
         content["reason"] = detail["reason"]
+    # INC-R1 RESOLVE-OR-ASK (R1-R18 / RC-2): the refusal marker FIRST (an INSUFFICIENT_DATA
+    # detail with the reason placeholder_identity), then the flag, so no other detail reads
+    # ENABLE_PRODUCT_RESOLVER; ON, the resolver's ask keeps its additive reason and its
+    # validated candidates (an invalid candidates value is dropped whole).
+    if (_is_structured_detail(detail) and detail.get("code") == "INSUFFICIENT_DATA"
+            and detail.get("reason") == "placeholder_identity"
+            and _product_resolver_keys_enabled()):
+        content.setdefault("reason", "placeholder_identity")
+        candidates = _resolver_candidates(detail.get("candidates"))
+        if candidates is not None:
+            content["candidates"] = candidates
     headers = None
     if retry_after is not None:
         content["retry_after_seconds"] = retry_after

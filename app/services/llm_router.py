@@ -204,8 +204,9 @@ class SiteSpec:
 # JSON-only line, the Claude-branch fence strip); image_tier3 takes (b) too since
 # S81-07c (the measured schema cost: a first-use grammar compile and a per-call
 # overhead; its Tier-3 parser already strips a fence, parses, validates the URL and
-# returns None on any failure); vision_v1 / vision_v2 / disambiguate carry closed
-# schemas; classify returns a word.
+# returns None on any failure), and so does resolve (INC-R1, R1-R7: its parser and
+# the acceptance guard re-validate every field); vision_v1 / vision_v2 / disambiguate
+# carry closed schemas; classify returns a word.
 SITES: Dict[str, SiteSpec] = {
     "classify": SiteSpec("text", 32, None, False),
     "parse": SiteSpec("text", 768, None, True),
@@ -223,6 +224,7 @@ SITES: Dict[str, SiteSpec] = {
     "disambiguate": SiteSpec("text", 256, DISAMBIGUATE_SCHEMA, True),
     "url_extract": SiteSpec("text", 1200, None, True),
     "critique": SiteSpec("critic", 512, None, True),
+    "resolve": SiteSpec("text", 384, None, True),  # INC-R1 RESOLVE-OR-ASK
 }
 
 

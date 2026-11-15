@@ -69,3 +69,6 @@ tests/test_inc_mon1_gate_rows.py
 app/services/image_relevance.py
 tests/test_inc_i1_picture_must_match.py
 tests/test_inc_i1_noon_and_wiring.py
+app/services/product_resolver.py
+tests/test_inc_r1_resolver.py
+tests/test_inc_r1_seam.py

@@ -59,6 +59,10 @@ from app.services import kb_serve as _kb_serve
 # S81-20 RESULT-GATE (ENABLE_RESULT_GATE): the route-exit gate, reached through the
 # module attribute (a stdlib-only module; the flag is read inside, per call).
 from app.services import result_gate as _rg
+# INC-R1 RESOLVE-OR-ASK (ENABLE_PRODUCT_RESOLVER): the ask refusal's additive keys at the
+# 400 builder and the ask exits of the three compare routes (module attribute; the flag
+# is read inside, FIRST).
+from app.services import product_resolver as _product_resolver
 
 logger = logging.getLogger(__name__)
 
@@ -574,6 +578,10 @@ def _surface_comparison_failure(result: Dict):
         if (_rg.result_gate_enabled() and code == _rg.GATE_CODE
                 and result.get("reason") in _rg.GATE_REASONS):
             detail["reason"] = result["reason"]
+        # INC-R1 (flag read FIRST inside): the resolver's ask refusal keeps its additive
+        # reason and validated candidates; OFF, and every other result, adds nothing.
+        for _key, _value in _product_resolver.http_detail_extras(code, result).items():
+            detail.setdefault(_key, _value)
         raise HTTPException(
             status_code=400,
             detail=detail,
@@ -662,6 +670,59 @@ async def _s20_stream_settle(refusal, *, request, user, query, usage_consumed,
                 logger.warning("[RESULT_GATE] refusal record failed: %s", type(exc).__name__)
     await log_search(query=query, input_type="text_stream", user_id=user_id, success=False,
                      error_message=_rg.gate_log_message(refusal.get("reason")),
+                     cost=_failure_log_cost(refusal), duration_ms=duration_ms, **syn)
+
+
+async def _resolver_ask_exit(refusal, *, request, user, query, input_type, usage_consumed,
+                             consumed_keys, duration_ms, syn, where):
+    """INC-R1 RESOLVE-OR-ASK (R1-R9 / R1-R10 / GC-5 Q6): the ask exit of text POST / GET,
+    the twin of _result_gate_exit. Read the S81-10 refusal budget; when it is not spent,
+    refund FIRST with the consume's keys and count the refusal once (the gate ON only);
+    then ONE failure row in both W4-13 states (its error_message the ask sentence) and
+    the 400 through the shared mapping, which raises. Never a save, never a lifetime
+    bump, never a KB write."""
+    user_id = user.get("id") if user else None
+    gated, subject, spent = await _result_gate_budget(request, user)
+    if not spent:
+        if usage_consumed and user_id:
+            fire_and_forget(refund_comparison_credit(user_id, consumed_keys),
+                            label=f"usage_refund.{where}.resolver:placeholder_identity")
+        if gated:
+            await _category_gate.record_refusal_async(subject)
+    fire_and_forget(
+        log_search(query=query, input_type=input_type, user_id=user_id, success=False,
+                   error_message=_product_resolver.ASK_MESSAGE,
+                   cost=_failure_log_cost(refusal), duration_ms=duration_ms, **syn),
+        label=f"log_search.{where}.resolver",
+    )
+    _surface_comparison_failure(refusal)
+
+
+async def _resolver_stream_settle(refusal, *, request, user, query, usage_consumed,
+                                  consumed_keys, duration_ms, syn):
+    """INC-R1 (R1-R9 / R1-R10): the stream ask's settlement, the twin of
+    _s20_stream_settle: ONE coroutine scheduled from the event generator's finally (budget
+    read -> refund with the consume's keys, or keep the credit when spent -> count once ->
+    the ONE failure row). Never a save, never a lifetime bump."""
+    user_id = user.get("id") if user else None
+    try:
+        gated, subject, spent = await _result_gate_budget(request, user)
+    except Exception as exc:  # noqa: BLE001 -- a failed read refunds, never counts
+        logger.warning("[RESOLVE] ask budget read failed: %s", type(exc).__name__)
+        gated, subject, spent = False, None, False
+    if not spent:
+        if usage_consumed and user_id:
+            try:
+                await refund_comparison_credit(user_id, consumed_keys)
+            except Exception as exc:  # noqa: BLE001 -- the row below still lands
+                logger.warning("[RESOLVE] ask stream refund failed: %s", type(exc).__name__)
+        if gated:
+            try:
+                await _category_gate.record_refusal_async(subject)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[RESOLVE] ask refusal record failed: %s", type(exc).__name__)
+    await log_search(query=query, input_type="text_stream", user_id=user_id, success=False,
+                     error_message=_product_resolver.ASK_MESSAGE,
                      cost=_failure_log_cost(refusal), duration_ms=duration_ms, **syn)
 
 
@@ -760,6 +821,13 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
 
     _truth = search_log_truth_enabled()
     _syn = _search_log_synthetic_kwargs(request)
+    # INC-R1 (flag read FIRST inside): the resolver's ask leaves through its own exit (one
+    # refund with the consume's keys, the S81-10 refusal budget, ONE failure row), which raises.
+    if _product_resolver.is_ask_refusal(result):
+        await _resolver_ask_exit(result, request=request, user=user, query=body.query,
+                                 input_type="text", usage_consumed=usage_consumed,
+                                 consumed_keys=usage_consumed_keys, duration_ms=duration_ms,
+                                 syn=_syn, where="text.post")
     if not result.get("success"):
         # Log failed search — Bundle D 2.B.6 WRAP: failure-path log; silent
         # fail = no record of why a comparison crashed.
@@ -994,6 +1062,12 @@ async def text_compare_get(
 
     _truth = search_log_truth_enabled()
     _syn = _search_log_synthetic_kwargs(request)
+    # INC-R1 (flag read FIRST inside): the GET twin of the POST ask exit above.
+    if _product_resolver.is_ask_refusal(result):
+        await _resolver_ask_exit(result, request=request, user=user, query=q,
+                                 input_type="text", usage_consumed=usage_consumed,
+                                 consumed_keys=usage_consumed_keys, duration_ms=duration_ms,
+                                 syn=_syn, where="text.get")
     if not result.get("success"):
         # Bundle D 2.B.6 WRAP: GET-handler failure-path log.
         if not _truth:
@@ -1225,6 +1299,7 @@ async def text_compare_stream(
         persisted = False
         user_id = user.get("id") if user else None
         _s20_refusal = None  # S81-20: the refusal the FIRST terminal decided
+        _rv_ask = None  # INC-R1: the resolver ask an error event carried
 
         # M13-35: the post-stream side effects (quota metering, history save,
         # analytics) MUST run even if the client drops the socket AFTER the
@@ -1331,6 +1406,8 @@ async def text_compare_stream(
                     complete_response = data
                 if event_type == "error":
                     had_error = True
+                    if _product_resolver.is_ask_refusal(data):  # INC-R1 (flag read FIRST)
+                        _rv_ask = data
                     if isinstance(data, dict):
                         error_payload = data
                         # W4-9 R2(d) — SSE floor, symmetric with the sync
@@ -1484,6 +1561,18 @@ async def text_compare_stream(
                 if isinstance(complete_response, dict) and complete_response.get("success") is True:
                     capture_result_status(complete_response, "text_stream")
                     _compare_runs.record_compare_run(complete_response, "text_stream")  # S81-22: plain call, no await
+            elif had_error and _rv_ask is not None:
+                # INC-R1 (R1-R9 / R1-R10): the resolver ask is a non-delivery: ONE
+                # fire-and-forget settlement (budget read -> refund with the consume's keys
+                # or keep -> count -> the row); nothing is awaited here. No save, no lifetime.
+                fire_and_forget(
+                    _resolver_stream_settle(
+                        _rv_ask, request=request, user=user, query=q,
+                        usage_consumed=usage_consumed, consumed_keys=usage_consumed_keys,
+                        duration_ms=duration_ms, syn=_syn,
+                    ),
+                    label="usage_refund.text_stream.resolver:placeholder_identity",
+                )
             elif had_error:
                 # Bundle D 2.B.6 WRAP: failure-path log on streaming.
                 if not _truth:
