@@ -125,7 +125,8 @@ OTHER_SITES_BASE = {
     "vision_v2": ("vision", 1536, True, "vision_v2"), "vision_v1": ("vision", 768, True, "vision_v1"),
     "specs_targeted": ("text", 384, True, None), "specs_synthesized": ("text", 512, True, None),
     "disambiguate": ("text", 256, True, "disambiguate"), "url_extract": ("text", 1200, True, None),
-    "critique": ("critic", 512, True, None)}
+    "critique": ("critic", 512, True, None),
+    "resolve": ("text", 384, True, None)}  # INC-R1 E4 (R1-R7: no schema)
 
 ROLE_FLAG_NAMES = ("ENABLE_ANTHROPIC_TEXT", "ENABLE_ANTHROPIC_VISION", "ENABLE_ANTHROPIC_VERDICT",
                    "ENABLE_ANTHROPIC_CRITIC", "ENABLE_ANTHROPIC_MODERATION", "ENABLE_SONNET_ESCALATION",

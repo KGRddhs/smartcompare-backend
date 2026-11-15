@@ -68,7 +68,9 @@ UNIT_ENV = ("ENABLE_PARSE_PRESPLIT", "ENABLE_PARSE_BUDGET", "PARSE_TIMEOUT_SECON
             # S81-06 E10: the seven router flags (a developer .env must not route a site)
             "ENABLE_ANTHROPIC_TEXT", "ENABLE_ANTHROPIC_VISION", "ENABLE_ANTHROPIC_VERDICT",
             "ENABLE_ANTHROPIC_CRITIC", "ENABLE_ANTHROPIC_MODERATION", "ENABLE_SONNET_ESCALATION",
-            "ENABLE_OPENAI_PRE_V3")
+            "ENABLE_OPENAI_PRE_V3",
+            # INC-R1 E5: a developer environment must not move the digests
+            "ENABLE_PRODUCT_RESOLVER", "PRODUCT_RESOLVER_TIMEOUT_SECONDS", "PRODUCT_RESOLVER_ASK")
 # The clock fields: they differ between two runs of the SAME tree (measured: ident_probe
 # base x2 / head x2, 2026-10-09), so they are dropped before hashing.
 VOLATILE = frozenset({"elapsed_ms", "elapsed_seconds", "timestamp", "generated_at",

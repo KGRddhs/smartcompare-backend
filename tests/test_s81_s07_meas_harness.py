@@ -1364,7 +1364,8 @@ def test_p02_router_sites_contract():
             "price_training": ("text", 384), "reviews": ("text", 1024), "verdict": ("verdict", 1536),
             "verdict_fallback": ("verdict", 1536), "image_tier3": ("text", 256), "vision_v2": ("vision", 1536),
             "vision_v1": ("vision", 768), "specs_targeted": ("text", 384), "specs_synthesized": ("text", 512),
-            "disambiguate": ("text", 256), "url_extract": ("text", 1200), "critique": ("critic", 512)}
+            "disambiguate": ("text", 256), "url_extract": ("text", 1200), "critique": ("critic", 512),
+            "resolve": ("text", 384)}  # INC-R1 E3: the resolve row
     assert {k: (v.role, v.claude_max_tokens) for k, v in router.SITES.items()} == want
     req = router.to_claude_request("classify", {"model": "x", "messages": [
         {"role": "system", "content": "s"}, {"role": "user", "content": "u"}], "max_tokens": 5})

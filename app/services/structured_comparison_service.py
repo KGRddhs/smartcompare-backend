@@ -84,6 +84,9 @@ from app.services import llm_router as _llm_router
 # S81-10 FRAGRANCE-ONLY-GATE (ENABLE_FRAGRANCE_ONLY_GATE): the post-resolve decision,
 # run only when a route passed its pre-consume decision (a stdlib-only module).
 from app.services import category_gate as _category_gate
+# INC-R1 RESOLVE-OR-ASK (ENABLE_PRODUCT_RESOLVER): the explicit-pair resolver, reached
+# through the module attribute (a test patch sees every call).
+from app.services import product_resolver as _product_resolver
 # R-W18 (W1-8c) — the SLOW-MISS threshold keys on the same inner ceiling the
 # adapters clamp to. adapter_timeouts imports nothing from app (no cycle).
 from app.services.adapter_timeouts import adapter_inner_ceiling
@@ -4134,6 +4137,38 @@ class StructuredComparisonService:
             "api_calls": self.api_calls,
         }
 
+    async def _resolve_explicit_pair(self, products, selected_category, start_time):
+        """INC-R1 RESOLVE-OR-ASK: the body of the explicit-pair hook both entries share (each
+        caller reads ENABLE_PRODUCT_RESOLVER FIRST). Resolves the two typed names once,
+        tracks the model call's usage, and returns (refusal, both_resolved): the ask refusal
+        dict or None, and True only when both Step-1 dicts were rewritten (the pair category
+        then takes the parser path, R1-8). Total (C-7): an exception in the rewrite or in the
+        refusal builder restores the base Step-1 dicts and logs ONE WARNING by type only."""
+        base = [dict(_p) for _p in products]
+        try:
+            resolution = await _product_resolver.resolve_pair(
+                [_p["name"] for _p in products], selected_category=selected_category,
+            )
+            if resolution.usage:
+                self._track_gpt_cost(resolution.usage)
+            if resolution.outcome == _product_resolver.OUTCOME_ASK:
+                refusal = _product_resolver.refusal_result(
+                    resolution,
+                    elapsed_seconds=(datetime.now() - start_time).total_seconds(),
+                    total_cost=self.total_cost,
+                    api_calls=self.api_calls,
+                )
+                return refusal, False
+            return None, _product_resolver.apply_resolution(products, resolution) is True
+        except Exception as exc:  # noqa: BLE001 -- the hook never raises into the compare (C-7)
+            for _p, _b in zip(products, base):
+                _p.clear()
+                _p.update(_b)
+            logger.warning(
+                "[RESOLVE] hook fell back to the typed names class=%s", type(exc).__name__
+            )
+            return None, False
+
     async def compare_from_text(
         self,
         query: str,
@@ -4337,6 +4372,7 @@ class StructuredComparisonService:
         # can always cancel it (an exception raised before the kickoff line would
         # otherwise NameError on the cancel in the handler).
         _profile_task = None
+        _rv_fragrance_pair = False  # INC-R1: True only when the resolver rewrote both sides
 
         # FANOUT-STARVE D7 (FS-R4) -- the compare deadline the Phase-2 residual guard
         # reads (under its flag only): the outer wait_for in compare_from_text was
@@ -4455,6 +4491,15 @@ class StructuredComparisonService:
                         "category": category, "search_query": safe, "_explicit": True,
                     })
                 parsed = {"comparison_type": "value"}
+                # INC-R1 RESOLVE-OR-ASK (ENABLE_PRODUCT_RESOLVER, read FIRST): resolve both typed
+                # names once, before the pair category; an ask refusal returns here, before the
+                # fragrance gate, the profile task, the KB task and any fetch.
+                if _product_resolver.product_resolver_enabled():  # INC-R1 sync hook
+                    _rv_refusal, _rv_fragrance_pair = await self._resolve_explicit_pair(
+                        products, selected_category, start_time,
+                    )
+                    if _rv_refusal is not None:
+                        return _rv_refusal
             else:
                 query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
                 logger.info(f"Parsing query: query_hash={query_hash} length={len(query)}")
@@ -4490,7 +4535,10 @@ class StructuredComparisonService:
             # (parser_path False) and may escalate to A2b exactly as the app does.
             _parser_path = not (vision_products or explicit_pair or _parse_marks(parsed))
             category_used, category_switched, original_category = (
-                await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
+                await _resolve_pair_category(
+                    products, selected_category,
+                    parser_path=_parser_path or _rv_fragrance_pair,  # INC-R1 (R1-8) sync
+                )
             )
             # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE): the chip-free post-resolve decision,
             # only when the route passed its pre-consume decision (never with the flag
@@ -5024,6 +5072,7 @@ class StructuredComparisonService:
         # I5.6 lever-2 — bound to None at the top so the outer exception handler
         # can always cancel it (mirror of the sync path).
         _profile_task = None
+        _rv_fragrance_pair = False  # INC-R1: True only when the resolver rewrote both sides
 
         def _tail_residual() -> float:
             """M13-04 — remaining budget for a post-Phase-1 tail await; floored so a
@@ -5156,6 +5205,15 @@ class StructuredComparisonService:
                         "category": category, "search_query": safe, "_explicit": True,
                     })
                 parsed = {"comparison_type": "value"}
+                # INC-R1 RESOLVE-OR-ASK (ENABLE_PRODUCT_RESOLVER, read FIRST): the stream twin;
+                # an ask refusal is the terminal `error` event, before any fetch.
+                if _product_resolver.product_resolver_enabled():  # INC-R1 stream hook
+                    _rv_refusal, _rv_fragrance_pair = await self._resolve_explicit_pair(
+                        products, selected_category, start_time,
+                    )
+                    if _rv_refusal is not None:
+                        yield ("error", _rv_refusal)
+                        return
             else:
                 # FANOUT-STARVE D8 (FS-R3, n4): the same Step-1 seam as the REST
                 # entry (the "Parsing query..." status above precedes it).
@@ -5186,7 +5244,10 @@ class StructuredComparisonService:
             # FS-R3 m1: the pre-split / fallback shape takes the explicit path.
             _parser_path = not (vision_products or explicit_pair or _parse_marks(parsed))
             category_used, category_switched, original_category = (
-                await _resolve_pair_category(products, selected_category, parser_path=_parser_path)
+                await _resolve_pair_category(
+                    products, selected_category,
+                    parser_path=_parser_path or _rv_fragrance_pair,  # INC-R1 (R1-8) stream
+                )
             )
             # S81-10 (ENABLE_FRAGRANCE_ONLY_GATE): the mirror of the sync post-resolve
             # decision; a refusal is the terminal `error` event (the route's had_error

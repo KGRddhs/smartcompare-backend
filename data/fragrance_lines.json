@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "note": "Public product names as the houses sell them. Seeded only with the lines the golden set, the owner's pairs and the S95 reports need.",
+  "lines": [
+    {"house": "Dior", "house_aliases": ["dior", "christian dior"], "line": "Sauvage", "aliases": ["sauvage"], "concentrations": ["EDT", "EDP", "Parfum", "Elixir"], "base": "EDT", "flankers": []},
+    {"house": "Chanel", "house_aliases": ["chanel"], "line": "Bleu de Chanel", "aliases": ["bleu de chanel"], "concentrations": ["EDT", "EDP", "Parfum"], "base": "EDT", "flankers": []},
+    {"house": "Creed", "house_aliases": ["creed"], "line": "Aventus", "aliases": ["aventus"], "concentrations": ["EDP"], "base": "EDP", "flankers": []},
+    {"house": "Parfums de Marly", "house_aliases": ["parfums de marly"], "line": "Layton", "aliases": ["layton"], "concentrations": ["EDP"], "base": "EDP", "flankers": []},
+    {"house": "Lancome", "house_aliases": ["lancome"], "line": "La Vie Est Belle", "aliases": ["la vie est belle"], "concentrations": ["EDP"], "base": "EDP", "flankers": []},
+    {"house": "Yves Saint Laurent", "house_aliases": ["yves saint laurent", "ysl", "saint laurent"], "line": "Libre", "aliases": ["libre"], "concentrations": ["EDP"], "base": "EDP", "flankers": []},
+    {"house": "Giorgio Armani", "house_aliases": ["giorgio armani", "armani"], "line": "Acqua di Gio Profumo", "aliases": ["acqua di gio profumo"], "concentrations": [], "base": null, "flankers": []},
+    {"house": "Versace", "house_aliases": ["versace"], "line": "Eros", "aliases": ["eros"], "concentrations": ["EDT", "EDP"], "base": "EDT", "flankers": []},
+    {"house": "Maison Francis Kurkdjian", "house_aliases": ["maison francis kurkdjian", "mfk"], "line": "Baccarat Rouge 540", "aliases": ["baccarat rouge 540"], "concentrations": ["EDP", "Extrait"], "base": "EDP", "flankers": []},
+    {"house": "Lattafa", "house_aliases": ["lattafa"], "line": "Khamrah", "aliases": ["khamrah"], "concentrations": ["EDP"], "base": "EDP", "flankers": []},
+    {"house": "Emporio Armani", "house_aliases": ["emporio armani", "armani", "emporio"], "line": "Stronger With You", "aliases": ["stronger with you"], "concentrations": ["EDT"], "base": "EDT", "flankers": ["Intensely", "Absolutely", "Leather", "Parfum", "Oud"]},
+    {"house": "Bvlgari", "house_aliases": ["bvlgari", "bulgari"], "line": "Tygar", "aliases": ["tygar", "le gemme tygar"], "concentrations": ["EDP"], "base": "EDP", "flankers": []}
+  ]
+}

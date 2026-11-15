@@ -78,12 +78,14 @@ SITE_ROLES = {
     "reviews": "text", "verdict": "verdict", "verdict_fallback": "verdict", "image_tier3": "text",
     "vision_v2": "vision", "vision_v1": "vision", "specs_targeted": "text", "specs_synthesized": "text",
     "disambiguate": "text", "url_extract": "text", "critique": "critic",
+    "resolve": "text",  # INC-R1 E1: the 17th SITES row
 }
 SITE_CAPS = {
     "classify": 32, "parse": 768, "specs": 1536, "price": 512, "price_training": 384, "reviews": 1024,
     "verdict": 1536, "verdict_fallback": 1536, "image_tier3": 256, "vision_v2": 1536, "vision_v1": 768,
     "specs_targeted": 384, "specs_synthesized": 512, "disambiguate": 256, "url_extract": 1200,
     "critique": 512,
+    "resolve": 384,  # INC-R1 E1
 }
 SITE_KEYS = tuple(sorted(SITE_ROLES))
 # R-S06-15: escalation trigger (b) keys on "the site expects JSON"; classify returns a word.
@@ -700,7 +702,8 @@ def test_r01_router_module_and_symbols():
 
 
 def test_r02_sites_table_exact():
-    """R02 RED: SITES = the 16 keys; role, claude_max_tokens and expects_json exact (R-S06-15)."""
+    """R02 RED: SITES = the 17 keys (INC-R1 E1: resolve); role, claude_max_tokens and expects_json
+    exact (R-S06-15)."""
     sites = _sym("SITES")
     assert set(sites) == set(SITE_KEYS)
     for key in SITE_KEYS:

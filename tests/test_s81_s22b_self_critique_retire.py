@@ -83,6 +83,7 @@ SITES_BASE = {
     "specs_targeted": ["text", 384, True, True], "url_extract": ["text", 1200, True, True],
     "verdict": ["verdict", 1536, True, True], "verdict_fallback": ["verdict", 1536, True, True],
     "vision_v1": ["vision", 768, True, False], "vision_v2": ["vision", 1536, True, False],
+    "resolve": ["text", 384, True, True],  # INC-R1 E6 (R1-R1 / R1-R7: no schema)
 }
 ANTHROPIC_DEFAULTS_BASE = {"text": "claude-haiku-5-5", "vision": "claude-haiku-5-5", "verdict": "claude-haiku-5-5",
                            "critic": "claude-haiku-5-5", "moderation": "claude-haiku-5-5"}

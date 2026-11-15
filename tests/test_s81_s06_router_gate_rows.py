@@ -782,8 +782,9 @@ def _routed_calls(tree):
     ]
 
 
-# RB6-5 (m-RV5; mutant RV15): the EXACT set of the 16 routed site keys (names, not
-# a floor): an aliased un-route, a new site or a renamed key changes the set.
+# RB6-5 (m-RV5; mutant RV15): the EXACT set of the routed site keys (names, not a
+# floor): an aliased un-route, a new site or a renamed key changes the set. 16 keys:
+# S81-22b retired critique (15), INC-R1 E2 added resolve.
 G13_SITE_KEYS = frozenset(
     {
         "classify",
@@ -801,6 +802,7 @@ G13_SITE_KEYS = frozenset(
         "specs_synthesized",
         "disambiguate",
         "url_extract",
+        "resolve",
     }
 )
 
@@ -827,8 +829,9 @@ def test_g13_every_llm_site_dispatches_through_the_router():
     """F1-14: an AST census over app/ finds NO call to guarded_llm_create( outside
     app/services/llm_router.py and app/services/api_budget_service.py; RB6-5
     (m-RV5, mutant RV15): the _llm_router.route(<site>, <x>.guarded_llm_create, ...)
-    calls carry EXACTLY the 15 pinned site keys (a frozenset of names, not a floor
-    >= 15; 16 until S81-22b retired the critique dispatch), each routed once;
+    calls carry EXACTLY the 16 pinned site keys (a frozenset of names, not a floor;
+    16 until S81-22b retired the critique dispatch, 15 after it, 16 again with INC-R1's
+    resolve), each routed once;
     self-checks: a direct call, a routed call and its site key are each recognised."""
     direct_src = (
         "async def f(c):\n    await _llm_breaker.guarded_llm_create(c, model='m')\n"
@@ -852,7 +855,7 @@ def test_g13_every_llm_site_dispatches_through_the_router():
         direct += ["%s:%d" % (rel, ln) for ln in _direct_guarded_calls(tree)]
         keys += _routed_site_keys(tree)
     assert direct == [], "guarded_llm_create called outside the router: %s" % direct
-    assert len(G13_SITE_KEYS) == 15  # S81-22b: the critique dispatch retired
+    assert len(G13_SITE_KEYS) == 16  # S81-22b retired critique; INC-R1 E2 adds resolve
     assert frozenset(keys) == G13_SITE_KEYS, "routed site keys: missing %s, new %s" % (
         sorted(G13_SITE_KEYS - set(keys)),
         sorted(set(keys) - G13_SITE_KEYS),
