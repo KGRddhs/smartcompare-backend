@@ -455,13 +455,15 @@ def test_pin_flag_off_slow_success_is_base(monkeypatch):
 # ===========================================================================
 
 
-def _start_near_deadline(monkeypatch, *, late_behaviour):
+def _start_near_deadline(monkeypatch, *, late_behaviour, on_caller_returned=None):
     """One-worker pool, bound T = 2.0 s. A blocker occupies the worker; a
     second validation (the "late" host) is queued behind it; the blocker is
     released at 0.8 T after the late call began, so the late resolve STARTS at
     ~0.8 T and has run only ~0.2 T (~0.4 s) when the caller's 2.0 s deadline
     fires. Returns the observations taken IMMEDIATELY after the late call
-    returned, plus the stub and the release events."""
+    returned, plus the stub and the release events. ``on_caller_returned``
+    (optional, no arguments) is called the moment the late call returns,
+    before ``returned_at`` is read."""
     T = 2.0
     monkeypatch.setenv(FLAG, "true")
     monkeypatch.setenv(TIMEOUT_ENV, str(T))
@@ -477,11 +479,22 @@ def _start_near_deadline(monkeypatch, *, late_behaviour):
         parked = asyncio.create_task(
             uv._validate_url_offloop_or_sync(f"https://{blocker}/x")
         )
-        await asyncio.sleep(0.1)  # the single worker is now parked on the blocker
+        # Bounded wait until the single worker has PICKED UP the blocker (the
+        # stub records a host the moment its resolve starts), so the late host
+        # can only queue behind it; a fixed sleep merely assumed this.
+        parked_by = time.monotonic() + 5.0
+        while blocker not in stub.started_at and time.monotonic() < parked_by:
+            await asyncio.sleep(0.005)
+        assert blocker in stub.started_at, (
+            "precondition: the blocker must occupy the single resolver worker "
+            "before the late call starts (its resolve had not started after 5 s)"
+        )
         t_late = time.monotonic()
         timer = threading.Timer(0.8 * T, release_blocker.set)
         timer.start()
         verdict = await uv._validate_url_offloop_or_sync(f"https://{late}/p")
+        if on_caller_returned is not None:
+            on_caller_returned()
         returned_at = time.monotonic()
         memo_now = uv._memo_get(late)
         late_started = stub.started_at.get(late)
@@ -539,17 +552,27 @@ def test_red_resolve_started_just_before_deadline_is_not_memoised(monkeypatch):
 
 def test_red_late_start_healthy_host_is_not_blacklisted(monkeypatch):
     """RED today -- the reviewer's exact shape (C): the late-started healthy
-    resolve finishes 0.2 T after it started, AFTER its caller timed out. With
-    the pool idle and the resolver instant, the host must validate True."""
+    resolve finishes AFTER its caller timed out. With the pool idle and the
+    resolver instant, the host must validate True.
+
+    The order is made by an event, not by a 0.2 T sleep: the late resolve
+    starts at ~0.8 T, then waits on ``caller_returned``, which the helper sets
+    the moment the late call returns at its 2.0 s bound, so the resolve
+    finishes strictly after its caller timed out. (A 0.2 T sleep made it finish
+    at ~T, exactly the caller's deadline, and scheduler jitter decided the
+    verdict.) When the caller timed out, the resolve had run only ~0.2 T."""
     late_done = threading.Event()
+    caller_returned = threading.Event()
 
     def _late_healthy():
-        time.sleep(0.4)  # 0.2 T of real resolving
+        caller_returned.wait(10.0)  # finish only after the caller returned
         late_done.set()
         return _PUBLIC
 
     T, pool, stub, late, release_blocker, drive = _start_near_deadline(
-        monkeypatch, late_behaviour=_late_healthy
+        monkeypatch,
+        late_behaviour=_late_healthy,
+        on_caller_returned=caller_returned.set,
     )
 
     async def _drive_and_retry():
