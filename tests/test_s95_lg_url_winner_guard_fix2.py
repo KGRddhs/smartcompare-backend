@@ -1,4 +1,5 @@
-"""S95-LG URL-WINNER-GUARD: the FIX-2 rows (GATE_S95_LG ADDENDUM 2, GL-12..GL-17).
+"""S95-LG URL-WINNER-GUARD: the FIX-2 rows (GATE_S95_LG ADDENDUM 2, GL-12..GL-17) and
+the FIX-3 rows (ADDENDUM 3, GL-18 / GL-19).
 
 - G9 (GL-12, adversary MAJOR-1): a cross-currency link pair (BHD 45.0 vs AED
   380.0) is NOT guarded: the deterministic scorer compares raw amounts with no
@@ -7,9 +8,15 @@
   and the model's pick, byte-equal to the flag-OFF body. G9b (PINs at HEAD
   baf67584, the guard already runs there): a BHD / BHD pair, a padded lower-case
   code against its upper-case twin and a missing amount on one side still guard.
-- G10 (GL-13, m4): the lift refuses a 0, 7.5, bool or str rating and a bool or
-  negative count (that key is not lifted; the other key still is). G10b (PIN at
-  HEAD): the boundary values (a rating of 5 or 0.1, a count of 0 or 1) are lifted.
+- G10 (GL-13 as amended by GL-18 / GL-19, FIX-3): the lift parses each nested
+  value exactly as result_gate._url_number does: a numeric string rating '4.7'
+  and count '2000' (padded, with thousands separators, or a whole-number float
+  count) ARE lifted, the rating as that float and the count as an int; 'abc', '',
+  a bool, 0, 7.5, NaN, a negative or fractional count and a value the gate's parse
+  cannot read are not (that key is not lifted; the other key still is). G10b: the
+  boundary values (a rating of 5 or 0.1, a count of 0 or 1) are lifted, the rating
+  as a float. G10c: over a table of values the lift agrees with
+  result_gate._url_number itself.
 - G11 (GL-14, m2): a reconcile that re-indexes the verdict and then raises leaves
   the delivered body byte-equal to the flag-OFF body (the verdict as the model
   wrote it). G11b: a reconcile double that also edits nested lists before it
@@ -18,6 +25,11 @@
   carry constants and the type name only (never the exception text, a name or a
   host); a None scorer winner takes the scorer-failed arm (a TypeError in
   build_scores_summary) and ships the base call.
+- G13 (GL-19, FIX-3; the re-verifier's probe_rv3 cases C1-C5): an equal pair whose
+  buyer ratings arrive as JSON-LD strings on one side, on both, or as a string
+  rating with an int count is scored on the parsed values, so the better-rated
+  product ships whichever product the model picked (C5, all numeric, is the
+  control).
 
 Hermetic, the RED file's patch idiom: ``extract_from_url`` on the
 url_extraction_service module, ``_resolve_pair_category`` on
@@ -39,6 +51,7 @@ import pytest
 from app.services import extraction_service as es
 from app.services import llm_router
 from app.services import response_builder as rb
+from app.services import result_gate as rg
 from app.services import scoring_service as ss
 from app.services import structured_comparison_service as scs
 from app.services import url_extraction_service as ues
@@ -334,24 +347,34 @@ def test_g9b_same_code_or_missing_amount_still_guards(monkeypatch, caplog, curre
     assert SKIP_LINE not in [line for _lvl, _name, line in _guard_lines(caplog)]
 
 
-# ---------------------------------------------------------------- G10 (GL-13)
+# ---------------------------------------------------------------- G10 (GL-13 / GL-18 / GL-19)
 
 
 @pytest.mark.parametrize("rating_e,count_e,refused,kept,kept_value", [
     (0, 300, "rating", "review_count", 300),
     (7.5, 300, "rating", "review_count", 300),
     (True, 300, "rating", "review_count", 300),
-    ("4.5", 300, "rating", "review_count", 300),
+    ("abc", 300, "rating", "review_count", 300),
+    ("", 300, "rating", "review_count", 300),
+    (float("nan"), 300, "rating", "review_count", 300),
+    ("7.5", 300, "rating", "review_count", 300),
     (4.5, True, "review_count", "rating", 4.5),
     (4.5, -1, "review_count", "rating", 4.5),
-], ids=["rating_zero", "rating_above_five", "rating_bool", "rating_str",
-        "count_bool", "count_negative"])
+    (4.5, "-1", "review_count", "rating", 4.5),
+    (4.5, "12.5", "review_count", "rating", 4.5),
+    (4.5, 10 ** 400, "review_count", "rating", 4.5),
+], ids=["rating_zero", "rating_above_five", "rating_bool", "rating_word", "rating_empty",
+        "rating_nan", "rating_str_above_five", "count_bool", "count_negative",
+        "count_str_negative", "count_fraction", "count_beyond_float"])
 def test_g10_the_lift_refuses_unreal_review_values(monkeypatch, rating_e, count_e, refused,
                                                    kept, kept_value):
-    """G10 (RED at HEAD): ON; page E's nested review value is not real (a rating of
-    0, 7.5, a bool or a str; a count that is a bool or negative) -> the scorer's view
-    of page E does not lift that key (it stays absent) while the other key is lifted,
-    and page F (real values) is lifted in full."""
+    """G10 (GL-13 as amended by GL-18 / GL-19; PINs at a142d2f1 except
+    count_beyond_float, which a142d2f1 lifts): ON; page E's nested review value is
+    not real (a rating of 0 or 7.5, a bool, a word, an empty string, NaN or the string
+    '7.5'; a count that is a bool, negative, the string '-1', the fraction '12.5', or
+    an int beyond the float range that result_gate._url_number cannot parse) -> the
+    scorer's view of page E does not lift that key (it stays absent) while the other
+    key is lifted, and page F (real values) is lifted in full."""
     pages = _pages(rating_e=rating_e, count_e=count_e)
     monkeypatch.setenv(FLAG, "true")
     _install(monkeypatch, pages)
@@ -366,11 +389,44 @@ def test_g10_the_lift_refuses_unreal_review_values(monkeypatch, rating_e, count_
         view_f.get("rating"), view_f.get("review_count"))
 
 
+@pytest.mark.parametrize("rating_e,count_e,rating_lifted,count_lifted", [
+    ("4.7", "2000", 4.7, 2000),
+    ("4.7", 2000, 4.7, 2000),
+    (4.7, "2,000", 4.7, 2000),
+    (" 4.7 ", "300.0", 4.7, 300),
+    (4.5, 300.0, 4.5, 300),
+], ids=["both_strings", "string_rating_int_count", "string_count_thousands",
+        "padded_rating_decimal_count", "float_whole_count"])
+def test_g10_the_lift_parses_numeric_strings_as_the_result_gate(monkeypatch, rating_e, count_e,
+                                                                rating_lifted, count_lifted):
+    """G10 lift rows (GL-18 / GL-19, RED at a142d2f1): ON; page E's nested values
+    arrive as the JSON-LD extractors pass them through (an ASCII numeric string,
+    padded or with thousands separators; a whole-number float count) -> the scorer's
+    view of page E carries the rating as that float and the count as an int (parsed
+    as result_gate._url_number parses them), and page F is lifted in full."""
+    pages = _pages(rating_e=rating_e, count_e=count_e)
+    monkeypatch.setenv(FLAG, "true")
+    _install(monkeypatch, pages)
+    seen = _spy_scorer_inputs(monkeypatch)
+    _run()
+    assert len(seen) == 1, len(seen)
+    view_e, view_f = seen[0]
+    rating, count = view_e.get("rating"), view_e.get("review_count")
+    assert rating == rating_lifted and type(rating) is float, (
+        "the scorer's view did not lift the rating %r as a float: %r" % (rating_e, rating))
+    assert count == count_lifted and type(count) is int, (
+        "the scorer's view did not lift the count %r as an int: %r" % (count_e, count))
+    assert view_f.get("rating") == 4.5 and view_f.get("review_count") == 300, (
+        view_f.get("rating"), view_f.get("review_count"))
+
+
 @pytest.mark.parametrize("rating_e,count_e", [(5, 0), (0.1, 1), (5.0, 2)],
                          ids=["rating_five_count_zero", "rating_small", "rating_five_float"])
 def test_g10b_the_lift_keeps_the_boundary_values(monkeypatch, rating_e, count_e):
-    """G10b (PIN at HEAD: HEAD lifts every non-None value): the boundary values of
-    GL-13 (0 < rating <= 5, count >= 0) are lifted unchanged."""
+    """G10b (GL-18 amends the GL-13 type clause; PINs at a142d2f1 except
+    rating_five_count_zero, whose int 5 a142d2f1 lifts as an int): the boundary
+    values (0 < rating <= 5, count >= 0) are lifted, the rating as the parsed float
+    (an int 5 lifts as 5.0) and the count as an int."""
     pages = _pages(rating_e=rating_e, count_e=count_e)
     monkeypatch.setenv(FLAG, "true")
     _install(monkeypatch, pages)
@@ -378,8 +434,48 @@ def test_g10b_the_lift_keeps_the_boundary_values(monkeypatch, rating_e, count_e)
     _run()
     assert len(seen) == 1, len(seen)
     view_e = seen[0][0]
-    assert view_e.get("rating") == rating_e and type(view_e.get("rating")) is type(rating_e)
-    assert view_e.get("review_count") == count_e and type(view_e.get("review_count")) is int
+    rating, count = view_e.get("rating"), view_e.get("review_count")
+    assert rating == float(rating_e) and type(rating) is float, (rating_e, rating)
+    assert count == count_e and type(count) is int, (count_e, count)
+
+
+# Nested values of every shape the extractors and odd pages can hand the lift.
+PARITY_VALUES = (
+    4.7, 5, 5.0, 0.1, 0, 0.0, -1, 7.5, 12.5, 300.0, 2000, True, False, None,
+    float("nan"), float("inf"), float("-inf"), 10 ** 400,
+    "4.7", " 4.7 ", "5", "0", "7.5", "-1", "12.5", "300.0", "2000", "1,000", "2,000.5",
+    "4,7", "1e3", "abc", "", " ", [4.7], {"value": 4.7},
+)
+
+
+def _gate_parse(value):
+    """The result gate's own parse (result_gate._url_number); a value it cannot read
+    (it raises on an int beyond the float range) reads as no number."""
+    try:
+        return rg._url_number(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+
+
+def test_g10c_the_lift_reads_numbers_exactly_as_result_gate_url_number():
+    """G10c (GL-18, RED at a142d2f1): over PARITY_VALUES the scorer's view lifts a
+    rating exactly when result_gate._url_number parses it to 0 < v <= 5 (as that
+    float) and a count exactly when it parses to a whole number >= 0 (as an int);
+    otherwise that key stays absent. The parse is the gate's own function, so a lift
+    that drifts from it (a local copy, a str refusal, a lost range) fails here."""
+    for value in PARITY_VALUES:
+        view = ues._url_guard_scorer_inputs([{"reviews": {"rating": value, "count": value}}])[0]
+        parsed = _gate_parse(value)
+        if parsed is not None and 0 < parsed <= 5:
+            assert view.get("rating") == parsed and type(view.get("rating")) is float, (
+                value, view.get("rating"))
+        else:
+            assert "rating" not in view, (value, view.get("rating"))
+        if parsed is not None and parsed >= 0 and parsed == int(parsed):
+            count = view.get("review_count")
+            assert count == int(parsed) and type(count) is int, (value, count)
+        else:
+            assert "review_count" not in view, (value, view.get("review_count"))
 
 
 # ---------------------------------------------------------------- G11 (GL-14)
@@ -536,3 +632,78 @@ def test_g12c_none_scorer_winner_takes_the_scorer_failed_arm(monkeypatch, caplog
     assert recorder.calls[1] == _base_call(pages)
     assert reconciles == []
     assert _body(out_on) == _body(out_off)
+
+
+# ---------------------------------------------------------------- G13 (GL-19)
+
+# The re-verifier's probe_rv3 pages: equal price, equal specs, the buyer ratings
+# 3.9 / 500 against 4.7 / 2000 as numbers or as JSON-LD strings.
+RV3_SPECS = {"scent_family": "citrus", "longevity": "6 hours", "sillage": "moderate",
+             "volume": "100 ml"}
+RV3_CASES = {
+    "C1_p_numeric_q_string": ((3.9, 500), ("4.7", "2000")),
+    "C2_p_string_q_numeric": (("4.7", "2000"), (3.9, 500)),
+    "C3_both_string": (("3.9", "500"), ("4.7", "2000")),
+    "C4_q_string_rating_only": ((3.9, 500), ("4.7", 2000)),
+    "C5_both_numeric": ((3.9, 500), (4.7, 2000)),
+}
+
+
+def _rv3_raw(brand, rating, count):
+    return {"title": brand + " Mixed Scent", "brand": brand, "name": "Mixed Scent",
+            "price": 30.0, "currency": "BHD", "category": CATEGORY,
+            "specs": dict(RV3_SPECS), "rating": rating, "review_count": count}
+
+
+def _rv3_pages(case):
+    (rating_p, count_p), (rating_q, count_q) = RV3_CASES[case]
+    return {URL_E: _rv3_raw("SynthP", rating_p, count_p),
+            URL_F: _rv3_raw("SynthQ", rating_q, count_q)}
+
+
+def _test_parsed(products):
+    """The test's own parse of the fixture values (a float rating, an int count),
+    independent of the unit and of the result gate."""
+    out = []
+    for product in products:
+        view = dict(product)
+        view["rating"] = float(product["reviews"]["rating"])
+        view["review_count"] = int(product["reviews"]["count"])
+        out.append(view)
+    return out
+
+
+@pytest.mark.parametrize("model_pick", ["model_better", "model_worse"])
+@pytest.mark.parametrize("case", sorted(RV3_CASES))
+def test_g13_string_ratings_do_not_tilt_the_guard_to_the_worse_product(monkeypatch, caplog,
+                                                                      case, model_pick):
+    """G13 (GL-19; probe_rv3 C1-C4 RED at a142d2f1, C5 the all-numeric control PIN):
+    equal price (BHD 30.0 / 30.0) and equal specs, the buyer ratings 3.9 / 500 against
+    4.7 / 2000 arriving as numbers on one side and as JSON-LD strings on the other
+    (C1 / C2), as strings on both (C3), or as a string rating with an int count (C4).
+    The real scorer on the test's own parsed copies picks the better-rated product
+    (PRECONDITION). ON -> the verdict call carries that index as score_winner_index
+    and the better-rated product ships, whether the model picked it (no
+    WINNER_INDEX_MISMATCH record) or the worse one (the reconcile re-indexes once)."""
+    pages = _rv3_pages(case)
+    products = _written_back(pages)
+    ratings = [float(product["reviews"]["rating"]) for product in products]
+    better = 1 if ratings[1] > ratings[0] else 0
+    assert ss.ScoringService().compute_scores(_test_parsed(products)).get(
+        "winner_index") == better, (
+        "PRECONDITION: on parsed copies the real scorer must pick the better-rated product")
+    pick = better if model_pick == "model_better" else 1 - better
+    verdict = {"winner_index": pick, "winner_declaration": "x", "winner_reason": "y"}
+    monkeypatch.setenv(FLAG, "true")
+    _capture(caplog)
+    recorder = _install(monkeypatch, pages, verdict=verdict)
+    out = _run()
+    assert len(recorder.calls) == 1, len(recorder.calls)
+    kwargs = recorder.calls[0][1]
+    assert kwargs.get("score_winner_index") == better, (
+        "the guard gave the verdict index %r, the better-rated product is %r"
+        % (kwargs.get("score_winner_index"), better))
+    assert out["winner_index"] == better, out["winner_index"]
+    assert out["comparison"]["winner_index"] == better, out["comparison"]
+    assert len(_mismatch_records(caplog)) == (0 if pick == better else 1), (
+        [r.getMessage()[:40] for r in _mismatch_records(caplog)])

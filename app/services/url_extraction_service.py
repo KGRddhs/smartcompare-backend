@@ -134,36 +134,51 @@ def url_winner_guard_enabled() -> bool:
 _URL_GUARD_LIFTED_KEYS = (("rating", "rating"), ("review_count", "count"))
 
 
-def _url_guard_liftable(top_key: str, value: Any) -> bool:
-    """S95-LG (GATE GL-13): whether a nested review value is real enough to lift.
-    ``rating``: an int or float (never a bool) with 0 < v <= 5 (the
-    result_gate._url_rating rule; a NaN or an infinity fails it). ``review_count``:
-    an int (never a bool) >= 0. Anything else (None, a str, a 0 or 7.5 rating, a
-    negative count) is not lifted, so the scorer reads that signal as missing."""
-    if isinstance(value, bool):
-        return False
+def _url_guard_lift_value(top_key: str, value: Any) -> Optional[float]:
+    """S95-LG (GATE GL-18): the value the scorer's view takes for one nested review
+    value, or None (not lifted). The value is parsed exactly as the result gate
+    parses link ratings: ``result_gate._url_number``, reused by import (a finite int
+    or float, never a bool, or an ASCII numeric string such as a JSON-LD
+    ``ratingValue`` of "4.7" or a ``reviewCount`` of "2,000"). ``rating``: lifted as
+    that float when 0 < v <= 5. ``review_count``: lifted as an int when the parsed
+    value is a whole number >= 0. Anything else (None, a bool, a word, NaN, an
+    infinity, a 0 or 7.5 rating, a negative or fractional count, or a value the parse
+    cannot read: it raises on an int beyond the float range) is not lifted, so the
+    scorer reads that signal as missing. Never raises."""
+    from app.services.result_gate import _url_number
+    try:
+        number = _url_number(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if number is None:
+        return None
     if top_key == "rating":
-        return isinstance(value, (int, float)) and 0 < value <= 5
-    return isinstance(value, int) and value >= 0
+        return number if 0 < number <= 5 else None
+    if number >= 0 and number == int(number):
+        return int(number)
+    return None
 
 
 def _url_guard_scorer_inputs(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """S95-LG (GATE GL-3 / GL-13): the deterministic scorer's view of a link pair.
+    """S95-LG (GATE GL-3 / GL-18): the deterministic scorer's view of a link pair.
     The scorer reads ``rating`` and ``review_count`` at the TOP level of a product
     while normalize_product_data nests them under ``reviews`` (``rating`` /
     ``count``), so each product gets a SHALLOW copy in which an absent or None
-    top-level key takes the nested value when that value is real
-    (``_url_guard_liftable``). No other key is lifted (``fact_check`` stays absent).
-    The delivered product dicts are never touched."""
+    top-level key takes the nested value when that value parses as real
+    (``_url_guard_lift_value``: the parsed float rating, the int count). No other
+    key is lifted (``fact_check`` stays absent). The delivered product dicts are
+    never touched."""
     views: List[Dict[str, Any]] = []
     for product in products:
         view = dict(product)
         reviews = product.get("reviews")
         if isinstance(reviews, dict):
             for top_key, nested_key in _URL_GUARD_LIFTED_KEYS:
-                value = reviews.get(nested_key)
-                if view.get(top_key) is None and _url_guard_liftable(top_key, value):
-                    view[top_key] = value
+                if view.get(top_key) is not None:
+                    continue
+                lifted = _url_guard_lift_value(top_key, reviews.get(nested_key))
+                if lifted is not None:
+                    view[top_key] = lifted
         views.append(view)
     return views
 
@@ -1536,7 +1551,8 @@ async def compare_from_urls(
     # indexing the names with it; unreachable while compute_scores returns an int),
     # never the reconcile's legacy branch (GATE GL-16). The scorer reads per-product
     # shallow copies with the nested rating / review count lifted when real (GATE
-    # GL-3 / GL-13); the delivered products stay as extracted. A cross-currency pair
+    # GL-3 / GL-18: each value parsed as result_gate._url_number parses it); the
+    # delivered products stay as extracted. A cross-currency pair
     # is not guarded (GATE GL-12): the scorer compares raw amounts with no
     # conversion, so the base call ships the model's pick, with one constant line.
     guard_scoring = None
