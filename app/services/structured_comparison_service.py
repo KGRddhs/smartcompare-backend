@@ -1431,6 +1431,63 @@ async def _timed_task(label: str, coro, timings_dict):
         timings_dict[f"{label}_ms"] = round((_t.perf_counter() - t) * 1000, 1)
 
 
+async def _late_image_job(coro, bound: float, slot: Any, state: Dict[str, Any]) -> Optional[str]:
+    """INC-I2a (ENABLE_IMAGE_LATE_BIND): ONE background picture job, bounded by
+    IMAGE_LATE_MAX_SECONDS; its own timeout or a raise -> None. Logs ONE
+    ``IMG_LATE job`` line; a cancel is logged and re-raised."""
+    t0 = time.perf_counter()
+    outcome = "none"
+    url = None
+    try:
+        try:
+            url = await asyncio.wait_for(coro, bound)
+        except asyncio.TimeoutError:
+            outcome, url = "timeout", None
+        else:
+            outcome = "accepted" if url else "none"
+    except asyncio.CancelledError:
+        outcome = "cancelled"
+        raise
+    except Exception:  # noqa: BLE001 - a broken job is a missing picture
+        outcome, url = "error", None
+    finally:
+        logger.info("IMG_LATE job product=%s outcome=%s ms=%d stored=%d", slot, outcome,
+                    int((time.perf_counter() - t0) * 1000),
+                    1 if (isinstance(state, dict) and state.get("stored")) else 0)
+    return url
+
+
+def _late_page_image_choice(price: Any, is_vision: Any) -> Optional[str]:
+    """INC-I2a: a pure mirror of the inline page-image override of
+    _fetch_product_data on a price dict (the guard's https rule for text products,
+    then D08 / D03 / the base http(s) test, in that order). None = no override."""
+    if not price or not isinstance(price, dict):
+        return None
+    page_img = price.get("image_url")
+    if _image_relevance.guard_enabled() and not is_vision and not (
+        isinstance(page_img, str) and page_img.strip().startswith("https://")
+    ):
+        page_img = None
+    if jsonld_widen.image_pipeline_v2_enabled():
+        return jsonld_widen.allowed_image_url(page_img, price.get("url"), OFFICIAL_BRAND_DOMAINS) or None
+    if data_guards_v2_enabled():
+        return page_img.strip() if image_service._is_valid_image_url(page_img) else None
+    if page_img and isinstance(page_img, str) and (
+        page_img.startswith("http://") or page_img.startswith("https://")
+    ):
+        return page_img.strip()
+    return None
+
+
+def _late_bind_wait_seconds(deadline: Optional[float], now: float) -> float:
+    """INC-I2a (R-5): the bind's wait from the run's own deadline:
+    max(0, min(deadline - now - reserve, max_wait)); no deadline -> 0."""
+    if deadline is None:
+        return 0.0
+    return max(0.0, min(deadline - now - image_service.image_late_bind_reserve_seconds(),
+                        image_service.image_late_bind_max_wait_seconds()))
+
+
 # Import from new modules
 from app.services.price_service import (
     _convert_to_bhd,
@@ -3418,6 +3475,9 @@ class StructuredComparisonService:
         # per-run "Phase 2 was skipped" mark the residual guard sets; both are
         # read only under ENABLE_PHASE2_RESIDUAL_GUARD / by the metadata stamp.
         self._compare_deadline: Optional[float] = None
+        # INC-I2a (ENABLE_IMAGE_LATE_BIND): the per-request late-picture registry
+        # (slot -> entry); empty with the flag OFF.
+        self._late_images: Dict[int, Dict[str, Any]] = {}
         self._phase2_skipped: bool = False
         # S78-TG (TG4) -- the per-run Tier-2/3 skip marks the residual guard appends
         # ({"product": <slot>, "tier": "tier2"|"tier3"}); stamped as the additive
@@ -4266,6 +4326,7 @@ class StructuredComparisonService:
             raise
         except asyncio.TimeoutError:
             elapsed = time.time() - _t0
+            self._late_image_drain_now()  # INC-I2a (R-11)
             # WS1 (D1) — best-available partial if any product has data.
             if self._partial_has_usable_data():
                 try:
@@ -4424,6 +4485,7 @@ class StructuredComparisonService:
             **({"output_lang": output_lang} if output_lang else {}),
         }
         self._partial_product_data = None
+        self._late_images = {}  # INC-I2a: per-run reset
         self._partial_scoring_result = None
         self._partial_product_names = None
         self._partial_comparison = None
@@ -4833,6 +4895,7 @@ class StructuredComparisonService:
                 product_data, shopping_count=len(self._shopping_items_cache), cached=from_cache
             )
 
+            await self._late_image_bind()  # INC-I2a (R-15): after the verdict, before the build
             elapsed = (datetime.now() - start_time).total_seconds()
 
             t_build = time.perf_counter() if orchestrator_timings is not None else None
@@ -5084,6 +5147,7 @@ class StructuredComparisonService:
             stream deadline. Mirrors the Phase-1 hard-cap salvage: a success:true
             PARTIAL from the stash when usable, else the STREAM_TIMEOUT soft-retry."""
             await _cancel_profile_task(_profile_task)
+            self._late_image_drain_now()  # INC-I2a (R-11)
             if self._partial_has_usable_data():
                 try:
                     _partial = self._build_partial_response(
@@ -5140,6 +5204,7 @@ class StructuredComparisonService:
         # identical when _early_specs_stash_enabled() is OFF.
         self._partial_build_ctx = None
         self._partial_product_data = None
+        self._late_images = {}  # INC-I2a: per-run reset
         self._partial_scoring_result = None
         self._partial_product_names = None
         self._partial_comparison = None
@@ -5343,6 +5408,7 @@ class StructuredComparisonService:
                     STREAM_HARD_CAP_SECONDS, query,
                 )
                 await _cancel_profile_task(_profile_task)
+                self._late_image_drain_now()  # INC-I2a (R-11)
                 # Launch degradation fix (2026-07-06) — SALVAGE the specs the LLM
                 # already produced. If any product landed usable Phase-1 data
                 # (identity+specs via the early buffer, or a price), assemble a
@@ -5738,6 +5804,7 @@ class StructuredComparisonService:
             })
 
             # Step 5: Build complete response
+            await self._late_image_bind()  # INC-I2a (R-15): after the verdict, before the build
             elapsed = (datetime.now() - start_time).total_seconds()
 
             t_build = time.perf_counter() if orchestrator_timings is not None else None
@@ -6015,6 +6082,76 @@ class StructuredComparisonService:
         except Exception as e:
             logger.warning(f"Failed to update behavior profile: {e}")
 
+    async def _late_image_bind(self) -> None:
+        """INC-I2a (R-14, R-15): bind the late pictures just before the build. The
+        override first (no wait); only entries whose override misses and whose job is
+        pending are waited, in ONE asyncio.wait (never cancels) bounded by the run's
+        residual; then the chooser. Empty registry: returns before any await."""
+        entries = getattr(self, "_late_images", None)
+        if not entries:
+            return
+        pending = {}
+        for slot in sorted(entries):
+            entry = entries[slot]
+            if entry["closed"]:
+                continue
+            if _late_page_image_choice(entry["result"].get("price"), entry["is_vision"]):
+                self._late_image_choose(slot, entry, 0)
+            elif not entry["task"].done():
+                pending[slot] = entry
+        waited = 0
+        if pending:
+            w = _late_bind_wait_seconds(self._compare_deadline, time.monotonic())
+            if w > 0:
+                t0 = time.monotonic()
+                await asyncio.wait([e["task"] for e in pending.values()], timeout=w)
+                waited = int((time.monotonic() - t0) * 1000)
+        for slot in sorted(entries):
+            entry = entries[slot]
+            if not entry["closed"]:
+                self._late_image_choose(slot, entry, waited if slot in pending else 0)
+
+    def _late_image_drain_now(self) -> None:
+        """INC-I2a (R-11): at a hard cap, the bind's chooser on every open entry
+        (wait_ms=0); pending jobs run on and cache."""
+        entries = getattr(self, "_late_images", None)
+        if not entries:
+            return
+        for slot in sorted(entries):
+            entry = entries[slot]
+            if not entry["closed"]:
+                self._late_image_choose(slot, entry, 0)
+
+    def _late_image_choose(self, slot: int, entry: Dict[str, Any], wait_ms: int) -> None:
+        """INC-I2a chooser (one synchronous chain): the override on the CURRENT price,
+        else the done job, else the Phase-1 page image (R-3), else None. Writes
+        result['image_url'], logs the bind and page_override lines, closes the life."""
+        result = entry["result"]
+        task = entry["task"]
+        url = _late_page_image_choice(result.get("price"), entry["is_vision"])
+        if url:
+            outcome, page = "override", "hit"
+        else:
+            url = None
+            if task.done() and not task.cancelled() and task.exception() is None:
+                url = task.result() or None
+            if url:
+                outcome = "cached" if entry["state"].get("cached") else "attached"
+                page = "skipped"
+            else:
+                url = _late_page_image_choice(entry["price_phase1"], entry["is_vision"])
+                if url:
+                    outcome, page = "fallback", "fallback"
+                else:
+                    url = None
+                    outcome = "none" if task.done() else "missed_at_deadline"
+                    page = "skipped"
+        result["image_url"] = url
+        logger.info("IMG_LATE bind product=%s outcome=%s wait_ms=%d", slot, outcome, wait_ms)
+        logger.info("IMG_LATE page_override outcome=%s product=%s", page, slot)
+        entry["state"]["open"] = False
+        entry["closed"] = True
+
     async def _fetch_product_data(
         self, product_info: Dict, region: str, include_specs: bool, include_reviews: bool, nocache: bool = False,
         partial_slot: Optional[int] = None,
@@ -6109,6 +6246,12 @@ class StructuredComparisonService:
         # S78-F8 (R2) -- ONE hoisted flag read per product for the race record;
         # OFF (or partial_slot None): no callback, no post-loop write.
         _record_races = partial_slot is not None and _flag_on("ENABLE_ALL_TIMEOUT_CAP_AS_TIMEOUT")
+        # INC-I2a (ENABLE_IMAGE_LATE_BIND, read ONCE per product): the picture leaves
+        # the 5 s Phase-1 wait. OFF (or partial_slot None): the base image race below.
+        _late = image_service.late_bind_enabled() and partial_slot in (0, 1)
+        _late_fut = None
+        _late_state = None
+        _late_entry = None
         # S81-18 H1: the per-request card task (absent with the flag OFF, and for
         # every non-orchestrator caller: partial_slot None never serves from the KB).
         _kb = None
@@ -6139,6 +6282,37 @@ class StructuredComparisonService:
             ), stage_timings),
             timeout=_PHASE1_TIMEOUTS["price"],
         ))
+        if _late:
+            # INC-I2a START: the picture job begins with the product (KB card first,
+            # unchanged; else the late cascade), out of the Phase-1 wait. The unified
+            # search reaches it through _late_fut (set sites (1) and (2) below).
+            _late_fut = asyncio.get_running_loop().create_future()
+            _late_state = {
+                "open": True,
+                "until": (self._compare_deadline - image_service.image_late_bind_reserve_seconds()
+                          if self._compare_deadline is not None else None),
+                "cached": False,
+                "stored": False,
+            }
+            _late_coro = (
+                kb_serve.served(_kb["image_url"]) if (_kb and _kb["image_url"])
+                else image_service.get_product_image_url_late(
+                    full_name, region=region, payload=_late_fut, variant=variant, state=_late_state,
+                    **_image_relevance.relevance_kwargs(brand, name, category, partial_slot, is_vision),
+                )
+            )
+            from app.utils.async_utils import fire_and_forget as _late_fire_and_forget
+            _late_entry = {
+                "task": _late_fire_and_forget(_late_image_job(
+                    _timed_task("image_url", _late_coro, stage_timings),
+                    image_service.image_late_max_seconds(), partial_slot, _late_state,
+                ), "image_late_bind"),
+                "fut": _late_fut, "state": _late_state, "result": result,
+                "is_vision": is_vision, "price_phase1": None, "closed": False,
+            }
+            if not isinstance(getattr(self, "_late_images", None), dict):
+                self._late_images = {}
+            self._late_images[partial_slot] = _late_entry
 
         # Launch degradation fix (2026-07-06) — MIRROR the specs done-callback for
         # price, so the OPPOSITE salvage direction (price lands, specs hang) also
@@ -6233,6 +6407,8 @@ class StructuredComparisonService:
 
             if stage_timings is not None and "unified_search_ms" not in stage_timings:
                 stage_timings["unified_search_ms"] = 0.0  # cache hit or skipped — no Serper call
+            if _late_fut is not None and not _late_fut.done():
+                _late_fut.set_result(unified_search)  # INC-I2a set site (1)
 
             # === Phase 1: specs + price + reviews (parallel) ===
             # D2 Intervention 1: reviews moved from Phase 2 to Phase 1. _get_reviews
@@ -6322,28 +6498,33 @@ class StructuredComparisonService:
             # override with the FREE result when available. Net: piggyback hit
             # path costs zero extra wall (we discard the eager Tier 1/3 result),
             # piggyback miss path saves zero wall too (Tier 1/3 already running).
-            phase1_tasks.append(asyncio.wait_for(
-                _timed_task("image_url", kb_serve.served(_kb["image_url"]) if (_kb and _kb["image_url"]) else get_product_image_url(  # S81-18 H5
-                    full_name, region=region,
-                    page_scrape_image=None,  # piggyback evaluated post-Phase1 below
-                    organic_results=(unified_search.get("organic", []) if unified_search else None),
-                    # #21 — pass the full unified search so Tier 1.5b can read a
-                    # FREE Knowledge-Graph/organic image (fragrance-placeholder
-                    # fix; independent of the price-scrape + the Serper-Images
-                    # budget). Falls back to Serper-Images/GPT when absent.
-                    search_payload=unified_search,
-                    # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the identity
-                    # for the picture-must-match guard; flag OFF or a camera product ->
-                    # {} and the call is the base call.
-                    **_image_relevance.relevance_kwargs(brand, name, category, partial_slot, is_vision),
-                ), stage_timings),
-                timeout=_PHASE1_TIMEOUTS["image_url"],
-            ))
-            phase1_keys.append("image_url")
+            if not _late:  # INC-I2a: ON, the image job runs outside the gather
+                phase1_tasks.append(asyncio.wait_for(
+                    _timed_task("image_url", kb_serve.served(_kb["image_url"]) if (_kb and _kb["image_url"]) else get_product_image_url(  # S81-18 H5
+                        full_name, region=region,
+                        page_scrape_image=None,  # piggyback evaluated post-Phase1 below
+                        organic_results=(unified_search.get("organic", []) if unified_search else None),
+                        # #21 — pass the full unified search so Tier 1.5b can read a
+                        # FREE Knowledge-Graph/organic image (fragrance-placeholder
+                        # fix; independent of the price-scrape + the Serper-Images
+                        # budget). Falls back to Serper-Images/GPT when absent.
+                        search_payload=unified_search,
+                        # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the identity
+                        # for the picture-must-match guard; flag OFF or a camera product ->
+                        # {} and the call is the base call.
+                        **_image_relevance.relevance_kwargs(brand, name, category, partial_slot, is_vision),
+                    ), stage_timings),
+                    timeout=_PHASE1_TIMEOUTS["image_url"],
+                ))
+                phase1_keys.append("image_url")
 
             t1 = time.perf_counter() if stage_timings is not None else None
             phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
         except BaseException:
+            if _late_fut is not None:  # INC-I2a set site (2): the life closes
+                if not _late_fut.done():
+                    _late_fut.set_result(None)
+                _late_state["open"] = False
             # L5.3 — orphan guard: a raise (e.g. unified search) or a cancel
             # (outer cap) in the pre-gather window, or a gather cancellation,
             # must not strand the speculative lever-1 price task. Cancel +
@@ -6386,6 +6567,12 @@ class StructuredComparisonService:
                 result[key] = self._price_fallback_on_miss(key, full_name, category)
             else:
                 result[key] = phase1_results[i]
+        if _late:
+            # INC-I2a: the job's result when already done, else None (the bind decides).
+            _lt = _late_entry["task"]
+            result["image_url"] = (
+                _lt.result() if (_lt.done() and not _lt.cancelled() and _lt.exception() is None) else None
+            )
         # S78-F8 (D3) -- the post-loop record: every race that ran, in phase1_keys
         # order; REPLACES the slot's eager entries (same classification). Additive:
         # the loop above is unchanged; flag OFF (or partial_slot None) writes nothing.
@@ -6438,7 +6625,7 @@ class StructuredComparisonService:
                     "races": {},
                 }
                 for k in ("specs", "price", "reviews", "image_url"):
-                    if k in phase1_keys:
+                    if k in phase1_keys or (k == "image_url" and _late):
                         wall_ms = 0
                         if stage_timings is not None:
                             wall_ms = int(stage_timings.get(f"{k}_ms", 0) or 0)
@@ -6473,6 +6660,10 @@ class StructuredComparisonService:
             # are FREE (already paid by the price scrape) AND usually
             # higher fidelity (real product hero shot vs Serper thumbnail).
             page_img = result["price"].get("image_url")
+            if _late:
+                # INC-I2a (R-2): ON, the override moves to the bind (the POST-swap price).
+                _late_entry["price_phase1"] = result["price"]
+                page_img = None
             # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call, checked FIRST; ruling
             # I1-R14, text products only): under the guard an http (or non-string) page
             # image never replaces the cascade picture. Flag OFF: the branches below.

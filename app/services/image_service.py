@@ -33,8 +33,10 @@ universal results (no GCC vs US split observed in pre-implementation audit).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -49,6 +51,11 @@ from app.services.deny_hosts import data_guards_v2_enabled, is_denied_url
 # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the picture-must-match guard
 # (a leaf), by MODULE ATTRIBUTE so a patch of a leaf function takes effect at call time.
 from app.services import image_relevance as _relevance
+# INC-I2a (ENABLE_IMAGE_LATE_BIND): the late-pick cache (Upstash through the shared
+# redis-offloop pool) and the cache-name folder.
+from app.services import category_gate as _cg
+from app.services.cache_service import get_cached, set_cached
+from app.utils.redis_offloop import run_redis_offloop_pool
 
 logger = logging.getLogger(__name__)
 
@@ -462,5 +469,269 @@ async def get_product_image_url(
     finally:
         # INC-I1: exactly ONE [IMG_RELEVANCE] line per guarded call (a return, an
         # uncaught exception or the 5 s cancellation); no await here.
+        if _rel is not None:
+            _log_img_relevance(_rel)
+
+
+# ---------------------------------------------------------------------------
+# INC-I2a PICTURE-NOT-CUT (ENABLE_IMAGE_LATE_BIND, default OFF, read per call): the
+# late, background cascade. scs starts it with the product (out of the 5 s Phase-1
+# wait), binds it at the tail and caches every guard-accepted late pick in Upstash
+# under PICK_CACHE_PREFIX. Additive: get_product_image_url above is not edited.
+# ---------------------------------------------------------------------------
+LATE_BIND_FLAG_ENV = "ENABLE_IMAGE_LATE_BIND"
+_LATE_TRUTHY = ("true", "1", "yes", "on")
+#: The guard-rules version: sha256 over the source of image_relevance check,
+#: _check_short_line, identity and the RelevanceCall accept / accept_scheme /
+#: _organic_reason / organic_passes / accept_pick methods ("\n"-joined), first 8 hex.
+#: A unit that edits any of them bumps this constant (pinned by the E22 row).
+PICK_GUARD_RULES = "b39b9d79"
+PICK_CACHE_PREFIX = "imgpick:v1:" + PICK_GUARD_RULES + ":"
+_LATE_MAX_SECONDS_CEILING = 30.0
+
+
+def late_bind_enabled() -> bool:
+    """True iff ``ENABLE_IMAGE_LATE_BIND`` is set truthy. Read PER CALL."""
+    return os.getenv(LATE_BIND_FLAG_ENV, "false").strip().lower() in _LATE_TRUTHY
+
+
+def _positive_knob(name: str, default: float) -> float:
+    """A finite positive float from ``name``; unset, blank, garbage, inf, nan and
+    <= 0 give ``default``."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    if not 0 < value < float("inf"):  # nan, inf and <= 0 fall back
+        return default
+    return value
+
+
+def image_late_bind_max_wait_seconds() -> float:
+    """IMAGE_LATE_BIND_MAX_WAIT_SECONDS (default 3.0): the longest bind wait."""
+    return _positive_knob("IMAGE_LATE_BIND_MAX_WAIT_SECONDS", 3.0)
+
+
+def image_late_bind_reserve_seconds() -> float:
+    """IMAGE_LATE_BIND_RESERVE_SECONDS (default 2.0): kept free before the deadline."""
+    return _positive_knob("IMAGE_LATE_BIND_RESERVE_SECONDS", 2.0)
+
+
+def image_late_max_seconds() -> float:
+    """IMAGE_LATE_MAX_SECONDS (default 20.0, clamped to at most 30.0): the job bound."""
+    return min(_positive_knob("IMAGE_LATE_MAX_SECONDS", 20.0), _LATE_MAX_SECONDS_CEILING)
+
+
+def image_pick_cache_ttl_seconds() -> int:
+    """IMAGE_PICK_CACHE_TTL_SECONDS (default 604800 = 7 days): the cache entry TTL."""
+    value = _positive_knob("IMAGE_PICK_CACHE_TTL_SECONDS", 604800.0)
+    return int(value) if value >= 1 else 604800
+
+
+def _name_part(text: Any) -> str:
+    """One name part: category_gate.normalize minus size tokens (a SIZE_TOKEN, a
+    UNIT_WORDS token, a number directly before a UNIT_WORDS token), space-joined."""
+    toks = _cg.normalize(text[:_relevance.TEXT_MAX_CHARS] if isinstance(text, str) else "")
+    out = []
+    for i, tok in enumerate(toks):
+        if _relevance.SIZE_TOKEN.fullmatch(tok) or tok in _relevance.UNIT_WORDS:
+            continue
+        if _relevance._NUMBER.fullmatch(tok) and i + 1 < len(toks) and toks[i + 1] in _relevance.UNIT_WORDS:
+            continue
+        out.append(tok)
+    return " ".join(out)
+
+
+def pick_cache_name(relevance: Any, variant: Any) -> str:
+    """The cache name of a late pick: PICK_CACHE_PREFIX + 32 hex of sha256 over
+    category|brand|line|conc|axis (each folded, sizes stripped; conc = the variant;
+    axis s1 / s0 by ENABLE_IMAGE_GUARD_SHORT_LINE); never the slot, never raw text."""
+    rel = relevance if isinstance(relevance, dict) else {}
+    parts = [_name_part(rel.get("category")), _name_part(rel.get("brand")),
+             _name_part(rel.get("line")), _name_part(variant),
+             "s1" if _relevance.short_line_enabled() else "s0"]
+    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
+    return PICK_CACHE_PREFIX + digest
+
+
+def _log_late_cache(outcome: str, t0: float) -> None:
+    logger.info("IMG_LATE cache outcome=%s ms=%d", outcome, int((time.perf_counter() - t0) * 1000))
+
+
+async def _read_cached_pick(name: str) -> Optional[Dict[str, str]]:
+    """ONE pool job: the cached pick, or None. A hit needs a dict value whose ``u`` is
+    an https string, not on a denied host (flag-free) and base-valid."""
+    t0 = time.perf_counter()
+    try:
+        value = await run_redis_offloop_pool(get_cached, name)
+    except Exception:  # noqa: BLE001 - a read failure is a miss; the cascade runs
+        _log_late_cache("error", t0)
+        return None
+    url = value.get("u") if isinstance(value, dict) else None
+    if (isinstance(url, str) and url.strip().startswith("https://")
+            and not is_denied_url(url.strip()) and _is_valid_image_url(url)):
+        _log_late_cache("hit", t0)
+        return {"u": url.strip(), "t": str(value.get("t") or "")}
+    _log_late_cache("miss", t0)
+    return None
+
+
+async def _store_pick(name: str, url: str, tier: str, state: Optional[Dict[str, Any]]) -> None:
+    """ONE durable pool job: store ``{"u", "t"}`` for the TTL; ``stored`` only on True."""
+    t0 = time.perf_counter()
+    try:
+        ok = await run_redis_offloop_pool(
+            set_cached, name, {"u": url, "t": tier}, image_pick_cache_ttl_seconds(), durable=True,
+        )
+    except Exception:  # noqa: BLE001 - the picture is kept; the write is lost
+        ok = False
+    if ok is True:
+        if isinstance(state, dict):
+            state["stored"] = True
+        _log_late_cache("stored", t0)
+    else:
+        _log_late_cache("store_failed", t0)
+
+
+def _life_open(state: Optional[Dict[str, Any]]) -> bool:
+    """R-18: the request's life (llm_pick runs only inside it)."""
+    if not isinstance(state, dict):
+        return True
+    if not state.get("open", True):
+        return False
+    until = state.get("until")
+    return until is None or time.monotonic() < until
+
+
+async def get_product_image_url_late(
+    product_name: str,
+    *,
+    region: str = "bahrain",
+    payload: "asyncio.Future[Any]",
+    variant: Optional[str] = None,
+    state: Optional[Dict[str, Any]] = None,
+    relevance: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """INC-I2a: the late cascade: cache read -> piggyback skipped -> credit (pool) ->
+    Serper Images -> the unified-search payload (``payload``, shielded) -> Tier 1.5b
+    -> llm_pick on its organic while the request's life is open -> None. Every
+    guard-accepted pick is stored; a miss, error, cut or cache hit never is."""
+    name = (product_name or "").strip()
+    if not name:
+        return None
+    _t_call = time.perf_counter()
+    cache_name = None
+    if relevance is not None and _relevance.guard_enabled():
+        cache_name = pick_cache_name(relevance, variant)
+    _inflight = ["cache", _t_call]
+    _rel = None
+    try:
+        if cache_name is None:
+            _log_late_cache("skipped", _t_call)
+        else:
+            hit = await _read_cached_pick(cache_name)
+            if hit is not None:
+                if isinstance(state, dict):
+                    state["cached"] = True
+                return hit["u"]
+            _rel = _relevance.RelevanceCall(name, relevance)
+        _inflight[0] = "piggyback"
+        _inflight[1] = time.perf_counter()
+        _log_img_tier("piggyback", "skipped", _inflight[1])
+
+        _picked: Optional[str] = None
+        _picked_tier = ""
+        _inflight[0] = "serper_budget"
+        _inflight[1] = time.perf_counter()
+        _granted = await run_redis_offloop_pool(try_consume_serper_image_credit, 1)
+        _log_img_tier("serper_budget", "hit" if _granted else "miss", _inflight[1])
+        _inflight[0] = "serper_images"
+        _inflight[1] = time.perf_counter()
+        if _granted:
+            _outcome = "miss"
+            _t_aw = time.perf_counter()
+            try:
+                if _rel is None:
+                    response = await search_images(name, num_results=1)
+                else:
+                    response = await search_images(_rel.query(), num_results=_rel.num())
+            except Exception as e:  # noqa: BLE001 - the base tier's arm
+                _outcome = "error:" + type(e).__name__
+                logger.warning("[image] Tier 1 Serper Images raised: %r", e)
+                response = None
+            finally:
+                _cur = asyncio.current_task()
+                logger.info("IMG_LATE serper_await ms=%d cancelling=%d",
+                            int((time.perf_counter() - _t_aw) * 1000),
+                            1 if (_cur is not None and _cur.cancelling()) else 0)
+            if isinstance(response, dict):
+                images = response.get("images") or []
+                if _rel is not None:
+                    _picked = _relevant_serper_image(images, _rel)
+                elif isinstance(images, list) and images and isinstance(images[0], dict):
+                    cand = images[0].get("imageUrl")
+                    _picked = cand.strip() if _is_valid_image_url(cand) else None
+            if _picked is not None:
+                _picked_tier = "serper_images"
+                _log_img_tier("serper_images", "hit", _inflight[1])
+            else:
+                _log_img_tier("serper_images", _outcome, _inflight[1])
+        else:
+            _log_img_tier("serper_images", "skipped", _inflight[1])
+
+        search_payload = None
+        if _picked is None:
+            _inflight[0] = "search_payload"
+            _inflight[1] = time.perf_counter()
+            search_payload = await asyncio.shield(payload)
+            search_img = (extract_image_from_search(search_payload) if _rel is None
+                          else _extract_relevant_image_from_search(search_payload, _rel))
+            if search_img:
+                _picked, _picked_tier = search_img, "search_payload"
+                _log_img_tier("search_payload", "hit", _inflight[1])
+            else:
+                _log_img_tier("search_payload", "skipped" if search_payload is None else "miss",
+                              _inflight[1])
+
+        if _picked is None:
+            _inflight[0] = "llm_pick"
+            _inflight[1] = time.perf_counter()
+            organic = search_payload.get("organic", []) if isinstance(search_payload, dict) else None
+            if organic and _life_open(state) and (_rel is None or _rel.organic_passes(organic)):
+                _outcome = "miss"
+                try:
+                    gpt_url = await extract_image_via_gpt(name, organic)
+                except Exception as e:  # noqa: BLE001 - the base tier's arm
+                    _outcome = "error:" + type(e).__name__
+                    logger.warning("[image] Tier 3 orchestrator caught: %r", e)
+                    gpt_url = None
+                if _is_valid_image_url(gpt_url) and (
+                        _rel is None or _rel.accept_pick(gpt_url.strip(), organic)):
+                    _picked, _picked_tier = gpt_url.strip(), "llm_pick"
+                    _log_img_tier("llm_pick", "hit", _inflight[1])
+                else:
+                    _log_img_tier("llm_pick", _outcome, _inflight[1])
+            else:
+                _log_img_tier("llm_pick", "skipped", _inflight[1])
+
+        if _picked is None:
+            return None
+        if cache_name is not None and _rel is not None:
+            _inflight[0] = "cache"
+            _inflight[1] = time.perf_counter()
+            await _store_pick(cache_name, _picked, _picked_tier, state)
+        return _picked
+    except asyncio.CancelledError:
+        # The job's own bound or a cancel: the X2a line for the paid tiers in flight
+        # only; no await here, re-raised unchanged.
+        if _inflight[0] in ("serper_images", "llm_pick"):
+            logger.info("[IMG_TIER] cancelled tier=%s tier_ms=%d total_ms=%d",
+                        _inflight[0], int((time.perf_counter() - _inflight[1]) * 1000),
+                        int((time.perf_counter() - _t_call) * 1000))
+        raise
+    finally:
         if _rel is not None:
             _log_img_relevance(_rel)
