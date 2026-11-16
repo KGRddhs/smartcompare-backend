@@ -183,12 +183,12 @@ describe('S81-11 F1 -- ADD / CHANGE / DELETE (both catalogs)', () => {
     }
   });
 
-  it('parity 0 and 1,011 leaves per catalog', () => {
+  it('parity 0 and 1,014 leaves per catalog (INC-C1a adds 3)', () => {
     const e = Object.keys(EN);
     const a = new Set(Object.keys(AR));
     expect(e.filter((k) => !a.has(k))).toEqual([]);
     expect([...a].filter((k) => !(k in EN))).toEqual([]);
-    expect(e.length).toBe(1013 - DELETED.length + Object.keys(ADD_EXACT).length + Object.keys(ADD_RULING).length);
+    expect(e.length).toBe(1013 - DELETED.length + Object.keys(ADD_EXACT).length + Object.keys(ADD_RULING).length + 3);
   });
 });
 

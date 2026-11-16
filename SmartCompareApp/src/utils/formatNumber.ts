@@ -93,8 +93,21 @@ export function formatNumber(
  * `localizedCurrency` stays the symbol resolver (uncatalogued codes fall
  * back to the raw ISO code).
  */
-export function formatPrice(amount: number, currencyCode: string, t: TranslateFn): string {
-  const digits = CURRENCY_FRACTION_DIGITS[currencyCode] ?? 2;
+export function formatPrice(
+  amount: number,
+  currencyCode: string,
+  t: TranslateFn,
+  fractionDigits?: number,
+): string {
+  // INC-C1a CR-3: an optional width override (the per-ml line); absent or
+  // invalid = the currency's minor unit, today's bytes.
+  const digits =
+    typeof fractionDigits === 'number' &&
+    Number.isInteger(fractionDigits) &&
+    fractionDigits >= 0 &&
+    fractionDigits <= 6
+      ? fractionDigits
+      : (CURRENCY_FRACTION_DIGITS[currencyCode] ?? 2);
   const number = formatNumber(amount, { minFraction: digits, maxFraction: digits });
   return `${number} ${localizedCurrency(currencyCode, t)}`;
 }

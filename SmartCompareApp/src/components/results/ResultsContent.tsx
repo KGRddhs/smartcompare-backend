@@ -50,7 +50,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowLeft, Share2 } from 'lucide-react-native';
 import { DirectionalIcon } from '../primitives/DirectionalIcon';
-import { formatPrice as formatAmountWithCurrency } from '../../utils/formatNumber';
+import {
+  CURRENCY_FRACTION_DIGITS,
+  formatNumber,
+  formatPrice as formatAmountWithCurrency,
+} from '../../utils/formatNumber';
 import { useTranslation } from 'react-i18next';
 
 import { colors, spacing, radii } from '../../theme';
@@ -203,6 +207,47 @@ export const ResultsContent = React.memo(function ResultsContent({
     if (price.source_method === 'converted_usd') return `${base} ${t('results.convertedUSD')}`;
     return base;
   };
+
+  // INC-C1a SIZE-LABEL: the bottle size and the per-ml line of a SHOWN price
+  // (the INC-P2 wire keys; absent or invalid = today's text exactly).
+  const isShownPrice = (price?: Product['price']): boolean =>
+    !!price &&
+    price.unavailable !== true &&
+    typeof price.amount === 'number' &&
+    Number.isFinite(price.amount);
+  const validSizeMl = (price?: Product['price']): number | null => {
+    if (!isShownPrice(price)) return null;
+    const s: unknown = price?.size_ml;
+    return typeof s === 'number' && Number.isInteger(s) && s >= 1 && s <= 9999 ? s : null;
+  };
+  const priceLine = (price?: Product['price']): string => {
+    const today = formatPrice(price);
+    const size = validSizeMl(price);
+    if (size === null) return today;
+    return t('results.price.withSize', {
+      price: today,
+      size: formatNumber(size, { maxFraction: 0, grouping: false }),
+    });
+  };
+  const perMlLine = (price?: Product['price']): string | null => {
+    if (validSizeMl(price) === null || !price) return null;
+    const per: unknown = price.per_ml;
+    if (typeof per !== 'number' || !Number.isFinite(per) || per <= 0) return null;
+    const digits = (CURRENCY_FRACTION_DIGITS[price.currency] ?? 2) + 1;
+    return t('results.price.perMl', {
+      price: formatAmountWithCurrency(per, price.currency, t, digits),
+    });
+  };
+  const pairSizes = (resultMetadata as { pair_price_sizes?: { mode?: unknown } } | undefined)
+    ?.pair_price_sizes;
+  const showDifferentSizes =
+    !!pairSizes &&
+    typeof pairSizes === 'object' &&
+    pairSizes.mode === 'different_sizes' &&
+    products.length === 2 &&
+    products.every(
+      (p, i) => isShownPrice(p.price) && provenanceFor(p.price, i).kind !== 'unknown',
+    );
 
   // Phase 4.3 — when ANY product's price is pending we suppress the price
   // comparison surfaces (the Price dimension bar row + the Price confidence
@@ -380,9 +425,18 @@ export const ResultsContent = React.memo(function ResultsContent({
                           : null,
                       ]}
                     >
-                      {formatPrice(product.price)}
+                      {priceLine(product.price)}
                     </Text>
                   )}
+                  {prov.kind !== 'unknown' && perMlLine(product.price) !== null ? (
+                    <Text
+                      testID={`results-product-perml-${idx}`}
+                      style={styles.convertedCaption}
+                      numberOfLines={1}
+                    >
+                      {perMlLine(product.price)}
+                    </Text>
+                  ) : null}
                   {renderProvenanceLine(prov, idx)}
                   {/* Display-honesty: a converted-from-USD price is a real
                       listing priced in USD then converted to BHD — flag it so
@@ -415,6 +469,13 @@ export const ResultsContent = React.memo(function ResultsContent({
             </View>
           </View>
         </Animated.View>
+        {/* INC-C1a: two shown prices for different bottle sizes; the server
+            owns the bars and the verdict, the client makes no cheaper claim. */}
+        {showDifferentSizes ? (
+          <Text testID="results-price-different-sizes" style={styles.convertedCaption}>
+            {t('results.price.differentSizes')}
+          </Text>
+        ) : null}
 
         {/* ─── # 3 "Why this fits you" verdict block (JSX 336-346) ─── */}
         <Animated.View

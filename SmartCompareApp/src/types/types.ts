@@ -70,6 +70,10 @@ export interface ProductPrice {
   source_method?: SourceMethod;
   /** S81-11 / R-G4-2: the KB-served as-of date (ISO). */
   as_of?: string | null;
+  /** INC-C1a (INC-P2 wire): the listing's bottle size in ml, on a shown price. */
+  size_ml?: number | null;
+  /** INC-C1a: round(amount / size_ml, 4) in the price's own currency. */
+  per_ml?: number | null;
 }
 
 export interface Product {
@@ -307,6 +311,11 @@ export interface ComparisonResult {
   metadata?: {
     /** S81-11 D20 (R-G3-6 / B1): additive, absent until the flags flip. */
     field_status?: Record<string, any>[];
+    /** INC-C1a (INC-P2 wire): the pair's bottle sizes, fragrance pairs of two. */
+    pair_price_sizes?: {
+      mode: 'same_size' | 'different_sizes' | 'unknown';
+      sizes_ml: [number | null, number | null];
+    } | null;
     section_status?: Partial<
       Record<'specs' | 'reviews' | 'pros_cons' | 'price', 'available' | 'partial' | 'unavailable'>
     >;

@@ -348,7 +348,7 @@ afterEach(() => {
 // ---------------------------------------------------------------- rows --
 
 describe('S81-08 B - request context headers (axios interceptor + call-site markers)', () => {
-  it('B1 /usage/status carries Authorization + X-Device-Fingerprint + X-AI-Consent-Version, nothing else', () =>
+  it('B1 /usage/status carries Authorization + X-Device-Fingerprint + X-AI-Consent-Version + X-Client-Capabilities, nothing else', () =>
     iso(async () => {
     const w = world();
     const h = await usageHeaders(w);
@@ -356,6 +356,7 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': consentVersion(w),
+      'x-client-capabilities': 'price_size',
     });
     }));
 
@@ -422,7 +423,7 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     expect(lowerHeaders(outB.headers).authorization).toBe('Bearer t');
     }));
 
-  it('B7 (PIN, full config) every builder failing never blocks the request: headers == {Authorization}', () =>
+  it('B7 (PIN, full config) every builder failing never blocks the request: headers == {Authorization, X-Client-Capabilities}', () =>
     iso(async () => {
     mockDF.getDeviceFingerprint.mockRejectedValue(new Error('device'));
     mockDF.legacyDeviceFingerprintHash.mockRejectedValue(new Error('legacy'));
@@ -433,7 +434,7 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     };
     const w = world();
     const h = await usageHeaders(w);
-    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE });
+    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-client-capabilities': 'price_size' });
     }));
 
   it('B8 at the cutoff: register drops the legacy header (no legacy read) and usage still carries the device id', () =>
@@ -449,13 +450,13 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     expect(h['x-device-fingerprint-legacy']).toBeUndefined();
     }));
 
-  it('B9 capabilities ship empty: CLIENT_CAPABILITIES == [] and no X-Client-Capabilities header', () =>
+  it('B9 capabilities declare price_size (INC-C1a): CLIENT_CAPABILITIES == [price_size] and X-Client-Capabilities: price_size', () =>
     iso(async () => {
     const w = world();
     expect(w.rc).not.toBeNull();
-    expect(w.rc?.CLIENT_CAPABILITIES).toEqual([]);
+    expect(w.rc?.CLIENT_CAPABILITIES).toEqual(['price_size']);
     const h = await usageHeaders(w);
-    expect(h['x-client-capabilities']).toBeUndefined();
+    expect(h['x-client-capabilities']).toBe('price_size');
     }));
 
   it('B10 (PIN, full config) no header value, hash or id is ever logged or sent to Sentry', () =>
@@ -512,6 +513,7 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': consentVersion(w),
+      'x-client-capabilities': 'price_size',
     });
     const reg = await registerSent(w);
     expect(reg.headers['x-device-fingerprint']).toBe(NEW);
@@ -527,6 +529,7 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     expect(h).toEqual({
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-ai-consent-version': consentVersion(w),
+      'x-client-capabilities': 'price_size',
     });
     }));
 
@@ -535,11 +538,11 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     const w = world();
     mockAuth.getSavedUser.mockRejectedValue(new Error('user'));
     const thrown = await usageHeaders(w);
-    expect(thrown).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW });
+    expect(thrown).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW, 'x-client-capabilities': 'price_size' });
     mockAuth.getSavedUser.mockResolvedValue({ id: USER_A });
     mockAsync.failKeys = [CONSENT_KEY];
     const h = await usageHeaders(w);
-    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW });
+    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW, 'x-client-capabilities': 'price_size' });
     }));
 
   it('B14c (PIN, full config) the legacy hash failing ALONE: register is still sent with the device header', () =>
@@ -563,6 +566,7 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': consentVersion(w),
+      'x-client-capabilities': 'price_size',
     });
     expect(sent.arg && Object.prototype.hasOwnProperty.call(sent.arg, 'headers')).toBe(false);
     }));
