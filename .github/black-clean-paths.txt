@@ -72,3 +72,4 @@ tests/test_inc_i1_noon_and_wiring.py
 app/services/product_resolver.py
 tests/test_inc_r1_resolver.py
 tests/test_inc_r1_seam.py
+tests/test_inc_i2e_guard_short_line.py
