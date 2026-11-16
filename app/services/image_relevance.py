@@ -24,6 +24,16 @@ fragrance word only. ``first_https_raster`` is the noon adapter's seam: the firs
 of a Product JSON-LD ``image`` that passes ``jsonld_widen.allowed_image_url`` with itself
 as the page (https, a public host, a raster path, never a banned host).
 
+INC-I2e GUARD-SHORT-LINE: ``ENABLE_IMAGE_GUARD_SHORT_LINE`` (default OFF, read PER CALL
+inside ``check``, so only under the guard) matches a short line: both sides fold the
+numero forms (``N 5``, ``No.5``, ``N5`` -> ``no5``); with the brand known a line with no
+significant token matches by its one-character tokens (an elision letter only when it is
+the whole line) or by an adjacent-pair join (``J'adore`` -> ``jadore``, never with a
+brand form); a candidate text adds its own adjacent-pair joins (never across two texts);
+a line with nothing to match falls to the fragrance word (fragrances, other) or ``name``.
+With an empty brand every significant line token must be covered (a token or a join).
+OFF: ``check`` is the base code, byte for byte.
+
 A leaf: module level imports the stdlib, ``category_gate`` (the tokenizer),
 ``jsonld_widen`` (the image policy) and ``deny_hosts`` (the banned-site match functions)
 only; ``price_service`` (the alias groups, the JSON-LD image reader) is imported inside
@@ -174,6 +184,15 @@ OUTCOMES = ("accepted", "rejected", "none")
 REASONS = ("none", "scheme", "brand", "name", "fragrance_word", "denied")
 LLM_PICK_TIER = "llm_pick"
 
+#: INC-I2e GUARD-SHORT-LINE (default OFF, read per call inside ``check``).
+SHORT_LINE_FLAG_ENV = "ENABLE_IMAGE_GUARD_SHORT_LINE"
+#: The elision letters (l', d', j', s', c', n', m'): never a short line token unless the
+#: one letter is the whole line once brand forms and the excluded words are removed.
+ELISION = frozenset({"l", "d", "j", "s", "c", "n", "m"})
+_NUMERO_PREFIX = frozenset({"n", "no", "nr"})
+_NUMERO = re.compile(r"n(?:o|r)?([0-9]+)")
+_WHOLE_LINE_DROP = STOP_WORDS | CONCENTRATION_WORDS | FRAGRANCE_WORDS | UNIT_WORDS
+
 
 # ---------------------------------------------------------------------------
 # the flag and the knob (read per call)
@@ -181,6 +200,11 @@ LLM_PICK_TIER = "llm_pick"
 def guard_enabled() -> bool:
     """True iff ``ENABLE_IMAGE_RELEVANCE_GUARD`` is set truthy. Read PER CALL."""
     return os.getenv(FLAG_ENV, "false").strip().lower() in _TRUTHY
+
+
+def short_line_enabled() -> bool:
+    """True iff ``ENABLE_IMAGE_GUARD_SHORT_LINE`` is set truthy. Read PER CALL."""
+    return os.getenv(SHORT_LINE_FLAG_ENV, "false").strip().lower() in _TRUTHY
 
 
 def candidates_knob() -> int:
@@ -329,6 +353,92 @@ class Identity:
     name_tokens: FrozenSet[str]
     fragrance: bool
     needs_fragrance_word: bool
+    # INC-I2e: the line keys, filled always, READ only with the short-line flag ON.
+    line_sig: FrozenSet[str] = frozenset()
+    line_short: FrozenSet[str] = frozenset()
+    line_pairs: FrozenSet[Tuple[str, str]] = frozenset()
+    line_joins: FrozenSet[str] = frozenset()
+
+
+def fold_numero(tokens: Any) -> List[str]:
+    """INC-I2e NUMERO FOLD: n / no / nr directly before an all-digit token become ONE
+    token "no" + digits; a token n5 / no5 / nr5 becomes "no" + digits. Total."""
+    toks = (
+        [t for t in tokens if isinstance(t, str)]
+        if isinstance(tokens, (list, tuple))
+        else []
+    )
+    out: List[str] = []
+    i = 0
+    while i < len(toks):
+        tok = toks[i]
+        if (
+            tok in _NUMERO_PREFIX
+            and i + 1 < len(toks)
+            and _NUMBER.fullmatch(toks[i + 1])
+        ):
+            out.append("no" + toks[i + 1])
+            i += 2
+            continue
+        m = _NUMERO.fullmatch(tok)
+        out.append("no" + m.group(1) if m else tok)
+        i += 1
+    return out
+
+
+def _before_unit(toks: List[str]) -> Set[int]:
+    return {
+        i
+        for i, tok in enumerate(toks)
+        if _NUMBER.fullmatch(tok) and i + 1 < len(toks) and toks[i + 1] in UNIT_WORDS
+    }
+
+
+def _line_keys(
+    line: str, brand_forms: FrozenSet[str]
+) -> Tuple[FrozenSet[str], FrozenSet[str], FrozenSet[Tuple[str, str]]]:
+    """INC-I2e: (sig2, short2, the joinable pairs) of the folded line."""
+    toks = fold_numero(_cg.normalize(line[:TEXT_MAX_CHARS]))
+    unit = _before_unit(toks)
+    sig: Set[str] = set()
+    for i, tok in enumerate(toks):
+        if len(tok) < 2 or tok in NAME_EXCLUDE or tok in brand_forms:
+            continue
+        if SIZE_TOKEN.fullmatch(tok) or i in unit:
+            continue
+        sig.add(tok)
+    rest = [t for t in toks if t not in brand_forms and t not in _WHOLE_LINE_DROP]
+    short: Set[str] = set()
+    for i, tok in enumerate(toks):
+        if len(tok) != 1 or not tok.isalnum() or i in unit:
+            continue
+        if tok in ELISION and rest != [tok]:
+            continue
+        short.add(tok)
+    pairs: Set[Tuple[str, str]] = set()
+    for i in range(len(toks) - 1):
+        a, b = toks[i], toks[i + 1]
+        if a in brand_forms or b in brand_forms:
+            continue
+        if SIZE_TOKEN.fullmatch(a) or SIZE_TOKEN.fullmatch(b):
+            continue
+        if i in unit or (i + 1) in unit:
+            continue
+        if a in NAME_EXCLUDE and b in NAME_EXCLUDE:
+            continue
+        pairs.add((a, b))
+    return frozenset(sig), frozenset(short), frozenset(pairs)
+
+
+def _candidate_keys(texts: Any) -> Set[str]:
+    """INC-I2e t2: per text, its folded tokens plus its adjacent-pair joins."""
+    out: Set[str] = set()
+    for text in _seq(texts):
+        if isinstance(text, str):
+            toks = fold_numero(_cg.normalize(text[:TEXT_MAX_CHARS]))
+            out.update(toks)
+            out.update(a + b for a, b in zip(toks, toks[1:], strict=False))
+    return out
 
 
 def _line_tokens(line: str, brand_forms: FrozenSet[str]) -> FrozenSet[str]:
@@ -368,6 +478,7 @@ def identity(product_name: Any, relevance: Any) -> Identity:
             if tokens <= group:
                 forms |= group
     brand_forms = frozenset(forms)
+    sig2, short2, pairs2 = _line_keys(line, brand_forms)
     return Identity(
         brand_empty=not tokens,
         brand_forms=brand_forms,
@@ -375,6 +486,10 @@ def identity(product_name: Any, relevance: Any) -> Identity:
         name_tokens=_line_tokens(line, brand_forms),
         fragrance=category == FRAGRANCE_CATEGORY,
         needs_fragrance_word=category in FRAGRANCE_WORD_CATEGORIES,
+        line_sig=sig2,
+        line_short=short2,
+        line_pairs=pairs2,
+        line_joins=frozenset(a + b for a, b in pairs2),
     )
 
 
@@ -384,6 +499,8 @@ def check(
     """None when the candidate's text names the product, else the FIRST failing
     reason: brand, name or fragrance_word. Host labels serve the brand test only; a
     knowledge-graph type (``fragrance_texts``) serves the fragrance-word test only."""
+    if short_line_enabled():
+        return _check_short_line(ident, texts, hosts, fragrance_texts)
     t = _text_tokens(texts)
     if not ident.brand_empty:
         h = _host_tokens(hosts)
@@ -399,6 +516,48 @@ def check(
         return "name"
     if ident.needs_fragrance_word and not (
         FRAGRANCE_WORDS & (t | _text_tokens(fragrance_texts))
+    ):
+        return "fragrance_word"
+    return None
+
+
+def _check_short_line(
+    ident: Identity, texts: Any, hosts: Any, fragrance_texts: Any
+) -> Optional[str]:
+    """INC-I2e: ``check`` with the short-line flag ON (spec section 2 rules 1 and 2)."""
+    t2 = _candidate_keys(texts)
+    sig, short, joins = ident.line_sig, ident.line_short, ident.line_joins
+    if not ident.brand_empty:
+        t = _text_tokens(texts)
+        h = _host_tokens(hosts)
+        if not (ident.brand_forms & (t | h)) and not (
+            ident.brand_joined and ident.brand_joined in h
+        ):
+            return "brand"
+        if sig:
+            return None if (sig | joins) & t2 else "name"
+        if short:
+            return None if (short <= t2 or joins & t2) else "name"
+        if joins:
+            return None if joins & t2 else "name"
+        if not ident.needs_fragrance_word:
+            return "name"
+        if FRAGRANCE_WORDS & (t2 | _text_tokens(fragrance_texts)):
+            return None
+        return "fragrance_word"
+    if sig:
+        for tok in sig:
+            if tok in t2:
+                continue
+            if any(
+                tok in pair and pair[0] + pair[1] in t2 for pair in ident.line_pairs
+            ):
+                continue
+            return "name"
+    elif not short or not short <= t2:
+        return "name"
+    if ident.needs_fragrance_word and not (
+        FRAGRANCE_WORDS & (t2 | _text_tokens(fragrance_texts))
     ):
         return "fragrance_word"
     return None
