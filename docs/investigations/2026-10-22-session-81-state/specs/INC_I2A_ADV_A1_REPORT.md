@@ -1,0 +1,58 @@
+# INC-I2a PICTURE-NOT-CUT: ADVERSARY A1 (correctness and concurrency) report
+
+Head 16662850a17f9c3565ccf16fd7ad64983d8ae689 (unit 9b1dc9f0 + merge of main 2e7a1229, PR #412 client files only). Base fd983471. Worktree W = C:/Users/SynAckITPC/Documents/AI/sc-s96-i2a, read only (git status empty before and after; no scratch worktree made). Lens A-1.
+
+## Verdict: SOUND (four MINOR findings, each a stated limit)
+
+## What I read
+- Unit diff fd983471..16662850 for app/, CLAUDE.md, .github, the RED file. image_service.py: purely additive (0 removed lines). SCS: 19 removed lines = the 18-line image block re-indented under `if not _late:` plus the source_trace condition; `diff -w` base vs head shows no other removed or changed line.
+- SCS at head: `_fetch_product_data` (6155-7096), both run entries (sync 4395-5056, stream 5057-6000), the three drain sites (4329, 5150, 5411), the bind sites (4898 before `elapsed =` 4899; 5807 before 5808), `_late_image_bind` / `_late_image_drain_now` / `_late_image_choose`, the module helpers `_late_image_job`, `_late_page_image_choice`, `_late_bind_wait_seconds`.
+- price_service.py swap / pend sites (2374, 2409, 3173, 3232, 3286, 3426): every one REPLACES `p["price"]` (`p["price"] = new_price` / `make_pending_price(...)`); no in-place mutation of a price dict, no write of `image_url` on a price dict anywhere in app/ except noon_service at source. So `price_phase1` is never aliased to the post-swap price and the post-swap override reads the current dict.
+- product_resolver.apply_resolution (1303-1326) and `_resolve_explicit_pair` (scs 4200): R ON rewrites brand / name / variant ("<conc> <N>ml") / search_query / category on the Step-1 dicts before any fetch; `_fetch_product_data` reads `variant = product_info.get("variant")` at 6170, long before the late start (6285); no NameError path; R OFF explicit pair = brand "", typed line, variant None (the L-6 split, never a wrong share).
+- async_utils.fire_and_forget (task in `_BACKGROUND_TASKS`, discarded on done), redis_offloop.run_redis_offloop_pool (copied contextvars, durable shield), api_budget_service.try_consume_serper_image_credit (thread-safe, fail-open), cache_service get_cached / set_cached (sync, bool return), jsonld_widen.allowed_image_url (never raises), response_builder 2227-2236 (the legacy `products` alias ships the RAW product_data dicts), result_gate._image_present and kb_ingest (both read the BUILT result, after the bind). runtime.txt = python-3.12.9 (Task.cancelling exists; wait_for runs the coroutine inline).
+
+## Checks (A-1 lens), all by reading unless a run is named
+1. Tasks: one job per product (slot 0/1) via fire_and_forget, bounded by `asyncio.wait_for(coro, IMAGE_LATE_MAX_SECONDS<=30)`; registered before the `try:` with no await between start and `try:`; a raise or cancel anywhere after the start reaches the orphan arm (set site 2). No stranded task: the job is the only new task; the bind's wait never cancels it; the probe "bind cancelled mid-wait" shows both jobs alive and not cancelled, entries still open, a later drain closes them (attached / missed_at_deadline).
+2. Cancels at each new await (cache, serper_budget, serper_images, search_payload, llm_pick): `except asyncio.CancelledError` has no await, logs the X2a cancel line only for serper_images / llm_pick, re-raises; `_late_image_job` logs `cancelled` and re-raises; its own bound becomes `timeout`. RED E11 (5 points) green in my run.
+3. Shield and set sites: the cascade awaits `asyncio.shield(payload)`; both set sites are `if not fut.done(): fut.set_result(...)`; set site 1 sits after the unified search block inside the `try:` with no return before it; site 2 is the first statement of the orphan arm. E20 green.
+4. The bind: empty registry returns before any await (E26 StopIteration); override first on the CURRENT price, only override-miss AND pending entries are waited; one `asyncio.wait(..., timeout=w)`; `w = max(0, min(deadline - now - reserve, max_wait))`, None -> 0; `_compare_deadline` is `time.monotonic() + cap` at both entries and the bind reads `time.monotonic()` (one clock). Placed after the verdict and just before `elapsed =` at both sites. A second bind or a later drain skips closed entries (probe: idempotent, one bind line).
+5. Drain at the three sites: synchronous, runs the same chooser; the sync arm runs after wait_for has finished cancelling the impl (orphan arms done); the stream product-data arm after the gather's cancellation; `_emit_stream_deadline_partial` after the profile cancel. The partial builders read `_partial_product_data` / the early buffer, which hold the same `result` dicts the entries hold.
+6. Sync / stream parity: identical placement relative to the verdict; the only post-bind await in each is the L3 moderation, which keeps at least the 2 s reserve. E23 (4 parametrisations) green.
+7. Aliasing: `result` == early buffer slot == `_partial_product_data[i]` == product_data[i] == the legacy `products[i]` of the built response (by reference). The chooser writes `result["image_url"]` only at bind / drain, both before any build; the job writes only its own `state` dict (and the DEBUG-only stage_timings value of an existing key); nothing mutates a shipped response after the build. `price_phase1` is read only.
+8. OFF byte identity: the diff above (additive + the guarded re-indent + `or (k == "image_url" and _late)`, False when OFF); the bind is a coroutine that returns without suspending on `{}`; the drain is a no-op on `{}`; P1 (sync + stream, L unset and "false", R OFF and ON, synthetic knobs, getenv recorder), P2, P3, P5 green at head in my run. Not re-run at base by me (the golden is the base record pinned by the gate).
+9. R ON explicit_pair: by reading (item list above). The OFF golden cannot reach it (L-12); ON names differ from R OFF (L-6).
+
+## Runs
+- [pyt] tag=s96a-adva1-red start=2026-11-17 00:19:57 end=2026-11-17 00:20:31 elapsed=34s bound=600s status=OK rc=0 (RED file 67 passed; netguard blocked 0)
+- [pyt] tag=s96a-adva1-probe1 start=2026-11-17 00:23:59 end=2026-11-17 00:24:03 elapsed=4s bound=600s status=OK rc=0 (probe_a1_concurrency.py, 10 passed, netguard blocked 0; the probes record observations)
+- [pyt] tag=s96a-adva1-onsweep start=2026-11-17 00:25:45 end=2026-11-17 00:27:17 elapsed=92s bound=1200s status=FAIL rc=1 (14 neighbour files with ENABLE_IMAGE_LATE_BIND=true exported for that one call: 887 passed, 41 failed; see F-4)
+- [pyt] tag=s96a-adva1-e27rate start=2026-11-17 00:30:47 end=2026-11-17 00:30:59 elapsed=12s bound=600s status=FAIL rc=1 (the frozen E27 row called 20 times: 16 passed, 4 failed; see F-2)
+
+## Findings
+
+### F-1 MINOR: the request's life is not closed on the early-return and error arms (R-18 / CLAUDE.md wording)
+- Where: scs `_compare_from_text_impl` H6 INSUFFICIENT_DATA return (4696-4710), the generic error arm and the LLM_UNAVAILABLE arm (5030-5050), the stream twins, and a stream client disconnect after Phase 1. The life closes only at the bind, the drain, the orphan arm and deadline minus reserve.
+- Evidence: probe test_probe_life_stays_open_after_an_early_return (s96a-adva1-probe1): mode h6 -> INSUFFICIENT_DATA, both entries `open: True, closed: False` at return, no bind line, 2 `extract_image_via_gpt` calls 0.297 s and 0.312 s AFTER the compare returned, jobs `accepted stored=1`; mode verdict_raises -> INTERNAL_ERROR, the same (2 calls at +0.313 s).
+- Weight: no spend above OFF (OFF runs the same Tier 3 inside Phase 1 under the same conditions, so the call count matches), and the pick is cached for the next compare. But R-18 says Tier 3 runs only inside the request's own life and the CLAUDE.md block says llm_pick runs "ONLY while the request's life is open"; on these arms it starts after the response has left (cost after the ledger summary, like L-11).
+- Fix: in a later unit, close every open entry's life in a `finally` of both run entries (a sync loop setting `state["open"] = False`, no await); or state it now as L-13: "on an early return or error arm the life stays open until deadline minus reserve: an llm_pick may start after the response (cost parity with OFF)".
+
+### F-2 MINOR: the frozen E27 row flakes 20 % on this box
+- Where: tests/test_inc_i2a_picture_not_cut.py::test_e27_elapsed_includes_the_wait (compares `metadata.elapsed_seconds`, rounded to 2 dp by response_builder 2099, with wait_ms from time.monotonic).
+- Evidence: s96a-adva1-e27rate: 4 of 20 failed: (0.42, 0.422), (0.42, 0.421), (0.42, 0.421), (0.41, 0.421). The code order is right (bind at 4898 before `elapsed =` at 4899), so it is timing only: two 15.6 ms Windows clocks plus the 2-dp rounding, and in this setup elapsed minus the wait is only the compare's pre-verdict time.
+- Weight: CI is ubuntu-latest (ns clocks): not measured there. The file names image_service and `_fetch_product_data`, so it joins later comm sets by the union rule, and other lanes' gates on this box can see a spurious "new failure".
+- Fix: state it (re-run once alone, house procedure); a later unit may widen the row (`>= wait - 0.02`), since the file is frozen here.
+
+### F-3 MINOR (the A-2 lens, noted): the cache-name fold drops identity tokens for electronics
+- Where: image_service `_name_part` (the strip of `_relevance.UNIT_WORDS` = ml, oz, fl, g, gm, and of SIZE_TOKEN `[0-9]+(ml|oz|fl|g|gm)`).
+- Evidence: test_probe_name_collisions (S ON): "Moto G 5G" == "Moto G 4G" == "Moto G" == "Moto" (all fold to `moto`); "Logitech G Pro" == "Logitech Pro"; "Galaxy A54 5G" == "Galaxy A54"; "iPhone 15 128GB" != "256GB" (gb is not a unit word); "Sauvage EDP 100 ml" == "Sauvage EDP 50ml" (intended).
+- Weight: the guard's own line tokens fold the same way (image_relevance `_line_tokens` 444-458, NAME_EXCLUDE has UNIT_WORDS), so a cache hit serves only a picture the guard would accept for either name. Not a new wrong-product class, but these names share one entry for 7 days.
+- Fix: state it with L-5 (or have A-2 rule on it). INC-I2b, which edits the guard words and bumps PICK_GUARD_RULES, is the natural place.
+
+### F-4 MINOR (coverage note): with the flag ON, existing seam-level tests do not see the image path
+- Evidence: s96a-adva1-onsweep, 14 neighbour files with ENABLE_IMAGE_LATE_BIND=true exported for that one run: 41 failed (test_inc_r1_seam 32, test_s81_s18_kb_first_serve 5, test_inc_i1_noon_and_wiring 4), all for the same reason. These files fake `scs.get_product_image_url` or pin OFF goldens / LLM-call lists, and ON goes through `image_service.get_product_image_url_late`, so the real cascade ran. Netguard blocked 236 egress attempts (api.openai.com) from 16 nodes. The other 11 files passed under ON (x2a timing, phase1 per-race timeouts, lever1 orphan cancel, partial stash, compare timeout graceful, m13-04 full stream deadline, d03, d08, i1 picture-must-match, i2e short line, r1 resolver).
+- Weight: this is not a production defect. A developer `.env` carrying the flag (conftest loads .env with override) would turn these 41 into failures and egress attempts. The ON behaviour of those paths is covered only by the RED file.
+- Fix: none for this unit (state it). A future unit that edits those seams should add an ON parametrisation.
+
+## Not done
+- No run at base (P rows and the golden were taken as the gate's base record); no Linux measurement of E27; the stream client-disconnect case of F-1 is shown by reading, not by a probe.
+- Probes: C:/Users/SynAckITPC/AppData/Local/Temp/claude/cde30765822f13ce/3604e246-b00b-4f41-8d06-0ea8ac377e8e/scratchpad/s96/i2a/adv_a1/probe_a1_concurrency.py and probe_a1_e27rate.py (hermetic: the RED file's fakes, run with `-p tests.conftest` so the repo's credential neutralisation and netguard load).
