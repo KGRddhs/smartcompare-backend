@@ -73,3 +73,8 @@ Backing: the PRICE_OUTCOME lines (both slots, reconcile, size_ml, miss); PRICE_C
 - P2R-33 (Q5) ACCEPTED: M01's one non-assertion node (A40, the injected fault escaping) is the P2R-28 class and counts as KILLED.
 - P2R-34 The prototype's wire guard (amendment section 4 change 3: a typed side whose listing has ANOTHER strict size is never shown and never offsize-held, in either cell, whatever ENABLE_EXACT_PRICE_GATE says) is a CONTRACT of GREEN, pinned by A08's gate_off cells (mutant N07b).
 - P2R-35 THE FROZEN PAIR: tests/test_inc_p2_price_not_lost.py sha256 43d309db521ca62b7df79450e937a0eb44f54c839e8843a4514960dd0bae0dee (98,120 B) and tests/test_inc_p2_seam.py sha256 07d72b74a83b7a8d104354ac92dd6fe60b756cbae80219155bf28654e2b69b86 (48,765 B); base b0ad2603: 408 RED (every one an AssertionError) / 87 PIN green; prototype ON 495/495, OFF 495/495; 26 mutants: 24 killed, N03 and N07 equivalent with stated reasons.
+
+## J. RULING ORCH-P2-C (the relay, 2026-11-16 23:57 AST; binding)
+- P2R-36 Supersedes P2R-32's offer: NO marketplace-hide unit now. Evidence first: after the ENABLE_PRICE_NOT_LOST window opens, the relay counts PRICE_OUTCOME lines carrying marketplace=1; any on a real comparison queues INC-P2m (a wire-level hide) right after INC-P3; none in the first days keeps it a stated limit. The flip note gives the plain filter words (no bracket): PRICE_OUTCOME and marketplace=1.
+- P2R-37 The flip note states P2R-31 in one plain sentence: a phone without the app update can show two prices for different bottle sizes with no size drawn, and no price comparison is made. It lists the phone pairs with what the owner should see.
+- The relay confirmed P2R-29, P2R-30, P2R-31, P2R-33 and P2R-34 as filed.

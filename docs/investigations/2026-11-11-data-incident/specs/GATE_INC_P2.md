@@ -3,7 +3,7 @@
 VERDICT: RED GATE PASSED. GREEN may start. Binding on GREEN and both adversaries; it amends the spec where they differ, after RULINGS_INC_P2.md sections A-I.
 
 ## 1. The frozen pair (P2R-35)
-- tests/test_inc_p2_price_not_lost.py sha256 43d309db521ca62b7df79450e937a0eb44f54c839e8843a4514960dd0bae0dee (98,120 B)
+- tests/test_inc_p2_price_not_lost.py sha256 43d309db521ca62b7df79450e937a0eb44f54c839e8843a4514960dd0bae0dee (93,227 B; the 98,120 figure first given here was wrong, the sha256 always matched)
 - tests/test_inc_p2_seam.py sha256 07d72b74a83b7a8d104354ac92dd6fe60b756cbae80219155bf28654e2b69b86 (48,765 B)
 - Both are untracked in sc-inc-p2/tests, byte-identical to <SP>/INC-P2/red/am/. Re-hash them first and last; a wrong row is reported, never edited.
 - At base b0ad2603: 408 RED (every one an AssertionError) / 87 PIN green. Prototype ON 495/495, OFF 495/495. The flag-OFF body digests (A34, 12 cells; B17, 24 cells) are unchanged.
@@ -38,3 +38,39 @@ VERDICT: RED GATE PASSED. GREEN may start. Binding on GREEN and both adversaries
 ## 5. Adversary duties beyond the template
 - correctness: re-apply on the GREEN bytes N01, N02, N04, N06, N07b, N08, N09 and at least ten of B's mutants, including M03, M14, M36, M44, M59 and M65. Probe the A30 and mixed-pair wire states against RED_AMEND_REPORT.md section 4 "Measured wire states". Prove flag-OFF identity on the A34 / B17 digests.
 - engineering and client truth: everything in the template's engineering duties, plus: for each wire state (shown with size, held with offsize_listing, pending), read what the store bundle 683f56c0 and the OTA bundle 82172383 actually draw, using `git -C <worktree> show <sha>:SmartCompareApp/...` (no new keys rendered; limited_data dims dropped). Check that no key outside section 2 item 6 reaches the wire, and that the private _p2 keys are stripped everywhere (REST, the stream complete and prices events, the tail partial, History rows, the cache).
+
+## 6. ADDENDUM 2026-11-16 23:55 local: main moved to 2e7a1229 (#412 INC-C1a SIZE-LABEL, the client half of this contract)
+- origin/main = 2e7a1229b78d1630efcb6593cfd0db76bd72c71d (parents fd983471 and 866668c4): 13 SmartCompareApp files plus tests/test_s81_12_legal_v3.py. No backend app/ file. GREEN stays on fd983471. The orchestrator rebases onto 2e7a1229 after the adversaries and re-runs the fourteen client fences and the comm set's readers of the moved files on the rebased bytes.
+- Checked by the orchestrator at 2e7a1229, and matching the frozen RED byte for byte:
+  - requestContext.ts:38 CLIENT_CAPABILITIES = ['price_size'], sent as X-Client-Capabilities joined with ',';
+  - types.ts:74-76 price.size_ml / price.per_ml;
+  - types.ts:315 metadata.pair_price_sizes {mode: 'same_size' | 'different_sizes' | 'unknown', sizes_ml: [n | null, n | null]};
+  - ResultsContent.tsx:215-250 draws "<price> . <size> ml" only for an integer size_ml in 1..9999 on a shown price, a per-ml line only when per_ml > 0 and finite, and the different-sizes note only when mode == 'different_sizes' with both prices shown.
+- The fourth app update (published by the relay) DECLARES the token, so with the flag ON that app is in the cap1 cell. Older bundles (store 683f56c0, OTA 82172383) are in cap0.
+- Adversary "engineering and client truth": read what 2e7a1229's ResultsContent draws for each wire state, in addition to the two older bundles. Report as a MAJOR any key, mode string or type that the server emits differently from these lines.
+
+## 7. ADDENDUM 2026-11-16 23:59 local (ORCH-P2-C, RULINGS section J): the PR body's FLIP NOTE adds the marketplace count filter (the plain words PRICE_OUTCOME and marketplace=1), the P2R-31 sentence ("a phone without the app update can show two prices for different bottle sizes with no size drawn, and no price comparison is made"), and a table of phone pairs with what the owner should see, for a phone on the fourth app update (it sends price_size) and for one without it. No marketplace-hide code in this unit.
+
+## 8. ADDENDUM (relay note, 2026-11-16 23:51 AST): the fourth app update is LIVE
+- Update group c5a02157-ca43-4b1d-9255-4574d97ed573, runtime 1.0.0, built from main 2e7a1229, live for iOS and Android since 23:46 AST.
+- The flip note's phone table names the cell plainly:
+  - A phone cold-started twice after 23:46 sends X-Client-Capabilities: price_size (cap1) and draws size_ml, per_ml and the different-sizes note.
+  - A phone that has not is the tokenless cell (cap0).
+- The proof says which cell each screenshot came from.
+
+## 9. ADDENDUM (relay note, 2026-11-17 00:57 AST): main = 5cd93c6aaa4e80e4b0ab36a43e6fa1f657d797c9 (#413 INC-I2a PICTURE-NOT-CUT, dark ENABLE_IMAGE_LATE_BIND)
+- This target replaces 2e7a1229 for the orchestrator's rebase before the PR.
+- Files moved: app/services/image_service.py, app/services/structured_comparison_service.py (+229 / -20), CLAUDE.md, .github/black-clean-paths.txt, and a new test plus its fixture.
+- The collision file is SCS. These are #413's regions:
+  - three module functions after _timed_task;
+  - one __init__ state line beside _compare_deadline;
+  - one line in each per-run reset beside _partial_product_data;
+  - a drain call at the three hard-cap arms;
+  - a bind call just before "Step 5: Build complete response" in both paths;
+  - three methods before _fetch_product_data;
+  - inside _fetch_product_data: the picture task, the except BaseException arm, the result loop, the timing loop and the page-image block.
+- After the rebase, re-run:
+  - the frozen pair;
+  - the comm set, including tests/test_inc_i2a_picture_not_cut.py, the CLAUDE.md readers and the black-clean readers;
+  - the fourteen client fences.
+- Every hand-resolved hunk is listed in the gate line to the relay.
