@@ -129,7 +129,7 @@ describe('S81-11e AR-COPY PIN rows (green at base)', () => {
     expect({ k, ph: phSet(EXPECTED[k]) }).toEqual({ k, ph: phSet(EN[k]) });
   });
 
-  it('P3 the twelve keys exist in both catalogs and the key sets are equal (1,011 each)', () => {
+  it('P3 the twelve keys exist in both catalogs and the key sets are equal (1,014 each; INC-C1a adds 3)', () => {
     const arKeys = Object.keys(AR).sort();
     const enKeys = Object.keys(EN).sort();
     expect(TWELVE.length).toBe(12);
@@ -137,7 +137,7 @@ describe('S81-11e AR-COPY PIN rows (green at base)', () => {
     expect(TWELVE.filter((k) => !(k in EN)).map((k) => `en:${k}`)).toEqual([]);
     expect(arKeys.filter((k) => !(k in EN))).toEqual([]);
     expect(enKeys.filter((k) => !(k in AR))).toEqual([]);
-    expect({ ar: arKeys.length, en: enKeys.length }).toEqual({ ar: 1011, en: 1011 });
+    expect({ ar: arKeys.length, en: enKeys.length }).toEqual({ ar: 1014, en: 1014 });
   });
 
   it('P4 the twelve AR values: no diacritic, no Arabic-Indic digit, no bidi control, no stray ASCII digit', () => {

@@ -14,9 +14,9 @@
  *   X-Compare-Request-Id   a lower-case uuid4 minted by newCompareRequestId()
  *                          at the compare call site (one per compare attempt)
  *                          and passed in; never derived from a path list.
- *   X-Client-Capabilities  CLIENT_CAPABILITIES joined with ','. The list ships
- *                          EMPTY, so no header is sent (R-S08-6: S81-11 adds
- *                          'price_asof' with the as-of rendering).
+ *   X-Client-Capabilities  CLIENT_CAPABILITIES joined with ','. INC-C1a
+ *                          declares 'price_size' (the card draws the bottle
+ *                          size); 'price_asof' is not declared here (INC-C1).
  *
  * X-Device-Fingerprint-Legacy is NOT built here: it rides register and the two
  * social sign-ins only (authService), never a metered request.
@@ -34,8 +34,8 @@
 import * as Crypto from 'expo-crypto';
 import { getDeviceFingerprint } from './deviceFingerprint';
 
-/** The capabilities this client renders (R-S08-6). Empty: no header is sent. */
-export const CLIENT_CAPABILITIES: readonly string[] = [];
+/** The capabilities this client renders (R-S08-6; INC-C1a: the bottle size). */
+export const CLIENT_CAPABILITIES: readonly string[] = ['price_size'];
 
 /** The request-config key a call site sets to put a request on the metered allowlist. */
 export const REQUEST_CONTEXT_MARKER = 'qarenRequestContext';
