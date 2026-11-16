@@ -1,0 +1,65 @@
+{
+ "rest": {
+  "credit": 2,
+  "events": null,
+  "gpt": 0,
+  "image_url": [
+   "https://store-a.example.com/img/nimbus-a.jpg",
+   "https://img.example.com/p/velvet-dusk-1.jpg"
+  ],
+  "l26": [],
+  "relevance": [
+   "[IMG_RELEVANCE] product=0 tier=serper_images outcome=accepted candidates=1 reason=none",
+   "[IMG_RELEVANCE] product=1 tier=serper_images outcome=accepted candidates=1 reason=none"
+  ],
+  "search": 2,
+  "tier": [
+   "[IMG_TIER] tier=piggyback outcome=skipped",
+   "[IMG_TIER] tier=piggyback outcome=skipped",
+   "[IMG_TIER] tier=search_payload outcome=miss",
+   "[IMG_TIER] tier=search_payload outcome=miss",
+   "[IMG_TIER] tier=serper_budget outcome=hit",
+   "[IMG_TIER] tier=serper_budget outcome=hit",
+   "[IMG_TIER] tier=serper_images outcome=hit",
+   "[IMG_TIER] tier=serper_images outcome=hit"
+  ]
+ },
+ "stream": {
+  "credit": 2,
+  "events": [
+   "status",
+   "status",
+   "specs",
+   "prices",
+   "status",
+   "reviews",
+   "first_paint",
+   "scores",
+   "status",
+   "verdict",
+   "settle_complete",
+   "complete"
+  ],
+  "gpt": 0,
+  "image_url": [
+   "https://store-a.example.com/img/nimbus-a.jpg",
+   "https://img.example.com/p/velvet-dusk-1.jpg"
+  ],
+  "l26": [],
+  "relevance": [
+   "[IMG_RELEVANCE] product=0 tier=serper_images outcome=accepted candidates=1 reason=none",
+   "[IMG_RELEVANCE] product=1 tier=serper_images outcome=accepted candidates=1 reason=none"
+  ],
+  "search": 2,
+  "tier": [
+   "[IMG_TIER] tier=piggyback outcome=skipped",
+   "[IMG_TIER] tier=piggyback outcome=skipped",
+   "[IMG_TIER] tier=search_payload outcome=miss",
+   "[IMG_TIER] tier=search_payload outcome=miss",
+   "[IMG_TIER] tier=serper_budget outcome=hit",
+   "[IMG_TIER] tier=serper_budget outcome=hit",
+   "[IMG_TIER] tier=serper_images outcome=hit",
+   "[IMG_TIER] tier=serper_images outcome=hit"
+  ]
+ }
+}

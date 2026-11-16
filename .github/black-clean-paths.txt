@@ -73,3 +73,4 @@ app/services/product_resolver.py
 tests/test_inc_r1_resolver.py
 tests/test_inc_r1_seam.py
 tests/test_inc_i2e_guard_short_line.py
+tests/test_inc_i2a_picture_not_cut.py
