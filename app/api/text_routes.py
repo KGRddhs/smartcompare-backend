@@ -56,6 +56,10 @@ from app.services import category_gate as _category_gate
 # S81-18 KB-FIRST-SERVE (ENABLE_KB_FIRST_SERVE): the X-Client-Capabilities reader of the
 # four compare call sites (module attribute; flag OFF = one env read, no keyword passed).
 from app.services import kb_serve as _kb_serve
+# INC-P2 PRICE-NOT-LOST (ENABLE_PRICE_NOT_LOST): the X-Client-Capabilities `price_size`
+# reader of the three phone compare call sites (GET, POST, stream; module attribute;
+# flag OFF = one env read, no keyword passed).
+from app.services import price_service as _price_service
 # S81-20 RESULT-GATE (ENABLE_RESULT_GATE): the route-exit gate, reached through the
 # module attribute (a stdlib-only module; the flag is read inside, per call).
 from app.services import result_gate as _rg
@@ -815,6 +819,7 @@ async def text_compare(request: Request, body: TextCompareRequest, user: Optiona
         **({"output_lang": _ol} if (_ol := normalize_output_lang(body.lang)) else {}),
         **({"fragrance_gate": _gate} if _gate is not None else {}),
         **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
+        **({"price_size_cap": True} if _price_service.client_price_size(request) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -1056,6 +1061,7 @@ async def text_compare_get(
         **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
         **({"fragrance_gate": _gate} if _gate is not None else {}),
         **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
+        **({"price_size_cap": True} if _price_service.client_price_size(request) else {}),
     )
 
     duration_ms = int((time.time() - start_time) * 1000)
@@ -1339,6 +1345,7 @@ async def text_compare_stream(
             **({"output_lang": _ol} if (_ol := normalize_output_lang(lang)) else {}),
             **({"fragrance_gate": _gate} if _gate is not None else {}),
             **({"kb_price_asof": True} if _kb_serve.client_price_asof(request) else {}),
+            **({"price_size_cap": True} if _price_service.client_price_size(request) else {}),
         )
         try:
             async for event_type, data in _stream:
