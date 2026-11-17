@@ -704,3 +704,16 @@ def test_f7b_floor_pend_logs_reconcile_floor(monkeypatch, caplog, cap):
     f = _fields(caplog)
     assert f and f[0]["reconcile"] == "floor" and f[0]["miss_rule"] == "floor", f
     assert f[1]["reconcile"] != "floor", f[1]
+
+
+@pytest.fixture(autouse=True)
+def _p2_reset_spend_breaker_after_each_test():
+    """Test hygiene (P2R-39): this file walks ENABLE_LLM_SPEND_BREAKER on, so the breaker's
+    process state ("ran", the fail-open counter), like the router's latch, would leak the llm_spend keys into a later
+    file's /health body in CI's one alphabetical process. Reset it after every test; the
+    rows themselves are unchanged."""
+    yield
+    from app.services import llm_router as _lr
+    from app.services import llm_spend_breaker as _lsb
+    _lsb._reset_spend_breaker_state()
+    _lr._reset_router_state()  # the anthropic_breaker latch (the link lane's #417 leak)
