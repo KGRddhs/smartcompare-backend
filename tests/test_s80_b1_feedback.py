@@ -149,6 +149,8 @@ def test_b1_f4_off_enum_value_422s(client, save_rec, bad):
 def test_b1_f5_four_field_body_record_identical():
     from app.services import feedback_service as fs
     rc = _recording_client()
+    # INC-SEC-1 C2b (N-2): the ownership read answers "no row" (an anonymous compare).
+    rc.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
     with patch("app.services.feedback_service.get_supabase_client", return_value=rc):
         out = asyncio.run(fs.save_feedback(user_id=None, comparison_id=UUID, useful=True,
                                            mattered_most=["price"], change_suggestion="x"))

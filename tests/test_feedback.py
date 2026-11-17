@@ -23,6 +23,10 @@ class TestFeedbackService:
 
         mock_client = MagicMock()
         mock_client.table.return_value.insert.return_value.execute.return_value = mock_response
+        # INC-SEC-1 C2b (R-2): the comparisons ownership read answers "owned by the caller".
+        mock_client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+            {"user_id": "user-1"}
+        ]
 
         with patch("app.services.feedback_service.get_supabase_client", return_value=mock_client):
             from app.services.feedback_service import save_feedback

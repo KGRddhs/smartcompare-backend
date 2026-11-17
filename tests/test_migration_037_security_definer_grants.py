@@ -59,10 +59,10 @@ WHY THE FOUR FUNCTIONS ARE NOT THE SAME PROBLEM (measured, not read):
     caller depends on nor "fix" a report by granting them to `authenticated`,
     which would hand every logged-in user a one-call account-destruction
     primitive for ANY uuid plus a freemium-counter primitive.
-  * `resolve_referral_code` is DELIBERATELY granted to `anon`: signup resolves
-    an invite code before the user exists. That grant is a product requirement,
-    not a defect, and the pin below demands the re-GRANT be present AFTER the
-    revoke, in the same file.
+  * `resolve_referral_code`: 037 kept the anon grant; 055 (INC-SEC-1) revokes it
+    after the walk showed the server is the only caller (referral_service, the
+    service-role client). The static pin below still demands that a revoke FROM
+    PUBLIC be followed by the re-GRANT in the same file; 055 names no PUBLIC.
 
 SCOPE OF EACH SCAN — the two directories are NOT interchangeable:
 
@@ -351,8 +351,8 @@ SERVICE_ROLE_ONLY = {
 # names only PUBLIC leaves these standing, which is the no-op case.
 DEFAULT_GRANTEES = ("public", "anon", "authenticated")
 
-# The one deliberate anonymous exposure. Signup resolves an invite code before
-# the account exists, so this grant is a product requirement.
+# 037 kept the anon grant; 055 (INC-SEC-1) revokes it after the walk showed the
+# server is the only caller.
 RESOLVE_REFERRAL_CODE = _sig("resolve_referral_code", "text")
 
 
@@ -568,8 +568,8 @@ def test_service_role_only_functions_revoke_the_supabase_default_grantees():
 
 
 def test_resolve_referral_code_keeps_its_anon_grant_after_the_revoke():
-    """The anon grant at 014:102 is a PRODUCT REQUIREMENT, not a defect: an
-    anonymous visitor resolves an invite code before signing up.
+    """037 kept the anon grant at 014:102; 055 (INC-SEC-1) revokes it after the
+    walk showed the server is the only caller. This row pins 037's own shape.
 
     `REVOKE ALL … FROM PUBLIC` removes the grant `anon` inherits through PUBLIC
     as well, so the revoking file MUST re-`GRANT EXECUTE … TO anon,
@@ -892,6 +892,10 @@ class TestMigration037LiveGrantsAndRls:
     SmartCompareApp/app.json SmartCompareApp/eas.json` returns nothing, and
     `supabase` does not appear in SmartCompareApp/package.json), which is what
     makes this P1 rather than P0.
+
+    INC-SEC-1 (R-2, R-14): 037 kept the anon grant on resolve_referral_code;
+    055 revokes it after the walk showed the server is the only caller, so the
+    referral-code row of this class now expects 42501 for anon (post-055 truth).
     """
 
     @pytest.fixture
@@ -992,25 +996,21 @@ class TestMigration037LiveGrantsAndRls:
             f"query in migration 037's header). Got: {excinfo.value!r}"
         )
 
-    def test_anon_can_still_resolve_a_referral_code(self, anon_client):
-        """WOULD ASSERT: `/rpc/resolve_referral_code` still WORKS for `anon`.
+    def test_anon_cannot_resolve_a_referral_code(self, anon_client):
+        """WOULD ASSERT: `/rpc/resolve_referral_code` is rejected for `anon` with
+        PostgreSQL's `42501 permission denied` (the post-055 truth, INC-SEC-1 R-14).
 
-        This is the pin that catches the plausible wrong fix. 037 revokes this
-        function from PUBLIC and re-grants it to `anon, authenticated,
-        service_role`; if the re-grant is dropped, the source guards above
-        still pass their shape checks but every invite link breaks at signup,
-        and nothing else in the estate would notice.
-
-        The code below cannot match any real referral code (`referral_code`
-        values are `QR-XXXXXX`), so the correct outcome is an EMPTY result set
-        — not an error. An exception here means the grant was lost; a non-empty
-        result would mean the argument accidentally matched and should be
-        changed, not asserted on.
+        037 kept the anon grant; 055 revokes it after the walk showed the server
+        (the service-role client) is the only caller. 42501 SPECIFICALLY, on the
+        same terms as the neighbours above: a 404 / PGRST202 does not prove the
+        revoke landed. False until 055 is applied; never run by agents.
         """
-        result = anon_client.rpc(
-            "resolve_referral_code", {"p_code": "QR-ZZZZZZ-NOT-A-REAL-CODE"}
-        ).execute()
-        assert result.data in ([], None), (
-            "sentinel code unexpectedly resolved — pick another impossible "
-            f"code rather than asserting on real data: {result.data!r}"
+        with pytest.raises(Exception) as excinfo:
+            anon_client.rpc(
+                "resolve_referral_code", {"p_code": "QR-ZZZZZZ-NOT-A-REAL-CODE"}
+            ).execute()
+        message = str(excinfo.value).lower()
+        assert "permission denied" in message or "42501" in message, (
+            "expected PostgreSQL 42501 permission denied for the anon role after "
+            f"055; a 404/PGRST202 does not prove the revoke landed. Got: {excinfo.value!r}"
         )

@@ -61,6 +61,17 @@ BONUS_EXPIRY_DAYS = 7
 APP_BASE_URL = "https://getmyez.com"
 
 
+def _referral_same_device_check_enabled() -> bool:
+    """INC-SEC-1 C3 (R-13): ENABLE_REFERRAL_SAME_DEVICE_CHECK, default OFF, read PER CALL.
+
+    ON, the Loop-2 invitee read also selects device_fingerprint_hash, so the same-device
+    control of AbuseDetectionService.evaluate_invite can fire (an invite redeemed on the
+    inviter's own device is flagged SAME_DEVICE and earns nothing). OFF, the select string
+    is today's, byte for byte, so the invitee dict and every reward are unchanged. The
+    owner's flip."""
+    return os.getenv("ENABLE_REFERRAL_SAME_DEVICE_CHECK", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
 def _referral_rewards_paused() -> bool:
     """S81-09 R-S09-2 (with GATE_S81_09 GC-1): ENABLE_DEVICE_DAILY_QUOTA (default
     OFF, read PER CALL; the SAME name as usage_service.device_daily_quota_enabled,
@@ -787,10 +798,16 @@ class ReferralService:
             return 0
 
     async def _load_invitee(self, invitee_user_id: str) -> Optional[dict[str, Any]]:
+        # INC-SEC-1 C3: the switch decides the select (read per call; OFF = today's string).
+        columns = (
+            "id, email, subscription_tier, display_name, device_fingerprint_hash"
+            if _referral_same_device_check_enabled()
+            else "id, email, subscription_tier, display_name"
+        )
         try:
             resp = (
                 self.client.table("users")
-                .select("id, email, subscription_tier, display_name")
+                .select(columns)
                 .eq("id", invitee_user_id)
                 .single()
                 .execute()

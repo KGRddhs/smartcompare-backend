@@ -593,7 +593,7 @@ class ShareTokenError(Exception):
     """
 
 
-async def create_share_token(comparison_id: str, user_id: str, access_token: Optional[str] = None) -> Optional[str]:
+async def create_share_token(comparison_id: str, user_id: str) -> Optional[str]:
     """
     Generate a share token for a comparison.
     Verifies ownership. Returns existing token if already shared.
@@ -608,13 +608,16 @@ async def create_share_token(comparison_id: str, user_id: str, access_token: Opt
     """
     import secrets
 
-    client = get_user_supabase_client(access_token) if access_token else get_admin_supabase_client()
+    # INC-SEC-1 C1: always the server client. The share route passes no token, so the
+    # user branch was dead in production, and 055 removes the app-role UPDATE on
+    # comparisons; the ownership check below stays the control.
+    client = get_admin_supabase_client()
 
     # Fetch comparison and verify ownership. Lookup failures here mean
     # the row genuinely doesn't exist (or RLS hides it) — return None so
     # the route maps to 404. Don't swallow other exceptions.
     try:
-        comparison = await get_comparison_by_id(comparison_id, access_token=access_token)
+        comparison = await get_comparison_by_id(comparison_id)
     except Exception as exc:
         logger.error(
             "Share-token lookup failed for comparison=%s: %s",

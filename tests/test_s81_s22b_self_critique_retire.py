@@ -107,8 +107,8 @@ OTHER_ROWS_DIGEST = "V1MeN/G3kG2UbX715gtOGWB7W7zWLDLPXRpN3DjMAI0="
 MIG030_LF_SHA256 = "6fdNVEWy/cZtX3cxtSodSNesheQaKrWDaoWbEPepsos="
 MIG030_RB_LF_SHA256 = "mOm6jLF1NuhI+O8iIyUDsmQTAJrjBI0fYcBTPsz7ydk="
 # the sorted file listings of migrations/ and migrations/rollback/ ("\n"-joined):
-MIG_LISTING_DIGEST = "v4i8a3epd5txtajO1g20KlxuMyY9qphLlExkbaK31F0="
-MIG_RB_LISTING_DIGEST = "oetlOkZaOpENzgn2zlL3z72THWgt2cixb3BTppTWBrc="
+MIG_LISTING_DIGEST = "jtbmq/Yp8zE3jEdKLiwyPUaVSGyKl/E1pjX84AE2LPg="
+MIG_RB_LISTING_DIGEST = "X08X/ecPH0JVnov9RLBSUUppIUZJSJ1tDBxIcYc4sOU="
 
 
 @pytest.fixture(autouse=True)

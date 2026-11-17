@@ -135,10 +135,11 @@ def test_m01_files_exist_once_and_reserved_numbers_untouched():
 
 
 def test_m02_next_free_number():
-    """054 is the next number after 052 once the reserved 039 / 051 / 053 are skipped."""
+    """054 was the next free number after 052 once the reserved 039 / 051 / 053 are skipped
+    (INC-SEC-1, R-2: later numbers such as 055 may follow it)."""
     _require(UP)
     numbers = sorted({int(p.name[:3]) for p in MIG.glob("[0-9][0-9][0-9]_*.sql")})
-    assert numbers[-1] == 54, numbers[-4:]
+    assert 54 in numbers, numbers[-4:]
     assert 52 in numbers and 53 not in numbers
 
 
