@@ -486,7 +486,7 @@ _LATE_TRUTHY = ("true", "1", "yes", "on")
 #: functions and methods (INC-I2b I-2: the words helpers included) plus a
 #: deterministic text of every word table check() reads ("\n"-joined), first 8 hex.
 #: A unit that edits any of them bumps this constant (pinned by the E22 row).
-PICK_GUARD_RULES = "a9bdcc90"
+PICK_GUARD_RULES = "7f9e0f4f"
 PICK_CACHE_PREFIX = "imgpick:v1:" + PICK_GUARD_RULES + ":"
 _LATE_MAX_SECONDS_CEILING = 30.0
 

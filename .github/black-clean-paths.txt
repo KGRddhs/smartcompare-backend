@@ -76,3 +76,4 @@ tests/test_inc_i2e_guard_short_line.py
 tests/test_inc_i2a_picture_not_cut.py
 tests/test_inc_i2b_guard_words_shop_image.py
 tests/test_inc_i2b_addenda.py
+tests/test_inc_i2b_fix1.py

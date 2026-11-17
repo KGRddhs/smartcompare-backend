@@ -37,7 +37,7 @@ OFF: ``check`` is the base code, byte for byte.
 INC-I2b GUARD-WORDS: ``ENABLE_IMAGE_GUARD_WORDS`` (default OFF, read PER CALL inside
 ``check`` after a passing base verdict, so only under the guard) refuses a title that
 names another FORM (body care, a set, a refill, a miniature; reason ``form``) or a
-concentration the user did not ask for (a free-standing intense, or a TYPED
+concentration the user did not ask for (a free-standing flanker intense, or a TYPED
 concentration the title contradicts; reason ``concentration``). A word the user typed
 and a brand form never count. OFF: ``check`` returns ``_check_base``, the base code.
 
@@ -287,6 +287,9 @@ FORM_JOINS = frozenset(
     }
 )
 INTENSE_WORDS = _fold("intense")
+#: FIX-1: no longer read; the positional test in ``_conc_scan`` decides (these words
+#: are never a flanker slot, so they stay generic). Kept: the guard version text
+#: (E19 / E22) names it. The slot words live inside ``_conc_scan`` so they are hashed.
 INTENSE_GENERIC_NEXT = _fold("fragrance", "perfume")
 
 
@@ -740,7 +743,9 @@ def _conc_scan(tokens: Any) -> Tuple[FrozenSet[str], bool]:
     """INC-I2b: (the concentration labels, a free-standing intense) of folded tokens.
     One scan, longest phrase first; Extrait folds into Parfum (I-13); an intense right
     after a phrase is part of its label (I-9); a parfum right after an Elixir or an
-    Extrait phrase adds nothing; an intense before fragrance / perfume is generic."""
+    Extrait phrase adds nothing. FIX-1: any other intense is free only in a flanker
+    slot, i.e. before the end, a phrase, a size or a closed word (spray, for, pour,
+    men, women, homme, femme, edition, by); before anything else it is generic."""
     toks = (
         [t for t in tokens if isinstance(t, str)]
         if isinstance(tokens, (list, tuple))
@@ -768,8 +773,24 @@ def _conc_scan(tokens: Any) -> Tuple[FrozenSet[str], bool]:
                 prev = label
                 break
         else:
-            if toks[i] in INTENSE_WORDS and not (
-                i + 1 < len(toks) and toks[i + 1] in INTENSE_GENERIC_NEXT
+            nxt = toks[i + 1] if i + 1 < len(toks) else ""
+            if toks[i] in INTENSE_WORDS and (
+                not nxt
+                or any(phrase[0] == nxt for phrase, _lab in CONC_PHRASES)
+                or SIZE_TOKEN.fullmatch(nxt)
+                or _NUMBER.fullmatch(nxt)
+                or nxt
+                in {
+                    "spray",
+                    "for",
+                    "pour",
+                    "men",
+                    "women",
+                    "homme",
+                    "femme",
+                    "edition",
+                    "by",
+                }
             ):
                 free = True
             prev = None
@@ -786,7 +807,9 @@ def _conc_labels(text: Any) -> FrozenSet[str]:
 
 def _words_reason(ident: Identity, texts: Any) -> Optional[str]:
     """INC-I2b: the words test of the FIRST text (the title): form, then concentration
-    (a free intense the user did not type; a typed concentration the title contradicts).
+    (a free intense the user did not type; a typed concentration the title contradicts;
+    FIX-1: with a typed intense, a trailing " Intense" is dropped from every label on
+    both sides first, so "Intense EDP" matches "Eau de Parfum Intense").
     None when it passes or when the first text is not a str."""
     seq = _seq(texts)
     title = seq[0] if seq else None
@@ -801,9 +824,14 @@ def _words_reason(ident: Identity, texts: Any) -> Optional[str]:
         if (a, b) in FORM_JOINS and not (a in exempt and b in exempt):
             return "form"
     labels, free = _conc_scan(toks)
-    if free and not (INTENSE_WORDS & ident.query_words):
+    typed_intense = bool(INTENSE_WORDS & ident.query_words)
+    if free and not typed_intense:
         return "concentration"
-    if ident.query_conc and labels and not (labels & ident.query_conc):
+    typed = ident.query_conc
+    if typed_intense:
+        labels = frozenset(lab.removesuffix(" Intense") for lab in labels)
+        typed = frozenset(lab.removesuffix(" Intense") for lab in typed)
+    if typed and labels and not (labels & typed):
         return "concentration"
     return None
 
