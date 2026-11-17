@@ -261,6 +261,7 @@ def _reset_resolver_state() -> None:
         _CACHE.clear()
         _LINES_MEMO.update({"state": None, "lines": ()})
         _INDEX_MEMO.update({"lexicon": None, "lines_state": None, "index": None})
+        _AR_PHRASES_MEMO.update({"lexicon": None, "phrases": ()})
         _WARNED_STATES.clear()
 
 
@@ -317,10 +318,15 @@ def _osa(a: str, b: str) -> int:
     return rows[len(a)][len(b)]
 
 
-def _token_distance(alias_token: str, typed_token: str) -> Optional[int]:
+def _token_distance(
+    alias_token: str, typed_token: str, exact_single: bool = False
+) -> Optional[int]:
     """D5: digits exact; else OSA <= 1 for an alias token of 5 characters or fewer,
-    <= 2 when longer; None when outside the rule."""
-    if alias_token.isdigit():
+    <= 2 when longer; None when outside the rule. ``exact_single`` (INC-M1a, M1R-11 (d);
+    passed ONLY by the lexicon arm's D5 line search in _lexicon_side): a one-character
+    alias token is exact too, so the seed line "Y" never fuzzy-matches "l" of "L'Homme",
+    "b", "by" or any other short token. The model-arm guard (d) keeps the base rule."""
+    if alias_token.isdigit() or (exact_single and len(alias_token) == 1):
         return 0 if alias_token == typed_token else None
     limit = 1 if len(alias_token) <= 5 else 2
     if abs(len(alias_token) - len(typed_token)) > limit:
@@ -329,16 +335,19 @@ def _token_distance(alias_token: str, typed_token: str) -> Optional[int]:
     return distance if distance <= limit else None
 
 
-def _best_window(alias: Sequence[str], core: Sequence[str]):
+def _best_window(alias: Sequence[str], core: Sequence[str], exact_single: bool = False):
     """The best contiguous window of ``core`` matching ``alias`` under D5, as
     (score, start, total distance), or None. score = (0 when exact else 1,
-    -len(alias), the summed distance, the window start); the lowest wins."""
+    -len(alias), the summed distance, the window start); the lowest wins.
+    ``exact_single`` is passed through to _token_distance (the lexicon arm only)."""
     width = len(alias)
     best = None
     for start in range(len(core) - width + 1):
         total = 0
         for offset in range(width):
-            distance = _token_distance(alias[offset], core[start + offset])
+            distance = _token_distance(
+                alias[offset], core[start + offset], exact_single
+            )
             if distance is None:
                 break
             total += distance
@@ -371,13 +380,105 @@ def _concentration_label(value: Any) -> Optional[str]:
     return None
 
 
+def _cps(*points: int) -> str:
+    return "".join(chr(p) for p in points)
+
+
+# INC-M1a: the Arabic words of the lexicon's Arabic concentration phrases mapped onto the
+# Latin tokens of CONCENTRATION_PHRASES (a word map, not a phrase table: the phrases are
+# read from data/fragrance_lexicon.json through category_gate.load_lexicon, the one home
+# of the concentration words). The "de" particle has two spellings (WAW and YA).
+_AR_CONCENTRATION_WORDS = (
+    (_cps(0x0627, 0x0648), "eau"),
+    (_cps(0x062F, 0x0648), "de"),
+    (_cps(0x062F, 0x064A), "de"),
+    (_cps(0x0628, 0x0627, 0x0631, 0x0641, 0x0627, 0x0646), "parfum"),
+    (_cps(0x062A, 0x0648, 0x0627, 0x0644, 0x064A, 0x062A), "toilette"),
+)
+_AR_PHRASES_MEMO: Dict[str, Any] = {"lexicon": None, "phrases": ()}
+
+
+def _has_arabic(tokens: Sequence[str]) -> bool:
+    return any(_is_arabic(token) for token in tokens)
+
+
+def _compile_arabic_phrases(lexicon: Any) -> Tuple[Tuple[Tuple[str, ...], str], ...]:
+    """The lexicon's Arabic concentration terms whose words map onto a CONCENTRATION_PHRASES
+    tuple, each with every spelling of its "de" particle, as (tokens, label), longest
+    first; a term with an unmapped word is skipped."""
+    words: Dict[str, str] = {}
+    for arabic, latin in _AR_CONCENTRATION_WORDS:
+        normalised = _norm(arabic)
+        if len(normalised) == 1:
+            words[normalised[0]] = latin
+    spellings: Dict[str, List[str]] = {}
+    for arabic, latin in words.items():
+        spellings.setdefault(latin, []).append(arabic)
+    found: Dict[Tuple[str, ...], str] = {}
+    for term in getattr(lexicon, "terms", ()) or ():
+        if getattr(term, "group", None) != "concentrations":
+            continue
+        tokens = tuple(getattr(term, "tokens", ()) or ())
+        if not tokens or not _has_arabic(tokens):
+            continue
+        latin = tuple(words.get(token) for token in tokens)
+        label = next(
+            (lab for phrase, lab in CONCENTRATION_PHRASES if phrase == latin), None
+        )
+        if label is None:
+            continue
+        variants = [()]
+        for token, word in zip(tokens, latin, strict=True):
+            variants = [
+                v + (s,) for v in variants for s in spellings.get(word, [token])
+            ]
+        for variant in variants:
+            found.setdefault(variant, label)
+    return tuple(sorted(found.items(), key=lambda kv: (-len(kv[0]), kv[0])))
+
+
+def _arabic_phrases() -> Tuple[Tuple[Tuple[str, ...], str], ...]:
+    """The compiled Arabic concentration phrases, memoised on the load_lexicon() result."""
+    lexicon = _cg().load_lexicon()
+    with _LOCK:
+        if _AR_PHRASES_MEMO["lexicon"] is lexicon:
+            return _AR_PHRASES_MEMO["phrases"]
+    phrases = _compile_arabic_phrases(lexicon)
+    with _LOCK:
+        _AR_PHRASES_MEMO.update({"lexicon": lexicon, "phrases": phrases})
+    return phrases
+
+
+def _phrases_for(tokens: Sequence[str]):
+    """CONCENTRATION_PHRASES, followed by the lexicon's Arabic phrases only when the tokens
+    carry Arabic (a Latin name reads exactly the base table and no lexicon)."""
+    if not _has_arabic(tokens):
+        return CONCENTRATION_PHRASES
+    return CONCENTRATION_PHRASES + _arabic_phrases()
+
+
+def _arabic_concentration(tokens: Sequence[str]) -> Optional[str]:
+    """The label of the longest Arabic concentration phrase found in tokens (equal
+    lengths: the phrase sort order)."""
+    if not _has_arabic(tokens):
+        return None
+    for phrase, label in _arabic_phrases():
+        width = len(phrase)
+        for i in range(len(tokens) - width + 1):
+            if tuple(tokens[i : i + width]) == phrase:
+                return label
+    return None
+
+
 def _strip_concentrations(tokens: Sequence[str]) -> List[str]:
-    """D2: every contiguous run equal to a CONCENTRATION_PHRASES tuple removed (longest
-    first, left to right, non-overlapping)."""
+    """D2: every contiguous run equal to a CONCENTRATION_PHRASES tuple (or, for Arabic
+    tokens, one of the lexicon's Arabic concentration phrases) removed (longest first,
+    left to right, non-overlapping)."""
+    phrases = _phrases_for(tokens)
     out: List[str] = []
     i = 0
     while i < len(tokens):
-        for phrase, _label in CONCENTRATION_PHRASES:
+        for phrase, _label in phrases:
             width = len(phrase)
             if tuple(tokens[i : i + width]) == phrase:
                 i += width
@@ -402,10 +503,13 @@ def _blank_size_spans(name: str) -> str:
 
 
 def _typed_concentration(name: str) -> Optional[str]:
-    """D2: price_service.extract_concentration, else "Elixir" for an elixir token."""
+    """D2: price_service.extract_concentration, else "Elixir" for an elixir token, else
+    the label of an Arabic concentration phrase of the lexicon (INC-M1a)."""
     label = _ps().extract_concentration(name)
     if label is None and "elixir" in _norm(name):
         label = "Elixir"
+    if label is None:
+        label = _arabic_concentration(_norm(name))
     return label
 
 
@@ -472,6 +576,9 @@ def _validate_lines(data: Any) -> Tuple[Dict[str, Any], ...]:
             raise ValueError("line concentration")
         if item["base"] is not None and item["base"] not in item["concentrations"]:
             raise ValueError("line base")
+        # INC-M1a: the optional single_concentration field (absent = false) is a bool.
+        if not isinstance(item.get("single_concentration", False), bool):
+            raise ValueError("line single_concentration")
         out.append(item)
     return tuple(out)
 
@@ -678,7 +785,7 @@ def _lexicon_side(name: str, index: Dict[str, Any], context: bool) -> Side:
     winners: List[Dict[str, Any]] = []
     for line in index["lines"]:
         for alias in line["aliases"]:
-            hit = _best_window(alias, core)
+            hit = _best_window(alias, core, exact_single=True)
             if hit is None:
                 continue
             entry = (hit[0], hit[1], len(alias), hit[2], line)
@@ -723,6 +830,8 @@ def _lexicon_side(name: str, index: Dict[str, Any], context: bool) -> Side:
                     break
             if flanker is not None:
                 break
+        if flanker is None:
+            flanker = _generic_flanker(name, line, used)
 
     # D8: the residual, the qualifier set excluded (R1-R4).
     residual = [
@@ -788,6 +897,35 @@ def _lexicon_side(name: str, index: Dict[str, Any], context: bool) -> Side:
     return Side(
         size_ml=size_ml, confidence="low", source="none", is_fragrance=is_fragrance
     )
+
+
+def _generic_flanker(name: str, line: Dict[str, Any], used: set) -> Optional[str]:
+    """INC-M1a (spec 1.2.4): a flanker of the matched line that carries a generic word
+    ("Cologne") is matched on the tokens BEFORE the D4 generic-word drop, which would
+    otherwise remove it; its non-generic tokens (none in the seed) must lie outside the
+    used core positions and are marked used. GENERIC_WORDS itself is unchanged."""
+    tokens = _strip_concentrations(_norm(_blank_size_spans(name)))
+    core_at: List[Optional[int]] = []
+    k = 0
+    for token in tokens:
+        if token in GENERIC_WORDS:
+            core_at.append(None)
+        else:
+            core_at.append(k)
+            k += 1
+    for word, flanker_tokens, _label in line["flankers"]:
+        if not any(t in GENERIC_WORDS for t in flanker_tokens):
+            continue
+        width = len(flanker_tokens)
+        for start in range(len(tokens) - width + 1):
+            if tuple(tokens[start : start + width]) != flanker_tokens:
+                continue
+            positions = [core_at[j] for j in range(start, start + width)]
+            if any(p is not None and p in used for p in positions):
+                continue
+            used.update(p for p in positions if p is not None)
+            return word
+    return None
 
 
 def _resolved_side(

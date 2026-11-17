@@ -135,6 +135,15 @@ SEED_PAIRS = {
     ("Emporio Armani", "Stronger With You"),
     ("Bvlgari", "Tygar"),
 }
+# INC-M1a (E-row M1R-8): the two seed lines and the flankers that unit adds.
+M1A_PAIRS = {("Yves Saint Laurent", "Y"), ("Rasasi", "Hawas")}
+M1A_FLANKERS = {
+    "Libre": ["Intense", "Le Parfum"],
+    "Khamrah": ["Qahwa", "Dukhan"],
+    "Aventus": ["for Her", "Absolu", "Cologne"],
+    "Y": ["Le Parfum", "Elixir"],
+    "Hawas": ["Ice", "for Her"],
+}
 # site -> (role, claude_max_tokens, expects_json, schema is None), measured at the base.
 BASE_SITES = {
     "classify": ("text", 32, False, True),
@@ -170,6 +179,18 @@ UNKNOWN_PAIR = ("Zorvex Alpha", "Plumbex Beta")
 AR_DIOR = "".join(chr(c) for c in (0x062F, 0x064A, 0x0648, 0x0631))
 AR_SAUVAGE = "".join(chr(c) for c in (0x0633, 0x0648, 0x0641, 0x0627, 0x062C))
 AR = (AR_DIOR + " " + AR_SAUVAGE, "Bleu de Chanel")
+# INC-M1a (E-row M1R-8): Arabic names OUTSIDE the seeded Arabic aliases (Khamrah Lattafa;
+# Dior with an Arabic line the file does not hold) for the rows that need an unresolved side.
+AR_UNSEEDED = " ".join(
+    "".join(chr(c) for c in w)
+    for w in (
+        (0x062E, 0x0645, 0x0631, 0x0629),
+        (0x0644, 0x0637, 0x0627, 0x0641, 0x0629),
+    )
+)
+AR_FAHRENHEIT = "".join(
+    chr(c) for c in (0x0641, 0x0647, 0x0631, 0x0646, 0x0647, 0x0627, 0x064A, 0x062A)
+)
 USER_CONTENT_MODEL_PAIR = "\n".join(
     [
         "Name a:",
@@ -612,16 +633,19 @@ def test_r04_ask_knob(monkeypatch, raw, want):
 
 
 def test_r05_lines_file():
-    """R05 / R1-R19: the 12 seed lines, ASCII, version 1; no community-database name."""
+    """R05 / R1-R19: the 12 seed lines (+ YSL Y and Rasasi Hawas since INC-M1a, E-row
+    M1R-8), ASCII, version 1; no community-database name; the optional
+    single_concentration field is a bool."""
     assert LINES_FILE.is_file(), "data/fragrance_lines.json is absent (INC-R1 C1)"
     raw = LINES_FILE.read_bytes()
     assert all(b < 128 for b in raw)
     data = json.loads(raw.decode("ascii"))
     assert data.get("version") == 1
     lines = data.get("lines")
-    assert isinstance(lines, list) and len(lines) == 12
-    assert {(x["house"], x["line"]) for x in lines} == SEED_PAIRS
+    assert isinstance(lines, list) and len(lines) == 14
+    assert {(x["house"], x["line"]) for x in lines} == SEED_PAIRS | M1A_PAIRS
     for x in lines:
+        assert isinstance(x.get("single_concentration", False), bool), x
         assert set(x) >= {
             "house",
             "house_aliases",
@@ -641,6 +665,8 @@ def test_r05_lines_file():
                 "Parfum",
                 "Oud",
             ]
+        elif x["line"] in M1A_FLANKERS:
+            assert x["flankers"] == M1A_FLANKERS[x["line"]], x
         else:
             assert x["flankers"] == [], x
     assert PR_FILE.is_file(), "app/services/product_resolver.py is absent"
@@ -817,11 +843,15 @@ def test_r10b_single_token_fuzzy_needs_pair_context(
 
 
 @pytest.mark.parametrize(
-    "name", ["Dior Sauvage Eau Forte", "Creed Aventus for Her", "YSL Libre Intense"]
+    "name",
+    ["Dior Sauvage Eau Forte", "Creed Aventus for Women", "YSL Libre Absolu Platine"],
 )
 def test_r11_residual_not_high(name):
     """R11: a residual word (her stays one: R1-R4) leaves the side unresolved, medium, with
-    the matched line among the candidates."""
+    the matched line among the candidates. E-row M1R-8 (INC-M1a): "Creed Aventus for Her"
+    and "YSL Libre Intense" are seeded flankers now (they resolve to the flanker line,
+    pinned by tests/test_inc_m1a_resolver_fold.py SEED-1), so two unseeded residual words
+    of the same lines stand in for them."""
     side = _lex(name)
     assert side.resolved is False and side.confidence == "medium", side
     lines = {c["line"] for c in side.candidates}
@@ -909,10 +939,24 @@ def test_r14_house_only_nothing_and_non_fragrance():
 
 
 def test_r15_arabic_never_lexicon_high():
-    """R15 / SL1: the lexicon's Arabic Dior matches as a house hint; no Arabic line alias."""
-    side = _lex(AR[0])
-    assert side.resolved is False and side.confidence == "medium", side
-    assert side.is_fragrance is True, side
+    """R15 / SL1, narrowed by E-row M1R-8 (INC-M1a): Arabic typed text resolves
+    high/lexicon ONLY through an exact seeded data row (the house and the line both from
+    the aliases of data/fragrance_lines.json); an UNSEEDED Arabic line is never
+    lexicon-high: the lexicon's Arabic Dior still matches as a house hint only."""
+    data = json.loads(LINES_FILE.read_bytes().decode("ascii"))
+    sauvage = next(x for x in data["lines"] if x["line"] == "Sauvage")
+    assert AR_DIOR in sauvage["house_aliases"] and AR_SAUVAGE in sauvage["aliases"]
+    seeded = _lex(AR[0])
+    assert seeded.resolved is True and seeded.source == "lexicon", seeded
+    assert (seeded.brand, seeded.line) == ("Dior", "Sauvage"), seeded
+    for name in (AR_DIOR + " " + AR_FAHRENHEIT, AR_UNSEEDED):
+        side = _lex(name)
+        assert side.resolved is False and side.confidence == "medium", (
+            ascii(name),
+            side,
+        )
+        assert side.is_fragrance is True, side
+        assert side.source == "none", side
 
 
 # ======================================================================= R16-R20 (the router site)
@@ -1046,8 +1090,16 @@ R21_CASES = [
         False,
         None,
     ),
-    ("g8", AR[0], _side("true", "Dior", "Sauvage"), True, ("Dior", "Sauvage", "EDT")),
-    ("g8b", AR[0], _side("true", "Acme House", "Sauvage"), False, None),
+    # E-row M1R-8 (INC-M1a): AR[0] resolves in the lexicon arm now (no model call), so the
+    # Arabic guard rows read an unseeded Arabic name (Khamrah Lattafa).
+    (
+        "g8",
+        AR_UNSEEDED,
+        _side("true", "Lattafa", "Khamrah"),
+        True,
+        ("Lattafa", "Khamrah", "EDP"),
+    ),
+    ("g8b", AR_UNSEEDED, _side("true", "Acme House", "Khamrah"), False, None),
     (
         "g9",
         "Tom Ford Ombre Leather",
