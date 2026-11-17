@@ -3344,11 +3344,32 @@ def reconcile_pair_fairness(
     # defaults to the flagship 100ml basis even when its house is not in the
     # brand-keyword list (flag OFF -> byte-identical to the frozen behavior).
     if canon == "fragrances":
-        return reconcile_pair_sizes(
-            product_data, user_query=user_query,
-            candidates_by_name=candidates_by_name,
-            treat_unsized_as_flagship=frag_reconcile_fix_enabled(),
-        )
+        # INC-P2 (ENABLE_PRICE_NOT_LOST, read per call): ON -> reconcile_pair_sizes_v2
+        # (each side keeps its own typed size, no size pend, the P2-4 projection).
+        # The trace note after it is UNFLAGGED and log-only (PRICE_OUTCOME reads it),
+        # inside its own guard so a fault there never reaches the caller's
+        # "fairness reconciliation skipped" arm.
+        try:  # F2: every unflagged trace argument is evaluated inside its own guard
+            _p2_before = [p.get("price") if isinstance(p, dict) else None for p in product_data[:2]]
+        except Exception:  # noqa: BLE001
+            _p2_before = []
+        if price_not_lost_enabled():
+            _changed = reconcile_pair_sizes_v2(
+                product_data, user_query=user_query,
+                candidates_by_name=candidates_by_name,
+                treat_unsized_as_flagship=frag_reconcile_fix_enabled(),
+            )
+        else:
+            _changed = reconcile_pair_sizes(
+                product_data, user_query=user_query,
+                candidates_by_name=candidates_by_name,
+                treat_unsized_as_flagship=frag_reconcile_fix_enabled(),
+            )
+        try:
+            _p2_trace_reconcile(product_data, _p2_before)
+        except Exception:  # noqa: BLE001 - a log-only note never fails the reconcile
+            pass
+        return _changed
 
     spec = fairness_for_category(category)
     if spec["unit"] is None:
@@ -3870,6 +3891,11 @@ def normalize_words(text: str) -> set:
 
 def numbers_match(product_name: str, title: str) -> bool:
     """Check that significant numbers in product name appear in title."""
+    # INC-P2 P2-8 (ENABLE_PRICE_NOT_LOST, read FIRST): a number that is part of an
+    # ml / oz size token on the PRODUCT side no longer has to appear in the title
+    # (the size axis is decided later); every other number still does.
+    if price_not_lost_enabled() and isinstance(product_name, str):
+        product_name = _P2_SIZE_TOKEN_RE.sub(" ", product_name)
     product_numbers = set(re.findall(r'\b(\d{2,})\b', product_name))
     if not product_numbers:
         return True
@@ -7844,7 +7870,9 @@ def _vd_gender_line_flip(q: VariantDescriptor, c: VariantDescriptor) -> bool:
     if c_men == c_women:
         return False  # no side stated, or both (unisex wording)
     c_side = "men" if c_men else "women"
-    for line_words, default_side in _GENDER_FLIP_LINES:
+    # INC-P2 P2R-13: the owner-vetoable Rasasi Hawas row joins only under ENABLE_PRICE_NOT_LOST.
+    _lines = _GENDER_FLIP_LINES + (_P2_GENDER_FLIP_EXTRA if price_not_lost_enabled() else ())
+    for line_words, default_side in _lines:
         if line_words <= q_words:
             return c_side != default_side
     return False
@@ -10532,6 +10560,8 @@ def extract_price_from_shopping(
         if is_hv and not strict_title_match(product_name, title):
             continue
         if not numbers_match(product_name, title):
+            # INC-P2 P2R-11: an UNFLAGGED, log-only miss-ledger note (no-op unbound).
+            price_miss_note(None, "rejected", family="shopping", rule="numbers_match", title=title)
             continue
         # S3 #1 (discovery-match) — reject a different model-line variant
         # ("iPhone 15" query vs "iPhone 15 Pro Max" listing): the base name is a
@@ -10539,6 +10569,7 @@ def extract_price_from_shopping(
         # different SKU. Genuine-or-correct: don't attribute the wrong variant's
         # price.
         if variant_mismatch(product_name, title):
+            price_miss_note(None, "rejected", family="shopping", rule="variant", title=title)
             continue
         # CORRECTNESS — identity + axis gate for ALL queries (gap #9: strict_title_match
         # ran only for high-value; everything else fell through to the 0.4-overlap +
@@ -10547,6 +10578,7 @@ def extract_price_from_shopping(
         # related product missing a query discriminator, while tolerating a descriptive
         # listing title. No-op when the rollback flag is OFF.
         if not _selection_match(product_name, title, _category):
+            price_miss_note(None, "rejected", family="shopping", rule="identity", title=title)
             continue
         # Wave C (re-sweep RS7) — the BF1 wrong-brand fence at the SHARED
         # shopping tier: a fashion padding-brand query stripped its brand from
@@ -10566,6 +10598,11 @@ def extract_price_from_shopping(
             continue
 
         retailer = item.get("source", "")
+        # INC-P2 P2-10 (ENABLE_PRICE_NOT_LOST, read FIRST): an auction / peer
+        # marketplace seller is skipped as if absent (never the Tier-1 pick).
+        if price_not_lost_enabled() and is_auction_marketplace_seller(retailer, item.get("link")):
+            price_miss_note(None, "rejected", family="shopping", rule="marketplace", title=title)
+            continue
         retailer_score = get_retailer_score(retailer)
 
         # S3 electronics-authority — a THIRD-PARTY marketplace reseller (gray-
@@ -17330,3 +17367,654 @@ async def fan_out_price_lookup(
         "failed_count": failed_count,
         "elapsed_seconds": time.monotonic() - start,
     }
+
+# ============================================================================
+# INC-P2 PRICE-NOT-LOST (ENABLE_PRICE_NOT_LOST, default OFF, read PER CALL).
+#
+# One section so the unit reads as one hunk. Contract: .qa-s80/INC-P2_UNIT_SPEC.md
+# as amended by RULINGS_INC_P2.md (P2R-1..P2R-35; ORCH-P2-B rules 1-4) and the RED
+# gate. Flag OFF: every predicate below returns before reading any state, so the
+# response bodies, cache writes and prompts are byte-identical. UNFLAGGED by
+# ruling (P2-11 / P2R-10 / P2R-11): the request-scoped trace + miss ledger (pure
+# in-memory appends, never read by a body) and the three INFO lines built from it
+# elsewhere (PRICE_OUTCOME in response_builder, PRICE_CACHE_HIT / PRICE_CACHE_SKIP
+# in structured_comparison_service). Every helper here that feeds a log line
+# swallows its own errors.
+# ============================================================================
+import copy as _p2_copy
+import datetime as _p2_datetime
+
+
+def price_not_lost_enabled() -> bool:
+    """INC-P2: ENABLE_PRICE_NOT_LOST, read per call (house idiom)."""
+    return os.getenv("ENABLE_PRICE_NOT_LOST", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+# ---- size readers ------------------------------------------------------------
+# X1-R7 strict listing size: one ml token of 1..9999, not part of a decimal
+# ("7.5ml" -> no token) and not glued to another number.
+_P2_STRICT_ML_RE = re.compile(r"(?<![0-9.,])([0-9]{1,4})[ -]?ml\b", re.I)
+# P2-8: every ml / oz / fl oz size token (decimals included) on the PRODUCT side
+# of numbers_match.
+_P2_SIZE_TOKEN_RE = re.compile(r"(?<![\d.,])\d+(?:[.,]\d+)?\s*-?\s*(?:ml|fl\.?\s*oz|oz)\b", re.I)
+
+
+def _p2_strict_tokens(text: Any) -> set:
+    if not isinstance(text, str) or not text:
+        return set()
+    return {int(m) for m in _P2_STRICT_ML_RE.findall(text) if 1 <= int(m) <= 9999}
+
+
+def listing_size_ml(price: Any) -> Optional[int]:
+    """The listing's OWN bottle size: exactly one distinct strict ml token in the
+    title, else in price['size']; None for no token or several (X1-R7)."""
+    if not isinstance(price, dict):
+        return None
+    tokens = _p2_strict_tokens(price.get("title")) or _p2_strict_tokens(price.get("size"))
+    return next(iter(tokens)) if len(tokens) == 1 else None
+
+
+def typed_size_ml(product: Any) -> Optional[int]:
+    """The size typed for THIS side only (P2-2): read from the side's own name,
+    never from the combined query. full_name carries the typed size with the
+    resolver both OFF (the typed half) and ON (brand + line + variant), so the
+    answer is the same in both modes (spec Q1)."""
+    if not isinstance(product, dict):
+        return None
+    return extract_size_ml_any(product.get("full_name") or product.get("name") or "")
+
+
+def _p2_comparable_size(product: Dict[str, Any], treat_unsized_as_flagship: bool) -> Optional[float]:
+    """P2R-2: ONE comparability reader per side for the decision, the projection and
+    the pair marker: the strict listing size, else the typed size, else the
+    effective size the shipped reconcile uses (min token, flagship default)."""
+    size = listing_size_ml(product.get("price"))
+    if size is not None:
+        return float(size)
+    typed = typed_size_ml(product)
+    if typed is not None:
+        return float(typed)
+    return effective_pair_size_ml(product, treat_unsized_as_flagship)
+
+
+# ---- auction / peer marketplaces (P2-10) ---------------------------------------
+# Whole tokens of the seller name, or a label of the URL host. "whatnot" is the
+# logged seller; the rest are the auction / used-goods names the code base already
+# carries (retailer score tier 3, _THIRD_PARTY_HOST_MARKETPLACES,
+# _USED_GOODS_MARKETPLACES, the extraction prompt). Name-based (SL10).
+_P2_MARKETPLACE_SELLERS: FrozenSet[str] = frozenset({
+    "whatnot", "ebay", "aliexpress", "alibaba", "temu", "wish", "dhgate", "banggood",
+    "gearbest", "etsy", "mercari", "swappa", "backmarket", "gazelle", "decluttr",
+    "reebelo", "poshmark", "stockx", "therealreal", "vestiaire",
+})
+_P2_MARKETPLACE_PHRASES: Tuple[str, ...] = (
+    "back market", "unclaimed baggage", "the realreal", "the real real",
+)
+
+
+def is_auction_marketplace_seller(retailer: Any, url: Any) -> bool:
+    """True when the seller name (whole tokens, or one of the multi-word phrases) or
+    any non-TLD label of the URL host is an auction / peer marketplace. Never
+    raises; a non-str argument counts as absent."""
+    try:
+        if isinstance(retailer, str) and retailer:
+            low = retailer.lower()
+            if {t for t in re.split(r"[^a-z0-9]+", low) if t} & _P2_MARKETPLACE_SELLERS:
+                return True
+            if any(phrase in low for phrase in _P2_MARKETPLACE_PHRASES):
+                return True
+        if isinstance(url, str) and url:
+            labels = [x for x in (urlsplit(url).hostname or "").lower().split(".") if x]
+            if set(labels[:-1]) & _P2_MARKETPLACE_SELLERS:
+                return True
+    except Exception:  # noqa: BLE001 - a predicate never fails its caller
+        return False
+    return False
+
+
+def p2_filter_marketplace_rows(rows: Any) -> Any:
+    """Flag ON: the rows minus every auction / marketplace seller (the adapters'
+    converted park, SCS). Flag OFF: the SAME list object, untouched."""
+    if not price_not_lost_enabled():
+        return rows
+    return [r for r in (rows or []) if not (
+        isinstance(r, dict) and is_auction_marketplace_seller(r.get("retailer"), r.get("url")))]
+
+
+# ---- the floor (P2R-12) --------------------------------------------------------
+_P2_FLOOR_ML = 30
+_P2_FLOOR_WORDS_RE = re.compile(r"\b(?:travel|miniature|mini|atomiser|atomizer)\b", re.I)
+
+
+def p2_passes_floor(price: Any, typed: Optional[int] = None) -> bool:
+    """False for a listing under 30 ml or titled travel / miniature / mini /
+    atomiser / atomizer (whole words), unless its size equals the size typed for
+    that side (a typed "10ml" keeps the 10 ml price)."""
+    if not isinstance(price, dict):
+        return True
+    size = listing_size_ml(price)
+    if size is None:
+        tokens = extract_sizes_ml(str(price.get("title") or "")) or extract_sizes_ml(str(price.get("size") or ""))
+        size = min(int(t) for t in tokens) if tokens else None
+    if typed is not None and size is not None and int(typed) == int(size):
+        return True
+    if size is not None and size < _P2_FLOOR_ML:
+        return False
+    return not _P2_FLOOR_WORDS_RE.search(str(price.get("title") or ""))
+
+
+def _p2_candidate_price(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    raw = candidate.get("raw_data")
+    return raw if isinstance(raw, dict) else candidate
+
+
+def _p2_usable_candidates(candidates: Any, typed: Optional[int]) -> List[Dict[str, Any]]:
+    """The retained candidates a V2 re-selection may use: never a marketplace
+    seller (P2-10), never under the floor (P2R-12)."""
+    out: List[Dict[str, Any]] = []
+    for c in candidates or []:
+        if not isinstance(c, dict):
+            continue
+        price = _p2_candidate_price(c)
+        if is_auction_marketplace_seller(price.get("retailer") or c.get("retailer"),
+                                         price.get("url") or c.get("url")):
+            continue
+        if not p2_passes_floor(price, typed):
+            continue
+        out.append(c)
+    return out
+
+
+# ---- the request token price_size (P2R-18, P2R-22) ------------------------------
+_P2_MAX_CAPABILITY_CHARS = 512
+_PRICE_SIZE_CAP: "_contextvars.ContextVar[bool]" = _contextvars.ContextVar("p2_price_size_cap", default=False)
+
+
+def client_price_size(request: Any) -> bool:
+    """True iff the flag is ON and X-Client-Capabilities lists `price_size`
+    (comma separated, stripped, case-insensitive; kb_serve.client_price_asof's
+    parse, independent of ENABLE_KB_FIRST_SERVE). Flag OFF reads no header. The
+    header value is never logged."""
+    if not price_not_lost_enabled():
+        return False
+    try:
+        value = request.headers.get("x-client-capabilities")
+        if not isinstance(value, str) or len(value) > _P2_MAX_CAPABILITY_CHARS:
+            return False
+        return "price_size" in {token.strip().lower() for token in value.split(",")}
+    except Exception:  # noqa: BLE001 - an unreadable header is no capability
+        return False
+
+
+def price_size_cap_bind(value: bool) -> None:
+    """Bind the request's capability for this compare (the service entry)."""
+    _PRICE_SIZE_CAP.set(bool(value))
+
+
+def price_size_cap() -> bool:
+    try:
+        return bool(_PRICE_SIZE_CAP.get())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ---- the request trace + per-product miss ledger (P2R-11; UNFLAGGED, log-only) ----
+# One dict per request, bound at the service entry BEFORE the price tasks start;
+# the tasks copy the context and so share the SAME dict object, which survives a
+# cancel of the price task. Keys: reconcile {slot: action}, parked / recovered
+# (ids of race-miss fallbacks), products {full_name: [note, ...]}, cache_write
+# {full_name: outcome}. Nothing in a response body, cache entry or prompt reads it.
+_PRICE_TRACE: "_contextvars.ContextVar[Optional[dict]]" = _contextvars.ContextVar(
+    "price_outcome_trace", default=None)
+_PRICE_TRACE_PRODUCT: "_contextvars.ContextVar[Optional[str]]" = _contextvars.ContextVar(
+    "price_outcome_product", default=None)
+# closest-to-success first (P2-20)
+_P2_MISS_ORDER: Tuple[str, ...] = ("rejected", "no_price_parsed", "refused", "not_found", "timed_out")
+_P2_TRACE_SETS = ("parked", "recovered")
+
+
+def price_trace_bind() -> dict:
+    trace = {"reconcile": {}, "parked": set(), "recovered": set(), "products": {}, "cache_write": {}}
+    try:
+        _PRICE_TRACE.set(trace)
+    except Exception:  # noqa: BLE001
+        pass
+    return trace
+
+
+def price_trace_get() -> Optional[dict]:
+    try:
+        return _PRICE_TRACE.get()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def price_trace_product(full_name: Any) -> None:
+    """Name the product the current price task resolves (its ledger key)."""
+    try:
+        _PRICE_TRACE_PRODUCT.set(full_name)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def price_trace_note(kind: str, value: Any) -> None:
+    """kind 'parked' / 'recovered': an object id; 'reconcile': (slot, action);
+    'cache_write': (full_name, outcome). A no-op when no trace is bound."""
+    try:
+        trace = _PRICE_TRACE.get()
+        if trace is None:
+            return
+        if kind in _P2_TRACE_SETS:
+            trace[kind].add(value)
+        elif kind in ("reconcile", "cache_write"):
+            key, action = value
+            trace[kind][key] = action
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def price_miss_note(product: Optional[str] = None, cls: Optional[str] = None, *, family: Optional[str] = None,
+                    host: Optional[str] = None, status: Any = None, rule: Optional[str] = None,
+                    title: Any = None) -> None:
+    """Append one miss note for `product` (default: the current price task's
+    product). Pure in-memory append; never raises."""
+    try:
+        trace = _PRICE_TRACE.get()
+        if trace is None:
+            return
+        name = product or _PRICE_TRACE_PRODUCT.get()
+        if not name:
+            return
+        trace["products"].setdefault(name, []).append({
+            "cls": cls, "family": family or "other", "host": host, "status": status,
+            "rule": rule, "title": (str(title)[:60] if title else None)})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def price_miss_summary(product: Any) -> dict:
+    """The ledger read PRICE_OUTCOME prints: the closest-to-success miss with its
+    host / status / rule, per-family note counts, rejected counts per rule and at
+    most two example titles per rule."""
+    out = {"miss": "none", "miss_host": "none", "miss_status": "none", "miss_rule": "none",
+           "fam": "none", "rejected": {}, "examples": {}}
+    try:
+        trace = _PRICE_TRACE.get()
+        ledger = (trace or {}).get("products") or {}
+        names = list(product) if isinstance(product, (list, tuple)) else [product]
+        notes = [n for key in dict.fromkeys(names) for n in (ledger.get(key) or [])]
+        best = None
+        families: Dict[str, int] = {}
+        for n in notes:
+            families[n["family"]] = families.get(n["family"], 0) + 1
+            if n["cls"] in _P2_MISS_ORDER and (
+                    best is None or _P2_MISS_ORDER.index(n["cls"]) < _P2_MISS_ORDER.index(best["cls"])):
+                best = n
+            if n["cls"] == "rejected" and n.get("rule"):
+                out["rejected"][n["rule"]] = out["rejected"].get(n["rule"], 0) + 1
+                examples = out["examples"].setdefault(n["rule"], [])
+                if n.get("title") and len(examples) < 2:
+                    examples.append(n["title"])
+        if best is not None:
+            out["miss"] = best["cls"]
+            out["miss_host"] = best.get("host") or "none"
+            out["miss_status"] = str(best["status"]) if best.get("status") is not None else "none"
+            out["miss_rule"] = best.get("rule") or "none"
+        if families:
+            out["fam"] = ",".join("%s=%d" % kv for kv in sorted(families.items()))
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def p2_ledger_names(product: Any) -> List[str]:
+    """F7 (corr m4; log-only): the keys this product's miss notes are written under:
+    the product's full_name (the race-miss and floor notes) and the price task's key,
+    built from the Step-1 brand / name / variant exactly as SCS _shopping_cache_key
+    builds it (the Shopping filter notes and the cache-write notes). Never raises."""
+    names: List[str] = []
+    try:
+        if not isinstance(product, dict):
+            return names
+        full = product.get("full_name") or product.get("name") or ""
+        if isinstance(full, str) and full:
+            names.append(full)
+        brand = product.get("brand") or ""
+        name = product.get("name") or ""
+        variant = product.get("variant")
+        if isinstance(brand, str) and isinstance(name, str) and name and (
+                variant is None or isinstance(variant, str)):
+            if variant and variant.lower() in name.lower():
+                key = f"{brand} {name}".strip()
+            else:
+                key = f"{brand} {name} {variant or ''}".strip()
+            if key and key not in names:
+                names.append(key)
+    except Exception:  # noqa: BLE001
+        pass
+    return names
+
+
+def price_cache_refusal_reason(request_name: str, price: Any, category: Optional[str] = None,
+                               *, warm_context: bool = False) -> Optional[str]:
+    """P2R-4 (log-only): the name of the FIRST check should_cache_price refuses, or
+    None where it allows. Called only AFTER should_cache_price returned False, so
+    the gate expression, its body and its traceback stay byte-identical. Mirrors
+    should_cache_price check for check (the A33 rows pin the parity)."""
+    if not exact_gate_enabled():
+        return None
+    if not isinstance(price, dict):
+        return "not_dict"
+    title = price.get("title") or price.get("name") or ""
+    if not title:
+        return "no_title"
+    url = price.get("url")
+    if not url:
+        return "no_url"
+    if _is_listing_url(url):
+        return "listing_url"
+    if price.get("in_stock") is False:
+        return "out_of_stock"
+    if ((category or "").lower() == "electronics"
+            and _is_device_accessory(title) and not _is_device_accessory(request_name)):
+        return "accessory"
+    if not request_name:
+        return None
+    if _selection_match(request_name, title, category, candidate_brand=price.get("brand", "")):
+        if not _brand_evidence_ok(request_name, title, candidate_brand=str(price.get("brand") or ""),
+                                  category=category):
+            return "brand_evidence"
+    elif not _structured_code_cache_override(request_name, price, title, category):
+        return "identity"
+    allow, _reason = warmer_write_veto(request_name, price, category, warm_context=warm_context)
+    return None if allow else "warmer_veto"
+
+
+# ---- seen_at (P2R-6, P2-23): the time a cached price was SEEN, ISO-8601 UTC ------
+P2_SEEN_AT_KEY = "_seen_at"
+
+
+def p2_seen_now() -> str:
+    return _p2_datetime.datetime.now(_p2_datetime.timezone.utc).isoformat()
+
+
+def p2_seen_ago(seconds: int) -> str:
+    return (_p2_datetime.datetime.now(_p2_datetime.timezone.utc)
+            - _p2_datetime.timedelta(seconds=int(seconds))).isoformat()
+
+
+# ---- reconcile V2 (P2-2, P2-3, P2-4; ORCH-P2-B rules 1-4) -------------------------
+P2_SHOWN_KEY = "_p2_shown_price"     # the real shown price of a PROJECTED side
+P2_RESELECTED_KEY = "_p2_reselected"  # the side's price was swapped by V2 (P2-7 cache)
+P2_OPEN_KEY = "_p2_open"              # shown in every capability cell (rules 1 and 4)
+
+
+def _p2_swap(product: Dict[str, Any], new_price: Dict[str, Any]) -> None:
+    """The shipped _resolve_to_target swap mechanics (price + mirrors when present)."""
+    product["price"] = new_price
+    if "best_price" in product:
+        product["best_price"] = new_price.get("amount")
+    if "retailer" in product:
+        product["retailer"] = new_price.get("retailer")
+
+
+def _p2_pend(product: Dict[str, Any], pending: Dict[str, Any]) -> None:
+    product["price"] = pending
+    if "best_price" in product:
+        product["best_price"] = None
+    if "retailer" in product:
+        product["retailer"] = None
+
+
+def reconcile_pair_sizes_v2(
+    product_data: List[Dict[str, Any]],
+    user_query: Optional[str] = None,
+    candidates_by_name: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    treat_unsized_as_flagship: bool = False,
+) -> bool:
+    """The flag-ON fragrance pair check (reached only from reconcile_pair_fairness).
+
+    1. Today's no-op guards (pair of two dict prices, both amounts > 0, the
+       estimate skip).
+    2. Today's decision, dry, on copies: which sides flag OFF pends for size.
+    3. The floor: a side under 30 ml / travel wording (not its typed size) is
+       re-selected from passing candidates, else pended pending_genuine.
+    4. Typed sizes: each typed side targets ITS OWN typed size, an untyped side
+       the other side's typed size; re-select only when the listing has another
+       strict size; never a pend. No typed size: today's common-size
+       re-selection (100 preferred, else the largest common size); none common:
+       nobody changes.
+    5. Not comparable at the end (P2R-2 reader): the side(s) flag OFF pends (both
+       when it pends none) are PROJECTED: `price` carries flag OFF's pending dict
+       for every comparing consumer (P2-4) and the shown price rides
+       P2_SHOWN_KEY for the wire. A projected side is OPEN (shown in every cell)
+       when it is typed and its listing is at its typed size or has no strict size
+       (rule 1, P2R-29), or flag OFF does not pend it (rule 4); otherwise the
+       wire gates it on the price_size token (rule 2).
+    Returns True iff a price was swapped, pended or projected. Pure and in-place;
+    no network (re-selection reads candidates already fetched)."""
+    if not isinstance(product_data, list) or len(product_data) < 2:
+        return False
+    p0, p1 = product_data[0], product_data[1]
+    pr0 = p0.get("price") if isinstance(p0, dict) else None
+    pr1 = p1.get("price") if isinstance(p1, dict) else None
+    if not isinstance(pr0, dict) or not isinstance(pr1, dict):
+        return False
+    for amount in (pr0.get("amount"), pr1.get("amount")):
+        if not (isinstance(amount, (int, float)) and amount > 0):
+            return False
+    if _fairness_ignore_estimate_enabled() and (_is_estimate_price(pr0) or _is_estimate_price(pr1)):
+        return False
+    flag = treat_unsized_as_flagship
+    sides = (p0, p1)
+
+    # 2. flag OFF's own decision on copies (reconcile_pair_sizes swaps / pends the
+    # copies only; reselect_to_target_size is pure).
+    shadow = [{**p, "price": dict(p["price"])} for p in sides]
+    reconcile_pair_sizes(shadow, user_query, candidates_by_name, flag)
+    today_pend = [i for i in (0, 1) if shadow[i]["price"].get("unavailable") is True
+                  and shadow[i]["price"].get("reason") == "size_mismatch"]
+
+    by_name = candidates_by_name or {}
+    typed = (typed_size_ml(p0), typed_size_ml(p1))
+    names = [p.get("full_name") or p.get("name") or "" for p in sides]
+    cands = [_p2_usable_candidates(by_name.get(names[i]) or by_name.get(sides[i].get("name") or ""), typed[i])
+             for i in (0, 1)]
+    currency = [(p.get("price") or {}).get("currency") or "BHD" for p in sides]
+    changed = False
+
+    def _reselect(i: int, target: float) -> bool:
+        nonlocal changed
+        new = reselect_to_target_size(names[i], cands[i], float(target), currency=currency[i])
+        if new is None:
+            return False
+        was_kb = (sides[i].get("price") or {}).get("_cache_source") == "kb"
+        _p2_swap(sides[i], new)
+        if not was_kb:  # a KB-served side is never written to the price cache
+            sides[i][P2_RESELECTED_KEY] = True
+        changed = True
+        return True
+
+    # 3. the floor
+    floor_pended = False
+    for i in (0, 1):
+        if p2_passes_floor(sides[i]["price"], typed[i]):
+            continue
+        target = typed[i] or _p2_comparable_size(sides[1 - i], flag) or _FRAGRANCE_FLAGSHIP_SIZE_ML
+        if _reselect(i, target):
+            continue
+        _p2_pend(sides[i], make_pending_price(currency[i], "pending_genuine"))
+        price_miss_note(names[i], "rejected", family="reconcile", rule="floor")
+        floor_pended = changed = True
+    if floor_pended:
+        return changed  # one side has no price: nothing left to compare
+
+    # 4. sizes
+    common_size_reached = False
+    if typed[0] is not None or typed[1] is not None:
+        for i in (0, 1):
+            target = typed[i] if typed[i] is not None else typed[1 - i]
+            listing = listing_size_ml(sides[i]["price"])
+            if listing is not None and listing != target:
+                _reselect(i, target)
+    else:
+        eff = [effective_pair_size_ml(p, flag) for p in sides]
+        if eff[0] is not None and eff[0] == eff[1]:
+            common_size_reached = True
+        else:
+            reach = []
+            for i in (0, 1):
+                sizes = {eff[i]} - {None}
+                for c in cands[i]:
+                    size = _candidate_size_ml(c)
+                    if size is not None and reselect_to_target_size(
+                            names[i], [c], size, currency=currency[i]) is not None:
+                        sizes.add(size)
+                reach.append(sizes)
+            common = reach[0] & reach[1]
+            if common:
+                target = _FRAGRANCE_FLAGSHIP_SIZE_ML if _FRAGRANCE_FLAGSHIP_SIZE_ML in common else max(common)
+                for i in (0, 1):
+                    if effective_pair_size_ml(sides[i], flag) != target:
+                        _reselect(i, target)
+                common_size_reached = True
+
+    # 5. comparability on the final prices; the projection when they differ
+    if common_size_reached:
+        return changed
+    if _p2_comparable_size(p0, flag) == _p2_comparable_size(p1, flag):
+        return changed
+    for i in (today_pend or [0, 1]):
+        side = sides[i]
+        shown = side["price"]
+        side[P2_SHOWN_KEY] = shown
+        listing = listing_size_ml(shown)
+        rule1 = typed[i] is not None and (listing is None or listing == typed[i])
+        rule4 = i not in today_pend
+        if rule1 or rule4:
+            side[P2_OPEN_KEY] = True
+        if i in today_pend:
+            _p2_pend(side, shadow[i]["price"])  # flag OFF's own pending dict
+        else:
+            _p2_pend(side, make_pending_price(currency[i], "size_mismatch", size=shown.get("size")))
+    return True
+
+
+def _p2_trace_reconcile(product_data: Any, before: List[Any]) -> None:
+    """Note per slot what the fragrance reconcile did (both flag values; log-only)."""
+    for i, p in enumerate((product_data or [])[:2]):
+        price = p.get("price") if isinstance(p, dict) else None
+        if isinstance(p, dict) and isinstance(p.get(P2_SHOWN_KEY), dict):
+            action = "both_shown"
+        elif isinstance(price, dict) and price.get("unavailable") is True and price.get("reason") == "size_mismatch":
+            action = "pend"
+        elif (isinstance(price, dict) and price.get("unavailable") is True
+              and price.get("reason") == "pending_genuine" and i < len(before) and before[i] is not price):
+            action = "floor"  # F7 (corr m5): the P2R-12 floor pend (V2's only pending_genuine)
+        elif i < len(before) and before[i] is not price:
+            action = "reselect"
+        else:
+            action = "none"
+        price_trace_note("reconcile", (i, action))
+
+
+# ---- the wire (response_builder and the SSE prices event) -------------------------
+def _p2_is_fragrance(category: Any) -> bool:
+    from app.services.extraction_service import canonicalize_category
+    return canonicalize_category(category) == "fragrances"
+
+
+def _p2_stamp_size(view: Dict[str, Any], source: Dict[str, Any]) -> None:
+    """P2-5 additive price.size_ml / price.per_ml on a SHOWN price whose listing has
+    one strict ml size and a url (X1-R12)."""
+    size = listing_size_ml(source)
+    amount = view.get("amount")
+    if size and source.get("url") and isinstance(amount, (int, float)) and amount > 0:
+        view["size_ml"] = size
+        view["per_ml"] = round(float(amount) / size, 4)
+
+
+def _p2_offsize_listing(listing: Dict[str, Any]) -> Dict[str, Any]:
+    """P2R-19: the held side's off-size listing (additive; no live bundle reads it)."""
+    amount = listing.get("amount")
+    size = listing_size_ml(listing)
+    per_ml = round(float(amount) / size, 4) if size and isinstance(amount, (int, float)) else None
+    return {"amount": amount, "currency": listing.get("currency"), "size_ml": size, "per_ml": per_ml,
+            "retailer": listing.get("retailer"), "url": listing.get("url"),
+            "title": str(listing.get("title") or "")[:120], "source_method": listing.get("source_method")}
+
+
+def p2_wire_price(pd: Dict[str, Any], category: Any, region_currency: str, region_guard_on: bool,
+                  cap: bool) -> Tuple[Any, Any, Any, str]:
+    """(price view, best_price, retailer, state) one product's WIRE copies carry,
+    flag ON. `pd["price"]` is the price after the chokepoint (projected sides carry
+    flag OFF's pending dict); never mutated. state: 'both_shown' (a projected side
+    restored), 'offsize_held' (held pending with price.offsize_listing), 'none'.
+
+    A projected side is restored only after the chokepoint's own checks pass on a
+    copy (region currency, is_price_showable with correctness, the floor) and
+    never when it is a typed side whose listing has ANOTHER strict size (P2R-34);
+    it is shown when the request carries price_size or the side is open (rules 1
+    and 4); otherwise it is held as flag OFF ships it, plus offsize_listing."""
+    current = pd.get("price")
+    is_frag = _p2_is_fragrance(pd.get("category") or category)
+    stash = pd.get(P2_SHOWN_KEY)
+    if isinstance(stash, dict):
+        name = pd.get("full_name") or pd.get("name") or ""
+        typed = typed_size_ml(pd)
+        listing = listing_size_ml(stash)
+        check = _p2_copy.deepcopy(stash)
+        restorable = not (region_guard_on and str(check.get("currency") or "").upper() not in ("", region_currency))
+        restorable = restorable and is_price_showable(
+            name, check, pd.get("category") or category, enforce_correctness=True)
+        restorable = restorable and p2_passes_floor(stash, typed)
+        if restorable and typed is not None and listing is not None and int(listing) != int(typed):
+            restorable = False
+        if restorable and (cap or pd.get(P2_OPEN_KEY) is True):
+            view = dict(public_price_view(stash))
+            if is_frag:
+                _p2_stamp_size(view, stash)
+            return view, view.get("amount"), stash.get("retailer"), "both_shown"
+        view = dict(public_price_view(current)) if isinstance(current, dict) else current
+        if restorable and isinstance(view, dict):
+            view["offsize_listing"] = _p2_offsize_listing(stash)
+            return view, pd.get("best_price"), pd.get("retailer"), "offsize_held"
+        return view, pd.get("best_price"), pd.get("retailer"), "none"
+    view = dict(public_price_view(current)) if isinstance(current, dict) else current
+    if is_frag and isinstance(view, dict) and view.get("unavailable") is not True:
+        _p2_stamp_size(view, current)
+    return view, pd.get("best_price"), pd.get("retailer"), "none"
+
+
+def pair_price_sizes(views: List[Any]) -> Dict[str, Any]:
+    """metadata.pair_price_sizes: {"mode": same_size | different_sizes | unknown,
+    "sizes_ml": [a, b]} from the two wire views (a held side reports its
+    offsize_listing size)."""
+    sizes: List[Any] = []
+    for view in list(views)[:2]:
+        size = None
+        if isinstance(view, dict):
+            size = view.get("size_ml")
+            if size is None and isinstance(view.get("offsize_listing"), dict):
+                size = view["offsize_listing"].get("size_ml")
+        sizes.append(size)
+    while len(sizes) < 2:
+        sizes.append(None)
+    a, b = sizes
+    if a is not None and a == b:
+        mode = "same_size"
+    elif (a is not None and b is not None) or (
+            (a is None) != (b is None) and (a or b) != _FRAGRANCE_FLAGSHIP_SIZE_ML):
+        # both known and unequal, or one known and not the flagship default
+        mode = "different_sizes"
+    else:
+        mode = "unknown"
+    return {"mode": mode, "sizes_ml": sizes}
+
+
+# P2R-13: a DATA row the owner may veto (Rasasi Hawas has a for-Her sibling). Read by
+# _vd_gender_line_flip only with ENABLE_PRICE_NOT_LOST on (and that reader itself
+# acts only under ENABLE_LISTING_MATCH_GUARD).
+_P2_GENDER_FLIP_EXTRA: Tuple[Tuple[FrozenSet[str], str], ...] = (
+    (frozenset({"rasasi", "hawas"}), "men"),
+)
