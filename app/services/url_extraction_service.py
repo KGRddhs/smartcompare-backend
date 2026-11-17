@@ -1204,6 +1204,12 @@ def _link_classify(url: str, fetched: Dict[str, Any]) -> Optional[Tuple[str, str
             return ("STORE_UNREADABLE", "timeout", "timeout", status, True)
         reason = _V2_FETCH_OUTCOME_REASONS.get(outcome, "fetch_error")
         return ("STORE_UNREADABLE", reason, reason, status, False)
+    # FX-2: a challenge title is the shop's bot check whatever the status (a 403 / 429
+    # / 5xx wall included): never retried, coded challenge, before the status branch.
+    if (_link_encoding_decodable(fetched.get("content_encoding"))
+            and _is_challenge_page(fetched.get("text") or "")):
+        _log_fetch_failed(url, "challenge", None)
+        return ("STORE_UNREADABLE", "challenge", "challenge", status, False)
     if not isinstance(status, int) or not 200 <= status <= 299:
         if status in _LINK_REFUSED_STATUSES:
             reason, code = "refused", "STORE_UNREADABLE"
@@ -1216,9 +1222,6 @@ def _link_classify(url: str, fetched: Dict[str, Any]) -> Optional[Tuple[str, str
     if not _link_encoding_decodable(fetched.get("content_encoding")):
         _log_fetch_failed(url, "undecodable", None)
         return ("STORE_UNREADABLE", "undecodable", "undecodable", status, False)
-    if _is_challenge_page(fetched.get("text") or ""):
-        _log_fetch_failed(url, "challenge", None)
-        return ("STORE_UNREADABLE", "challenge", "challenge", status, False)
     return None
 
 
@@ -1275,12 +1278,28 @@ def _link_key(product: Dict[str, Any], gtin: Optional[str]) -> Optional[Dict[str
         return None
 
 
+# FX-1: SUPPORTED_RETAILERS keys whose storefronts span countries on one domain (by
+# subdomain or path) or whose key is not a domain at all: never a default currency.
+_LINK_MULTI_COUNTRY_RETAILER_KEYS = frozenset({
+    "carrefour", "luluhypermarket", "noon.com", "sharafdg.com", "jarir.com", "extra.com",
+})
+
+
 def _link_stated_currency(raw_currency: Any, retailer: Dict[str, Any]) -> Optional[str]:
-    """The stated currency: the page's (or the AI's), else the retailer default for a
-    SUPPORTED_RETAILERS row only (an unknown shop states none: U-4)."""
+    """The stated currency: the page's (or the AI's), else the retailer default only
+    when the host IS that retailer's own single-country domain (host == key or a
+    subdomain of it; never a multi-country key: FX-1). An unknown shop, another
+    country's domain matched by substring (amazon.com.tr, carrefouruae.com) and a
+    multi-country retailer state none (U-4: pending currency_unknown)."""
     if isinstance(raw_currency, str) and raw_currency.strip():
         return raw_currency
-    if isinstance(retailer, dict) and retailer.get("key") in SUPPORTED_RETAILERS:
+    if not isinstance(retailer, dict):
+        return None
+    key = retailer.get("key")
+    if key not in SUPPORTED_RETAILERS or key in _LINK_MULTI_COUNTRY_RETAILER_KEYS:
+        return None
+    domain = retailer.get("domain")
+    if isinstance(domain, str) and (domain == key or domain.endswith("." + key)):
         return retailer.get("currency")
     return None
 
@@ -2019,6 +2038,11 @@ def _link_price(price: Any, facts: Dict[str, Any]) -> Tuple[Dict[str, Any], str]
     if amount is not None and not (math.isfinite(amount) and amount > 0):
         amount = None
     if amount is not None and code == "BHD":
+        raw_label = out.get("currency")
+        if raw_label != "BHD":  # FX-4: the exact code; the page's label kept beside it
+            out["currency"] = "BHD"
+            if isinstance(raw_label, str) and raw_label:
+                out["original_currency"] = raw_label
         return out, "bhd"
     if amount is not None and code == "USD":
         out.update(amount=round(_convert_to_bhd(amount, "USD"), 3), currency="BHD",
@@ -2070,8 +2094,10 @@ def _link_result_adapt_inner(body: Dict[str, Any], extras: List[Dict[str, Any]],
             product.get("image_url"), facts.get("final_url") or product.get("source_url"))
         price, kind = _link_price(product.get("price"), facts)
         product["price"] = price
-        if kind == "foreign":
-            history_ok = False
+        if kind == "foreign" or (kind == "pending" and price.get("reason") == "currency_unknown"):
+            history_ok = False  # FX-1: an amount in an unknown currency stays out too
+        if not is_usable_title(product.get("name"), ()):
+            history_ok = False  # FX-3: never a History row for a placeholder name
         key = facts.get("key")
         if isinstance(key, dict):
             product["link_key"] = dict(key)
