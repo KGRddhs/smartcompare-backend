@@ -34,6 +34,13 @@ a line with nothing to match falls to the fragrance word (fragrances, other) or 
 With an empty brand every significant line token must be covered (a token or a join).
 OFF: ``check`` is the base code, byte for byte.
 
+INC-I2b GUARD-WORDS: ``ENABLE_IMAGE_GUARD_WORDS`` (default OFF, read PER CALL inside
+``check`` after a passing base verdict, so only under the guard) refuses a title that
+names another FORM (body care, a set, a refill, a miniature; reason ``form``) or a
+concentration the user did not ask for (a free-standing flanker intense, or a TYPED
+concentration the title contradicts; reason ``concentration``). A word the user typed
+and a brand form never count. OFF: ``check`` returns ``_check_base``, the base code.
+
 A leaf: module level imports the stdlib, ``category_gate`` (the tokenizer),
 ``jsonld_widen`` (the image policy) and ``deny_hosts`` (the banned-site match functions)
 only; ``price_service`` (the alias groups, the JSON-LD image reader) is imported inside
@@ -181,7 +188,16 @@ _HTTPS = "https://"
 #: The closed vocabularies of the [IMG_RELEVANCE] line (image_service logs it).
 TIERS = ("none", "piggyback", "search_payload", "serper_images", "llm_pick")
 OUTCOMES = ("accepted", "rejected", "none")
-REASONS = ("none", "scheme", "brand", "name", "fragrance_word", "denied")
+REASONS = (
+    "none",
+    "scheme",
+    "brand",
+    "name",
+    "fragrance_word",
+    "denied",
+    "form",
+    "concentration",
+)
 LLM_PICK_TIER = "llm_pick"
 
 #: INC-I2e GUARD-SHORT-LINE (default OFF, read per call inside ``check``).
@@ -192,6 +208,133 @@ ELISION = frozenset({"l", "d", "j", "s", "c", "n", "m"})
 _NUMERO_PREFIX = frozenset({"n", "no", "nr"})
 _NUMERO = re.compile(r"n(?:o|r)?([0-9]+)")
 _WHOLE_LINE_DROP = STOP_WORDS | CONCENTRATION_WORDS | FRAGRANCE_WORDS | UNIT_WORDS
+
+#: INC-I2b GUARD-WORDS (default OFF, read per call inside ``check`` after a passing base
+#: verdict, so only under the guard) and the shop page image tier A (read by the
+#: WooCommerce adapter per match call with a winner).
+WORDS_FLAG_ENV = "ENABLE_IMAGE_GUARD_WORDS"
+SHOP_PAGE_IMAGE_FLAG_ENV = "ENABLE_SHOP_PAGE_IMAGE"
+#: INC-I2b rule 1: a title word naming another FORM of the product (body care, a set,
+#: a refill, a miniature). A word the user typed or a brand form never counts. The
+#: bare gift / travel words never count alone (I-10): only the joins below.
+FORM_WORDS = _fold(
+    "deodorant",
+    "deodorants",
+    "deo",
+    "antiperspirant",
+    "shower",
+    "gel",
+    "lotion",
+    "balm",
+    "aftershave",
+    "shave",
+    "soap",
+    "cream",
+    "mist",
+    "oil",
+    "body",
+    "hair",
+    "bath",
+    "wash",
+    "scrub",
+    "powder",
+    "candle",
+    "diffuser",
+    _cps(0x0645, 0x0632, 0x064A, 0x0644),
+    _cps(0x062C, 0x0644),
+    _cps(0x0627, 0x0633, 0x062A, 0x062D, 0x0645, 0x0627, 0x0645),
+    _cps(0x0634, 0x0639, 0x0631),
+    _cps(0x0644, 0x0648, 0x0634, 0x0646),
+    "giftset",
+    "set",
+    "sets",
+    "coffret",
+    "kit",
+    "bundle",
+    "duo",
+    "trio",
+    _cps(0x0637, 0x0642, 0x0645),
+    "refill",
+    "refills",
+    "recharge",
+    "mini",
+    "minis",
+    "miniature",
+    "miniatures",
+    "atomiser",
+    "atomizer",
+    "atomisers",
+    "atomizers",
+    "purse",
+    "vial",
+    "vials",
+    "sample",
+    "samples",
+    "decant",
+    "decants",
+    "rollerball",
+    _cps(0x0639, 0x064A, 0x0646, 0x0629),
+)
+FORM_JOINS = frozenset(
+    {
+        ("gift", "set"),
+        ("gift", "box"),
+        ("gift", "pack"),
+        ("travel", "size"),
+        ("travel", "spray"),
+        ("travel", "set"),
+        ("travel", "kit"),
+    }
+)
+INTENSE_WORDS = _fold("intense")
+#: FIX-1: no longer read; the positional test in ``_conc_scan`` decides (these words
+#: are never a flanker slot, so they stay generic). Kept: the guard version text
+#: (E19 / E22) names it. The slot words live inside ``_conc_scan`` so they are hashed.
+INTENSE_GENERIC_NEXT = _fold("fragrance", "perfume")
+
+
+def _phrase(text: str) -> Tuple[str, ...]:
+    return tuple(_cg.normalize(text))
+
+
+_AR_EAU = _cps(0x0627, 0x0648)
+_AR_PARFUM = _cps(0x0628, 0x0627, 0x0631, 0x0641, 0x0627, 0x0646)
+_AR_TOILETTE = _cps(0x062A, 0x0648, 0x0627, 0x0644, 0x064A, 0x062A)
+#: INC-I2b rule 2: the concentration phrases (folded), longest first.
+CONC_PHRASES: Tuple[Tuple[Tuple[str, ...], str], ...] = tuple(
+    sorted(
+        (
+            (_phrase("extrait de parfum"), "Extrait"),
+            (_phrase("parfum intense"), "Parfum Intense"),
+            (_phrase("eau de parfum"), "EDP"),
+            (_phrase("eau de toilette"), "EDT"),
+            (_phrase("eau de cologne"), "EDC"),
+            (_phrase("eau fraiche"), "Eau Fraiche"),
+            (_phrase("edp"), "EDP"),
+            (_phrase("edt"), "EDT"),
+            (_phrase("edc"), "EDC"),
+            (_phrase("extrait"), "Extrait"),
+            (_phrase("elixir"), "Elixir"),
+            (_phrase("parfum"), "Parfum"),
+            (_phrase(_AR_EAU + " " + _cps(0x062F, 0x0648) + " " + _AR_PARFUM), "EDP"),
+            (_phrase(_AR_EAU + " " + _cps(0x062F, 0x064A) + " " + _AR_PARFUM), "EDP"),
+            (_phrase(_AR_EAU + " " + _cps(0x062F, 0x064A) + " " + _AR_TOILETTE), "EDT"),
+            (_phrase(_AR_EAU + " " + _cps(0x062F, 0x0648) + " " + _AR_TOILETTE), "EDT"),
+            (_phrase(_AR_PARFUM), "Parfum"),
+            (_phrase(_AR_TOILETTE), "EDT"),
+            (_phrase(_cps(0x0627, 0x0644, 0x0643, 0x0633, 0x064A, 0x0631)), "Elixir"),
+            (
+                _phrase(_cps(0x0627, 0x0643, 0x0633, 0x062A, 0x0631, 0x064A, 0x062A)),
+                "Extrait",
+            ),
+        ),
+        key=lambda p: -len(p[0]),
+    )
+)
+#: I-13: Extrait and Parfum are one class for rule 2(b).
+CONC_CLASS = {"Extrait": "Parfum"}
+#: The shopping thumbnail tier (never in TIERS: it never reaches [IMG_RELEVANCE]).
+SHOPPING_TIER = "shopping"
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +348,16 @@ def guard_enabled() -> bool:
 def short_line_enabled() -> bool:
     """True iff ``ENABLE_IMAGE_GUARD_SHORT_LINE`` is set truthy. Read PER CALL."""
     return os.getenv(SHORT_LINE_FLAG_ENV, "false").strip().lower() in _TRUTHY
+
+
+def guard_words_enabled() -> bool:
+    """True iff ``ENABLE_IMAGE_GUARD_WORDS`` is set truthy. Read PER CALL."""
+    return os.getenv(WORDS_FLAG_ENV, "false").strip().lower() in _TRUTHY
+
+
+def shop_page_image_enabled() -> bool:
+    """True iff ``ENABLE_SHOP_PAGE_IMAGE`` is set truthy. Read PER CALL."""
+    return os.getenv(SHOP_PAGE_IMAGE_FLAG_ENV, "false").strip().lower() in _TRUTHY
 
 
 def candidates_knob() -> int:
@@ -358,6 +511,10 @@ class Identity:
     line_short: FrozenSet[str] = frozenset()
     line_pairs: FrozenSet[Tuple[str, str]] = frozenset()
     line_joins: FrozenSet[str] = frozenset()
+    # INC-I2b: the query's folded words (product name, line, typed text) and the
+    # TYPED concentration labels (I-8), read only with the words flag ON.
+    query_words: FrozenSet[str] = frozenset()
+    query_conc: FrozenSet[str] = frozenset()
 
 
 def fold_numero(tokens: Any) -> List[str]:
@@ -479,6 +636,11 @@ def identity(product_name: Any, relevance: Any) -> Identity:
                 forms |= group
     brand_forms = frozenset(forms)
     sig2, short2, pairs2 = _line_keys(line, brand_forms)
+    typed = rel.get("typed")
+    qwords: Set[str] = set()
+    for text in (product_name, rel.get("line"), typed):
+        if isinstance(text, str):
+            qwords.update(fold_numero(_cg.normalize(text[:TEXT_MAX_CHARS])))
     return Identity(
         brand_empty=not tokens,
         brand_forms=brand_forms,
@@ -490,10 +652,24 @@ def identity(product_name: Any, relevance: Any) -> Identity:
         line_short=short2,
         line_pairs=pairs2,
         line_joins=frozenset(a + b for a, b in pairs2),
+        query_words=frozenset(qwords),
+        query_conc=_conc_labels(typed),
     )
 
 
 def check(
+    ident: Identity, texts: Any, hosts: Any = (), fragrance_texts: Any = ()
+) -> Optional[str]:
+    """None when the candidate passes, else the FIRST failing reason: the base
+    verdict (brand, name, fragrance_word), then with ENABLE_IMAGE_GUARD_WORDS ON the
+    words of the first text (form, concentration)."""
+    reason = _check_base(ident, texts, hosts, fragrance_texts)
+    if reason is not None or not guard_words_enabled():
+        return reason
+    return _words_reason(ident, texts)
+
+
+def _check_base(
     ident: Identity, texts: Any, hosts: Any = (), fragrance_texts: Any = ()
 ) -> Optional[str]:
     """None when the candidate's text names the product, else the FIRST failing
@@ -563,6 +739,109 @@ def _check_short_line(
     return None
 
 
+def _conc_scan(tokens: Any) -> Tuple[FrozenSet[str], bool]:
+    """INC-I2b: (the concentration labels, a free-standing intense) of folded tokens.
+    One scan, longest phrase first; Extrait folds into Parfum (I-13); an intense right
+    after a phrase is part of its label (I-9); a parfum right after an Elixir or an
+    Extrait phrase adds nothing. FIX-1: any other intense is free only in a flanker
+    slot, i.e. before the end, a phrase, a size or a closed word (spray, for, pour,
+    men, women, homme, femme, edition, by); before anything else it is generic."""
+    toks = (
+        [t for t in tokens if isinstance(t, str)]
+        if isinstance(tokens, (list, tuple))
+        else []
+    )
+    labels: Set[str] = set()
+    free = False
+    prev: Optional[str] = None
+    i = 0
+    while i < len(toks):
+        for phrase, label in CONC_PHRASES:
+            width = len(phrase)
+            if tuple(toks[i : i + width]) == phrase:
+                i += width
+                lab = CONC_CLASS.get(label, label)
+                if (
+                    i < len(toks)
+                    and toks[i] in INTENSE_WORDS
+                    and not lab.endswith("Intense")
+                ):
+                    lab += " Intense"
+                    i += 1
+                if not (label == "Parfum" and prev in ("Elixir", "Extrait")):
+                    labels.add(lab)
+                prev = label
+                break
+        else:
+            nxt = toks[i + 1] if i + 1 < len(toks) else ""
+            if toks[i] in INTENSE_WORDS and (
+                not nxt
+                or any(phrase[0] == nxt for phrase, _lab in CONC_PHRASES)
+                or SIZE_TOKEN.fullmatch(nxt)
+                or _NUMBER.fullmatch(nxt)
+                or nxt
+                in {
+                    "spray",
+                    "for",
+                    "pour",
+                    "men",
+                    "women",
+                    "homme",
+                    "femme",
+                    "edition",
+                    "by",
+                }
+            ):
+                free = True
+            prev = None
+            i += 1
+    return frozenset(labels), free
+
+
+def _conc_labels(text: Any) -> FrozenSet[str]:
+    """INC-I2b: the concentration labels of one text (frozenset() for a non-str)."""
+    if not isinstance(text, str):
+        return frozenset()
+    return _conc_scan(fold_numero(_cg.normalize(text[:TEXT_MAX_CHARS])))[0]
+
+
+def _words_reason(ident: Identity, texts: Any) -> Optional[str]:
+    """INC-I2b: the words test of the FIRST text (the title): form, then concentration
+    (a free intense the user did not type; a typed concentration the title contradicts;
+    FIX-1: with a typed intense, a trailing " Intense" is dropped from every label on
+    both sides first, so "Intense EDP" matches "Eau de Parfum Intense").
+    None when it passes or when the first text is not a str."""
+    seq = _seq(texts)
+    title = seq[0] if seq else None
+    if not isinstance(title, str):
+        return None
+    toks = fold_numero(_cg.normalize(title[:TEXT_MAX_CHARS]))
+    exempt = ident.query_words | ident.brand_forms
+    for tok in toks:
+        if tok in FORM_WORDS and tok not in exempt:
+            return "form"
+    for a, b in zip(toks, toks[1:], strict=False):
+        if (a, b) in FORM_JOINS and not (a in exempt and b in exempt):
+            return "form"
+    labels, free = _conc_scan(toks)
+    typed_intense = bool(INTENSE_WORDS & ident.query_words)
+    if free and not typed_intense:
+        return "concentration"
+    typed = ident.query_conc
+    if typed_intense:
+        labels = frozenset(lab.removesuffix(" Intense") for lab in labels)
+        typed = frozenset(lab.removesuffix(" Intense") for lab in typed)
+    if typed and labels and not (labels & typed):
+        return "concentration"
+    return None
+
+
+def words_reason_for(product_name: Any, title: Any) -> Optional[str]:
+    """INC-I2b: the words test of one listing title for ``product_name`` (rule 1 and
+    2(a) only: no typed concentration reaches an adapter). Total."""
+    return _words_reason(identity(product_name, None), (title,))
+
+
 def image_query(product_name: Any, ident: Identity) -> str:
     """The Tier-1 query: the full name, plus the word perfume for the fragrance
     category only."""
@@ -590,7 +869,7 @@ def first_https_raster(value: Any) -> Optional[str]:
 
 
 def relevance_kwargs(
-    brand: Any, line: Any, category: Any, slot: Any, is_vision: Any
+    brand: Any, line: Any, category: Any, slot: Any, is_vision: Any, typed: Any = None
 ) -> Dict[str, Any]:
     """The scs seam: ``{"relevance": {...}}`` for a TEXT product under the flag, else
     ``{}`` (flag OFF or a camera product: the base call, byte for byte)."""
@@ -598,14 +877,16 @@ def relevance_kwargs(
         return {}
     if is_vision:
         return {}
-    return {
-        "relevance": {
-            "brand": _str(brand),
-            "line": _str(line),
-            "category": _str(category),
-            "slot": _slot(slot),
-        }
+    rel: Dict[str, Any] = {
+        "brand": _str(brand),
+        "line": _str(line),
+        "category": _str(category),
+        "slot": _slot(slot),
     }
+    # INC-I2b (I-8): the text the user typed, only with the words flag ON.
+    if isinstance(typed, str) and guard_words_enabled():
+        rel["typed"] = typed[:TEXT_MAX_CHARS]
+    return {"relevance": rel}
 
 
 # ---------------------------------------------------------------------------
@@ -718,6 +999,17 @@ class RelevanceCall:
             if first_reason is None:
                 first_reason = reason
         return self._record(LLM_PICK_TIER, first_reason)
+
+    def accept_thumb(self, url: Any, *, texts: Any = (), hosts: Any = ()) -> bool:
+        """INC-I2b B: a Shopping thumbnail: ``accept`` (the shopping tier), then the
+        words test whatever ENABLE_IMAGE_GUARD_WORDS reads (I-12)."""
+        if not self.accept(SHOPPING_TIER, url, texts=texts, hosts=hosts):
+            return False
+        reason = _words_reason(self.ident, texts)
+        if reason is None:
+            return True
+        self.accepted_tier = None
+        return self._record(SHOPPING_TIER, reason)
 
     def summary(self) -> Tuple[str, str, str, int, str]:
         """(product, tier, outcome, candidates, reason) of the one log line."""

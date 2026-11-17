@@ -93,7 +93,7 @@ CLEARED_ENV = (
 )
 
 BIND = re.compile(
-    r"^IMG_LATE bind product=(0|1) outcome=(attached|cached|override|fallback|"
+    r"^IMG_LATE bind product=(0|1) outcome=(attached|cached|override|fallback|shopping|"
     r"missed_at_deadline|none) wait_ms=(\d+)$"
 )
 JOB = re.compile(
@@ -1386,17 +1386,50 @@ def test_e21_read_check(monkeypatch, caplog, value):
 
 GUARD_SET = (
     "check",
+    "_check_base",
     "_check_short_line",
+    "_words_reason",
+    "_conc_scan",
+    "_conc_labels",
+    "words_reason_for",
+    "guard_words_enabled",
+    "short_line_enabled",
+    "_seq",
+    "_text_tokens",
+    "_host_tokens",
+    "_candidate_keys",
+    "fold_numero",
     "identity",
+    "RelevanceCall._record",
     "RelevanceCall.accept",
     "RelevanceCall.accept_scheme",
     "RelevanceCall._organic_reason",
     "RelevanceCall.organic_passes",
     "RelevanceCall.accept_pick",
+    "RelevanceCall.accept_thumb",
 )
+#: INC-I2b (I-2): every word table check() reads, as a deterministic text.
+GUARD_SORTED_TABLES = (
+    "NAME_EXCLUDE",
+    "CONCENTRATION_WORDS",
+    "STOP_WORDS",
+    "FRAGRANCE_WORDS",
+    "BRAND_NOISE",
+    "PLACEHOLDER_BRANDS",
+    "UNIT_WORDS",
+    "ELISION",
+    "BRAND_EXCLUDE",
+    "_NUMERO_PREFIX",
+    "_WHOLE_LINE_DROP",
+    "FORM_WORDS",
+    "FORM_JOINS",
+    "INTENSE_WORDS",
+    "INTENSE_GENERIC_NEXT",
+)
+GUARD_PATTERNS = ("SIZE_TOKEN", "_NUMBER", "_NUMERO")
 
 
-def _guard_digest():
+def _guard_text():
     from app.services import image_relevance as ir
 
     objs = []
@@ -1405,9 +1438,22 @@ def _guard_digest():
         for part in dotted.split("."):
             obj = getattr(obj, part)
         objs.append(obj)
-    return hashlib.sha256(
-        "\n".join(inspect.getsource(o) for o in objs).encode("utf-8")
-    ).hexdigest()[:8]
+    parts = [inspect.getsource(o) for o in objs]
+    for name in GUARD_SORTED_TABLES:
+        parts.append(name + "=" + repr(sorted(getattr(ir, name))))
+    for name in GUARD_PATTERNS:
+        parts.append(name + "=" + getattr(ir, name).pattern)
+    parts.append("CONC_PHRASES=" + repr(ir.CONC_PHRASES))
+    parts.append(
+        "EXTRA_ALIAS_GROUPS=" + repr(sorted(sorted(g) for g in ir.EXTRA_ALIAS_GROUPS))
+    )
+    parts.append("CONC_CLASS=" + repr(sorted(ir.CONC_CLASS.items())))
+    parts.append("TEXT_MAX_CHARS=" + repr(ir.TEXT_MAX_CHARS))
+    return "\n".join(parts)
+
+
+def _guard_digest():
+    return hashlib.sha256(_guard_text().encode("utf-8")).hexdigest()[:8]
 
 
 def test_e22_guard_version_in_the_name(monkeypatch):
