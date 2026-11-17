@@ -1305,6 +1305,39 @@ def _shopping_cache_key_or(brand, name, variant, fallback: str) -> str:
         return fallback
 
 
+# INC-P2 PRICE-NOT-LOST (P2-11 / P2R-4 / P2R-10): the two UNFLAGGED, log-only price
+# cache lines. Each is built and emitted inside its own guard, so a logging fault
+# can never lose a cached price or fail a cache write; names and numbers only.
+def _p2_cache_hit_line(layer: str, age_raw: Any, brand: Any, name: Any) -> None:
+    try:
+        age = "unknown" if age_raw is None else str(int(age_raw))
+        logger.info("PRICE_CACHE_HIT layer=%s age_s=%s product=%s %s", layer, age, brand, name)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _p2_cache_skip_line(full_name: Any, price_obj: Any, category: Any, site: str) -> None:
+    """After should_cache_price returned False (the gate itself is unchanged): the
+    first failing check's name, from price_service.price_cache_refusal_reason."""
+    try:
+        reason = _ps_mod.price_cache_refusal_reason(full_name, price_obj, category) or "unknown"
+        _ps_mod.price_trace_note("cache_write", (full_name, "skip_" + reason))
+        logger.info("PRICE_CACHE_SKIP reason=%s site=%s product=%s", reason, site, full_name)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _p2_stamp_seen_from_age(db_price: Dict[str, Any], age_raw: Any) -> None:
+    """INC-P2 P2R-6 (caller holds the flag): an L2 row promoted to L1 carries
+    `_seen_at` = now - its own age when the age is known (the L2 row has no seen
+    time of its own; stated limit) and no `_seen_at` is there yet."""
+    try:
+        if age_raw is not None and _ps_mod.P2_SEEN_AT_KEY not in db_price:
+            db_price[_ps_mod.P2_SEEN_AT_KEY] = _ps_mod.p2_seen_ago(int(age_raw))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # W4-7 Part B -- the listing count REPLAYS the extractor once per row; every log
 # record that replay emits (``[PRICE] Selected``, ``[PRICE_FILTER_TRACE]``, the
 # W4-1 ``[SHOPPING_CURRENCY_TRUTH]`` and W4-2 ``[SHOPPING_DISCOVERY_URL]`` canary
@@ -1609,6 +1642,9 @@ from app.services.price_service import (
     TIER_15_BUDGET_TIMEOUT,
     ENABLE_PAGE_SCRAPE,
 )
+# INC-P2 PRICE-NOT-LOST (ENABLE_PRICE_NOT_LOST): read through the module attribute, so
+# the flag and the trace helpers are looked up per call (and patchable in tests).
+from app.services import price_service as _ps_mod
 from app.services.rating_service import (
     get_rating_tier,
     collect_retailer_ratings,
@@ -4267,6 +4303,7 @@ class StructuredComparisonService:
         output_lang: Optional[str] = None,
         fragrance_gate: Optional[Any] = None,
         kb_price_asof: bool = False,
+        price_size_cap: bool = False,
     ) -> Dict[str, Any]:
         """L2.7 — hard-capped entry point: wraps `_compare_from_text_impl` in
         asyncio.wait_for(STREAM_HARD_CAP_SECONDS) so the non-streaming path
@@ -4315,6 +4352,10 @@ class StructuredComparisonService:
         if _llm_router.compare_refuses_for_consent():
             logger.info("[ROUTER] consent update required at compare entry")
             return self._llm_unavailable_envelope()
+        # INC-P2: the request's price_size capability (flag ON only) and the
+        # UNFLAGGED log-only price trace, bound in THIS context so the impl task, its
+        # price tasks and the timeout partial built here all share one trace dict.
+        self._p2_bind_request(price_size_cap)
         _t0 = time.time()
         try:
             return await asyncio.wait_for(
@@ -4749,6 +4790,10 @@ class StructuredComparisonService:
                 )
             except Exception as _e:  # noqa: BLE001 — never block the response
                 logger.warning("fairness reconciliation skipped (sync): %s", _e)
+            # INC-P2 P2-7 (ENABLE_PRICE_NOT_LOST): cache a re-selected shown price
+            # under the key the next identical request reads (bounded, swallowed).
+            if _ps_mod.price_not_lost_enabled():
+                await self._p2_cache_reselected(products, product_data, region)
 
             # W4-3 PRE-SCORING showable guard, ENABLE_PRESCORING_SHOWABLE_GUARD,
             # default OFF. The response chokepoint pends a non-showable price only
@@ -5092,6 +5137,7 @@ class StructuredComparisonService:
         output_lang: Optional[str] = None,
         fragrance_gate: Optional[Any] = None,
         kb_price_asof: bool = False,
+        price_size_cap: bool = False,
     ):
         """Async generator version of compare_from_text that yields partial results."""
         start_time = datetime.now()
@@ -5102,6 +5148,8 @@ class StructuredComparisonService:
         self._shopping_items_cache = {}
         # COST-METER (#66): the streaming entry binds its own fresh ledger.
         self._openai_ledger = start_openai_ledger()
+        # INC-P2: the stream twin of compare_from_text's capability + trace bind.
+        self._p2_bind_request(price_size_cap)
         if kb_price_asof:
             self._kb_price_asof = True  # S81-18 (R-G4-4): the client renders as_of
         # S81-06 (F1-9): the stream twin of the impl's scope bind.
@@ -5520,6 +5568,9 @@ class StructuredComparisonService:
                 )
             except Exception as _e:  # noqa: BLE001 — never block the stream
                 logger.warning("fairness reconciliation skipped (stream): %s", _e)
+            # INC-P2 P2-7: the stream twin of the sync cache-what-is-shown write.
+            if _ps_mod.price_not_lost_enabled():
+                await self._p2_cache_reselected(products, product_data, region)
 
             # W4-3 PRE-SCORING showable guard, ENABLE_PRESCORING_SHOWABLE_GUARD,
             # default OFF. Must run BEFORE the `specs` yield, the `prices` yield
@@ -5609,6 +5660,12 @@ class StructuredComparisonService:
                     "price": public_price_view(_price), "best_price": _best,
                     "currency": pd.get("currency"), "retailer": _retailer,
                 }
+                # INC-P2 (ENABLE_PRICE_NOT_LOST): the SSE price surface carries what the
+                # complete event's wire carries (the restore of a projected side, the
+                # size stamp), computed over THIS block's own checked price.
+                if _ps_mod.price_not_lost_enabled():
+                    self._p2_sse_price(prices_payload[key], pd, _price, _best, _retailer,
+                                       category_used, region)
             yield ("prices", prices_payload)
 
             # Yield reviews
@@ -7330,6 +7387,8 @@ class StructuredComparisonService:
         orchestrator-resolved category into select_best's identity gate.
         """
         if key == "price":
+            # INC-P2 P2R-11 (UNFLAGGED, log-only): the price race missed.
+            _ps_mod.price_miss_note(full_name, "timed_out", family="race")
             if _genuine_priority_enabled():
                 # Race-miss genuine recovery. DISPLAY-ONLY: no set_cached /
                 # _save_price_to_db here (the cache_key is not reconstructible
@@ -7369,6 +7428,7 @@ class StructuredComparisonService:
                             (self._parked_price.get(full_name) or {}).get(
                                 "source_method"),
                         )
+                        _ps_mod.price_trace_note("recovered", id(best))
                         return best
                 except Exception:  # noqa: BLE001 — recovery must never break the miss path
                     pass
@@ -7378,6 +7438,7 @@ class StructuredComparisonService:
                     "[PRICE] race miss for %s → returning parked %s price (never None)",
                     full_name, parked.get("source_method"),
                 )
+                _ps_mod.price_trace_note("parked", id(parked))
                 return parked
             # WS-2 gate-fix (genuine-bh bundle) — DELIBERATELY return None here, NOT
             # a make_pending_price() dict. _phase1_completely_failed (the
@@ -7429,6 +7490,13 @@ class StructuredComparisonService:
         cache_key = build_size_aware_price_cache_key(
             brand, name, variant, region, search_query, category=category
         )
+        # INC-P2 P2R-11 (UNFLAGGED, log-only): name this task's miss-ledger product.
+        # F2: the key is computed INSIDE the guard (a malformed identity, e.g. a
+        # non-str variant, must never newly raise here).
+        try:
+            _ps_mod.price_trace_product(_shopping_cache_key(brand, name, variant))
+        except Exception:  # noqa: BLE001 - a log-only note never fails the price task
+            pass
         # I5.1 — price-only cache-bust probe forces the price reads to miss so
         # the routing escalation re-runs deterministically (specs/reviews stay
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
@@ -7440,6 +7508,7 @@ class StructuredComparisonService:
             cached = None
         if cached:
             cached["_cached"] = True
+            _p2_cache_hit_line("l1", None, brand, name)
             return cached
 
         # L2: Check DB before tier cascade
@@ -7490,7 +7559,13 @@ class StructuredComparisonService:
                 # was promoted and the private transport key never escapes
                 # `_get_price` in ANY flag state (public_price_view only strips
                 # `_` keys when ENABLE_EXACT_PRICE_GATE is ON).
+                _p2_l2_age_raw = (db_price.get("_l2_age_seconds")  # INC-P2: None = unknown age
+                                  if isinstance(db_price, dict) else None)
                 _l2_age = int(db_price.pop("_l2_age_seconds", 0) or 0)
+                # INC-P2 P2R-6 (ENABLE_PRICE_NOT_LOST): a promoted L2 row carries the
+                # time it was seen (its own age when known) into L1.
+                if _ps_mod.price_not_lost_enabled():
+                    _p2_stamp_seen_from_age(db_price, _p2_l2_age_raw)
                 if _promote:
                     _ttl = price_cache_ttl(db_price)
                     if l2_promotion_remaining_ttl_enabled():
@@ -7512,6 +7587,7 @@ class StructuredComparisonService:
                         await _cache_set_async(cache_key, db_price, _ttl)
                 db_price["_cached"] = True
                 db_price["_cache_source"] = "db"
+                _p2_cache_hit_line("l2", _p2_l2_age_raw, brand, name)
                 return db_price
 
         # Task 1.3 — negative-cache for structural genuine-BH dead-ends. When a
@@ -8138,9 +8214,12 @@ class StructuredComparisonService:
                     # restores the legacy terminal exactly: seed + return None.
                     nonlocal converted_fallback
                     if exact_gate_enabled() and converted_fallback is None:
+                        # INC-P2 P2-10: flag ON never parks an auction / marketplace
+                        # seller (flag OFF: the same list object).
                         _conv_best = select_best(
-                            [r for r in observed
-                             if "converted" in (r.get("source_method") or "")],
+                            _ps_mod.p2_filter_marketplace_rows(
+                                [r for r in observed
+                                 if "converted" in (r.get("source_method") or "")]),
                             full_name, category,
                         )
                         if _conv_best is not None:
@@ -8204,6 +8283,9 @@ class StructuredComparisonService:
                     # Issue #53 — bypass site 2 of 5 (BH adapter direct hit).
                     await self._cache_price_and_clear_sentinel(cache_key, best)
                     self._save_price_to_db(cache_key, brand, name, variant, region, best)
+                else:
+                    # INC-P2 P2R-4 (UNFLAGGED, log-only): why the write was refused.
+                    _p2_cache_skip_line(full_name, best, category, "direct_hit")
                 best["_cached"] = False
                 logger.info(
                     "[PRICE] BH adapter direct hit for %s: %.3f %s via %s "
@@ -8519,6 +8601,10 @@ class StructuredComparisonService:
                             return shop_best
                         # Reseller hit → park as fallback; let discovery+fan_out run.
                         shopify_fallback = shop_best
+                        # INC-P2 P2-9 (ENABLE_PRICE_NOT_LOST): a genuine reseller hit is
+                        # also parked on the request (ahead of a converted park) and
+                        # seeded, so a race miss returns it.
+                        self._p2_park_reseller(full_name, shop_best, shop_results, currency)
                         logger.info(
                             "[PRICE] Shopify reseller hit for %s parked as fallback: "
                             "%.3f %s via %s (ranked discovery still runs)",
@@ -9679,9 +9765,144 @@ class StructuredComparisonService:
         fire-and-forget (and its .execute() is run_db-wrapped in
         product_data_service.save_price)."""
         if not should_cache_price(full_name, price_obj, category):
+            # INC-P2 P2R-4 (UNFLAGGED, log-only): why the write was refused.
+            _p2_cache_skip_line(full_name, price_obj, category, "persist")
             return
         await self._cache_price_and_clear_sentinel(cache_key, price_obj)
         self._save_price_to_db(cache_key, brand, name, variant, region, price_obj)
+
+    # ------------------------------------------------------------------ INC-P2
+    # PRICE-NOT-LOST (ENABLE_PRICE_NOT_LOST, default OFF, read per call).
+    _P2_CACHE_WRITE_TIMEOUT_S = 1.0  # P2R-5: the inline P2-7 write is bounded
+
+    def _p2_bind_request(self, price_size_cap: bool) -> None:
+        """Bind the request's price_size capability (only when the flag is ON) and a
+        fresh UNFLAGGED log-only price trace in the current context."""
+        try:
+            _ps_mod.price_size_cap_bind(bool(price_size_cap) and _ps_mod.price_not_lost_enabled())
+            _ps_mod.price_trace_bind()
+        except Exception:  # noqa: BLE001 - a binding never fails a compare
+            pass
+
+    def _p2_sse_price(self, payload: Dict[str, Any], pd: Dict[str, Any], price: Any, best: Any,
+                      retailer: Any, category_used: Any, region: str) -> None:
+        """The SSE `prices` entry under the flag: price_service.p2_wire_price over
+        the price this block already checked (a non-showable live price stays the
+        block's own pending dict), so the event shows what the complete wire shows.
+        A fault leaves the flag-OFF entry in place."""
+        try:
+            from app.services.exchange_rate_service import get_region_currency
+            checked = dict(pd, price=price, best_price=best, retailer=retailer)
+            view, best_out, retailer_out, _state = _ps_mod.p2_wire_price(
+                checked, category_used, get_region_currency(region).upper(),
+                _ps_mod.region_currency_guard_enabled(), _ps_mod.price_size_cap())
+            payload["price"], payload["best_price"], payload["retailer"] = view, best_out, retailer_out
+        except Exception as _p2e:  # noqa: BLE001
+            logger.warning("INC-P2 p2 sse wire skipped: %s", type(_p2e).__name__)
+
+    def _p2_park_reseller(self, full_name: str, shop_best: Dict[str, Any], shop_results: Any,
+                          currency: str) -> None:
+        """P2-9 / P2R-9: park a GENUINE Shopify reseller hit on the request (when
+        nothing is parked, or the park is converted / an estimate / a listing url)
+        and seed its rows as candidates, as the official branch does."""
+        if not _ps_mod.price_not_lost_enabled():
+            return
+        try:
+            method = shop_best.get("source_method") or "shopify_json"
+            if method not in _GENUINE_BH_SOURCE_METHODS:
+                return
+            if _ps_mod.is_auction_marketplace_seller(shop_best.get("retailer"), shop_best.get("url")):
+                return
+            parked = self._parked_price.get(full_name) or {}
+            parked_method = str(parked.get("source_method") or "")
+            if (not parked or "converted" in parked_method or "estimate" in parked_method
+                    or parked.get("estimated") is True or _ps_mod._is_listing_url(parked.get("url") or "")):
+                self._parked_price[full_name] = dict(shop_best, source_method=method)
+            self._seed_shortcircuit_candidates(
+                full_name, kind="price_dicts", currency=currency, price_dicts=shop_results,
+            )
+        except Exception as _p2e:  # noqa: BLE001
+            logger.warning("INC-P2 reseller park skipped: %s", type(_p2e).__name__)
+
+    async def _p2_cache_reselected(self, products: Any, product_data: Any, region: str) -> None:
+        """P2-7 / P2R-5: write a side's re-selected SHOWN price under the key the next
+        identical request reads (the Step-1 values `_fetch_product_data` passes to
+        `_get_price`), through `_persist_genuine_price` (should_cache_price, the
+        source-keyed TTL, the L2 save). Never a pending / estimate / KB /
+        marketplace / under-the-floor price; a converted price never overwrites a
+        genuine entry. Inline, bounded, and every failure is ONE WARNING."""
+        if not _ps_mod.price_not_lost_enabled():
+            return
+        for i, pd in enumerate((product_data or [])[:2]):
+            if not isinstance(pd, dict) or pd.get(_ps_mod.P2_RESELECTED_KEY) is not True:
+                continue
+            try:
+                shown = pd.get(_ps_mod.P2_SHOWN_KEY) or pd.get("price")
+                if not isinstance(shown, dict) or shown.get("unavailable") is True:
+                    continue
+                amount = shown.get("amount")
+                if not (isinstance(amount, (int, float)) and amount > 0):
+                    continue
+                if (_ps_mod._is_estimate_price(shown) or shown.get("_cache_source") == "kb"
+                        or _ps_mod.is_auction_marketplace_seller(shown.get("retailer"), shown.get("url"))
+                        or not _ps_mod.p2_passes_floor(shown, _ps_mod.typed_size_ml(pd))):
+                    continue
+                info = products[i] if isinstance(products, list) and i < len(products) else {}
+                brand = info.get("brand", "")
+                name = info.get("name", "")
+                variant = info.get("variant")
+                category = canonicalize_category(info.get("category"))
+                search_query = info.get("search_query", f"{brand} {name} {variant or ''}")
+                key = build_size_aware_price_cache_key(
+                    brand, name, variant, region, search_query, category=category)
+                full_name = _shopping_cache_key(brand, name, variant)
+                # F3 (narrows P2R-5): only (a) the side's OWN typed size, when the key
+                # text carries that size, or (b) an untyped side at exactly 100 ml (the
+                # basis a bare-name key already means). A partner-dictated size is never
+                # written under a key that does not carry it.
+                typed = _ps_mod.typed_size_ml(pd)
+                listing = _ps_mod.listing_size_ml(shown)
+                if typed is not None:
+                    key_size = _ps_mod.extract_size_ml_any(f"{brand} {name} {variant or ''}")
+                    basis_ok = listing == typed and key_size == typed
+                else:
+                    basis_ok = listing == _ps_mod._FRAGRANCE_FLAGSHIP_SIZE_ML
+                if not basis_ok:
+                    _ps_mod.price_trace_note("cache_write", (full_name, "skip_size_basis"))
+                    try:
+                        logger.info("PRICE_CACHE_SKIP reason=size_basis site=reselect product=%s", full_name)
+                    except Exception:  # noqa: BLE001 - a log line never fails the write path
+                        pass
+                    continue
+                clean = {k: v for k, v in shown.items()
+                         if not str(k).startswith("_") or k == _ps_mod.P2_SEEN_AT_KEY}
+            except Exception as _p2e:  # noqa: BLE001
+                logger.warning("INC-P2 cache write skipped: %s", type(_p2e).__name__)
+                continue
+            if "converted" in str(clean.get("source_method") or ""):
+                try:
+                    existing = await asyncio.wait_for(_cache_get_async(key), self._P2_CACHE_WRITE_TIMEOUT_S)
+                except Exception:  # noqa: BLE001 - an unreadable key is treated as empty
+                    existing = None
+                if isinstance(existing, dict) and is_genuine_price(existing):
+                    _ps_mod.price_trace_note("cache_write", (full_name, "skip_genuine_present"))
+                    try:
+                        logger.info("PRICE_CACHE_SKIP reason=genuine_present site=reselect product=%s",
+                                    full_name)
+                    except Exception:  # noqa: BLE001 - a log line never fails the write path
+                        pass
+                    continue
+            # "pending" is replaced by the persist's own skip note on a refusal.
+            _ps_mod.price_trace_note("cache_write", (full_name, "pending"))
+            try:
+                await asyncio.wait_for(
+                    self._persist_genuine_price(key, clean, brand, name, variant, region, full_name, category),
+                    self._P2_CACHE_WRITE_TIMEOUT_S)
+                if ((_ps_mod.price_trace_get() or {}).get("cache_write") or {}).get(full_name) == "pending":
+                    _ps_mod.price_trace_note("cache_write", (full_name, "reselected"))
+            except Exception as _p2e:  # noqa: BLE001 - the response never waits on or fails for it
+                _ps_mod.price_trace_note("cache_write", (full_name, "failed"))
+                logger.warning("INC-P2 cache write failed: %s", type(_p2e).__name__)
 
     async def _cache_price_and_clear_sentinel(self, cache_key: str, price_obj) -> None:
         """Issue #53 — the ONE L1 price write for a RESOLVED price: cache it at
@@ -9708,6 +9929,11 @@ class StructuredComparisonService:
             convention as the sentinel WRITE path — the sentinel is an
             optimization, never correctness, and must never block a price.
         """
+        # INC-P2 P2R-6 (ENABLE_PRICE_NOT_LOST): the L1 entry keeps the time the price
+        # was seen; a copy, so the caller's dict is untouched.
+        if _ps_mod.price_not_lost_enabled() and isinstance(price_obj, dict) and (
+                _ps_mod.P2_SEEN_AT_KEY not in price_obj):
+            price_obj = dict(price_obj, **{_ps_mod.P2_SEEN_AT_KEY: _ps_mod.p2_seen_now()})
         await _cache_set_async(cache_key, price_obj, price_cache_ttl(price_obj))
         if not _negcache_genuine_invalidation_enabled():
             return

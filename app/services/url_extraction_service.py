@@ -129,6 +129,15 @@ def url_winner_guard_enabled() -> bool:
     )
 
 
+def url_link_result_enabled() -> bool:
+    """INC-U1 LINK-RESULT (ENABLE_URL_LINK_RESULT, default OFF), the house idiom, read
+    PER CALL: the route reads it ONCE per request and threads ``link_result=True``
+    down only when ON, so every OFF call shape is the base shape."""
+    return os.getenv("ENABLE_URL_LINK_RESULT", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 # S95-LG (GATE GL-3): the scorer reads these top-level keys, normalize_product_data
 # nests the same values under "reviews" (top-level key, nested key).
 _URL_GUARD_LIFTED_KEYS = (("rating", "rating"), ("review_count", "count"))
@@ -554,7 +563,8 @@ async def fetch_page(url: str) -> Optional[str]:
     from app.utils.url_validator import _validate_url_offloop_or_sync
 
     if not await _validate_url_offloop_or_sync(url):
-        logger.warning(f"[SSRF] Blocked initial URL: {url}")
+        # INC-U1 U-10 (both flag states): the host only, never the pasted path or query.
+        logger.warning("[SSRF] Blocked initial URL: host=%s", _host_only(url))
         return None
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
@@ -564,13 +574,13 @@ async def fetch_page(url: str) -> Optional[str]:
                 if response.is_redirect and response.next_request is not None:
                     nxt = str(response.next_request.url)
                     if not await _validate_url_offloop_or_sync(nxt):
-                        logger.warning(f"[SSRF] Blocked redirect to {nxt}")
+                        logger.warning("[SSRF] Blocked redirect to host=%s", _host_only(nxt))
                         return None
                     current = nxt
                     continue
                 response.raise_for_status()
                 return response.text
-            logger.warning(f"[SSRF] Too many redirects for {url}")
+            logger.warning("[SSRF] Too many redirects for host=%s", _host_only(url))
             return None
     except Exception as e:
         # U8d R8 / UG2: the user's URL path and query never reach the log line
@@ -584,7 +594,7 @@ async def fetch_page(url: str) -> Optional[str]:
         return None
 
 
-async def _fetch_page_v2(url: str) -> Dict[str, Any]:
+async def _fetch_page_v2(url: str, *, link_result: bool = False) -> Dict[str, Any]:
     """B4: fetch_page's loop (same headers, the SSRF guard on the initial url AND on
     every hop, the same 5-hop bound, the same client) that NEVER raises on a status
     and keeps what fetch_page discards: the LAST status and the FINAL url.
@@ -604,6 +614,13 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
     }
     from app.utils.url_validator import _validate_url_offloop_or_sync
 
+    # INC-U1 (link_result=True, passed only under ENABLE_URL_LINK_RESULT): no "br"
+    # (httpx 0.28.1 here has no decoder: a br reply reads as garbage, spec 3a), an
+    # 8 s timeout, and the reply's Content-Encoding in the result. Default: base.
+    timeout: Any = 30.0
+    if link_result:
+        headers["Accept-Encoding"] = "gzip, deflate"
+        timeout = httpx.Timeout(_LINK_FETCH_TIMEOUT_SECONDS)
     result: Dict[str, Any] = {
         "status": None, "final_url": url, "text": None, "outcome": "error", "error_type": None,
     }
@@ -617,7 +634,7 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
         return result
     current = url
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False,
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False,
                                      transport=_TRANSPORT) as client:
             for _ in range(5):  # bounded redirect chain, every hop re-validated
                 response = await client.get(current, headers=headers)
@@ -638,6 +655,8 @@ async def _fetch_page_v2(url: str) -> Dict[str, Any]:
                     live_robots.record_response("url_extraction", current, response)
                 result.update(status=response.status_code, final_url=current,
                               text=response.text, outcome="ok")
+                if link_result:
+                    result["content_encoding"] = response.headers.get("content-encoding", "")
                 return result
         logger.warning("[SSRF] Too many redirects for host=%s", _host_only(url))
         _log_fetch_failed(url, "redirect_cap", None)
@@ -859,7 +878,8 @@ def extract_generic_data(html: str, url: str) -> Dict[str, Any]:
     return data
 
 
-def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None) -> Dict[str, Any]:
+def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None,
+                            *, link_result: bool = False) -> Dict[str, Any]:
     """B4: extract_generic_data with (1) the Product node found through
     price_service's JSON-LD shape ladder (`@graph` at any depth, an `@type` list,
     `ProductGroup.hasVariant` members; first node in document order), (2) the
@@ -922,9 +942,47 @@ def extract_generic_data_v2(html: str, url: str, final_url: Optional[str] = None
         except ValueError:
             pass
 
+    if link_result:
+        # INC-U1 (spec 3c): og:price:amount when no node price and no
+        # product:price:amount; the og / product currency when none was stated; the
+        # node's GS1-valid gtin; the JSON-LD block count (private keys, popped).
+        if "price" not in data and "og_price:amount" in meta:
+            try:
+                data["price"] = float(meta["og_price:amount"])
+            except (TypeError, ValueError):
+                pass
+        if not data.get("currency"):
+            stated = meta.get("og_price:currency") or meta.get("product_price:currency")
+            if stated:
+                data["currency"] = stated
+        data["_link_json_ld_blocks"] = len(json_ld)
+        data["_link_gtin"] = _link_gtin(nodes[0] if nodes else None)
+
     data["_v2_product_node"] = bool(nodes)
     data["_v2_site_names"] = site_names
     return data
+
+
+def _gs1_check_ok(digits: str) -> bool:
+    body = [int(c) for c in digits[:-1]][::-1]
+    total = sum(d * (3 if i % 2 == 0 else 1) for i, d in enumerate(body))
+    return (10 - total % 10) % 10 == int(digits[-1])
+
+
+def _link_gtin(node: Any) -> Optional[str]:
+    """INC-U1: the first gtin / gtin8 / gtin12 / gtin13 / gtin14 of a Product node that
+    is ASCII digits of length 8, 12, 13 or 14 with a valid GS1 check digit, else None."""
+    if not isinstance(node, dict):
+        return None
+    for key in ("gtin", "gtin14", "gtin13", "gtin12", "gtin8"):
+        value = node.get(key)
+        if isinstance(value, bool) or not isinstance(value, (str, int)):
+            continue
+        text = str(value).strip()
+        if text.isascii() and text.isdigit() and len(text) in (8, 12, 13, 14) \
+                and _gs1_check_ok(text):
+            return text
+    return None
 
 
 # ============================================
@@ -1117,7 +1175,235 @@ def _v2_refusal(url: str, code: str, reason: str, outcome: str, status: Any) -> 
             "error": _v2_code_message(code)}
 
 
-async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
+# ============================================
+# INC-U1 LINK-RESULT (ENABLE_URL_LINK_RESULT)
+# ============================================
+_LINK_FETCH_TIMEOUT_SECONDS = 8.0
+_LINK_DECODABLE_ENCODINGS = frozenset({"gzip", "deflate", "identity", ""})
+_LINK_REFUSED_STATUSES = (401, 403, 429)  # ORCH-U1-B: the shop's refusal, never retried
+_LINK_NOT_FOUND_STATUSES = (404, 410)  # U-3 / ORCH-U1-B: a coded not-found, never retried
+_LINK_TIMEOUT_TYPES = frozenset({"TimeoutException", "ConnectTimeout", "ReadTimeout",
+                                 "WriteTimeout", "PoolTimeout"})
+
+
+def _link_encoding_decodable(value: Any) -> bool:
+    tokens = [t.strip().lower() for t in str(value or "").split(",")]
+    return all(t in _LINK_DECODABLE_ENCODINGS for t in tokens)
+
+
+def _link_classify(url: str, fetched: Dict[str, Any]) -> Optional[Tuple[str, str, str, Any, bool]]:
+    """None for a readable page, else (code, reason, outcome label, status, retryable).
+    ORCH-U1-B: 401 / 403 / 429 -> refused and a challenge page -> challenge (never
+    retried, never content); 404 / 410 -> UNRESOLVED_PRODUCT not_found; ONLY a timeout
+    or a 5xx is retryable; blocked, robots_skip, redirect_cap, another transport error,
+    another non-2xx and an undecodable 2xx are final."""
+    status = fetched.get("status")
+    outcome = fetched.get("outcome")
+    if outcome != "ok":
+        if outcome == "error" and fetched.get("error_type") in _LINK_TIMEOUT_TYPES:
+            return ("STORE_UNREADABLE", "timeout", "timeout", status, True)
+        reason = _V2_FETCH_OUTCOME_REASONS.get(outcome, "fetch_error")
+        return ("STORE_UNREADABLE", reason, reason, status, False)
+    # FX-2: a challenge title is the shop's bot check whatever the status (a 403 / 429
+    # / 5xx wall included): never retried, coded challenge, before the status branch.
+    if (_link_encoding_decodable(fetched.get("content_encoding"))
+            and _is_challenge_page(fetched.get("text") or "")):
+        _log_fetch_failed(url, "challenge", None)
+        return ("STORE_UNREADABLE", "challenge", "challenge", status, False)
+    if not isinstance(status, int) or not 200 <= status <= 299:
+        if status in _LINK_REFUSED_STATUSES:
+            reason, code = "refused", "STORE_UNREADABLE"
+        elif status in _LINK_NOT_FOUND_STATUSES:
+            reason, code = "not_found", "UNRESOLVED_PRODUCT"
+        else:
+            reason, code = _v2_status_reason(status), "STORE_UNREADABLE"
+        _log_fetch_failed(url, reason, None)
+        return (code, reason, "http_error", status, reason == "http_5xx")
+    if not _link_encoding_decodable(fetched.get("content_encoding")):
+        _log_fetch_failed(url, "undecodable", None)
+        return ("STORE_UNREADABLE", "undecodable", "undecodable", status, False)
+    return None
+
+
+async def _link_fetch(url: str) -> Dict[str, Any]:
+    """INC-U1 spec 3b as amended by ORCH-U1-B: the plain fetch (no br, 8 s), and ONE
+    ordinary retry of the SAME request (the same fetch, the same headers) only for a
+    timeout or a 5xx. Never a browser-imitating client. Returns {html, final_url,
+    status, retry, challenge, refusal} with refusal = (code, reason, outcome, status)
+    or None. Log lines: constants and the host only."""
+    attempts = 0
+    while True:
+        fetched = await _fetch_page_v2(url, link_result=True)
+        attempts += 1
+        verdict = _link_classify(url, fetched)
+        if verdict is None:
+            return {"html": fetched.get("text") or "",
+                    "final_url": fetched.get("final_url") or url,
+                    "status": fetched.get("status"),
+                    "retry": "ok" if attempts > 1 else "none",
+                    "challenge": False, "refusal": None}
+        code, reason, label, status, retryable = verdict
+        if retryable and attempts == 1:
+            logger.info("[URL_LINK] retry host=%s reason=%s", _host_only(url), reason)
+            continue
+        return {"refusal": (code, reason, label, status),
+                "retry": "fail" if attempts > 1 else "none",
+                "challenge": reason == "challenge"}
+
+
+def _link_folded_currency(raw: Any) -> Optional[str]:
+    from app.services.price_service import _normalize_currency_code
+    return _normalize_currency_code(raw) if raw else None
+
+
+def _link_key(product: Dict[str, Any], gtin: Optional[str]) -> Optional[Dict[str, Any]]:
+    """INC-U1 section 4: the lexicon key of one page (no network, no model, no flag):
+    product_resolver.resolve_lexicon over dedup_brand_name(brand, name), context True.
+    The concentration is written only when the page name states one. None on any
+    failure (the key labels; it never prices)."""
+    try:
+        from app.services import product_resolver
+        from app.services.text_sanitize import dedup_brand_name
+        text = dedup_brand_name(product.get("brand"), product.get("name"))
+        if not text:
+            return None
+        side = product_resolver.resolve_lexicon(text, context=True)
+        typed = product_resolver._typed_concentration(text)
+        return {"brand": side.brand, "line": side.line,
+                "concentration": side.concentration if typed is not None else None,
+                "size_ml": side.size_ml, "gtin": gtin, "resolved": bool(side.resolved),
+                "source": "lexicon"}
+    except Exception as exc:  # noqa: BLE001 -- a label, never a failure
+        logger.warning("[URL_LINK] key failed type=%s", type(exc).__name__)
+        return None
+
+
+# FX-1: SUPPORTED_RETAILERS keys whose storefronts span countries on one domain (by
+# subdomain or path) or whose key is not a domain at all: never a default currency.
+_LINK_MULTI_COUNTRY_RETAILER_KEYS = frozenset({
+    "carrefour", "luluhypermarket", "noon.com", "sharafdg.com", "jarir.com", "extra.com",
+})
+
+
+def _link_stated_currency(raw_currency: Any, retailer: Dict[str, Any]) -> Optional[str]:
+    """The stated currency: the page's (or the AI's), else the retailer default only
+    when the host IS that retailer's own single-country domain (host == key or a
+    subdomain of it; never a multi-country key: FX-1). An unknown shop, another
+    country's domain matched by substring (amazon.com.tr, carrefouruae.com) and a
+    multi-country retailer state none (U-4: pending currency_unknown)."""
+    if isinstance(raw_currency, str) and raw_currency.strip():
+        return raw_currency
+    if not isinstance(retailer, dict):
+        return None
+    key = retailer.get("key")
+    if key not in SUPPORTED_RETAILERS or key in _LINK_MULTI_COUNTRY_RETAILER_KEYS:
+        return None
+    domain = retailer.get("domain")
+    if isinstance(domain, str) and (domain == key or domain.endswith("." + key)):
+        return retailer.get("currency")
+    return None
+
+
+def _link_fill_facts(facts: Dict[str, Any], raw: Dict[str, Any], retailer: Dict[str, Any],
+                     normalized: Dict[str, Any], final_url: str, gtin: Optional[str]) -> None:
+    stated = _link_stated_currency(raw.get("currency"), retailer)
+    facts.update(
+        title=bool(raw.get("title") or raw.get("full_title")),
+        price=bool(raw.get("price")),
+        stated_currency=stated,
+        currency_code=_link_folded_currency(stated),
+        image=bool(normalize_image_url(normalized.get("image_url"), final_url)),
+        final_url=final_url,
+        gtin=gtin,
+        key=_link_key(normalized, gtin),
+    )
+
+
+def _link_page_read_line(url: str, facts: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """INC-U1 section 6: ONE INFO line per extract_from_url call under the flag, every
+    outcome; constants, ints and the host only (never path, query, title, brand or
+    amount). Token URL_PAGE_READ (no bracket: a Railway filter finds it)."""
+    from app.services.exchange_rate_service import is_convertible
+
+    def yn(v: Any) -> str:
+        return "yes" if v else "no"
+    code = facts.get("currency_code")
+    if code and is_convertible(code):
+        currency = code
+    else:
+        currency = "other" if facts.get("stated_currency") else "none"
+    key = facts.get("key")
+    method = result.get("extraction_method") if result.get("success") else "none"
+    logger.info(
+        "URL_PAGE_READ host=%s json_ld_blocks=%d product_node=%s title=%s price=%s "
+        "currency=%s image=%s challenge=%s retry=%s extraction_method=%s key_resolved=%s",
+        _host_only(url), int(facts.get("json_ld_blocks") or 0), yn(facts.get("product_node")),
+        yn(facts.get("title")), yn(facts.get("price")), currency, yn(facts.get("image")),
+        yn(facts.get("challenge")), facts.get("retry") or "none",
+        method if method in ("structured", "ai") else "none",
+        "none" if not isinstance(key, dict) else yn(key.get("resolved")),
+    )
+
+
+def _link_extractor(retailer: Dict[str, Any], final_url: str):
+    if "amazon" in retailer["key"]:
+        return extract_amazon_data, ()
+    if "noon" in retailer["key"]:
+        return extract_noon_data, ()
+    import functools
+    return functools.partial(extract_generic_data_v2, link_result=True), (final_url,)
+
+
+def _link_pop_private(raw_data: Dict[str, Any], facts: Dict[str, Any]) -> Tuple[bool, set, Optional[str]]:
+    nodes_present = bool(raw_data.pop("_v2_product_node", False))
+    site_names = raw_data.pop("_v2_site_names", None) or set()
+    facts["json_ld_blocks"] = int(raw_data.pop("_link_json_ld_blocks", 0) or 0)
+    gtin = raw_data.pop("_link_gtin", None)
+    facts["product_node"] = nodes_present
+    return nodes_present, site_names, gtin
+
+
+async def _extract_from_url_link_v1(url: str, facts: Dict[str, Any]) -> Dict[str, Any]:
+    """INC-U1 on the V1 path: the hardened fetch (one robots gate: the fetch-level
+    one), the shape-ladder extractor with og price, the coded STORE_UNREADABLE;
+    everything else of V1 stays V1 ("Unknown Product" default, the V1 prompt, the
+    AI merge, the raw normalisation; the adapter shapes the body)."""
+    retailer = detect_retailer(url)
+    logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
+    fetched = await _link_fetch(url)
+    facts["retry"] = fetched.get("retry")
+    facts["challenge"] = bool(fetched.get("challenge"))
+    if fetched.get("refusal"):
+        code, reason, label, status = fetched["refusal"]
+        return _v2_refusal(url, code, reason, label, status)
+    html = fetched.get("html") or ""
+    final_url = fetched.get("final_url") or url
+    _extractor, _extra = _link_extractor(retailer, final_url)
+    if _price_parse_offload_enabled():
+        from app.services import price_service as _w04_ps
+        html = html[:_w04_ps.PRICE_FETCH_MAX_BYTES]
+        raw_data = await _w04_ps.run_parse_offloaded(_extractor, html, url, *_extra)
+    else:
+        raw_data = _extractor(html, url, *_extra)
+    _nodes, _sites, gtin = _link_pop_private(raw_data, facts)
+    if not raw_data.get("title") or not raw_data.get("price"):
+        logger.info("Insufficient structured data, using AI extraction")
+        ai_data = await extract_with_ai(url, html, retailer)
+        for key, value in ai_data.items():
+            if key not in raw_data or raw_data[key] is None:
+                raw_data[key] = value
+    normalized = normalize_product_data(raw_data, retailer, url)
+    _link_fill_facts(facts, raw_data, retailer, normalized, final_url, gtin)
+    return {
+        "success": True,
+        "product": normalized,
+        "retailer": retailer,
+        "source_url": url,
+        "extraction_method": "structured" if raw_data.get("title") else "ai",
+    }
+
+
+async def _extract_from_url_v2(url: str, link_facts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """B4 (ENABLE_URL_MODE_V2): extract_from_url where every non-delivery is a coded
     failure (never `success: True` with "Unknown Product"):
 
@@ -1140,26 +1426,40 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
     retailer = detect_retailer(url)
     logger.info("Detected retailer: %s for host %s", _retailer_log_name(retailer), _host_only(url))
 
-    fetched = await _fetch_page_v2(url)
-    status = fetched.get("status")
-    outcome = fetched.get("outcome")
-    if outcome != "ok":
-        reason = _V2_FETCH_OUTCOME_REASONS.get(outcome, "fetch_error")
-        return _v2_refusal(url, "STORE_UNREADABLE", reason, reason, status)
-    if not isinstance(status, int) or not 200 <= status <= 299:
-        reason = _v2_status_reason(status)
-        _log_fetch_failed(url, reason, None)
-        return _v2_refusal(url, "STORE_UNREADABLE", reason, "http_error", status)
-    html = fetched.get("text") or ""
-    if _is_challenge_page(html):
-        _log_fetch_failed(url, "challenge", None)
-        return _v2_refusal(url, "STORE_UNREADABLE", "challenge", "challenge", status)
-    final_url = fetched.get("final_url") or url
+    if link_facts is None:
+        fetched = await _fetch_page_v2(url)
+        status = fetched.get("status")
+        outcome = fetched.get("outcome")
+        if outcome != "ok":
+            reason = _V2_FETCH_OUTCOME_REASONS.get(outcome, "fetch_error")
+            return _v2_refusal(url, "STORE_UNREADABLE", reason, reason, status)
+        if not isinstance(status, int) or not 200 <= status <= 299:
+            reason = _v2_status_reason(status)
+            _log_fetch_failed(url, reason, None)
+            return _v2_refusal(url, "STORE_UNREADABLE", reason, "http_error", status)
+        html = fetched.get("text") or ""
+        if _is_challenge_page(html):
+            _log_fetch_failed(url, "challenge", None)
+            return _v2_refusal(url, "STORE_UNREADABLE", "challenge", "challenge", status)
+        final_url = fetched.get("final_url") or url
+    else:
+        # INC-U1: the hardened fetch + one retry inside V2.
+        linked = await _link_fetch(url)
+        link_facts["retry"] = linked.get("retry")
+        link_facts["challenge"] = bool(linked.get("challenge"))
+        if linked.get("refusal"):
+            code, reason, label, status = linked["refusal"]
+            return _v2_refusal(url, code, reason, label, status)
+        html = linked.get("html") or ""
+        status = linked.get("status")
+        final_url = linked.get("final_url") or url
     page_class = classify_url_path(final_url)
     if page_class is not None:
         return _v2_refusal(url, "NOT_PRODUCT_PAGE", page_class, "not_product_page", status)
 
-    if "amazon" in retailer["key"]:
+    if link_facts is not None:
+        _extractor, _extra = _link_extractor(retailer, final_url)
+    elif "amazon" in retailer["key"]:
         _extractor, _extra = extract_amazon_data, ()
     elif "noon" in retailer["key"]:
         _extractor, _extra = extract_noon_data, ()
@@ -1175,8 +1475,11 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
         raw_data = _extractor(html, url, *_extra)
 
     # The amazon / noon bodies set neither key: no node, no site names.
-    nodes_present = bool(raw_data.pop("_v2_product_node", False))
-    site_names = raw_data.pop("_v2_site_names", None) or set()
+    if link_facts is not None:
+        nodes_present, site_names, _link_gtin_value = _link_pop_private(raw_data, link_facts)
+    else:
+        nodes_present = bool(raw_data.pop("_v2_product_node", False))
+        site_names = raw_data.pop("_v2_site_names", None) or set()
     if not nodes_present and not is_usable_title(raw_data.get("title"), site_names):
         return _v2_refusal(url, "UNRESOLVED_PRODUCT", "no_product_node", "unresolved", status)
 
@@ -1210,6 +1513,8 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
 
     normalized = normalize_product_data(raw_data, retailer, url, url_mode_v2=True,
                                         final_url=final_url)
+    if link_facts is not None:
+        _link_fill_facts(link_facts, raw_data, retailer, normalized, final_url, _link_gtin_value)
     logger.info("[URL-V2] outcome=%s reason=%s status=%s", "ok", "delivered", status)
     return {
         "success": True,
@@ -1220,15 +1525,29 @@ async def _extract_from_url_v2(url: str) -> Dict[str, Any]:
     }
 
 
-async def extract_from_url(url: str, url_mode_v2: bool = False) -> Dict[str, Any]:
+async def extract_from_url(url: str, url_mode_v2: bool = False, *,
+                           link_result: bool = False) -> Dict[str, Any]:
     """
     Main function to extract product data from a URL.
-    
+
     Returns structured product data suitable for comparison.
 
     B4: ``url_mode_v2=True`` (passed only by the flagged URL path) dispatches to
     _extract_from_url_v2; the default is the base body, unchanged.
+    INC-U1: ``link_result=True`` (passed only under ENABLE_URL_LINK_RESULT) runs the
+    hardened path (V1 or V2), emits ONE URL_PAGE_READ line and attaches the private
+    page facts as ``link_facts`` beside ``product`` (never inside it).
     """
+    if link_result:
+        facts: Dict[str, Any] = {}
+        if url_mode_v2:
+            result = await _extract_from_url_v2(url, link_facts=facts)
+        else:
+            result = await _extract_from_url_link_v1(url, facts)
+        _link_page_read_line(url, facts, result)
+        if result.get("success"):
+            result["link_facts"] = facts
+        return result
     if url_mode_v2:
         return await _extract_from_url_v2(url)
     # Detect retailer
@@ -1442,6 +1761,7 @@ async def compare_from_urls(
     url_mode_v2: bool = False,
     *,
     fragrance_gate: Optional[Any] = None,
+    link_result: bool = False,
 ) -> Dict[str, Any]:
     """
     Compare two products from their URLs.
@@ -1475,7 +1795,11 @@ async def compare_from_urls(
     
     # Extract both products in parallel
     import asyncio
-    if url_mode_v2:
+    if link_result:
+        # INC-U1: the hardened per-page path on V1 or V2 (passed only when ON).
+        extractions = (extract_from_url(url1, url_mode_v2=url_mode_v2, link_result=True),
+                       extract_from_url(url2, url_mode_v2=url_mode_v2, link_result=True))
+    elif url_mode_v2:
         extractions = (extract_from_url(url1, url_mode_v2=True),
                        extract_from_url(url2, url_mode_v2=True))
     else:
@@ -1490,25 +1814,29 @@ async def compare_from_urls(
         return _llm_unavailable_url_result("extraction")
 
     products = []
+    link_extras: List[Dict[str, Any]] = []  # INC-U1: the private page facts (ON only)
     errors = []
     coded = []  # B4: (index, code, reason) of each coded per-url failure (ON only)
     codeless = False
-    
+    coded_on = url_mode_v2 or link_result
+
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             errors.append(f"URL {i+1}: {str(result)}")
             codeless = True
         elif not result.get("success"):
             errors.append(f"URL {i+1}: {result.get('error', 'Extraction failed')}")
-            if url_mode_v2 and result.get("code"):
+            if coded_on and result.get("code"):
                 coded.append((i, result.get("code"), result.get("reason")))
             else:
                 codeless = True
         else:
             products.append(result["product"])
-    
+            if link_result:
+                link_extras.append(result.get("link_facts") or {})
+
     if len(products) < 2:
-        if url_mode_v2 and coded and not codeless:
+        if coded_on and coded and not codeless:
             return _v2_pair_failure(coded, errors)
         # Any codeless failure (an exception inside extract_from_url) keeps the
         # base codeless body in both flag states.
@@ -1610,18 +1938,27 @@ async def compare_from_urls(
     # so the check composes with either; a verdict carrying a falsy `error`
     # (None / "") is delivered exactly as base. Never forward the text; the
     # route maps LLM_UNAVAILABLE through the text route's failure contract.
+    degraded = False
     if comparison.get("error"):
-        from app.services.structured_comparison_service import (
-            LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
-        )
-        logger.warning("[URL] verdict generation failed; not delivering a comparison")
-        return {
-            "success": False,
-            "code": "LLM_UNAVAILABLE",
-            "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
-        }
+        # INC-U1 (spec 5, U-2): under the flag an error dict is a DEGRADED 200 (the
+        # credit kept, as the text path's degraded 200) unless it is the OpenAI egress
+        # stop, which arrives as the same dict: that stays the 503 + refund.
+        if link_result and not (_llm_router.decide("verdict") == "openai"
+                                and _llm_breaker.openai_egress_stop_enabled()):
+            logger.warning("[URL] verdict generation failed; delivering a degraded link result")
+            degraded = True
+        else:
+            from app.services.structured_comparison_service import (
+                LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+            )
+            logger.warning("[URL] verdict generation failed; not delivering a comparison")
+            return {
+                "success": False,
+                "code": "LLM_UNAVAILABLE",
+                "error": LLM_UNAVAILABLE_FRIENDLY_MESSAGE,
+            }
 
-    if guard_scoring is not None:
+    if guard_scoring is not None and not degraded:
         # S95-LG: a delivered verdict only (the non-delivery above returned first):
         # the scorer's winner ships and no winner-facing string names the loser.
         # GATE GL-14: the reconcile edits the delivered verdict dict in place, so it
@@ -1645,22 +1982,139 @@ async def compare_from_urls(
                 comparison.update(verdict_snapshot)
             logger.warning("[URL_GUARD] reconcile failed type=%s", type(exc).__name__)
 
-    if url_mode_v2:
+    if degraded:
+        recommendation, key_differences = "", []
+    elif url_mode_v2 or link_result:
         recommendation, key_differences = _v2_verdict_fill(comparison, products)
     else:
         recommendation = comparison.get("recommendation", "")
         key_differences = comparison.get("key_differences", [])
 
-    return {
+    if degraded:
+        winner_index = (guard_scoring[1].get("winner_index", 0)
+                        if guard_scoring is not None else 0)
+    else:
+        winner_index = comparison.get("winner_index", 0)
+    body = {
         "success": True,
         "products": products,
         "comparison": comparison,
-        "winner_index": comparison.get("winner_index", 0),
+        "winner_index": winner_index,
         "recommendation": recommendation,
         "key_differences": key_differences,
         "category_used": category_used,
         "source_urls": [url1, url2]
     }
+    if link_result:
+        body = _link_result_adapt(body, link_extras, degraded)
+    return body
+
+
+def _link_str_items(items: Any) -> List[str]:
+    from app.services.text_sanitize import strip_score_internals
+    out: List[str] = []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, str):
+            cleaned = strip_score_internals(item)
+            if isinstance(cleaned, str) and cleaned.strip():
+                out.append(cleaned)
+    return out
+
+
+def _link_price(price: Any, facts: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+    """INC-U1 section 2a: (shipped price, kind) with kind bhd / foreign / pending.
+    BHD unchanged; USD converted and labelled converted_usd; another convertible code
+    kept exactly with an additive estimate_bhd; anything else pending (U-4)."""
+    import math
+    from app.services.exchange_rate_service import is_convertible
+    from app.services.price_service import _convert_to_bhd
+    from app.services.result_gate import _url_number
+    out = dict(price) if isinstance(price, dict) else {}
+    code = facts.get("currency_code")
+    try:
+        amount = _url_number(out.get("amount"))
+    except (OverflowError, TypeError, ValueError):
+        amount = None
+    if amount is not None and not (math.isfinite(amount) and amount > 0):
+        amount = None
+    if amount is not None and code == "BHD":
+        raw_label = out.get("currency")
+        if raw_label != "BHD":  # FX-4: the exact code; the page's label kept beside it
+            out["currency"] = "BHD"
+            if isinstance(raw_label, str) and raw_label:
+                out["original_currency"] = raw_label
+        return out, "bhd"
+    if amount is not None and code == "USD":
+        out.update(amount=round(_convert_to_bhd(amount, "USD"), 3), currency="BHD",
+                   source_method="converted_usd", original_amount=amount,
+                   original_currency="USD")
+        return out, "bhd"
+    if amount is not None and code and is_convertible(code):
+        out["currency"] = code
+        out["estimate_bhd"] = round(_convert_to_bhd(amount, code), 3)
+        out["estimate_basis"] = "fallback_rate"
+        return out, "foreign"
+    out.update(amount=None, unavailable=True, currency="BHD",
+               reason="no_price" if amount is None else "currency_unknown")
+    if amount is not None:
+        out["original_amount"] = amount
+    if code:
+        out["original_currency"] = code
+    return out, "pending"
+
+
+def _link_result_adapt(body: Dict[str, Any], extras: List[Dict[str, Any]],
+                       degraded: bool) -> Dict[str, Any]:
+    """INC-U1 section 1: the pure adapter over the legacy body (never writes
+    `overview`). An exception logs ONE WARNING by type and returns the body as is."""
+    try:
+        return _link_result_adapt_inner(body, extras, degraded)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[URL_LINK] adapter failed type=%s", type(exc).__name__)
+        return body
+
+
+def _link_result_adapt_inner(body: Dict[str, Any], extras: List[Dict[str, Any]],
+                             degraded: bool) -> Dict[str, Any]:
+    from app.services.text_sanitize import dedup_brand_name
+    comparison = body.get("comparison") if isinstance(body.get("comparison"), dict) else {}
+    products = body.get("products") or []
+    history_ok = True  # U-6 rule F: no metadata.query when a product is kept foreign
+    for i, product in enumerate(products):
+        facts = extras[i] if i < len(extras) and isinstance(extras[i], dict) else {}
+        product["pros"] = [] if degraded else _link_str_items(comparison.get(f"product_{i}_pros"))
+        product["cons"] = [] if degraded else _link_str_items(comparison.get(f"product_{i}_cons"))
+        reviews = product.get("reviews") if isinstance(product.get("reviews"), dict) else {}
+        for top_key, nested_key in _URL_GUARD_LIFTED_KEYS:
+            if product.get(top_key) is None:
+                lifted = _url_guard_lift_value(top_key, reviews.get(nested_key))
+                if lifted is not None:
+                    product[top_key] = lifted
+        product["image_url"] = normalize_image_url(
+            product.get("image_url"), facts.get("final_url") or product.get("source_url"))
+        price, kind = _link_price(product.get("price"), facts)
+        product["price"] = price
+        if kind == "foreign" or (kind == "pending" and price.get("reason") == "currency_unknown"):
+            history_ok = False  # FX-1: an amount in an unknown currency stays out too
+        if not is_usable_title(product.get("name"), ()):
+            history_ok = False  # FX-3: never a History row for a placeholder name
+        key = facts.get("key")
+        if isinstance(key, dict):
+            product["link_key"] = dict(key)
+            if not product.get("brand") and key.get("resolved") and key.get("brand"):
+                product["brand"] = key["brand"]
+            if not product.get("variant"):
+                conc, size = key.get("concentration"), key.get("size_ml")
+                if conc and size:
+                    product["variant"] = f"{conc} {size}ml"
+                elif conc:
+                    product["variant"] = conc
+                elif size:
+                    product["variant"] = f"{size}ml"
+    if not degraded and history_ok and len(products) >= 2:
+        names = [dedup_brand_name(p.get("brand"), p.get("name")) for p in products[:2]]
+        body["metadata"] = {"query": f"{names[0]} vs {names[1]}", "input_type": "url"}
+    return body
 
 
 # B4: the most actionable cause wins when the two links fail differently.

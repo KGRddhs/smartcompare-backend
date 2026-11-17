@@ -164,6 +164,24 @@ def _result_status_supported(full_response: Any) -> bool:
     return metadata.get("result_status") == "supported_result"
 
 
+def _pair_price_sizes_differ(full_response: Any) -> bool:
+    """INC-P2 F4 (an UNFLAGGED reader keyed on the stored stamp, no flag read, on
+    purpose: a row stored during an ENABLE_PRICE_NOT_LOST window stays skipped after a
+    rollback): True when `metadata.pair_price_sizes` is a dict whose `mode` is present
+    and is not `same_size` (two prices for different or unknown bottle sizes are not a
+    saving). A row without the stamp (every row stored with the flag OFF) reads False,
+    exactly as today."""
+    if not isinstance(full_response, dict):
+        return False
+    metadata = full_response.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    marker = metadata.get("pair_price_sizes")
+    if not isinstance(marker, dict) or "mode" not in marker:
+        return False
+    return marker.get("mode") != "same_size"
+
+
 def _extract_winner_loser_prices(full_response: dict) -> tuple[Optional[float], Optional[float]]:
     """Return (winner_price_bhd, loser_price_bhd) from a renderable v2 row.
 
@@ -175,6 +193,8 @@ def _extract_winner_loser_prices(full_response: dict) -> tuple[Optional[float], 
         return (None, None)
     if not _result_status_supported(full_response):
         return (None, None)  # B1: a stamped non-supported row; never via winner_index
+    if _pair_price_sizes_differ(full_response):
+        return (None, None)  # INC-P2 F4: prices for different bottle sizes are no saving
     products = full_response.get("products") or []
     if not isinstance(products, list) or len(products) < 2:
         return (None, None)

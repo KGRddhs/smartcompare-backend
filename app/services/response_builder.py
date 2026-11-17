@@ -81,6 +81,156 @@ def _compute_cache_observability(
     return out
 
 
+# --------------------------------------------------------------------------- INC-P2
+# PRICE-NOT-LOST (ENABLE_PRICE_NOT_LOST, default OFF, read per call). Function-local
+# price_service imports only (the AST import census). The wire helpers return None
+# with the flag OFF or on any fault, so the build ships the flag-OFF body.
+def _p2_wire_prices(product_data: Any, category_used: str, region: str) -> Optional[List[Any]]:
+    """Per product (view, best_price, retailer, state) for the wire copies, flag ON."""
+    from app.services import price_service as _ps
+    if not _ps.price_not_lost_enabled():
+        return None
+    try:
+        from app.services.exchange_rate_service import get_region_currency
+        region_currency = get_region_currency(region).upper()
+        region_guard_on = _ps.region_currency_guard_enabled()
+        cap = _ps.price_size_cap()
+        return [_ps.p2_wire_price(pd, category_used, region_currency, region_guard_on, cap)
+                for pd in product_data]
+    except Exception as exc:  # noqa: BLE001 - the flag-OFF body ships instead
+        logger.warning("INC-P2 p2 wire skipped: %s", type(exc).__name__)
+        return None
+
+
+def _p2_pair_marker(product_data: Any, category_used: str, wire: List[Any]) -> Optional[Dict[str, Any]]:
+    """metadata.pair_price_sizes for a fragrance pair of exactly two (flag ON)."""
+    try:
+        from app.services import price_service as _ps
+        if len(product_data) == 2 and _ps._p2_is_fragrance(category_used):
+            return _ps.pair_price_sizes([w[0] for w in wire])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("INC-P2 p2 marker skipped: %s", type(exc).__name__)
+    return None
+
+
+def _p2_alias_products(product_data: Any, wire: List[Any]) -> List[Any]:
+    """The legacy `products` alias under the flag: shallow copies with the wire
+    price (and best_price / retailer where the key exists), every _p2 key dropped."""
+    out = []
+    for i, pd in enumerate(product_data):  # wire was built from product_data: same length
+        view, best_price, retailer, _state = wire[i]
+        copy_ = {k: v for k, v in pd.items() if not str(k).startswith("_p2")}
+        copy_["price"] = dict(view) if isinstance(view, dict) else view
+        if "best_price" in copy_:
+            copy_["best_price"] = best_price
+        if "retailer" in copy_:
+            copy_["retailer"] = retailer
+        out.append(copy_)
+    return out
+
+
+def _p2_strip_private(product_data: Any) -> Any:
+    """INC-P2 F1 (UNFLAGGED, keyed on the keys themselves): the legacy alias when the
+    wire copies were not built. product_data itself when no product carries a _p2 key
+    (always so with the flag OFF); else shallow copies without them, so product_data
+    keeps the projection for any later build."""
+    try:
+        if not any(isinstance(pd, dict) and any(str(k).startswith("_p2") for k in pd)
+                   for pd in product_data or []):
+            return product_data
+        return [{k: v for k, v in pd.items() if not str(k).startswith("_p2")}
+                if isinstance(pd, dict) else pd for pd in product_data]
+    except Exception:  # noqa: BLE001 - the alias is never lost
+        return product_data
+
+
+def _p2_token(value: Any, limit: int) -> str:
+    """A log-safe single token: whitespace -> '_', '=' dropped, cut to `limit`."""
+    text = "_".join(str(value).split()).replace("=", "")
+    return text[:limit] or "none"
+
+
+def _p2_price_outcome(product_data: Any, wire: Optional[List[Any]], guard_diag: Any) -> None:
+    """INC-P2 P2-11 / P2R-11 / P2R-21: ONE `PRICE_OUTCOME` INFO line per product per
+    build. UNFLAGGED and log-only: each line is built and emitted inside its own
+    guard, reads only the request trace / miss ledger and the product dicts, and
+    never touches the body. Names and numbers only: the retailer host, never a URL
+    path or query; no user, device or request-header value."""
+    for slot, pd in enumerate(product_data or []):
+        try:
+            from app.services import price_service as _ps
+            from urllib.parse import urlsplit
+            price = pd.get("price") if isinstance(pd, dict) else None
+            stash = pd.get("_p2_shown_price") if isinstance(pd, dict) else None
+            view, state = (wire[slot][0], wire[slot][3]) if wire else (price, "none")
+            shown = (isinstance(view, dict) and view.get("unavailable") is not True
+                     and isinstance(view.get("amount"), (int, float)))
+            src = stash if isinstance(stash, dict) else (price if isinstance(price, dict) else {})
+            name = str((pd.get("full_name") or pd.get("name") or "") if isinstance(pd, dict) else "")
+            trace = _ps.price_trace_get() or {}
+            noted = (trace.get("reconcile") or {}).get(slot)
+            if state != "none":
+                reconcile = state
+            elif isinstance(stash, dict):
+                reconcile = "projected"
+            elif noted:
+                reconcile = noted
+            elif isinstance(price, dict) and price.get("reason") == "size_mismatch":
+                reconcile = "pend"
+            else:
+                reconcile = "unknown"
+            if id(src) in (trace.get("parked") or set()):
+                origin = "parked_on_timeout"
+            elif id(src) in (trace.get("recovered") or set()):
+                origin = "recovered_on_timeout"
+            elif src.get("_cache_source") == "db":
+                origin = "cache_l2"
+            elif src.get("_cache_source") == "kb":
+                origin = "kb"
+            elif src.get("_cached") is True:
+                origin = "cache_l1"
+            elif src.get("_cached") is False:
+                origin = "live"
+            else:
+                origin = "none"
+            amount = src.get("amount") if (shown or state == "offsize_held") else None
+            url = src.get("url") if isinstance(src.get("url"), str) else ""
+            # F7 (corr m4): every key the notes are written under for this product.
+            keys = _ps.p2_ledger_names(pd) or [name]
+            miss = _ps.price_miss_summary(keys)
+            cache_write = next((v for v in (((trace.get("cache_write") or {}).get(k)) for k in keys) if v), None)
+            display_rule = "none"
+            for diag in guard_diag or []:
+                if isinstance(diag, dict) and diag.get("product_index") == slot:
+                    display_rule = diag.get("reason") or "none"
+            pend_reason = (price.get("reason") or "none") if (
+                isinstance(price, dict) and price.get("unavailable") is True) else "none"
+            size = _ps.listing_size_ml(src) if src else None
+            rejected = ",".join("%s=%d" % kv for kv in sorted(miss["rejected"].items())) or "none"
+            examples = "|".join(_p2_token(t, 60) for t in miss["examples"].get(miss["miss_rule"], [])) or "none"
+            logger.info(
+                "PRICE_OUTCOME slot=%d product=%s shown=%s amount=%s currency=%s size_ml=%s method=%s "
+                "retailer=%s marketplace=%d origin=%s race=%s race_ms=unknown reconcile=%s pend_reason=%s "
+                "display_rule=%s miss=%s miss_host=%s miss_status=%s miss_rule=%s fam=%s rejected=%s "
+                "examples=%s cache_write=%s cap=%s host=%s",
+                slot, _p2_token(name, 60), "yes" if shown else "no",
+                ("%.3f" % amount) if isinstance(amount, (int, float)) else "none",
+                _p2_token(src.get("currency") or "none", 8), size if size else "none",
+                _p2_token(src.get("source_method") or "none", 40),
+                _p2_token(src.get("retailer") or "none", 30),
+                1 if _ps.is_auction_marketplace_seller(src.get("retailer"), url) else 0,
+                origin, "timeout" if miss["miss"] == "timed_out" else "unknown", reconcile,
+                _p2_token(pend_reason, 40), _p2_token(display_rule, 40), miss["miss"],
+                _p2_token(miss["miss_host"], 80), _p2_token(miss["miss_status"], 20),
+                _p2_token(miss["miss_rule"], 40), miss["fam"], rejected, examples,
+                _p2_token(cache_write or "none", 40),
+                "price_size" if _ps.price_size_cap() else "none",
+                (urlsplit(url).hostname or "none") if url else "none",
+            )
+        except Exception:  # noqa: BLE001 - a log line never touches the body
+            pass
+
+
 def _safe_review_praise(pd: Dict[str, Any]) -> Optional[str]:
     """Synthesized review praise for a product's reviews, fail-soft to None.
     Faithful-Results Phase 5 (Contract 2). Never raises."""
@@ -1764,6 +1914,13 @@ def build_comparison_response(
     except Exception:  # noqa: BLE001 — price-pending must never crash the response
         logger.warning("price-pending normalization skipped", exc_info=True)
 
+    # INC-P2 PRICE-NOT-LOST - the wire copies (ENABLE_PRICE_NOT_LOST; None when OFF or
+    # on any fault, so the body is the flag-OFF body) and the UNFLAGGED log-only
+    # PRICE_OUTCOME line per product. product_data is never mutated here: every
+    # consumer below keeps reading the projected prices (P2-4).
+    _p2_wire = _p2_wire_prices(product_data, category_used, region)
+    _p2_price_outcome(product_data, _p2_wire, _guard_rejected_diag)
+
     # W4-7 Part B (ENABLE_CONFIDENCE_SINGLE_COMPUTATION) — ONE confidence
     # computation, AFTER the chokepoint (it sees the price the user sees), with
     # the identity-matched listing counts (on COPIES) and the REAL cache hit;
@@ -1948,7 +2105,7 @@ def build_comparison_response(
                     # Lane 1 L1.7 — short variant tag like '128GB · Black'.
                     # Empty string when no hooks fire (FE renders title alone).
                     "variant": _compose_variant_string(pd, category_used),
-                    "price": public_price_view(pd.get("price")),
+                    "price": (_p2_wire[i][0] if _p2_wire else public_price_view(pd.get("price"))),
                     # A5 — never surface a derived/estimated rating as authoritative
                     # (derive_rating_from_scores OR gpt_review_aggregate set
                     # rating_derived=True). Real review_count is preserved.
@@ -2265,7 +2422,18 @@ def build_comparison_response(
         # W4-7 Part B (R5) — the orchestrator's listing-count stash never
         # reaches the wire (unconditional: a no-op when absent).
         pd.pop("_shopping_listing_count", None)
-    result["products"] = product_data
+    if _p2_wire:
+        # INC-P2 (flag ON only): the pair marker, and the legacy alias as shallow
+        # COPIES carrying the wire prices with every private _p2 key dropped, so
+        # product_data keeps the projection for any later build (X1-R1).
+        _p2_marker = _p2_pair_marker(product_data, category_used, _p2_wire)
+        if _p2_marker is not None and isinstance(result.get("metadata"), dict):
+            result["metadata"]["pair_price_sizes"] = _p2_marker
+        result["products"] = _p2_alias_products(product_data, _p2_wire)
+    else:
+        # INC-P2 F1: a wire fault (or a flag flip after the reconcile) never ships a
+        # private _p2 key; flag OFF carries none, so this is product_data itself.
+        result["products"] = _p2_strip_private(product_data)
     # WS-A review-gate fix — the BC `comparison` alias ships in the payload and
     # carried the raw winner_reason/key_tradeoff/winner_declaration (a real leak
     # even though the FE renders the scrubbed overview/recommendation). Scrub the
