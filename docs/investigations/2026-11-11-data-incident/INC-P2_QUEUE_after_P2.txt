@@ -84,3 +84,5 @@ NEW SEEDS, in this order, AFTER INC-M1 and INC-P4a, specs only on the relay's wo
 Relay may ask the owner for a fourth lane for these after the meter reset. Meter (relay, ~04:36): 58 pct.
 
 == RELAY 05:58 AST: main = 6473769e (#416 INC-I2b), rebase target for INC-P2 replaces 5cd93c6a. See GATE section 10: second rebase by the orchestrator after fix round 1. ==
+
+== RELAY ~09:25 AST: P2R-39 accepted (the fixture in our three files; conftest NOT edited in #418). NEW UNIT, ours, after #418 merges: INC-T0 CONFTEST-BREAKER-RESET. It adds a shared per-test reset of llm_spend_breaker (and, if the evidence holds, llm_router) to tests/conftest.py, with one writer. It may ride with INC-H2's PR (my call: ride with H2, since both are small and test-hygiene adjacent). ==

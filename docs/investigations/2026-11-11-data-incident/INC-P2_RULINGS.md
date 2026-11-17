@@ -88,3 +88,13 @@ Backing: the PRICE_OUTCOME lines (both slots, reconcile, size_ml, miss); PRICE_C
 - rv m4: stated limit. The code comment at response_builder :1917 overstates the identity on an internal wire fault; the comment is not edited in this unit.
 - rv m5 and m6: stated limits.
 - Rebase 2 onto bd0500a3 is done by the orchestrator; see GATE section 10.
+- P2R-39 (CI backend-tests red on 8bb97fe0, 13 nodes in test_retro_w0_4_efg.py and test_s77_redis_offloop.py):
+  - Cause, read from the CI log: the /health body carried llm_spend, llm_spend_fail_open and llm_spend_late_records. The three P2 files set ENABLE_LLM_SPEND_BREAKER=true (PROD_ON), and the breaker's process state (_STATE["ran"]) leaked forward in CI's one alphabetical process. conftest resets llm_credential and serper_keys per test, but not the spend breaker.
+  - Fix, tests only: each P2 file gets an autouse fixture that, AFTER each test, calls llm_spend_breaker._reset_spend_breaker_state(). The rows are unchanged, so the frozen-pair sha256 pins move by ruling. The new hashes are recorded at the commit.
+  - Committed as 93c6da3a (with the router reset too, after the link lane's finding).
+  - New sha256: test_inc_p2_fix1.py 038c4c2a...85ecb; test_inc_p2_price_not_lost.py 9d92543f...8372a; test_inc_p2_seam.py fd1062c3...8d929d7.
+  - Proof:
+    - repro at 8bb97fe0: the same 13 failures as CI;
+    - fixed, in the same order: 1706 passed;
+    - the CI-order set of 44 files, alphabetical: 3478 passed;
+    - the unit with the flag ON: 721 passed.
