@@ -85,7 +85,7 @@ UP_MSG = "We did not find a product on that page. Paste the product's own page l
 FORBIDDEN_COPY = ("couldn't", "try again", "failed to")
 
 BASE_PROMPT_SHA = "411169d46826f09e5e27c76e9d7905864a6e91681ab5bb7f5ee609f176b508a9"
-BASE_FETCH_PAGE_SHA = "34dd74c618058409719313c2a859de0a69281c15c9c86d4faa3b41b42f7b8655"
+BASE_FETCH_PAGE_SHA = "e2d4b8dd2e729481566787f5b9a0dbbe4058d350f77c962efb7349c15f316c7e"
 # The flag-OFF extract_with_ai user message for the W4-11 recorder's inputs,
 # measured at base 81df2b64 (the fixture key holds the PRE-fence render).
 BASE_URL_EXTRACT_USER_SHA = "65edcacae42a8287a66e784f3d963eb41fba80b0219caae25fe10bef2c853a66"
