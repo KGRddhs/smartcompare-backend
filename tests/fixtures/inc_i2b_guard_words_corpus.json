@@ -1,0 +1,1107 @@
+{
+ "source": "R4 corpus (research-2026-11-16/work/R4/corpus.py), synthetic titles; truth: cls in base/size/tester and conc == query conc",
+ "rows": [
+  [
+   "sauvage",
+   "DIOR Sauvage Eau de Parfum Spray",
+   "EDP",
+   100,
+   "base",
+   null,
+   "log"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Parfum",
+   "Parfum",
+   100,
+   "conc",
+   null,
+   "log"
+  ],
+  [
+   "sauvage",
+   "Sauvage EDP 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "log"
+  ],
+  [
+   "sauvage",
+   "SAUVAGE 100ML",
+   "EDT",
+   100,
+   "base",
+   null,
+   "log"
+  ],
+  [
+   "sauvage",
+   "Sauvage 3.4 oz",
+   "EDT",
+   100,
+   "base",
+   null,
+   "log"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Edt M 100Ml",
+   "EDT",
+   100,
+   "conc",
+   null,
+   "log"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Eau de Parfum 100 ml for Men",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Christian Dior Sauvage EDP 60ml",
+   "EDP",
+   60,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Eau de Parfum 200ml",
+   "EDP",
+   200,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Elixir 100ml",
+   "Elixir",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Eau de Parfum Refill 300ml",
+   "EDP",
+   300,
+   "refill",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage EDP 100ml Tester (No Box)",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage EDP 100ml + 10ml Travel Spray Gift Set",
+   "EDP",
+   100,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Eau de Parfum 10ml Travel Spray",
+   "EDP",
+   10,
+   "mini",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Deodorant Stick 75g",
+   null,
+   null,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Dior Sauvage Shower Gel 250ml",
+   null,
+   250,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "Inspired by Sauvage EDP 100ml Men Perfume",
+   "EDP",
+   100,
+   "dupe",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "\u062f\u064a\u0648\u0631 \u0633\u0648\u0641\u0627\u062c \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "\u0639\u0637\u0631 \u0633\u0648\u0641\u0627\u062c \u0645\u0646 \u062f\u064a\u0648\u0631 \u0644\u0644\u0631\u062c\u0627\u0644 \u0627\u0648 \u062f\u064a \u062a\u0648\u0627\u0644\u064a\u062a 100 \u0645\u0644",
+   "EDT",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "\u062f\u064a\u0648\u0631 \u0633\u0648\u0641\u0627\u062c \u0625\u0644\u0643\u0633\u064a\u0631 60 \u0645\u0644",
+   "Elixir",
+   60,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "\u062a\u0633\u062a\u0631 \u062f\u064a\u0648\u0631 \u0633\u0648\u0641\u0627\u062c \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Chanel Bleu de Chanel Eau de Parfum 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "BLEU DE CHANEL EAU DE PARFUM POUR HOMME SPRAY 3.4 FL OZ",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Bleu de Chanel EDP 50ml",
+   "EDP",
+   50,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Bleu De Chanel Eau De Parfum 150ml",
+   "EDP",
+   150,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Chanel Bleu de Chanel Eau de Toilette 100ml",
+   "EDT",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Chanel Bleu de Chanel Parfum 100ml",
+   "Parfum",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Bleu de Chanel Eau de Parfum Twist and Spray 3 x 20ml Refill",
+   "EDP",
+   20,
+   "refill",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Chanel Bleu de Chanel EDP Tester 100ml",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Bleu de Chanel Deodorant Stick 75ml",
+   null,
+   75,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Bleu de Chanel After Shave Lotion 100ml",
+   null,
+   100,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Bleu de Chanel EDP 100ml Gift Set with Shower Gel",
+   "EDP",
+   100,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "Blue Chanel Inspired Perfume EDP 100ml",
+   "EDP",
+   100,
+   "dupe",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "\u0628\u0644\u0648 \u062f\u064a \u0634\u0627\u0646\u064a\u0644 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "\u0634\u0627\u0646\u064a\u0644 \u0628\u0644\u0648 \u062f\u064a \u0634\u0627\u0646\u064a\u0644 \u0628\u0627\u0631\u0641\u0627\u0646 150 \u0645\u0644",
+   "Parfum",
+   150,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "\u0645\u0632\u064a\u0644 \u0639\u0631\u0642 \u0628\u0644\u0648 \u062f\u064a \u0634\u0627\u0646\u064a\u0644 \u0633\u062a\u064a\u0643 75 \u0645\u0644",
+   null,
+   75,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "Yves Saint Laurent Y Eau de Parfum 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y EDP 60ml for Men",
+   "EDP",
+   60,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y Eau de Toilette 100ml",
+   "EDT",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "Yves Saint Laurent Y Le Parfum 100ml",
+   "Parfum",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y Elixir Parfum 60ml",
+   "Elixir",
+   60,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y Eau de Parfum Intense 100ml",
+   "Parfum Intense",
+   100,
+   "conc",
+   "intense",
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y EDP 100ml Gift Set + 10ml",
+   "EDP",
+   100,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y EDP Tester 100ml",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "YSL Y Deodorant Stick 75g",
+   null,
+   null,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "\u0627\u064a\u0641 \u0633\u0627\u0646 \u0644\u0648\u0631\u0627\u0646 \u0648\u0627\u064a \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "\u0639\u0637\u0631 \u0648\u0627\u064a \u0645\u0646 \u0627\u064a\u0641 \u0633\u0627\u0646 \u0644\u0648\u0631\u0627\u0646 \u0644\u0644\u0631\u062c\u0627\u0644 60 \u0645\u0644",
+   "EDP",
+   60,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "Yves Saint Laurent Libre Eau de Parfum 90ml",
+   "EDP",
+   90,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre EDP 50ml",
+   "EDP",
+   50,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre Eau de Parfum for Women 3 oz",
+   "EDP",
+   90,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre Intense EDP 90ml",
+   "EDP",
+   90,
+   "flanker",
+   "intense",
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre Le Parfum 90ml",
+   "Parfum",
+   90,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre Eau de Toilette 90ml",
+   "EDT",
+   90,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre EDP Refill 100ml",
+   "EDP",
+   100,
+   "refill",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre Hair Mist 30ml",
+   null,
+   30,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre Body Lotion 200ml",
+   null,
+   200,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre EDP 90ml Tester",
+   "EDP",
+   90,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre EDP 50ml Gift Set with Mascara",
+   "EDP",
+   50,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "YSL Libre EDP 7.5ml Miniature",
+   "EDP",
+   7,
+   "mini",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "\u0644\u064a\u0628\u0631 \u0627\u064a\u0641 \u0633\u0627\u0646 \u0644\u0648\u0631\u0627\u0646 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 \u0644\u0644\u0646\u0633\u0627\u0621 90 \u0645\u0644",
+   "EDP",
+   90,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "\u0627\u064a\u0641 \u0633\u0627\u0646 \u0644\u0648\u0631\u0627\u0646 \u0644\u064a\u0628\u0631 \u0627\u0646\u062a\u0646\u0633 90 \u0645\u0644",
+   "EDP",
+   90,
+   "flanker",
+   "intense",
+   "syn"
+  ],
+  [
+   "br540",
+   "Maison Francis Kurkdjian Baccarat Rouge 540 Eau de Parfum 70ml",
+   "EDP",
+   70,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "MFK Baccarat Rouge 540 EDP 200ml",
+   "EDP",
+   200,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Baccarat Rouge 540 Extrait de Parfum 70ml",
+   "Extrait",
+   70,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Maison Francis Kurkdjian Baccarat Rouge 540 Hair Mist 70ml",
+   null,
+   70,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Baccarat Rouge 540 Scented Body Oil 70ml",
+   null,
+   70,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Baccarat Rouge 540 EDP 35ml Refill",
+   "EDP",
+   35,
+   "refill",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Baccarat Rouge 540 EDP 70ml Tester",
+   "EDP",
+   70,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Baccarat Rouge 540 Travel Spray 3 x 11ml",
+   "EDP",
+   11,
+   "mini",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "Cloud Rouge 540 Inspired by Baccarat Rouge EDP 100ml",
+   "EDP",
+   100,
+   "dupe",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "\u0628\u0627\u0643\u0627\u0631\u0627\u062a \u0631\u0648\u062c 540 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 70 \u0645\u0644",
+   "EDP",
+   70,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "br540",
+   "\u0639\u0637\u0631 \u0628\u062f\u064a\u0644 \u0628\u0627\u0643\u0627\u0631\u0627\u062a \u0631\u0648\u062c 540 \u0644\u0644\u062c\u0646\u0633\u064a\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "dupe",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus Eau de Parfum 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus 50ml",
+   "EDP",
+   50,
+   "size",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus for Her EDP 75ml",
+   "EDP",
+   75,
+   "twin",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus Cologne 100ml",
+   "EDC",
+   100,
+   "flanker",
+   "cologne",
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus Absolu 100ml",
+   "EDP",
+   100,
+   "flanker",
+   "absolu",
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus 100ml Tester",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus 10ml Atomiser Travel Size",
+   "EDP",
+   10,
+   "mini",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus Gift Set 100ml + 10ml",
+   "EDP",
+   100,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "Creed Aventus Deodorant Stick 75ml",
+   null,
+   75,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "\u0643\u0631\u064a\u062f \u0627\u0641\u0646\u062a\u0648\u0633 \u0644\u0644\u0631\u062c\u0627\u0644 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "\u0643\u0631\u064a\u062f \u0627\u0641\u0646\u062a\u0648\u0633 \u0644\u0644\u0646\u0633\u0627\u0621 75 \u0645\u0644",
+   "EDP",
+   75,
+   "twin",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah EDP 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah Eau de Parfum 100ml Unisex",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah Qahwa EDP 100ml",
+   "EDP",
+   100,
+   "flanker",
+   "qahwa",
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah Dukhan EDP 100ml",
+   "EDP",
+   100,
+   "flanker",
+   "dukhan",
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah Deodorant 250ml",
+   null,
+   250,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah 100ml Tester",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "Lattafa Khamrah Gift Set EDP 100ml + Deodorant",
+   "EDP",
+   100,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "\u0644\u0637\u0627\u0641\u0629 \u062e\u0645\u0631\u0629 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "\u0639\u0637\u0631 \u062e\u0645\u0631\u0629 \u0642\u0647\u0648\u0629 \u0644\u0637\u0627\u0641\u0629 100 \u0645\u0644",
+   "EDP",
+   100,
+   "flanker",
+   "qahwa",
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas for Him EDP 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas Eau de Parfum for Men 100ml",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas for Her EDP 100ml",
+   "EDP",
+   100,
+   "twin",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas Ice for Him EDP 100ml",
+   "EDP",
+   100,
+   "flanker",
+   "ice",
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas Elixir 100ml",
+   "Elixir",
+   100,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas Deodorant Spray 200ml",
+   null,
+   200,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "Rasasi Hawas Tester 100ml",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "\u0631\u0635\u0627\u0635\u064a \u062d\u0648\u0627\u0633 \u0644\u0644\u0631\u062c\u0627\u0644 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "base",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "\u0631\u0635\u0627\u0635\u064a \u062d\u0648\u0627\u0633 \u0644\u0644\u0646\u0633\u0627\u0621 100 \u0645\u0644",
+   "EDP",
+   100,
+   "twin",
+   null,
+   "syn"
+  ],
+  [
+   "sauvage",
+   "\u0637\u0642\u0645 \u0647\u062f\u0627\u064a\u0627 \u062f\u064a\u0648\u0631 \u0633\u0648\u0641\u0627\u062c \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644 \u0645\u0639 \u062c\u0644 \u0627\u0633\u062a\u062d\u0645\u0627\u0645",
+   "EDP",
+   100,
+   "gift",
+   null,
+   "syn"
+  ],
+  [
+   "libre",
+   "\u0645\u0639\u0637\u0631 \u0634\u0639\u0631 \u0644\u064a\u0628\u0631 \u0645\u0646 \u0627\u064a\u0641 \u0633\u0627\u0646 \u0644\u0648\u0631\u0627\u0646 30 \u0645\u0644",
+   null,
+   30,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "bleu",
+   "\u062a\u0633\u062a\u0631 \u0628\u0644\u0648 \u062f\u064a \u0634\u0627\u0646\u064a\u0644 \u0627\u0648 \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "tester",
+   null,
+   "syn"
+  ],
+  [
+   "aventus",
+   "\u0643\u0631\u064a\u062f \u0627\u0641\u0646\u062a\u0648\u0633 10 \u0645\u0644 \u062d\u062c\u0645 \u0627\u0644\u0633\u0641\u0631",
+   "EDP",
+   10,
+   "mini",
+   null,
+   "syn"
+  ],
+  [
+   "khamrah",
+   "\u0645\u0632\u064a\u0644 \u0639\u0631\u0642 \u0644\u0637\u0627\u0641\u0629 \u062e\u0645\u0631\u0629 200 \u0645\u0644",
+   null,
+   200,
+   "body",
+   null,
+   "syn"
+  ],
+  [
+   "hawas",
+   "\u0631\u0635\u0627\u0635\u064a \u062d\u0648\u0627\u0633 \u0627\u064a\u0633 100 \u0645\u0644",
+   "EDP",
+   100,
+   "flanker",
+   "ice",
+   "syn"
+  ],
+  [
+   "br540",
+   "\u0628\u0627\u0643\u0627\u0631\u0627\u062a \u0631\u0648\u062c 540 \u0627\u0643\u0633\u062a\u0631\u064a\u062a \u062f\u0648 \u0628\u0627\u0631\u0641\u0627\u0646 70 \u0645\u0644",
+   "Extrait",
+   70,
+   "conc",
+   null,
+   "syn"
+  ],
+  [
+   "y",
+   "\u0639\u0637\u0631 \u0645\u0633\u062a\u0648\u062d\u0649 \u0645\u0646 \u0648\u0627\u064a \u0627\u064a\u0641 \u0633\u0627\u0646 \u0644\u0648\u0631\u0627\u0646 100 \u0645\u0644",
+   "EDP",
+   100,
+   "dupe",
+   null,
+   "syn"
+  ]
+ ],
+ "queries": [
+  [
+   "sauvage_R",
+   "sauvage",
+   "Dior Sauvage EDP",
+   "Dior",
+   "Sauvage",
+   "EDP",
+   null
+  ],
+  [
+   "sauvage_R100",
+   "sauvage",
+   "Dior Sauvage EDP 100ml",
+   "Dior",
+   "Sauvage",
+   "EDP",
+   100
+  ],
+  [
+   "sauvage_T",
+   "sauvage",
+   "Dior Sauvage 100 ML Edp",
+   "Dior",
+   "Sauvage",
+   "EDP",
+   100
+  ],
+  [
+   "bleu_R",
+   "bleu",
+   "Chanel Bleu de Chanel EDP",
+   "Chanel",
+   "Bleu de Chanel",
+   "EDP",
+   null
+  ],
+  [
+   "bleu_R100",
+   "bleu",
+   "Chanel Bleu de Chanel EDP 100ml",
+   "Chanel",
+   "Bleu de Chanel",
+   "EDP",
+   100
+  ],
+  [
+   "y_T",
+   "y",
+   "Yves Saint Laurent Y EDP",
+   "Yves Saint Laurent",
+   "Y",
+   "EDP",
+   null
+  ],
+  [
+   "libre_R",
+   "libre",
+   "Yves Saint Laurent Libre EDP",
+   "Yves Saint Laurent",
+   "Libre",
+   "EDP",
+   null
+  ],
+  [
+   "br540_R",
+   "br540",
+   "Maison Francis Kurkdjian Baccarat Rouge 540 EDP",
+   "Maison Francis Kurkdjian",
+   "Baccarat Rouge 540",
+   "EDP",
+   null
+  ],
+  [
+   "aventus_R",
+   "aventus",
+   "Creed Aventus EDP",
+   "Creed",
+   "Aventus",
+   "EDP",
+   null
+  ],
+  [
+   "khamrah_R",
+   "khamrah",
+   "Lattafa Khamrah EDP",
+   "Lattafa",
+   "Khamrah",
+   "EDP",
+   null
+  ],
+  [
+   "hawas_T",
+   "hawas",
+   "Rasasi Hawas EDP",
+   "Rasasi",
+   "Hawas",
+   "EDP",
+   null
+  ]
+ ],
+ "noconc_queries": [
+  [
+   "sauvage_N",
+   "sauvage",
+   "Dior Sauvage",
+   "Dior",
+   "Sauvage",
+   null,
+   null
+  ],
+  [
+   "bleu_N",
+   "bleu",
+   "Chanel Bleu de Chanel",
+   "Chanel",
+   "Bleu de Chanel",
+   null,
+   null
+  ]
+ ]
+}
