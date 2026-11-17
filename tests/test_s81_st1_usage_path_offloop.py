@@ -1035,7 +1035,7 @@ BASE_CHAINS = {'db:referral_redemptions:select': [['select', 'loop2_comparisons_
 # helper, the flag-gated quota branch and the stash refund block); their flag-OFF
 # behaviour stays pinned by BASE_CONSUME_SEQ / BASE_REFUND_SEQ / BASE_ROUTE here
 # and by tests/fixtures/s81_s09_flag_off_golden.json.
-BASE_DIGESTS = {('app/services/usage_service.py', 'TIER_LIMITS'): 'bc58-e3b4-6850-bbc2-9884-c49b-1809-dd3c',
+BASE_DIGESTS = {('app/services/usage_service.py', 'TIER_LIMITS'): 'fc81-9562-9a71-7bc3-a6d3-d2a1-0298-d7ac',
  ('app/services/usage_service.py', '_atomic_consume'): '7469-c961-24b0-ce4e-174f-291a-5dda-e334',
  ('app/services/usage_service.py', '_atomic_consume_async'): '2708-af7b-03bc-a251-da04-cd93-00c6-a8c4',
  ('app/services/usage_service.py', '_bump_counters'): '3ea0-760e-673e-0827-7220-bf36-3f46-e3df',

@@ -150,7 +150,16 @@ TIER_LIMITS = {
         "monthly": 70,
         "daily": 10,
     },
+    "tester": {
+        "lifetime_free": 0,    # Not applicable (the lifetime bypass is a free-tier rule)
+        "monthly": 30000,
+        "daily": 1000,
+    },
 }
+# INC-T1: only the relay orchestrator writes users.subscription_tier = 'tester', on the owner's word.
+# Exact match, no normalisation: any other spelling falls to the free limits via TIER_LIMITS.get.
+# Rollback: set the row back to 'free' (or delete this entry; the row then reads as free).
+TESTER_TIER = "tester"
 
 
 # ---------------------------------------------------------------------------
