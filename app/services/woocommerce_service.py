@@ -52,6 +52,9 @@ from app.services.price_service import (
     variant_min_guard_enabled,
     variant_mismatch,
 )
+# INC-I2b A (ENABLE_SHOP_PAGE_IMAGE): the leaf reader (no cycle: image_relevance
+# imports price_service only inside functions).
+from app.services import image_relevance as _relevance
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +161,7 @@ def _match_woo_product(
 
     _category = (resolved_category or "").lower() or None if resolved_category else _infer_category_from_query(product_name)
     candidates: list = []
+    _shop_prods: Dict[int, Dict[str, Any]] = {}  # INC-I2b A: id(candidate) -> prod
 
     for prod in products:
         if not isinstance(prod, dict):
@@ -283,11 +287,21 @@ def _match_woo_product(
             candidate["original_currency"] = original_currency
 
         candidates.append(candidate)
+        _shop_prods[id(candidate)] = prod
 
     # CORRECTNESS — pick by retailer authority / variant precision, never cheapest;
     # in-stock ranked first, an only-OOS match still RETURNED flagged (the response
     # chokepoint pends it) so the adapter's "report OOS" contract is preserved.
-    return select_best(candidates, product_name, _category, drop_out_of_stock=False)
+    best = select_best(candidates, product_name, _category, drop_out_of_stock=False)
+    # INC-I2b A (ENABLE_SHOP_PAGE_IMAGE, read per call with a winner): the winner's
+    # own listing photo, guarded; OFF: no image expression, the same object.
+    if best is not None and _relevance.shop_page_image_enabled():
+        from app.services import image_service as _img_svc
+
+        _img_svc.stamp_shop_image(
+            best, "woo", _shop_prods.get(id(best)), None, product_name, best.get("title"),
+        )
+    return best
 
 
 def _do_get(url: str, params: Dict[str, Any], headers: Dict[str, str]):
