@@ -2014,6 +2014,7 @@ def test_p12_tier_limits_literal():
     assert ast.literal_eval(nodes[0].value) == {
         "free": {"lifetime_free": 3, "monthly": 10, "daily": 3},
         "premium": {"lifetime_free": 0, "monthly": 70, "daily": 10},
+        "tester": {"lifetime_free": 0, "monthly": 30000, "daily": 1000},
     }
 
 
