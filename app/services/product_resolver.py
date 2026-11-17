@@ -318,12 +318,15 @@ def _osa(a: str, b: str) -> int:
     return rows[len(a)][len(b)]
 
 
-def _token_distance(alias_token: str, typed_token: str) -> Optional[int]:
-    """D5: digits exact; a one-character alias token exact (INC-M1a, M1R-11 (d): the seed
-    line "Y" must not fuzzy-match "l" of "L'Homme", "b", "by" or any other short token);
-    else OSA <= 1 for an alias token of 5 characters or fewer, <= 2 when longer; None
-    when outside the rule."""
-    if alias_token.isdigit() or len(alias_token) == 1:
+def _token_distance(
+    alias_token: str, typed_token: str, exact_single: bool = False
+) -> Optional[int]:
+    """D5: digits exact; else OSA <= 1 for an alias token of 5 characters or fewer,
+    <= 2 when longer; None when outside the rule. ``exact_single`` (INC-M1a, M1R-11 (d);
+    passed ONLY by the lexicon arm's D5 line search in _lexicon_side): a one-character
+    alias token is exact too, so the seed line "Y" never fuzzy-matches "l" of "L'Homme",
+    "b", "by" or any other short token. The model-arm guard (d) keeps the base rule."""
+    if alias_token.isdigit() or (exact_single and len(alias_token) == 1):
         return 0 if alias_token == typed_token else None
     limit = 1 if len(alias_token) <= 5 else 2
     if abs(len(alias_token) - len(typed_token)) > limit:
@@ -332,16 +335,19 @@ def _token_distance(alias_token: str, typed_token: str) -> Optional[int]:
     return distance if distance <= limit else None
 
 
-def _best_window(alias: Sequence[str], core: Sequence[str]):
+def _best_window(alias: Sequence[str], core: Sequence[str], exact_single: bool = False):
     """The best contiguous window of ``core`` matching ``alias`` under D5, as
     (score, start, total distance), or None. score = (0 when exact else 1,
-    -len(alias), the summed distance, the window start); the lowest wins."""
+    -len(alias), the summed distance, the window start); the lowest wins.
+    ``exact_single`` is passed through to _token_distance (the lexicon arm only)."""
     width = len(alias)
     best = None
     for start in range(len(core) - width + 1):
         total = 0
         for offset in range(width):
-            distance = _token_distance(alias[offset], core[start + offset])
+            distance = _token_distance(
+                alias[offset], core[start + offset], exact_single
+            )
             if distance is None:
                 break
             total += distance
@@ -779,7 +785,7 @@ def _lexicon_side(name: str, index: Dict[str, Any], context: bool) -> Side:
     winners: List[Dict[str, Any]] = []
     for line in index["lines"]:
         for alias in line["aliases"]:
-            hit = _best_window(alias, core)
+            hit = _best_window(alias, core, exact_single=True)
             if hit is None:
                 continue
             entry = (hit[0], hit[1], len(alias), hit[2], line)
