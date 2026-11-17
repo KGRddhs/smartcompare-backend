@@ -1,0 +1,86 @@
+Relay 2026-11-16 20:35: queue after INC-P2 (replaces the start card order): 2 INC-P3 SHOP-POLITE (single flight per Shopify host in _fetch_shopify_catalog/_fetch_shopify_currency, ~3 in flight, per-host timeout, a refusal never overwrites a good cached catalogue, one log line per non-200, drop bh.azhaperfumes.com); 3 INC-M1 MATCH-FOLD (brand alias fold, single-concentration default, padding words, resolver seed rows; must merge BEFORE ENABLE_PRODUCT_RESOLVER opens; RED rows in research-2026-11-16/work/R4/); 4 INC-L1 + early discovery start for perfumes + late bank after the 15 s cap (first needs the owner's go on credits); 5 INC-P4 LAST-SEEN (kb_ingest gate refusing a cached price first; ENABLE_KB_INGEST stays closed before it); 6 INC-S1 widened, INC-H1, INC-X6. Seeds: section 4 of research-2026-11-16/RESEARCH_FINDINGS_2026-11-16.md. File later notes in the session-82 notes root.
+Owner 2026-11-16 ~20:47 (via relay): 'Yes, allow' up to 4 extra search calls per perfume on a FIRST (cold) comparison for INC-L1 scope (f) early discovery start, own dark switch, nothing extra on a cached run; gate report states the measured extra calls per perfume.
+main fd983471 (2026-11-16 21:23, #411 INC-I2e: image_relevance.py, CLAUDE.md, .github/black-clean-paths.txt, tests/test_inc_i2e_guard_short_line.py). GREEN builds on b0ad2603 as gated, then merges main fd983471 (or newer) before the PR and re-runs the comm set + CLAUDE.md readers + black-clean readers on the merged bytes.
+PRODUCTION 2026-11-16 21:24:51: ENABLE_IMAGE_GUARD_SHORT_LINE=true ON on web (INC-I2e, main fd983471); picture guard only, no price path. Add to H13 (c) for GREEN.
+
+== RELAY 2026-11-17 02:50 AST (supersedes the queue order above) ==
+Owner 02:20: confirms the whole queue and storing prices already read, with a date. ENABLE_KB_INGEST still opens only after the kb_ingest gate fix, in the relay's window.
+
+NEW ORDER after INC-P2:
+1. INC-M1 MATCH-FOLD, with a first-class requirement: a typed ARABIC-script name reaches search, the price filters and the picture identity as its Latin identity.
+   - RED rows: ar.json home.compare.box_a_text / box_b_text (the Arabic for "Dior Sauvage EDP" and "Bleu de Chanel EDP") and the ya-for-waw spelling of the Bleu de Chanel particle. Each must give the same search query, the same accepted candidates and the same picture identity as the Latin names.
+   - The spec says whether folding alone does it or the resolver's model arm is needed, and which switches then must be on.
+   - Evidence: PRICE_FILTER_TRACE showed 0 of 40 candidates for both names, both races timed out at 15 s, and both pictures were rejected (name / denied).
+2. INC-P4a: the kb_ingest gate fix alone (small).
+3. INC-S1 SPEED, moved up.
+   - Seed: the used-up first Serper key costs a rotation after every memo expiry; the bh-then-us shopping fallback doubles the call; the 30 s cap returned a partial the phone did not draw.
+   - Evidence: "Chanel No 5" vs "Dior Sauvage" at 02:27. serper_shopping took 14.4 s and 12.2 s, unified search timed out at 12 s, the specs / reviews / image calls timed out, and the hard cap gave a partial. Prices were found anyway: noon 77.940 BHD, fragrancebh 47.000 BHD.
+4. Then INC-P3, INC-L1, the rest of INC-P4, INC-H1, INC-X6.
+
+THIRD LANE S97: owns usage_service.py, url_extraction_service.py, url_routes.py and app.json. The box now has three lanes: one heavy gate at a time.
+ENABLE_IMAGE_LATE_BIND is ON on web since 02:45. The ENABLE_LISTING_MATCH_GUARD window comes before the P2 window.
+PR line: one-line acknowledgement of this message.
+
+== RELAY 2026-11-17 02:56 AST: INC-M1 spec facts (main lane, measured at 5cd93c6a) ==
+- The image search and the price search both go out AS TYPED: Arabic text, plus "perfume" for the picture. The Latin identity must therefore exist BEFORE any search call, not only at the filters.
+- What the picture guard does today:
+  - It compares the typed words with the title as written.
+  - With the brand read as Dior and the line still in Arabic, Latin titles fail on the name and Arabic titles fail on the brand.
+  - With a Latin brand and line, Arabic-only titles still fail on the brand, because the guard's brand forms hold no Arabic spelling.
+- The spec decides ONE home for the Arabic brand and line spellings, read by both the price filters and the picture guard. If that home is image_relevance.py (the main lane's file), say so in the gate line; the relay routes that part to S96.
+- Canary caution: an IMG_RELEVANCE reason is the LAST rejected candidate's reason only. "candidates=5 reason=denied" does not mean five denials.
+
+== RELAY 2026-11-17 (ORCH-H2): the F4 gap and the INC-H2 STORED-ROW GUARDS unit ==
+- THE GAP: home_routes._select_smart_pick reads the two stored amounts itself (main :571-572) and returns them as winner_price_bhd / runner_up_price_bhd (:680-681). It has no currency test and no size test.
+  - The only stored-price readers: home_routes :185-186 (F4 covers it) and :571-572 / :680-681; profile_routes :83-84 (F4 covers it).
+- INC-H2 (unflagged, leaner chain, one adversary):
+  - (a) _select_smart_pick skips a row whose stored metadata.pair_price_sizes.mode is present and not same_size, and skips a row unless both currencies are BHD (the rule of :188-189). PIN: every row that is today's smart pick (BHD prices, no marker) stays the same pick with the same body.
+  - (b) price_service.curl_fetch_html_same_site's exception log (about :15102 at main) prints host + exception type, not the whole link (S97's INC-U1 passes user-pasted links through it). If the full shop link matters, propose a form that keeps it for the price callers only.
+- MY CALL (to state in the P2 PR line): a SEPARATE INC-H2 unit right after the INC-P2 PR opens, not folded in. Folding would need a second P2 fix round and a new re-verifier, and (b) is not P2 scope.
+- The relay holds the ENABLE_PRICE_NOT_LOST window until (a) is on main. S97 builds INC-U1 GREEN on a main that holds both units.
+- Queue: P2 PR -> INC-H2 -> INC-M1 -> INC-P4a -> INC-S1 -> INC-P3 -> INC-L1 -> rest of INC-P4 -> INC-H1 -> INC-X6.
+
+== RELAY 03:16 AST: BUDGET STOP LINE ==
+- The meter at 03:16 was 51% all models / 45% Fable (reset 2026-11-18 13:00 UTC; extra usage off; three lanes drawing).
+- When the relay says the meter is at 80%: finish the stage in flight, file the state and a successor brief, start nothing new.
+- The order until then: INC-P2 to its PR, INC-H2, INC-M1 (Arabic typed names). One re-verifier per round; never re-run a stage that passed.
+
+== RELAY 03:35 AST: OWNER RULINGS ON THE DATABASE ==
+1. INC-P4a STORED-PRICE RULE
+   - A price is stored ONLY when it is a genuine Bahrain price in BHD that our own read of the shop's page or feed returned in this run (a genuine-set source method).
+   - It is stored with its listing link, its bottle size and the time it was read.
+   - NEVER stored, each with its own RED row:
+     - a converted amount;
+     - an estimate;
+     - a foreign-market or US-fallback listing;
+     - a marketplace seller;
+     - a cached copy stamped as seen now (the known gate defect).
+2. INC-K1 USER-DRIVEN STORE (new seed, AFTER INC-M1 and INC-P4a; SPEC ONLY WHEN THE RELAY SAYS)
+   - What a comparison finds for a typed product is kept through the ingest path under rule 1.
+   - A shop host first seen in a pasted link is registered as a reader candidate. It is never read before its robots record exists.
+   - The owner ruled every listed shop allowed for the reader. The relay recorded each host with its terms page; 17 hosts are marked, and the feed-walker DRY run is going.
+3. BINDING ON EVERY UNIT (the relay's line)
+   - Nothing we build gets past a bot check: no challenge solving, no waiting out an interstitial, no new identity or fingerprint trick.
+   - On a challenge page or a refusal, the reader stops for that host, records why, and we ask the shop.
+   - The owner's Cloudflare wait-and-pass request was declined.
+4. INC-H2 (b), the curl_fetch_html_same_site log line, is NOT needed by S97 any more. Keep it only if it costs nothing. (a), the smart-pick guard, stands.
+5. INC-S1 SEED
+   - After the owner's good run at 03:21, /health showed loop_lag_max_ms 2649 and llm_spend_fail_open 1, with one "SPEND breaker fail-open (TimeoutError)" line.
+   - So the event loop stalled about 2.6 s at the spend breaker's Redis call during that compare.
+Meter at 03:27: 53% all models. Extra usage stays off; the 80% stop line stands.
+
+== RELAY ~05:27 AST: OWNER STANDARD FOR THE PRODUCT STORE (no answer needed) ==
+Owner, his own words (paraphrase kept short): clean data, not a messy set; doubtful prices validated by several different checks; correct variants, models and sizes with correct prices, Bahrain first; include local houses (Asgar Ali, Junaid and the rest); research Al Bayan, Golden Collection and others for recreated / copy perfumes; popular brands from their own Bahrain or GCC sites or Sephora; improve test and search where the list has no brand field.
+FACTS (relay spot-check): the 04:20 reader run stored 2,408 products, 2,707 variants, 5,552 offers (3,521 BHD) from 11 shops. RAW: shop vendor names stand as brands in several spellings; the line holds the raw shop title; some products carry one price for two sizes; six WooCommerce shops gave nothing (no brand field). Nothing served (ENABLE_KB_FIRST_SERVE not set).
+BINDING RULE on INC-P4a, INC-K1 and every later store unit: nothing from the store reaches a user until it has passed checks. A stored price counts as VERIFIED only with more than one agreeing check (feed value vs our own read of the live page; currency; the size it belongs to; a per-ml sanity bound; agreement with other shops). A doubtful price is marked doubtful and NEVER served.
+  -> INC-P4a spec must carry: a verified / doubtful mark (or the column it will need), no serve path, and RED rows for one price on two sizes and for a vendor name stored as a brand.
+NEW SEEDS, in this order, AFTER INC-M1 and INC-P4a, specs only on the relay's word:
+  KB-V1 price verification (verified / doubtful mark)
+  KB-Q1 identity cleaning (brand spellings folded; line, concentration, size, variant checked)
+  KB-W1 brand from the title for lists with no brand field
+  KB-I1 a checked picture per product
+  KB-N1 new sources (the named local houses, brands' own Bahrain / Gulf sites, Sephora), each with its robots record, never past a bot check
+  KB-D1 recreated perfumes mapped to the originals they follow
+Relay may ask the owner for a fourth lane for these after the meter reset. Meter (relay, ~04:36): 58 pct.
+
+== RELAY 05:58 AST: main = 6473769e (#416 INC-I2b), rebase target for INC-P2 replaces 5cd93c6a. See GATE section 10: second rebase by the orchestrator after fix round 1. ==
