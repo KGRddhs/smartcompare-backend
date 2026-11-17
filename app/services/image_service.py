@@ -37,6 +37,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -481,11 +482,11 @@ async def get_product_image_url(
 # ---------------------------------------------------------------------------
 LATE_BIND_FLAG_ENV = "ENABLE_IMAGE_LATE_BIND"
 _LATE_TRUTHY = ("true", "1", "yes", "on")
-#: The guard-rules version: sha256 over the source of image_relevance check,
-#: _check_short_line, identity and the RelevanceCall accept / accept_scheme /
-#: _organic_reason / organic_passes / accept_pick methods ("\n"-joined), first 8 hex.
+#: The guard-rules version: sha256 over the source of the image_relevance guard
+#: functions and methods (INC-I2b I-2: the words helpers included) plus a
+#: deterministic text of every word table check() reads ("\n"-joined), first 8 hex.
 #: A unit that edits any of them bumps this constant (pinned by the E22 row).
-PICK_GUARD_RULES = "b39b9d79"
+PICK_GUARD_RULES = "a9bdcc90"
 PICK_CACHE_PREFIX = "imgpick:v1:" + PICK_GUARD_RULES + ":"
 _LATE_MAX_SECONDS_CEILING = 30.0
 
@@ -552,7 +553,9 @@ def pick_cache_name(relevance: Any, variant: Any) -> str:
     rel = relevance if isinstance(relevance, dict) else {}
     parts = [_name_part(rel.get("category")), _name_part(rel.get("brand")),
              _name_part(rel.get("line")), _name_part(variant),
-             "s1" if _relevance.short_line_enabled() else "s0"]
+             ("s1" if _relevance.short_line_enabled() else "s0")
+             + ("w1:" + ",".join(sorted(_relevance._conc_labels(rel.get("typed"))))
+                if _relevance.guard_words_enabled() else "w0")]
     digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
     return PICK_CACHE_PREFIX + digest
 
@@ -735,3 +738,140 @@ async def get_product_image_url_late(
     finally:
         if _rel is not None:
             _log_img_relevance(_rel)
+
+
+# ---------------------------------------------------------------------------
+# INC-I2b SHOP-IMAGE-TIER: A (ENABLE_SHOP_PAGE_IMAGE, the WooCommerce listing photo
+# stamped on the winning price dict) and B (ENABLE_SHOPPING_THUMB_IMAGE, OWNER POLICY:
+# a guarded Google Shopping thumbnail as the last resort). Both read per call; A's
+# reader lives in image_relevance (the adapter's leaf import). Never cached here.
+# ---------------------------------------------------------------------------
+SHOPPING_THUMB_FLAG_ENV = "ENABLE_SHOPPING_THUMB_IMAGE"
+_SHOP_KEY_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}")
+_SHOP_PAGE_KEYS_MAX = 12
+_SHOP_THUMB_KEYS_MAX = 24
+
+
+def shopping_thumb_enabled() -> bool:
+    """True iff ``ENABLE_SHOPPING_THUMB_IMAGE`` is set truthy. Read PER CALL."""
+    return os.getenv(SHOPPING_THUMB_FLAG_ENV, "false").strip().lower() in _LATE_TRUTHY
+
+
+def _key_names(item: Any, cap: int):
+    """(names, other) of a dict's keys: the names fullmatching the closed pattern,
+    sorted, at most ``cap``, comma-joined ("-" for none); other = the rest."""
+    if not isinstance(item, dict):
+        return "-", 0
+    names = sorted(k for k in item if isinstance(k, str) and _SHOP_KEY_NAME.fullmatch(k))
+    shown = names[:cap]
+    return (",".join(shown) if shown else "-"), len(item) - len(shown)
+
+
+def _shape_keys(images: Any):
+    """(shape, keys, other) of a WooCommerce ``images`` value: the type class and the
+    first item's key names (names only, never a value)."""
+    if isinstance(images, list):
+        first = images[0] if images else None
+        keys, other = _key_names(first, _SHOP_PAGE_KEYS_MAX)
+        return "list", keys, other
+    if isinstance(images, dict):
+        keys, other = _key_names(images, _SHOP_PAGE_KEYS_MAX)
+        return "dict", keys, other
+    if isinstance(images, str):
+        return "str", "-", 0
+    if images is None:
+        return "none", "-", 0
+    return "other", "-", 0
+
+
+def _log_shop_page(platform: str, outcome: str, reason: str, shape: str, keys: str, other: int) -> None:
+    logger.info("IMG_SHOP page platform=%s outcome=%s reason=%s shape=%s keys=%s other=%d",
+                platform, outcome, reason, shape, keys, other)
+
+
+def stamp_shop_image(price: Any, platform: str, product: Any, variant: Any,
+                     product_name: Any, title: Any) -> None:
+    """INC-I2b A: stamp the listing's own first https raster photo on the winning
+    price dict as ``image_url`` when the guard reads ON and the listing title passes
+    the words test (form, free intense). ``variant`` is reserved for the Shopify
+    follow-up. Total: any raise leaves the dict untouched (outcome error)."""
+    if not _relevance.guard_enabled():
+        _log_shop_page(platform, "skipped", "none", "-", "-", 0)
+        return
+    try:
+        images = product.get("images") if isinstance(product, dict) else None
+        shape, keys, other = _shape_keys(images)
+        src = None
+        for item in _relevance.dict_items(images, _relevance.JSONLD_IMAGES_MAX):
+            if isinstance(item.get("src"), str):
+                src = item.get("src")
+                break
+        url = _relevance.first_https_raster(src) if src is not None else None
+        reason = "none"
+        if url is None:
+            outcome = "no_image"
+        else:
+            why = _relevance.words_reason_for(product_name, title)
+            if why is not None:
+                outcome, reason = "refused", why
+            elif isinstance(price, dict):
+                price["image_url"] = url
+                outcome = "stamped"
+            else:
+                outcome = "no_image"
+    except Exception:  # noqa: BLE001 - the adapter never raises for a picture
+        _log_shop_page(platform, "error", "none", "-", "-", 0)
+        return
+    _log_shop_page(platform, outcome, reason, shape, keys, other)
+
+
+def _thumb_url(item: Dict[str, Any]) -> Optional[str]:
+    for key in _ORGANIC_IMAGE_KEYS:
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _log_shop_keys(slot: str, items: Any) -> None:
+    """INC-I2b B: the ONE keys line of a thumbnail call: the first item's key names,
+    and counts of items with an image, an https one, a gstatic-labelled host."""
+    walk = _relevance.dict_items(items, _relevance.SEARCH_ITEMS_MAX)
+    names, other = _key_names(walk[0] if walk else None, _SHOP_THUMB_KEYS_MAX)
+    with_url = https = gstatic = 0
+    for item in walk:
+        url = _thumb_url(item)
+        if url is None:
+            continue
+        with_url += 1
+        if url.startswith("https://"):
+            https += 1
+        if "gstatic" in _relevance._host(url).split("."):
+            gstatic += 1
+    logger.info("IMG_SHOP keys product=%s names=%s other=%d with_url=%d https=%d gstatic=%d",
+                slot, names, other, with_url, https, gstatic)
+
+
+def shopping_thumbnail(items: Any, product_name: Any, slot: Any,
+                       relevance: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """INC-I2b B: the first Shopping item thumbnail that passes the guard AND the words
+    test (whatever ENABLE_IMAGE_GUARD_WORDS reads, I-12); None without a relevance (the
+    guard OFF, a camera product). Never stored, never in [IMG_RELEVANCE]."""
+    if relevance is None:
+        _slot = str(slot) if slot in (0, 1) and not isinstance(slot, bool) else "-"
+        logger.info("IMG_SHOP thumb product=%s outcome=skipped candidates=0 reason=none", _slot)
+        return None
+    rel = _relevance.RelevanceCall(product_name, relevance)
+    _log_shop_keys(rel.slot, items)
+    found = None
+    for item in _relevance.dict_items(items, _relevance.SEARCH_ITEMS_MAX):
+        url = _first_image(item, _ORGANIC_IMAGE_KEYS)
+        if url and rel.accept_thumb(
+            url, texts=(item.get("title"), item.get("source")), hosts=(item.get("link"),),
+        ):
+            found = url
+            break
+    slot_s, _tier, outcome, n, reason = rel.summary()
+    logger.info("IMG_SHOP thumb product=%s outcome=%s candidates=%d reason=%s",
+                slot_s, outcome, n, reason)
+    return found
