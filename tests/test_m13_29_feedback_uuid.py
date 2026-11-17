@@ -3,13 +3,12 @@ client-supplied comparison_id, so a caller can pin rows to another user's
 comparison_id harvested from a share link (RLS can't stop a service-role write).
 
 Load-bearing fix: UUID-validate comparison_id at the Pydantic layer (rejecting
-arbitrary strings before they reach PostgREST). Defense-in-depth: route the write
-through get_user_supabase_client(access_token) when the caller is authenticated.
+arbitrary strings before they reach PostgREST).
 
-NOTE (follow-up, NOT fixed here): migrations/010_enable_rls.sql:48-58 INSERT
-policies allow user_id IS NULL and never constrain comparison_id, so the
-user-scoped client alone does NOT stop the forgery — the UUID validation is the
-load-bearing control. Migrations are out of scope for this wave.
+INC-SEC-1 (C2, C2b, ruling R-C): migration 055 removes every app-role write to
+comparison_feedback, so the server writes with its own key for every caller and the
+user client is never built; feedback_service._owned_comparison_id keeps the ownership
+rule (a comparison_id the caller may not name is dropped, the row is still written).
 """
 from unittest.mock import AsyncMock, MagicMock
 
@@ -106,14 +105,14 @@ def test_http_valid_comparison_id_ok(client, monkeypatch):
 # ---- user-scoped client when authenticated ---------------------------------
 
 @pytest.mark.asyncio
-async def test_save_feedback_uses_user_client_when_authenticated(monkeypatch):
-    """An authenticated write (user_id + access_token) goes through the
-    RLS-scoped client, not the service-role client."""
+async def test_save_feedback_uses_service_client_when_authenticated(monkeypatch):
+    """INC-SEC-1 C2 (R-C, inverted): an authenticated write (user_id + access_token)
+    goes through the service-role client; the RLS-scoped user client is never built."""
     user_client = MagicMock()
-    user_client.table.return_value.insert.return_value.execute.return_value = MagicMock(
+    admin_client = MagicMock()
+    admin_client.table.return_value.insert.return_value.execute.return_value = MagicMock(
         data=[{"id": "row-1"}]
     )
-    admin_client = MagicMock()
     got = {}
 
     def _fake_user_client(tok):
@@ -131,9 +130,9 @@ async def test_save_feedback_uses_user_client_when_authenticated(monkeypatch):
         user_id="u1", comparison_id=_VALID_UUID, useful=True,
         mattered_most=[], access_token="tok-abc",
     )
-    assert got.get("user_tok") == "tok-abc"
-    user_client.table.assert_called_with("comparison_feedback")
-    admin_client.table.assert_not_called()
+    assert "user_tok" not in got
+    user_client.table.assert_not_called()
+    admin_client.table.assert_called_with("comparison_feedback")
 
 
 @pytest.mark.asyncio

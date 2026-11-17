@@ -483,6 +483,8 @@ def test_p11_feedback_off_accepts_and_drops(monkeypatch, save_rec, off):
 def test_p12_feedback_off_stored_row(monkeypatch, run_ff, off):
     _full_config(monkeypatch, v2=off)
     rec = _recording_client()
+    # INC-SEC-1 C2b (N-2): the ownership read answers "no row" (an anonymous compare).
+    rec.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
     monkeypatch.setattr(fs, "get_supabase_client", lambda: rec)
     body = {"useful": True, "mattered_most": ["price"], "comparison_id": UUID,
             "change_suggestion": "s", "winner_correct": "correct",
@@ -531,6 +533,8 @@ def test_r14_feedback_on_stored_row(monkeypatch):
     _assert_v2_signature()
     monkeypatch.setenv("ENABLE_FEEDBACK_V2", "true")
     rec = _recording_client()
+    # INC-SEC-1 C2b (N-2): the ownership read answers "no row" (an anonymous compare).
+    rec.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
     monkeypatch.setattr(fs, "get_supabase_client", lambda: rec)
     out = asyncio.run(fs.save_feedback(
         user_id=None, comparison_id=UUID, useful=None, mattered_most=[],

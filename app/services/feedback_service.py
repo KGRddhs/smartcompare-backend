@@ -144,6 +144,38 @@ async def save_comparison_and_track_cohort(
     )
 
 
+async def _owned_comparison_id(
+    client, user_id: Optional[str], comparison_id: str
+) -> Optional[str]:
+    """INC-SEC-1 C2b (R-6): the comparison_id a feedback row may carry, or None.
+
+    After 055 the server writes every feedback row with its own key, so the database no
+    longer checks who names which comparison; this read does. A signed-in caller keeps the
+    id only when the comparisons row exists and belongs to the caller. An anonymous caller
+    owns no row (anonymous compares persist none), so it keeps the id only when no row
+    exists or the row has no owner. A failed read drops the id. Every drop logs one constant
+    line (no id, no exception text); the feedback row itself is always written (Q2).
+    """
+    try:
+        resp = await run_db(
+            lambda: client.table("comparisons").select("user_id").eq("id", comparison_id).limit(1).execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            if user_id:
+                logger.warning("[FEEDBACK] FEEDBACK_COMPARISON_NOT_OWNED")
+                return None
+            return comparison_id
+        owner = rows[0].get("user_id")
+        if (user_id and owner is not None and str(owner) == str(user_id)) or (not user_id and owner is None):
+            return comparison_id
+        logger.warning("[FEEDBACK] FEEDBACK_COMPARISON_NOT_OWNED")
+        return None
+    except Exception:  # noqa: BLE001
+        logger.warning("[FEEDBACK] FEEDBACK_OWNERSHIP_UNREAD")
+        return None
+
+
 async def save_feedback(
     user_id: Optional[str],
     comparison_id: Optional[str],
@@ -166,12 +198,11 @@ async def save_feedback(
 
     Returns dict with success status. Never raises.
 
-    M13-29: when the caller is authenticated (user_id + access_token) the write
-    goes through the RLS-scoped user client instead of the service-role client.
-    Anonymous writes keep using the service-role client (unchanged). The
-    load-bearing forgery control is the UUID validation on comparison_id at the
-    route layer — migrations/010 INSERT policies do not constrain comparison_id,
-    so the user client alone would not stop it (recorded follow-up).
+    INC-SEC-1 C2 (R-11e): after 055 the database refuses every app-role write to
+    comparison_feedback, so the server writes with its own key for every caller (the
+    access_token keyword is kept for the call sites and no longer builds a client).
+    C2b keeps the ownership rule: _owned_comparison_id decides whether the row may
+    carry the comparison_id. The UUID validation at the route layer (M13-29) stays.
 
     S81-SF1 (ENABLE_FEEDBACK_V2, read first): ON, `useful` is written only when not
     None and the six 046 columns only when not None. OFF, the record is the base
@@ -179,11 +210,9 @@ async def save_feedback(
     """
     v2 = feedback_v2_enabled()
     try:
-        if user_id and access_token:
-            from app.services.database_service import get_user_supabase_client
-            client = get_user_supabase_client(access_token)
-        else:
-            client = get_supabase_client()
+        client = get_supabase_client()
+        if comparison_id:
+            comparison_id = await _owned_comparison_id(client, user_id, comparison_id)
         record: Dict = {}
         if not v2 or useful is not None:
             record["useful"] = useful
