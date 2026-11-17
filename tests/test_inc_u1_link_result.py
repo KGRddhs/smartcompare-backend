@@ -299,12 +299,19 @@ def _u1_env(monkeypatch):
     prior = limiter.enabled
     limiter.enabled = False
     saved = dict(app.dependency_overrides)
+    # CI one-process order: a row that turns an ENABLE_ANTHROPIC_* role ON sets the
+    # router ran latch, and /health then carries anthropic_breaker for every later
+    # file of the process; restore the router state this fixture found.
+    from app.services import llm_router
+    saved_router = dict(llm_router._STATE)
     try:
         yield
     finally:
         limiter.enabled = prior
         app.dependency_overrides.clear()
         app.dependency_overrides.update(saved)
+        llm_router._STATE.clear()
+        llm_router._STATE.update(saved_router)
 
 
 @pytest.fixture
