@@ -1393,6 +1393,21 @@ def _product_display_identity(
     return full, name
 
 
+def _typed_image_text(product_info, full_name) -> str:
+    """INC-I2b (I-8): the text the user typed for this product, for the words guard's
+    typed concentration: the INC-R1 carrier ``_typed_name`` (a rewritten explicit dict),
+    "" for a rewritten explicit dict without it (fail-open, never a resolver default),
+    else ``full_name``."""
+    info = product_info if isinstance(product_info, dict) else {}
+    typed = info.get("_typed_name")
+    if isinstance(typed, str):
+        return typed
+    brand = info.get("brand")
+    if info.get("_explicit") and isinstance(brand, str) and brand.strip():
+        return ""
+    return full_name if isinstance(full_name, str) else ""
+
+
 def _vision_identity_fields(vp) -> dict:
     """B3 (ENABLE_VISION_IDENTITY_V2): the identity evidence a V2-shaped
     vision product carries into the orchestrator's identity dict, for B2.
@@ -4219,7 +4234,14 @@ class StructuredComparisonService:
                     api_calls=self.api_calls,
                 )
                 return refusal, False
-            return None, _product_resolver.apply_resolution(products, resolution) is True
+            _both = _product_resolver.apply_resolution(products, resolution) is True
+            # INC-I2b (I-8): a rewritten dict keeps the typed name for the words guard
+            # (its typed concentration); W OFF (or the guard OFF): no key.
+            if _image_relevance.guard_enabled() and _image_relevance.guard_words_enabled():
+                for _p, _b in zip(products, base):
+                    if _p != _b:
+                        _p["_typed_name"] = _b.get("name")
+            return None, _both
         except Exception as exc:  # noqa: BLE001 -- the hook never raises into the compare (C-7)
             for _p, _b in zip(products, base):
                 _p.clear()
@@ -6143,9 +6165,14 @@ class StructuredComparisonService:
                 if url:
                     outcome, page = "fallback", "fallback"
                 else:
-                    url = None
-                    outcome = "none" if task.done() else "missed_at_deadline"
-                    page = "skipped"
+                    # INC-I2b B: the Shopping thumbnail, the LAST resort.
+                    url = entry.get("shop_thumb") or None
+                    if url:
+                        outcome, page = "shopping", "skipped"
+                    else:
+                        url = None
+                        outcome = "none" if task.done() else "missed_at_deadline"
+                        page = "skipped"
         result["image_url"] = url
         logger.info("IMG_LATE bind product=%s outcome=%s wait_ms=%d", slot, outcome, wait_ms)
         logger.info("IMG_LATE page_override outcome=%s product=%s", page, slot)
@@ -6298,7 +6325,10 @@ class StructuredComparisonService:
                 kb_serve.served(_kb["image_url"]) if (_kb and _kb["image_url"])
                 else image_service.get_product_image_url_late(
                     full_name, region=region, payload=_late_fut, variant=variant, state=_late_state,
-                    **_image_relevance.relevance_kwargs(brand, name, category, partial_slot, is_vision),
+                    **_image_relevance.relevance_kwargs(
+                        brand, name, category, partial_slot, is_vision,
+                        typed=_typed_image_text(product_info, full_name),
+                    ),
                 )
             )
             from app.utils.async_utils import fire_and_forget as _late_fire_and_forget
@@ -6512,7 +6542,10 @@ class StructuredComparisonService:
                         # INC-I1 (ENABLE_IMAGE_RELEVANCE_GUARD, read per call): the identity
                         # for the picture-must-match guard; flag OFF or a camera product ->
                         # {} and the call is the base call.
-                        **_image_relevance.relevance_kwargs(brand, name, category, partial_slot, is_vision),
+                        **_image_relevance.relevance_kwargs(
+                            brand, name, category, partial_slot, is_vision,
+                            typed=_typed_image_text(product_info, full_name),
+                        ),
                     ), stage_timings),
                     timeout=_PHASE1_TIMEOUTS["image_url"],
                 ))
@@ -6694,6 +6727,35 @@ class StructuredComparisonService:
                 page_img.startswith("http://") or page_img.startswith("https://")
             ):
                 result["image_url"] = page_img.strip()
+
+        # INC-I2b B (ENABLE_SHOPPING_THUMB_IMAGE, read FIRST, per product; OWNER POLICY):
+        # with no picture yet and no KB card image, a guarded Google Shopping thumbnail of
+        # the items _get_price cached. L ON: the bind's last resort; OFF: no read here.
+        if image_service.shopping_thumb_enabled() and not result.get("image_url") and not (
+            _kb and _kb["image_url"]
+        ):
+            try:
+                _thumb = image_service.shopping_thumbnail(
+                    self._shopping_items_cache.get(
+                        _shopping_cache_key_or(brand, name, variant, full_name)
+                    ),
+                    full_name,
+                    partial_slot,
+                    **_image_relevance.relevance_kwargs(
+                        brand, name, category, partial_slot, is_vision,
+                        typed=_typed_image_text(product_info, full_name),
+                    ),
+                )
+            except Exception:  # noqa: BLE001 - a missing thumbnail, never a raise
+                logger.info(
+                    "IMG_SHOP thumb product=%s outcome=error candidates=0 reason=none",
+                    partial_slot if partial_slot in (0, 1) else "-",
+                )
+                _thumb = None
+            if _late:
+                _late_entry["shop_thumb"] = _thumb
+            elif _thumb:
+                result["image_url"] = _thumb
 
         # Fact-check: verify spec citations
         if result.get("specs") and isinstance(result["specs"], dict):
