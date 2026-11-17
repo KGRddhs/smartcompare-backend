@@ -30,6 +30,7 @@ from app.services.url_extraction_service import (
 from app.services.url_extraction_service import (
     NOT_PRODUCT_PAGE_MESSAGE,
     _host_only,
+    url_link_result_enabled,
     url_mode_v2_enabled,
     url_pre_gate_view,
 )
@@ -185,16 +186,21 @@ def _raise_url_refusal(code: str, error: str, field: str, reason: str) -> None:
     )
 
 
-async def _compare_with_deadline(url1, url2, region, selected_category, fragrance_gate=None) -> Dict:
+async def _compare_with_deadline(url1, url2, region, selected_category, fragrance_gate=None,
+                                 url_mode_v2: bool = True, link_result: bool = False) -> Dict:
     """B4: compare_from_urls under the 25 s deadline; an expiry is a coded TIMEOUT
     RESULT (never a raise), which the shared text mapping ships as the structured
     503 build 3 already maps. Any other exception propagates to the caller's
     base exception arm."""
     # S81-10b: the gate decision rides only when the route passed one.
     gate_kw = {} if fragrance_gate is None else {"fragrance_gate": fragrance_gate}
+    # INC-U1: link_result rides only when the route passed it (flag ON); the default
+    # call is today's (url_mode_v2=True, no other keyword).
+    link_kw = {"link_result": True} if link_result else {}
     try:
         return await asyncio.wait_for(
-            compare_from_urls(url1, url2, region, selected_category, url_mode_v2=True, **gate_kw),
+            compare_from_urls(url1, url2, region, selected_category, url_mode_v2=url_mode_v2,
+                              **link_kw, **gate_kw),
             timeout=_URL_COMPARE_DEADLINE_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -243,6 +249,7 @@ async def _compare_urls_metered(
     search_log_extra: Optional[Dict] = None,
     url_mode_v2: bool = False,
     gate_route: Optional[str] = None,
+    link_result: bool = False,
 ) -> Dict:
     """Run the URL comparison under the freemium gate, then persist it.
 
@@ -296,7 +303,14 @@ async def _compare_urls_metered(
 
     try:
         if url_mode_v2:
-            result = await _compare_with_deadline(url1, url2, region, selected_category, **_gate_kw)
+            _link_kw = {"link_result": True} if link_result else {}
+            result = await _compare_with_deadline(url1, url2, region, selected_category,
+                                                  **_gate_kw, **_link_kw)
+        elif link_result:
+            # INC-U1: V1 + the flag runs under the same 25 s deadline (spec 7).
+            result = await _compare_with_deadline(url1, url2, region, selected_category,
+                                                  url_mode_v2=False, link_result=True,
+                                                  **_gate_kw)
         else:
             result = await compare_from_urls(url1, url2, region, selected_category, **_gate_kw)
     except Exception:
@@ -332,7 +346,7 @@ async def _compare_urls_metered(
         # mapping would redact its message to INTERNAL_ERROR.
         # B4: the three coded per-url failures keep their field / reason (the
         # shared mapping would drop them); TIMEOUT takes the mapping's 503.
-        if url_mode_v2 and result.get("code") in _URL_V2_REFUSAL_CODES:
+        if (url_mode_v2 or link_result) and result.get("code") in _URL_V2_REFUSAL_CODES:
             _raise_url_refusal(
                 result["code"], result.get("error") or "",
                 result.get("field") or "both", result.get("reason") or "unknown",
@@ -372,7 +386,9 @@ async def _compare_urls_metered(
     if paid_route_metering_enabled() and user_id:
         fire_and_forget(
             save_comparison_and_track_cohort(
-                full_response=result, query=f"{url1} vs {url2}",
+                full_response=result,
+                # INC-U1: the stripped form under the flag (no query, fragment, userinfo).
+                query=_url_log_query(url1, url2) if link_result else f"{url1} vs {url2}",
                 input_type="url", user_id=user_id,
             ),
             label="save_comparison.url",
@@ -533,6 +549,8 @@ async def compare_urls(
     logger.info("URL comparison request: %s vs %s", _host_only(body.url1), _host_only(body.url2))
     # B4: ENABLE_URL_MODE_V2 read ONCE per request; the bool is threaded down.
     v2 = url_mode_v2_enabled()
+    # INC-U1: ENABLE_URL_LINK_RESULT read ONCE per request; the kwarg rides only when ON.
+    link_kw = {"link_result": True} if url_link_result_enabled() else {}
     # S81-10b: the fragrance-only gate read ONCE per request, threaded as a kwarg.
     gate_kw = _url_fragrance_gate_kwargs(request, "url.post")
 
@@ -550,11 +568,12 @@ async def compare_urls(
         return await _compare_urls_metered(
             body.url1, body.url2, body.region, body.selected_category, user,
             search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True, **gate_kw,
+            **link_kw,
         )
 
     return await _compare_urls_metered(
         body.url1, body.url2, body.region, body.selected_category, user,
-        search_log_extra=_search_log_synthetic_kwargs(request), **gate_kw,
+        search_log_extra=_search_log_synthetic_kwargs(request), **gate_kw, **link_kw,
     )
 
 
@@ -573,6 +592,8 @@ async def compare_urls_get(
     """GET version of compare for easy testing."""
     # B4: ENABLE_URL_MODE_V2 read ONCE per request; the bool is threaded down.
     v2 = url_mode_v2_enabled()
+    # INC-U1: ENABLE_URL_LINK_RESULT read ONCE per request; the kwarg rides only when ON.
+    link_kw = {"link_result": True} if url_link_result_enabled() else {}
     # S81-10b: the fragrance-only gate read ONCE per request, threaded as a kwarg.
     gate_kw = _url_fragrance_gate_kwargs(request, "url.get")
     if not await _validate_url_offloop_or_sync(url1) or not await _validate_url_offloop_or_sync(url2):
@@ -587,11 +608,12 @@ async def compare_urls_get(
         return await _compare_urls_metered(
             url1, url2, region, selected_category, user,
             search_log_extra=_search_log_synthetic_kwargs(request), url_mode_v2=True, **gate_kw,
+            **link_kw,
         )
 
     return await _compare_urls_metered(
         url1, url2, region, selected_category, user,
-        search_log_extra=_search_log_synthetic_kwargs(request), **gate_kw,
+        search_log_extra=_search_log_synthetic_kwargs(request), **gate_kw, **link_kw,
     )
 
 
