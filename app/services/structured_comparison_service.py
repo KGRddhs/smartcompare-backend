@@ -7491,7 +7491,12 @@ class StructuredComparisonService:
             brand, name, variant, region, search_query, category=category
         )
         # INC-P2 P2R-11 (UNFLAGGED, log-only): name this task's miss-ledger product.
-        _ps_mod.price_trace_product(_shopping_cache_key(brand, name, variant))
+        # F2: the key is computed INSIDE the guard (a malformed identity, e.g. a
+        # non-str variant, must never newly raise here).
+        try:
+            _ps_mod.price_trace_product(_shopping_cache_key(brand, name, variant))
+        except Exception:  # noqa: BLE001 - a log-only note never fails the price task
+            pass
         # I5.1 — price-only cache-bust probe forces the price reads to miss so
         # the routing escalation re-runs deterministically (specs/reviews stay
         # warm — they gate on `nocache` in _fetch_product_data, not this flag).
@@ -7554,7 +7559,8 @@ class StructuredComparisonService:
                 # was promoted and the private transport key never escapes
                 # `_get_price` in ANY flag state (public_price_view only strips
                 # `_` keys when ENABLE_EXACT_PRICE_GATE is ON).
-                _p2_l2_age_raw = db_price.get("_l2_age_seconds")  # INC-P2: None = unknown age
+                _p2_l2_age_raw = (db_price.get("_l2_age_seconds")  # INC-P2: None = unknown age
+                                  if isinstance(db_price, dict) else None)
                 _l2_age = int(db_price.pop("_l2_age_seconds", 0) or 0)
                 # INC-P2 P2R-6 (ENABLE_PRICE_NOT_LOST): a promoted L2 row carries the
                 # time it was seen (its own age when known) into L1.
@@ -9850,6 +9856,24 @@ class StructuredComparisonService:
                 key = build_size_aware_price_cache_key(
                     brand, name, variant, region, search_query, category=category)
                 full_name = _shopping_cache_key(brand, name, variant)
+                # F3 (narrows P2R-5): only (a) the side's OWN typed size, when the key
+                # text carries that size, or (b) an untyped side at exactly 100 ml (the
+                # basis a bare-name key already means). A partner-dictated size is never
+                # written under a key that does not carry it.
+                typed = _ps_mod.typed_size_ml(pd)
+                listing = _ps_mod.listing_size_ml(shown)
+                if typed is not None:
+                    key_size = _ps_mod.extract_size_ml_any(f"{brand} {name} {variant or ''}")
+                    basis_ok = listing == typed and key_size == typed
+                else:
+                    basis_ok = listing == _ps_mod._FRAGRANCE_FLAGSHIP_SIZE_ML
+                if not basis_ok:
+                    _ps_mod.price_trace_note("cache_write", (full_name, "skip_size_basis"))
+                    try:
+                        logger.info("PRICE_CACHE_SKIP reason=size_basis site=reselect product=%s", full_name)
+                    except Exception:  # noqa: BLE001 - a log line never fails the write path
+                        pass
+                    continue
                 clean = {k: v for k, v in shown.items()
                          if not str(k).startswith("_") or k == _ps_mod.P2_SEEN_AT_KEY}
             except Exception as _p2e:  # noqa: BLE001

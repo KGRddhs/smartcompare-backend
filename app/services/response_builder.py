@@ -129,6 +129,21 @@ def _p2_alias_products(product_data: Any, wire: List[Any]) -> List[Any]:
     return out
 
 
+def _p2_strip_private(product_data: Any) -> Any:
+    """INC-P2 F1 (UNFLAGGED, keyed on the keys themselves): the legacy alias when the
+    wire copies were not built. product_data itself when no product carries a _p2 key
+    (always so with the flag OFF); else shallow copies without them, so product_data
+    keeps the projection for any later build."""
+    try:
+        if not any(isinstance(pd, dict) and any(str(k).startswith("_p2") for k in pd)
+                   for pd in product_data or []):
+            return product_data
+        return [{k: v for k, v in pd.items() if not str(k).startswith("_p2")}
+                if isinstance(pd, dict) else pd for pd in product_data]
+    except Exception:  # noqa: BLE001 - the alias is never lost
+        return product_data
+
+
 def _p2_token(value: Any, limit: int) -> str:
     """A log-safe single token: whitespace -> '_', '=' dropped, cut to `limit`."""
     text = "_".join(str(value).split()).replace("=", "")
@@ -180,7 +195,10 @@ def _p2_price_outcome(product_data: Any, wire: Optional[List[Any]], guard_diag: 
                 origin = "none"
             amount = src.get("amount") if (shown or state == "offsize_held") else None
             url = src.get("url") if isinstance(src.get("url"), str) else ""
-            miss = _ps.price_miss_summary(name)
+            # F7 (corr m4): every key the notes are written under for this product.
+            keys = _ps.p2_ledger_names(pd) or [name]
+            miss = _ps.price_miss_summary(keys)
+            cache_write = next((v for v in (((trace.get("cache_write") or {}).get(k)) for k in keys) if v), None)
             display_rule = "none"
             for diag in guard_diag or []:
                 if isinstance(diag, dict) and diag.get("product_index") == slot:
@@ -205,7 +223,7 @@ def _p2_price_outcome(product_data: Any, wire: Optional[List[Any]], guard_diag: 
                 _p2_token(pend_reason, 40), _p2_token(display_rule, 40), miss["miss"],
                 _p2_token(miss["miss_host"], 80), _p2_token(miss["miss_status"], 20),
                 _p2_token(miss["miss_rule"], 40), miss["fam"], rejected, examples,
-                _p2_token((trace.get("cache_write") or {}).get(name) or "none", 40),
+                _p2_token(cache_write or "none", 40),
                 "price_size" if _ps.price_size_cap() else "none",
                 (urlsplit(url).hostname or "none") if url else "none",
             )
@@ -2413,7 +2431,9 @@ def build_comparison_response(
             result["metadata"]["pair_price_sizes"] = _p2_marker
         result["products"] = _p2_alias_products(product_data, _p2_wire)
     else:
-        result["products"] = product_data
+        # INC-P2 F1: a wire fault (or a flag flip after the reconcile) never ships a
+        # private _p2 key; flag OFF carries none, so this is product_data itself.
+        result["products"] = _p2_strip_private(product_data)
     # WS-A review-gate fix — the BC `comparison` alias ships in the payload and
     # carried the raw winner_reason/key_tradeoff/winner_declaration (a real leak
     # even though the FE renders the scrubbed overview/recommendation). Scrub the

@@ -3349,7 +3349,10 @@ def reconcile_pair_fairness(
         # The trace note after it is UNFLAGGED and log-only (PRICE_OUTCOME reads it),
         # inside its own guard so a fault there never reaches the caller's
         # "fairness reconciliation skipped" arm.
-        _p2_before = [p.get("price") if isinstance(p, dict) else None for p in product_data[:2]]
+        try:  # F2: every unflagged trace argument is evaluated inside its own guard
+            _p2_before = [p.get("price") if isinstance(p, dict) else None for p in product_data[:2]]
+        except Exception:  # noqa: BLE001
+            _p2_before = []
         if price_not_lost_enabled():
             _changed = reconcile_pair_sizes_v2(
                 product_data, user_query=user_query,
@@ -17637,7 +17640,9 @@ def price_miss_summary(product: Any) -> dict:
            "fam": "none", "rejected": {}, "examples": {}}
     try:
         trace = _PRICE_TRACE.get()
-        notes = ((trace or {}).get("products") or {}).get(product) or []
+        ledger = (trace or {}).get("products") or {}
+        names = list(product) if isinstance(product, (list, tuple)) else [product]
+        notes = [n for key in dict.fromkeys(names) for n in (ledger.get(key) or [])]
         best = None
         families: Dict[str, int] = {}
         for n in notes:
@@ -17660,6 +17665,34 @@ def price_miss_summary(product: Any) -> dict:
     except Exception:  # noqa: BLE001
         pass
     return out
+
+
+def p2_ledger_names(product: Any) -> List[str]:
+    """F7 (corr m4; log-only): the keys this product's miss notes are written under:
+    the product's full_name (the race-miss and floor notes) and the price task's key,
+    built from the Step-1 brand / name / variant exactly as SCS _shopping_cache_key
+    builds it (the Shopping filter notes and the cache-write notes). Never raises."""
+    names: List[str] = []
+    try:
+        if not isinstance(product, dict):
+            return names
+        full = product.get("full_name") or product.get("name") or ""
+        if isinstance(full, str) and full:
+            names.append(full)
+        brand = product.get("brand") or ""
+        name = product.get("name") or ""
+        variant = product.get("variant")
+        if isinstance(brand, str) and isinstance(name, str) and name and (
+                variant is None or isinstance(variant, str)):
+            if variant and variant.lower() in name.lower():
+                key = f"{brand} {name}".strip()
+            else:
+                key = f"{brand} {name} {variant or ''}".strip()
+            if key and key not in names:
+                names.append(key)
+    except Exception:  # noqa: BLE001
+        pass
+    return names
 
 
 def price_cache_refusal_reason(request_name: str, price: Any, category: Optional[str] = None,
@@ -17875,6 +17908,9 @@ def _p2_trace_reconcile(product_data: Any, before: List[Any]) -> None:
             action = "both_shown"
         elif isinstance(price, dict) and price.get("unavailable") is True and price.get("reason") == "size_mismatch":
             action = "pend"
+        elif (isinstance(price, dict) and price.get("unavailable") is True
+              and price.get("reason") == "pending_genuine" and i < len(before) and before[i] is not price):
+            action = "floor"  # F7 (corr m5): the P2R-12 floor pend (V2's only pending_genuine)
         elif i < len(before) and before[i] is not price:
             action = "reselect"
         else:

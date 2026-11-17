@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.api.auth_routes import get_current_user
 # B1 (S80, B1-R11 Q7 / fix round F1-2): the ONE unflagged stamp reader, shared with Home.
-from app.api.home_routes import _result_status_supported
+from app.api.home_routes import _pair_price_sizes_differ, _result_status_supported
 from app.middleware.rate_limiter import limiter
 from app.services.cache_service import _redis_get, _redis_set
 from app.services.database_service import (
@@ -73,6 +73,8 @@ def _extract_winner_loser_prices(full_response: dict) -> tuple[Optional[float], 
         return (None, None)
     if not _result_status_supported(full_response):
         return (None, None)  # B1: a stamped non-supported row; never via winner_index
+    if _pair_price_sizes_differ(full_response):
+        return (None, None)  # INC-P2 F4: prices for different bottle sizes are no saving
     products = full_response.get("products") or []
     if not isinstance(products, list) or len(products) < 2:
         return (None, None)
