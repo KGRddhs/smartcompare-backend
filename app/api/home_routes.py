@@ -384,6 +384,27 @@ def smart_pick_verdict_caption_enabled() -> bool:
     )
 
 
+def smart_pick_bhd_only_enabled() -> bool:
+    """INC-H2 part B flag reader (ENABLE_SMART_PICK_BHD_ONLY, default OFF). The same
+    env parsing as smart_pick_verdict_caption_enabled; read live on every call so a
+    Railway flip takes effect without a restart."""
+    return os.environ.get("ENABLE_SMART_PICK_BHD_ONLY", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _smart_pick_not_bhd_pair(winner: dict, loser: dict) -> bool:
+    """INC-H2 part B: True when the flag is ON and the pair is not exactly BHD/BHD (the
+    savings reader's rule in _extract_winner_loser_prices: no normalisation, so a
+    missing, lower-case or padded currency is not BHD). The flag is the FIRST
+    statement: flag OFF returns False without reading any currency."""
+    if not smart_pick_bhd_only_enabled():
+        return False
+    winner_price = winner.get("price") or {}
+    loser_price = loser.get("price") or {}
+    return winner_price.get("currency") != "BHD" or loser_price.get("currency") != "BHD"
+
+
 def _norm_caption(text) -> str:
     """Casefold + collapse whitespace (the caption-vs-name comparison form)."""
     return " ".join(str(text or "").casefold().split())
@@ -579,6 +600,8 @@ def _select_smart_pick(
             continue
         if not _result_status_supported(full):
             continue  # B1 (Q5, MYEZ-027): a stamped non-supported row is never the smart pick
+        if _pair_price_sizes_differ(full):
+            continue  # INC-H2 part A (unflagged): a cross-size pair is never the smart pick
         winner_idx = full.get("winner_index")
         if winner_idx not in (0, 1):
             continue
@@ -592,6 +615,8 @@ def _select_smart_pick(
         loser_price = (loser.get("price") or {}).get("amount")
         if winner_price is None or loser_price is None:
             continue
+        if _smart_pick_not_bhd_pair(winner, loser):
+            continue  # INC-H2 part B (ENABLE_SMART_PICK_BHD_ONLY): a non-BHD pair is skipped
 
         # Priority-match check: does the winner's strongest scored dim
         # contain a substring of the user's #1 priority? The scoring is

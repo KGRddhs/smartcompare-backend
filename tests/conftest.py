@@ -219,6 +219,24 @@ def _reset_credential_health_state():
     yield
 
 
+# INC-T0 CONFTEST-BREAKER-RESET (S96-FIX, H2R-14) -- the LLM spend breaker's process
+# state ("ran", the fail-open counter: /health `llm_spend*`) and the Anthropic router's
+# latch (/health `anthropic_breaker`) survive a test's env restore. A test that walks
+# ENABLE_LLM_SPEND_BREAKER or an ENABLE_ANTHROPIC_* role flag ON would leak those keys
+# into a later file's /health body in CI's one alphabetical process (the #418 CI red,
+# P2R-39). Reset both AFTER every test; import-guarded like the fixture above.
+# tests/test_inc_t0_conftest_breaker_reset.py pins it.
+@pytest.fixture(autouse=True)
+def _reset_llm_process_latches():
+    yield
+    try:
+        from app.services import llm_router, llm_spend_breaker
+    except Exception:  # pragma: no cover -- defensive import
+        return
+    llm_spend_breaker._reset_spend_breaker_state()
+    llm_router._reset_router_state()
+
+
 # B3 (test-infra hygiene) — event-loop pollution guard.
 # Several sync tests still drive coroutines via the deprecated
 # `asyncio.get_event_loop().run_until_complete(...)` (e.g.
