@@ -1614,7 +1614,11 @@ def test_e27_elapsed_includes_the_wait(monkeypatch, caplog):
     assert binds and binds[0][1] == "attached", binds
     wait = int(binds[0][2]) / 1000.0
     assert wait >= 0.3
-    assert body["metadata"]["elapsed_seconds"] >= wait, (
+    # metadata.elapsed_seconds is round(elapsed, 2) (response_builder.py, the
+    # elapsed_seconds stamp), so it can sit up to 0.005 s BELOW the true time,
+    # while the bind wait is whole milliseconds: allow half a centisecond of
+    # rounding plus one millisecond (seen: 0.42 vs a wait of 0.421).
+    assert body["metadata"]["elapsed_seconds"] >= wait - 0.006, (
         body["metadata"]["elapsed_seconds"],
         wait,
     )
