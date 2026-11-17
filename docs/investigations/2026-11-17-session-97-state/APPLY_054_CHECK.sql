@@ -12,10 +12,14 @@
 --   2 guard_function: BEFORE no row. AFTER one row: secdef=false,
 --     config holds a search_path entry, owner recorded.
 --   3 rls_flags: rls_enabled=true both times (forced may be false).
---   4 policies: one row per policy with cmd, roles and has_using / has_with_check.
---     STOP on a DELETE or ALL policy that names anon, authenticated or public: a
---     self-delete followed by a self-insert at the defaults would reset the
---     counters, which 054 does not stop.
+--   4 policies: one row per policy on public.users with its name, permissive, cmd,
+--     roles and the full USING and WITH CHECK text (pg_get_expr). STOP on every
+--     DELETE or ALL policy except ONE expected row: policy_name
+--     Service role full access, permissive true, cmd ALL, roles public,
+--     using_text exactly (auth.role() = 'service_role'::text), with_check_text
+--     empty (NULL). That USING test holds only for the server role. Any other
+--     DELETE or ALL policy: a self-delete followed by a self-insert at the
+--     defaults would reset the counters, which 054 does not stop.
 --   5 column_grants: anon / authenticated UPDATE and INSERT counts over the eleven
 --     guarded columns (recorded; 054 changes no grant, so BEFORE = AFTER).
 --   6 guarded_column_defaults: the eleven guarded columns. STOP unless
@@ -75,16 +79,36 @@ WHERE c.oid = 'public.users'::regclass;
 -- 4 policies
 SELECT
   '4 policies' AS section,
-  pol.policyname AS policy_name,
-  pol.cmd,
-  pol.roles,
-  pol.qual IS NOT NULL AS has_using,
-  pol.with_check IS NOT NULL AS has_with_check
-FROM pg_catalog.pg_policies AS pol
-WHERE
-  pol.schemaname = 'public'
-  AND pol.tablename = 'users'
-ORDER BY pol.policyname;
+  pol.polname AS policy_name,
+  pol.polpermissive AS permissive,
+  CASE pol.polcmd
+    WHEN 'r' THEN 'SELECT'
+    WHEN 'a' THEN 'INSERT'
+    WHEN 'w' THEN 'UPDATE'
+    WHEN 'd' THEN 'DELETE'
+    WHEN '*' THEN 'ALL'
+  END AS cmd,
+  pg_catalog.concat_ws(
+    ',',
+    CASE WHEN 0::oid = ANY(pol.polroles) THEN 'public' END,
+    nullif(
+      pg_catalog.array_to_string(
+        ARRAY(
+          SELECT r.rolname
+          FROM pg_catalog.pg_roles AS r
+          WHERE r.oid = ANY(pol.polroles)
+          ORDER BY r.rolname
+        ),
+        ','
+      ),
+      ''
+    )
+  ) AS roles,
+  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid) AS using_text,
+  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid) AS with_check_text
+FROM pg_catalog.pg_policy AS pol
+WHERE pol.polrelid = 'public.users'::regclass
+ORDER BY pol.polname;
 
 -- 5 column_grants
 SELECT
