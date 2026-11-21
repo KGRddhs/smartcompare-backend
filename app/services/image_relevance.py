@@ -1012,9 +1012,10 @@ class RelevanceCall:
         ENABLE_IMAGE_GUARD_RECALL ON, ``RelevanceCall(...)`` builds the recall subclass
         ``_RecallCall``; the switch is read once per construction, only under the guard.
         Every argument goes on to ``__init__`` unread (the constructor protocol is
-        kept). ``copy`` and ``pickle`` call ``cls.__new__(cls)`` and so re-read the
-        switch: a base call copied or unpickled while it is ON becomes a
-        ``_RecallCall`` (no code copies or pickles a call today)."""
+        kept). ``copy``, ``deepcopy`` and ``pickle`` (protocol 2 or later; 0 and 1 keep
+        the pickled class) call ``cls.__new__(cls)``: a copied or unpickled base call
+        re-reads the switch under the guard (ON, it becomes a ``_RecallCall``); a
+        ``_RecallCall`` stays one (no code copies or pickles a call today)."""
         if cls is RelevanceCall and guard_enabled() and recall_enabled():
             cls = _RecallCall
         return super().__new__(cls)

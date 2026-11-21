@@ -29,13 +29,15 @@ Rows test_e* fail at 4ab14157 (the unit head before the fix) on an AssertionErro
 (the head's TypeError in E08 is caught and asserted) and pass after the fix; X3 (R1
 never from the source text) is E07. Rows test_p* are green at both: the gaps X1, X2, X4
 and X5 of adversary 1, the RC-unset verdict of every new scenario, and ruling (d): the
-image-layer verdict path reads none of ENABLE_SHOP_PAGE_IMAGE,
-ENABLE_SHOPPING_THUMB_IMAGE, ENABLE_PRODUCT_RESOLVER and ENABLE_IMAGE_LATE_BIND.
+image layer (the image_service cascade and the image_relevance verdict path) reads none
+of ENABLE_SHOP_PAGE_IMAGE, ENABLE_SHOPPING_THUMB_IMAGE, ENABLE_PRODUCT_RESOLVER and
+ENABLE_IMAGE_LATE_BIND (widened by the re-verification finding RV-1).
 
 Hermetic: the registry is a patched SOURCE_REGISTRY of SimpleNamespace rows on neutral
-.test hosts built by concatenation; the Serper / credit / LLM leaves and the image
-cache of image_service are faked; no network, no Redis, no LLM, no sleep. Arabic is
-built with chr(). Pure ASCII, LF.
+.test hosts built by concatenation (the one listing photo of P05 sits on the reserved
+example.com name: the image policy refuses a .test host); the Serper / credit / LLM
+leaves and the image cache of image_service are faked; no network, no Redis, no LLM,
+no sleep. Arabic is built with chr(). Pure ASCII, LF.
 """
 
 from __future__ import annotations
@@ -332,16 +334,48 @@ def _kg(q, kg_type):
     )
 
 
-def _getenv_by_module(mp):
-    """A getenv recorder: (name, the calling module's __name__) of every read."""
-    real = os.getenv
+def _env_reads(mp):
+    """RV-1: an env-read recorder: (how, name, module) of every os.getenv call and of
+    every os.environ lookup (the os._Environ methods __getitem__, __contains__ and get,
+    so os.environ[...], ``in`` and .get are seen too); module is the innermost app.*
+    frame of the read, else the direct caller. monkeypatch restores all four."""
     seen = []
+    env_class = type(os.environ)
+    real_getenv = os.getenv
+    real = {
+        how: getattr(env_class, how) for how in ("__getitem__", "__contains__", "get")
+    }
 
-    def _rec(key, default=None):
-        seen.append((key, sys._getframe(1).f_globals.get("__name__")))
-        return real(key, default)
+    def _module():
+        frame = sys._getframe(2)
+        first = frame.f_globals.get("__name__")
+        while frame is not None:
+            name = frame.f_globals.get("__name__") or ""
+            if name.startswith("app."):
+                return name
+            frame = frame.f_back
+        return first
 
-    mp.setattr(os, "getenv", _rec)
+    def _getenv(key, default=None):
+        seen.append(("getenv", key, _module()))
+        return real_getenv(key, default)
+
+    def _getitem(self, key):
+        seen.append(("getitem", key, _module()))
+        return real["__getitem__"](self, key)
+
+    def _contains(self, key):
+        seen.append(("contains", key, _module()))
+        return real["__contains__"](self, key)
+
+    def _get(self, key, default=None):
+        seen.append(("get", key, _module()))
+        return real["get"](self, key, default)
+
+    mp.setattr(os, "getenv", _getenv)
+    mp.setattr(env_class, "__getitem__", _getitem)
+    mp.setattr(env_class, "__contains__", _contains)
+    mp.setattr(env_class, "get", _get)
     return seen
 
 
@@ -684,9 +718,9 @@ def test_p04_x5_a_gram_unit_counts_only_after_a_number(monkeypatch):
         assert got == "form", (w, got)
 
 
-#: Ruling (d): the four flags, their readers (A's in image_relevance, for the
-#: WooCommerce adapter; B's and L's in image_service; R's in product_resolver) and the
-#: constants that hold the names.
+#: Ruling (d): the four flags, their readers (A's in image_relevance, called by the
+#: WooCommerce adapter; B's and L's in image_service, called by SCS; R's in
+#: product_resolver) and the constants that hold the names.
 ABRL = (A_FLAG, B_FLAG, R_FLAG, L_FLAG)
 ABRL_READERS = (
     "shop_page_image_enabled",
@@ -725,55 +759,105 @@ VERDICT_MUST = VERDICT_ROOTS + (
     "short_line_enabled",
     "guard_words_enabled",
 )
+#: RV-1: the roots of the image_service cascade (the rest of the image layer).
+CASCADE_ROOTS = (
+    "get_product_image_url",
+    "get_product_image_url_late",
+    "shopping_thumbnail",
+    "stamp_shop_image",
+    "pick_cache_name",
+)
+#: Members the cascade closure must hold, and image_relevance names it must reach.
+CASCADE_MUST = CASCADE_ROOTS + (
+    "_relevant_serper_image",
+    "_extract_relevant_image_from_search",
+    "_read_cached_pick",
+    "_store_pick",
+    "_name_part",
+)
+CASCADE_USES = (
+    "RelevanceCall",
+    "guard_enabled",
+    "first_https_raster",
+    "words_reason_for",
+)
+#: RV-1: the listing photo of the stamp_shop_image scenario.
+PAGE_IMG = "https://shop." + "example" + ".com/wp/s.jpg"
 
 
-def _verdict_path():
-    """name -> source of every image_relevance function and class the verdict roots
-    reach by name, transitively (a class brings all of its methods), the roots
-    included."""
+def _closure(module, roots):
+    """(name -> source, used): every function and class of ``module`` the roots reach by
+    name, transitively (a class brings all of its methods), the roots included; ``used``
+    holds the image_relevance functions and classes those sources name as an attribute
+    of an image_relevance alias (image_service's ``_relevance.<name>``)."""
     ir = _ir()
-    own = {
-        name
-        for name, obj in vars(ir).items()
-        if (inspect.isfunction(obj) or inspect.isclass(obj))
-        and obj.__module__ == ir.__name__
-    }
-    found = {}
-    todo = list(VERDICT_ROOTS)
+
+    def own(mod):
+        return {
+            name
+            for name, obj in vars(mod).items()
+            if (inspect.isfunction(obj) or inspect.isclass(obj))
+            and obj.__module__ == mod.__name__
+        }
+
+    names, ir_names = own(module), own(ir)
+    found, used = {}, set()
+    todo = list(roots)
     while todo:
         name = todo.pop()
         if name in found:
             continue
-        src = textwrap.dedent(inspect.getsource(getattr(ir, name)))
+        src = textwrap.dedent(inspect.getsource(getattr(module, name)))
         found[name] = src
         for node in ast.walk(ast.parse(src)):
-            if isinstance(node, ast.Name) and node.id in own:
+            if isinstance(node, ast.Name) and node.id in names:
                 todo.append(node.id)
-    return found
+            elif (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and vars(module).get(node.value.id) is ir
+                and node.attr in ir_names
+            ):
+                used.add(node.attr)
+    return found, used
 
 
 def test_p05_the_verdict_path_reads_no_a_b_r_or_l_flag(monkeypatch, caplog):
-    """Ruling (d): the image-layer verdict path reads none of ENABLE_SHOP_PAGE_IMAGE (A),
-    ENABLE_SHOPPING_THUMB_IMAGE (B), ENABLE_PRODUCT_RESOLVER (R), ENABLE_IMAGE_LATE_BIND
-    (L). (i) The source of every image_relevance function and class the verdict roots
-    reach (check, _check_base, _check_short_line, _words_reason, identity, RelevanceCall
-    and _RecallCall with every method, _recall_reason, _home_reason, _perfume_domains,
-    _perfume_shop and all they call, transitively) names none of the four, their
-    readers or the constants that hold them; A's reader shop_page_image_enabled lives in
-    image_relevance but is off the path. (ii) A getenv recorder over guarded cascade
-    calls (Serper Images, the payload organic item and knowledge graph, llm_pick, the
-    late call, the thumbnail), the four set "true", records 0 reads of the four by
-    image_relevance. Covered: image_relevance only. Not covered: image_service holds
-    B's and L's readers and product_resolver R's; scs reads B before the thumbnail tier,
-    L and R, and the WooCommerce adapter reads A for the shop page image; those reach
-    the image layer only through its inputs (the identity, the tier called)."""
-    path = _verdict_path()
+    """Ruling (d), widened by RV-1: the image layer reads none of ENABLE_SHOP_PAGE_IMAGE
+    (A), ENABLE_SHOPPING_THUMB_IMAGE (B), ENABLE_PRODUCT_RESOLVER (R) and
+    ENABLE_IMAGE_LATE_BIND (L). (i) Static: the source of every image_service function
+    the cascade roots (get_product_image_url, get_product_image_url_late,
+    shopping_thumbnail, stamp_shop_image, pick_cache_name) reach by name, and of every
+    image_relevance function and class that the verdict roots (check, _check_base,
+    _check_short_line, _words_reason, identity, RelevanceCall and _RecallCall with
+    every method, _recall_reason, _home_reason, _perfume_domains, _perfume_shop) or
+    those image_service functions (as _relevance.<name>) reach, transitively, names none
+    of the four, their readers or the constants that hold them; A's reader
+    shop_page_image_enabled is off the path. (ii) Runtime: with the four set "true" and
+    G, S, W and the switch ON, a recorder of os.getenv and of every os.environ lookup
+    (the os._Environ methods __getitem__, __contains__ and get; proven live first) over
+    guarded calls of the five roots (Serper Images, the payload organic item and
+    knowledge graph, llm_pick, the late call, the thumbnail, the shop-page stamp, the
+    cache name) sees image_relevance read G, S, W and the switch, and 0 reads of the
+    four by any module. Not covered: SCS (structured_comparison_service), not the image
+    layer, calls B's and L's readers (both defined in image_service, where no function
+    calls them) and R's (in product_resolver); the WooCommerce adapter calls A's (in
+    image_relevance); the modules the two layers import (category_gate, deny_hosts,
+    jsonld_widen, price_service, source_router and the rest) are not scanned, only
+    recorded on the paths the scenarios run (the Serper, credit, LLM and cache leaves
+    are fakes)."""
+    cascade, used = _closure(_img(), CASCADE_ROOTS)
+    path = _closure(_ir(), VERDICT_ROOTS + tuple(sorted(used)))[0]
     missing = [name for name in VERDICT_MUST if name not in path]
+    missing += [name for name in CASCADE_MUST if name not in cascade]
+    missing += [name for name in CASCADE_USES if name not in used]
     assert not missing, missing
     assert "shop_page_image_enabled" not in path
+    scanned = [("image_relevance", name, src) for name, src in path.items()]
+    scanned += [("image_service", name, src) for name, src in cascade.items()]
     hits = sorted(
-        (name, word)
-        for name, src in path.items()
+        (module, name, word)
+        for module, name, src in scanned
         for word in ABRL + ABRL_READERS + ABRL_CONSTANTS
         if word in src
     )
@@ -785,7 +869,12 @@ def test_p05_the_verdict_path_reads_no_a_b_r_or_l_flag(monkeypatch, caplog):
         monkeypatch.setenv(name, "true")
     ir, img = _ir(), _img()
     rel = _rel("Velvet Rain", "Velvet Rain")
-    seen = _getenv_by_module(monkeypatch)
+    seen = _env_reads(monkeypatch)
+    assert os.getenv(G_FLAG) == os.environ.get(G_FLAG) == os.environ[G_FLAG] == "true"
+    assert G_FLAG in os.environ
+    hows = {how for how, key, _m in seen if key == G_FLAG}
+    assert hows == {"getenv", "get", "getitem", "contains"}, hows
+    del seen[:]
     urls = [
         _gpu(monkeypatch, caplog, images=[SERPER_ITEM], rel=rel)[0],
         _gpu(monkeypatch, caplog, payload=PAYLOAD_ORGANIC, rel=rel)[0],
@@ -799,9 +888,16 @@ def test_p05_the_verdict_path_reads_no_a_b_r_or_l_flag(monkeypatch, caplog):
     assert late_url == _u("/a.jpg"), late_url
     thumb = img.shopping_thumbnail(_thumb("VELVET RAIN"), "Velvet Rain", 0, rel)
     assert thumb == _u("/t.jpg"), thumb
-    by_leaf = [key for key, module in seen if module == ir.__name__]
-    assert {G_FLAG, S_FLAG, RC_FLAG, W_FLAG} <= set(by_leaf), sorted(set(by_leaf))
-    assert not set(ABRL) & set(by_leaf), sorted(set(by_leaf))
+    price = {}
+    listing = {"images": [{"src": PAGE_IMG}]}
+    img.stamp_shop_image(price, "woo", listing, None, "Velvet Rain", "VELVET RAIN")
+    assert price == {"image_url": PAGE_IMG}, price
+    cache_name = img.pick_cache_name(rel, None)
+    assert t.set == [cache_name], (t.set, cache_name)
+    by_leaf = {key for _how, key, module in seen if module == ir.__name__}
+    assert {G_FLAG, S_FLAG, RC_FLAG, W_FLAG} <= by_leaf, sorted(by_leaf)
+    abrl = [(how, key, module) for how, key, module in seen if key in ABRL]
+    assert abrl == [], abrl
 
 
 def _p06_rows():
