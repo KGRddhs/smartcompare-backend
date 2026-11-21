@@ -580,6 +580,12 @@ def test_pin_descriptor_memo_key_and_no_verdict_memo():
 # ---------------------------------------------------------------- ACCEPT rows (RED)
 
 
+# ORCH-M1B-D (Q2), FIX1 FX2: the fold refuses a candidate that states a gender the query does
+# not state. These two rows restate the line's own gender, so they keep the base verdict: a
+# stated limit (production rejects both today, with ENABLE_MATCH_FOLD off).
+_FX1_STATED_LIMIT_ACCEPT_IDS = frozenset({"lw_y_ysl_60_for_men", "lw_libre_ysl_women_3oz"})
+
+
 @pytest.mark.parametrize("row", ACCEPT_ROWS, ids=[r[0] for r in ACCEPT_ROWS])
 def test_accept(monkeypatch, row):
     """M1bR-9: rejected with the flag OFF (base axis named), accepted with it ON.
@@ -589,6 +595,9 @@ def test_accept(monkeypatch, row):
     assert _sel(query, title) is False, rid
     assert _verdict(query, title).axis == base_axis, rid
     _on(monkeypatch)
+    if rid in _FX1_STATED_LIMIT_ACCEPT_IDS:  # ORCH-M1B-D (Q2): FX2 keeps the base verdict
+        assert _sel(query, title) is False, "%s: stated limit (the line's own gender restated)" % rid
+        return
     assert _sel(query, title) is True, "%s: %s | %s" % (rid, query, title)
     assert _verdict(query, title).match is True, rid
 
