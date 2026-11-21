@@ -22,6 +22,7 @@ import httpx
 from supabase import create_client, Client, ClientOptions
 
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
+from app.utils.db_guard import note_if_guard_refusal  # INC-T1c: a guard refusal made visible
 # S81-SF1 (R-SF1-9): log_search reads the per-compare request id of the S81-05 leaf.
 from app.utils import request_context as _request_context
 
@@ -382,6 +383,7 @@ async def create_user(email: str, subscription_tier: str = "free") -> Optional[D
         }).execute()
         return response.data[0] if response.data else None
     except Exception as e:
+        note_if_guard_refusal(e, "database_service.create_user")
         logger.error(f"Error creating user: {e}")
         return None
 
@@ -404,6 +406,7 @@ async def update_user_subscription(
         client.table("users").update(update_data).eq("id", user_id).execute()
         return True
     except Exception as e:
+        note_if_guard_refusal(e, "database_service.update_subscription")
         logger.error(f"Error updating subscription: {e}")
         return False
 
@@ -419,6 +422,7 @@ async def delete_user_data_cascade(user_id: str) -> bool:
         client.rpc("delete_user_cascade", {"target_user_id": user_id}).execute()
         return True
     except Exception as e:
+        note_if_guard_refusal(e, "database_service.delete_user_cascade")
         # U8b: never format the exception. A PostgREST APIError's str() carries
         # `details`, which for a constraint violation is "Failing row contains
         # (...)" -- the user's whole row (email, name, demographics).
@@ -921,6 +925,7 @@ async def save_user_demographics(user_id: str, profile: Dict) -> Dict:
         }).eq("id", user_id).execute()
         return {"success": True}
     except Exception as e:
+        note_if_guard_refusal(e, "database_service.save_demographics")
         logger.error(f"[DB] save_user_demographics failed for user {user_id}: {e}")
         return {"success": False, "error": "Failed to save demographics"}
 
@@ -959,6 +964,7 @@ async def save_user_attribution(user_id: str, source: str) -> Dict:
         }).eq("id", user_id).execute()
         return {"success": True}
     except Exception as e:
+        note_if_guard_refusal(e, "database_service.save_attribution")
         logger.error(f"[DB] save_user_attribution failed for user {user_id}: {e}")
         return {"success": False, "error": "Failed to save attribution"}
 

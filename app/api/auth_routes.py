@@ -62,6 +62,7 @@ from app.services.apple_siwa_service import apple_token_revocation_enabled
 from app.services.audit_service import log_audit_event
 from app.services.cohort_service import get_cohort_service
 from app.utils.async_utils import fire_and_forget
+from app.utils.db_guard import note_if_guard_refusal  # INC-T1c: a guard refusal made visible
 from app.services.database_service import (
     save_user_demographics,
     get_user_demographics,
@@ -626,6 +627,7 @@ def _inherit_device_counter_with_legacy(
         ).eq("id", user_id).execute()
         logger.info("[LEGACY-FP] site=%s top=%s", site, top)
     except Exception as exc:  # noqa: BLE001
+        note_if_guard_refusal(exc, "auth_routes.legacy_device_fp")
         logger.warning("[LEGACY-FP] site=%s inherit failed: %s", site, type(exc).__name__)
 
 
@@ -678,6 +680,7 @@ def _apply_social_device_fingerprint(request: Request, user_id: Optional[str]) -
                 site="social",
             )
     except Exception as exc:  # noqa: BLE001
+        note_if_guard_refusal(exc, "auth_routes.social_device_fp")
         # Log the TYPE, never str(exc): an auth-path SDK exception can carry a
         # credential as its argument (memory rule; W1-4 scrub).
         logger.warning(
@@ -742,6 +745,7 @@ async def register(request: Request, body: RegisterRequest):
                     get_admin_supabase_client(), fp, legacy, new_user_id, site="register"
                 )
         except Exception as exc:  # noqa: BLE001
+            note_if_guard_refusal(exc, "auth_routes.register_device_fp")
             logger.warning(f"device-fp inheritance failed (silent): {exc}")
 
     # §1.1 — resolve typed invite_code → invite_id if invite_id not supplied
@@ -1467,6 +1471,7 @@ async def update_push_token(
             {"expo_push_token": body.expo_push_token}
         ).eq("id", current_user["id"]).execute()
     except Exception as exc:  # noqa: BLE001
+        note_if_guard_refusal(exc, "auth_routes.push_token")
         logger.warning(f"push token update failed for {current_user['id']}: {exc}")
         raise HTTPException(
             status_code=500,
@@ -1549,6 +1554,7 @@ async def update_reengagement_subs(
             {"preferences": current_prefs}
         ).eq("id", user_id).execute()
     except Exception as exc:  # noqa: BLE001
+        note_if_guard_refusal(exc, "auth_routes.reengagement_subs")
         logger.warning(
             "[AUTH] reengagement-subs update failed for %s: %s: %r",
             user_id, type(exc).__name__, exc,
@@ -1623,6 +1629,7 @@ async def update_preference_toggles(
             {"preferences": current_prefs}
         ).eq("id", user_id).execute()
     except Exception as exc:  # noqa: BLE001
+        note_if_guard_refusal(exc, "auth_routes.preference_toggles")
         logger.warning(
             "[AUTH] preference-toggles update failed for %s: %s: %r",
             user_id, type(exc).__name__, exc,
