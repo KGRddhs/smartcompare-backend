@@ -79,3 +79,4 @@ tests/test_inc_i2b_fix1.py
 tests/test_inc_sec1_app_user_access.py
 tests/test_inc_u1b_lift_rule_f.py
 tests/test_inc_i2c_guard_recall.py
+tests/test_inc_i2c_fix1.py

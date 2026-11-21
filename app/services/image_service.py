@@ -493,7 +493,7 @@ PICK_CACHE_PREFIX = "imgpick:v1:" + PICK_GUARD_RULES + ":"
 #: of its tables ("\n"-joined), first 8 hex (pinned by the INC-I2c E9 row). It joins
 #: the cache-name axis only where the second look runs, so every OFF name is unchanged.
 #: A unit that edits the recall code or tables bumps this constant.
-PICK_RECALL_RULES = "3b60ed13"
+PICK_RECALL_RULES = "b5ab4c1d"
 _LATE_MAX_SECONDS_CEILING = 30.0
 
 
