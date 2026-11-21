@@ -60,6 +60,7 @@ from app.services.drug_database_service import find_matching_drugs, format_drug_
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
 from app.utils.redis_offloop import run_redis_offloop  # S77 ENABLE_PRICE_PATH_REDIS_OFFLOOP
 from app.utils.prompt_sanitizer import sanitize_prompt_input  # FANOUT-STARVE FY9 (no cycle)
+from app.utils.db_guard import note_if_guard_refusal  # INC-T1d: a 054 / 055 guard refusal made visible
 from app.services.scoring_service import get_scoring_service, MISSING_SCORE
 from app.services.scoring_service import (  # W4-7 Part B / Part C readers
     confidence_single_computation_enabled,
@@ -6159,6 +6160,7 @@ class StructuredComparisonService:
             )
             await run_db(lambda: supabase.table("users").update({"behavior_profile": profile}).eq("id", user_id).execute())
         except Exception as e:
+            note_if_guard_refusal(e, "structured_comparison_service.behavior_profile")
             logger.warning(f"Failed to update behavior profile: {e}")
 
     async def _late_image_bind(self) -> None:
