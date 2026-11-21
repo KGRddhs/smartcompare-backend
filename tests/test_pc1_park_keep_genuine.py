@@ -1,0 +1,732 @@
+"""PC1 PARK-KEEP-GENUINE (S98-FIX incident data lane): the RED rows.
+
+Spec: PC1_SPEC.md of the S98-FIX lane (the research plan of 2026-11-21, section 3.4 PC1).
+Switch: ENABLE_PRICE_NOT_LOST (INC-P2, PR #418), default OFF, read per call; OFF on web.
+GREEN rule (spec section 3): inside ENABLE_PRICE_NOT_LOST a converted adapter yield never
+replaces a genuine park on the request; and, ONLY if the owner joins the size fix to this
+unit (spec section 3.2, rows R15-R19), the Shopify matcher prices the variant of the typed
+size and sorts sizes as numbers.
+
+Classes: RED = fails on main d2f49d8b on an AssertionError; PIN = passes on main and must
+keep passing. Nothing here was run when it was written: the RED gate runs it at the base.
+
+Data (nothing in this file reaches a shop or the network):
+- LOG: the relay's read of the server log of 2026-11-18, 18:43-18:44 UTC (R0 fact sheet,
+  section (a)): the Tier-1 pick "Selected: Asgharali (tier 0.5) at BHD 59.41 ... (1
+  candidates; variant_rank=2.0 size=200ml conc=EDP)" from shopping_region=us_fallback;
+  "Shopify reseller hit parked as fallback, 29.900 BHD via bh.asgharali.com" (Maheeb) and
+  "10.000 BHD via bh.asgharali.com" (Mubeen); two "[L2.6] Phase 1 race timeout for price
+  (limit 15.0s)" lines; "race miss for Maheeb Edp 200ML -> returning parked converted_usd
+  price (never None)"; no converted adapter line for Mubeen; PRICE_OUTCOME slot 0 shown=no
+  size_ml=200 pend_reason=pending_genuine display_rule=non_pdp_url, slot 1 shown=no
+  size_ml=none pend_reason=pending_genuine display_rule=none.
+- PAGE: the relay's read of the house shop's public pages on 2026-11-21 (research track P2,
+  section 1.1): store currency BHD, country BH; single-variant items; titles carry the size
+  and "Edp"; the search page lists "Maheeb Edp 200ML" at BHD 29.900
+  (/products/maheeb-edp-200ml-1) and "Mubeen Edp 100ml" at BHD 10.000
+  (/products/mubeen-edp-100ml); vendor strings "Asgharali" and "Asgharali - Bahrain". The
+  stock flag and the variant title were NOT read (the shop answered 429): "available" is
+  walked both ways (R11) and "Default Title" stands for the one variant (an assumption).
+- SYNTHETIC: the 59.41 row's url (the shop's search link, what build_retailer_url maps this
+  seller to) and title (a title the identity rule accepts, as the logged pick shows); the
+  converted Gulf row (store-kw.example.com, 11.250); the multi-variant house products
+  (house-b.example.com, line word "Lumen", 4.500 / 6.500 / 10.000); the YSL Y sellers.
+
+The cap is replayed with the primitive the Phase-1 race uses (asyncio.wait_for around the
+REAL _get_price) and, on the timeout, the same handler call (_price_fallback_on_miss), as
+structured_comparison_service.py does at d2f49d8b (:6362-6369, :6644-6654). The cascade's
+network leaves are stubbed as tests/test_negcache_outage_and_converted_fallback.py does
+(_stub_cascade); the discovery search never returns, so the cap fires after the Shopify
+block and the adapter consume, where it fired on 2026-11-18.
+
+Pure ASCII, LF.
+"""
+from __future__ import annotations
+
+import asyncio
+import contextvars
+import copy
+import logging
+import os
+import re
+from types import SimpleNamespace
+
+import pytest
+
+os.environ.setdefault("OPENAI_API_KEY", "sk" + "-test-dummy")
+
+import app.main  # noqa: F401,E402  (FIRST: the dotenv guard)
+from app.services import price_service as ps  # noqa: E402
+from app.services import response_builder as rb  # noqa: E402
+import app.services.structured_comparison_service as scs  # noqa: E402
+
+FRAG = "fragrances"
+PNL = "ENABLE_PRICE_NOT_LOST"
+VG = "ENABLE_VARIANT_MIN_PRICE_GUARD"
+PRIO = "ENABLE_GENUINE_PRICE_PRIORITY"
+LMG = "ENABLE_LISTING_MATCH_GUARD"
+FIX = "ENABLE_FRAGRANCE_SIZE_RECONCILE_FIX"
+AXES = "ENABLE_VARIANT_DESCRIPTOR_AXES"
+
+# The production configuration (H12 c + H13 c, the R0 fact sheet section (b)), as the INC-P2
+# pure file sets it. ENABLE_GENUINE_PRICE_PRIORITY and ENABLE_FRAGRANCE_SIZE_RECONCILE_FIX are
+# SET on web with unknown values: the rows that depend on them walk both.
+PROD_ON = (
+    "ENABLE_LLM_LEDGER_V2", "ENABLE_LLM_SPEND_BREAKER", "ENABLE_REQUEST_CONTEXT_HEADERS",
+    "ENABLE_OPENAI_EGRESS_STOP", "ENABLE_OPENAI_PRE_V3", "ENABLE_ANTHROPIC_TEXT",
+    "ENABLE_ANTHROPIC_VERDICT", "ENABLE_LEGACY_FINGERPRINT_READER", "ENABLE_CONSENT_PERSIST",
+    "ENABLE_COMPARE_AUTH_REQUIRED", "ENABLE_OFFLOOP_DNS_RESOLVE", "ENABLE_PRICE_PARSE_OFFLOAD",
+    "ENABLE_EXACT_PRICE_GATE",
+)
+PROD_OFF = (
+    "ENABLE_ANTHROPIC_MODERATION", "ENABLE_ANTHROPIC_VISION", "ENABLE_KB_INGEST",
+    "ENABLE_KB_FIRST_SERVE", "ENABLE_FIELD_STATUS_METADATA", "ENABLE_RESULT_STATUS_METADATA",
+    "ENABLE_FRAGRANCE_ONLY_GATE", "ENABLE_DATA_GUARDS_V2", "ENABLE_ASYNC_REDIS_OFFLOAD",
+    "ENABLE_COMPARE_RUN_LEDGER", "ENABLE_GENUINE_PRICE_PRIORITY", "ENABLE_LISTING_MATCH_GUARD",
+    "ENABLE_REGION_CURRENCY_GUARD", "ENABLE_PRESCORING_SHOWABLE_GUARD", "WARMER_CONTEXT",
+    "ENABLE_CONFIDENCE_SINGLE_COMPUTATION", "ENABLE_L2_PROMOTION_REMAINING_TTL",
+)
+# Not set on web (R0 section (b)) or a flag of a unit not merged: unset in every row unless the
+# row sets it.
+UNIT_UNSET = (
+    PNL, VG, FIX, AXES, "ENABLE_PRODUCT_RESOLVER", "ENABLE_WIDE_SIGNAL_TEXT",
+    "ENABLE_SHOPPING_STRICT_CURRENCY", "ENABLE_SHOPPING_CURRENCY_TRUTH",
+    "ENABLE_SHOPPING_DISCOVERY_URL_SPLIT", "ENABLE_PARK_LISTING_URL_TIER1",
+    "ENABLE_HOME_SAVINGS_AGGREGATE", "ENABLE_BH_GCC_CATALOG_SOURCES", "ENABLE_ZYTE_RENDER",
+    "ENABLE_MATCH_FOLD", "PRICE_CACHE_BUST",
+)
+
+CAP_S = 4.0  # the replayed price cap (production: 15.0 s); the cascade hangs in discovery
+
+# --------------------------------------------------------------------------- the logged case
+MAHEEB = "Maheeb Edp 200ML"   # the typed halves of "Maheeb Edp 200ML vs Mubeen Edp 100ml"
+MUBEEN = "Mubeen Edp 100ml"
+PAIR_Q = "%s vs %s" % (MAHEEB, MUBEEN)
+HOUSE_HOST = "bh.asgharali.com"
+MAHEEB_URL = "https://bh.asgharali.com/products/maheeb-edp-200ml-1"
+MUBEEN_URL = "https://bh.asgharali.com/products/mubeen-edp-100ml"
+
+
+def house_catalog(available=True):
+    """The house shop's /products.json as the page reading shows it (PAGE): BHD store, the two
+    products, one variant each, the size in the title."""
+    return {"_store_currency": "BHD", "products": [
+        {"title": "Maheeb Edp 200ML", "handle": "maheeb-edp-200ml-1", "vendor": "Asgharali",
+         "product_type": "", "tags": ["Perfumes"],
+         "variants": [{"title": "Default Title", "price": "29.900", "available": available}]},
+        {"title": "Mubeen Edp 100ml", "handle": "mubeen-edp-100ml", "vendor": "Asgharali - Bahrain",
+         "product_type": "", "tags": ["Perfumes"],
+         "variants": [{"title": "Default Title", "price": "10.000", "available": available}]},
+    ]}
+
+
+def maheeb_tier1_park():
+    """The logged Tier-1 pick (LOG): BHD 59.41, seller Asgharali, tier 0.5, 200ml, EDP, from
+    the us_fallback pool, parked as converted_usd (the race-miss line names that method)."""
+    return {"amount": 59.41, "currency": "BHD", "source_method": "converted_usd",
+            "retailer": "Asgharali", "retailer_score": 0.5,
+            "url": "https://bh.asgharali.com/search?q=Maheeb+Edp+200ML",
+            "title": "Maheeb Eau De Parfum 200ml", "size": "200ml", "in_stock": True,
+            "estimated": False}
+
+
+def gulf_converted_row():
+    """SYNTHETIC: a Gulf adapter's converted-only yield for Mubeen (the PNL-3 order), in the
+    shape the woo adapter returns (tests/test_negcache_outage_and_converted_fallback.py)."""
+    return {"amount": 11.25, "currency": "BHD", "retailer": "store-kw.example.com",
+            "url": "https://store-kw.example.com/product/mubeen-edp-100ml", "in_stock": True,
+            "estimated": False, "confidence": 0.85, "source_method": "converted_usd",
+            "original_currency": "KWD", "title": "Mubeen Edp 100ml"}
+
+
+def lumen_catalog(variants, title="Lumen Edp 100ml"):
+    """SYNTHETIC multi-variant house product (H16: a pin that needs several sizes is built from
+    a fixture); the shape of tests/test_variant_min_price_guard.py::_shopify_catalog."""
+    return {"_store_currency": "BHD", "products": [
+        {"title": title, "vendor": "House B", "handle": "lumen-edp", "variants": variants}]}
+
+
+def v(size, price, available=True):
+    return {"title": size, "price": price, "available": available}
+
+
+LUMEN_HOST = "house-b.example.com"
+LUMEN_TYPED = "Lumen Edp 100ml"
+# Shape 1: the title states the typed size, the FIRST variant is another size.
+LUMEN_FIRST_30 = [v("30ml", "4.500"), v("100ml", "10.000")]
+# Shape 2: the title states the typed size, NO variant is that size.
+LUMEN_NO_100 = [v("30ml", "4.500"), v("50ml", "6.500")]
+
+
+# --------------------------------------------------------------------------- env and flags
+@pytest.fixture(autouse=True)
+def _env(monkeypatch):
+    for name in PROD_ON:
+        monkeypatch.setenv(name, "true")
+    for name in PROD_OFF + UNIT_UNSET:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "syn" + "thetic-" + "pc1")
+    yield
+
+
+def setflags(mp, pnl=None, vg=None, prio=None, lmg=None, fix=None, axes=None):
+    for name, val in ((PNL, pnl), (VG, vg), (PRIO, prio), (LMG, lmg), (FIX, fix), (AXES, axes)):
+        if val is None:
+            mp.delenv(name, raising=False)
+        else:
+            mp.setenv(name, val)
+
+
+PRIOCELLS = [pytest.param(None, id="prio0"), pytest.param("true", id="prio1")]
+FIXCELLS = [pytest.param(None, id="fix0"), pytest.param("true", id="fix1")]
+CAPCELLS = [pytest.param(False, id="cap0"), pytest.param(True, id="cap1")]
+
+
+# --------------------------------------------------------------------------- the price task
+_SELECTORS = (
+    "get_shopify_sources_for_category", "get_algolia_sources_for_category",
+    "get_sitemap_sources_for_category", "get_jsonapi_sources_for_category",
+    "get_woo_sources_for_category", "get_salla_sources_for_category",
+    "get_occ_sources_for_category", "get_magento_gql_sources_for_category",
+    "get_unbxd_sources_for_category", "get_restjson_sources_for_category",
+    "get_noon_sources_for_category", "get_gcc_shopify_pagescrape_sources_for_category",
+)
+
+
+class Calls:
+    def __init__(self):
+        self.shop, self.woo, self.search_web = [], [], []
+
+
+def install_cascade(mp, svc, *, tier1=None, catalog=None, gulf=None):
+    """Drive the REAL _get_price with zero network (the _stub_cascade set of
+    tests/test_negcache_outage_and_converted_fallback.py, plus the case's three sources):
+    `tier1` = the Tier-1 pick per typed name (None = every shopping row refused, as logged);
+    `catalog` = the house shop's /products.json (None = no Shopify source); `gulf` = the
+    converted adapter yield per typed name (None = no adapter yields, as logged)."""
+    calls = Calls()
+    mp.setattr(scs, "get_cached", lambda *a, **k: None)
+    mp.setattr(scs, "set_cached", lambda *a, **k: None)
+    mp.setattr(scs, "get_negative_cache", lambda *a, **k: None)
+    mp.setattr(scs, "set_negative_cache", lambda *a, **k: None)
+    mp.setattr(scs, "validate_price_query", lambda *a, **k: True)
+
+    async def _no_db_price(*a, **k):
+        return None
+    mp.setattr("app.services.product_data_service.get_cached_price", _no_db_price, raising=False)
+    mp.setattr(svc, "_save_price_to_db", lambda *a, **k: None, raising=False)
+    mp.setattr(scs, "_should_escalate_price_scrape", lambda *a, **k: True)
+    for name in _SELECTORS:
+        mp.setattr(scs, name, lambda c: [])
+    mp.setattr(scs, "sitemap_discovery_is_cold", lambda c: False)
+    mp.setattr(scs, "sitemap_unbuilt_domains", lambda c: [])
+    mp.setattr(scs, "ENABLE_PAGE_SCRAPE", True)
+    mp.setattr(scs, "get_official_domain", lambda *a, **k: None)  # the shop was a reseller (LOG)
+
+    async def _shopping(*a, **k):
+        return {"shopping": [], "organic": [], "shopping_region": "us_fallback"}
+    mp.setattr(scs, "search_product_prices", _shopping)
+    picks = dict(tier1 or {})
+    mp.setattr(scs, "extract_price_from_shopping",
+               lambda full_name, *a, **k: copy.deepcopy(picks.get(full_name)))
+
+    async def _no_organic(*a, **k):
+        return {"organic": [], "knowledge_graph": None}
+    mp.setattr(scs, "search_price_organic", _no_organic, raising=False)
+
+    async def _no_extract(*a, **k):
+        return None, {}
+    mp.setattr(scs, "extract_price", _no_extract)
+    mp.setattr(scs, "extract_price_from_training_data", _no_extract)
+
+    async def _discovery_never_returns(*a, **k):
+        calls.search_web.append(a)
+        await asyncio.sleep(3600)
+    mp.setattr(scs, "search_web", _discovery_never_returns)
+    if catalog is not None:
+        mp.setattr(scs, "get_shopify_sources_for_category", lambda c: [SimpleNamespace(domain=HOUSE_HOST)])
+
+        async def _shop(domain, product_name, currency="BHD", resolved_category=None):
+            calls.shop.append(product_name)
+            return ps._match_shopify_product(copy.deepcopy(catalog), product_name, currency, domain,
+                                             resolved_category)
+        mp.setattr(scs, "fetch_shopify_price", _shop)
+    if gulf is not None:
+        rows = dict(gulf)
+        mp.setattr(scs, "get_woo_sources_for_category",
+                   lambda c: [SimpleNamespace(domain="store-kw.example.com")])
+
+        async def _woo(domain, product_name, currency="BHD", resolved_category=None):
+            calls.woo.append(product_name)
+            return copy.deepcopy(rows.get(product_name))
+        mp.setattr(scs, "fetch_woocommerce_store_api_price", _woo)
+    return calls
+
+
+def run_price(svc, typed):
+    """(price, timed_out, full_name): the price task for one typed half, cut by the cap."""
+    full = scs._shopping_cache_key("", typed, None)
+
+    async def _go():
+        try:
+            got = await asyncio.wait_for(
+                svc._get_price("", typed, None, "bahrain", typed, nocache=True, category=FRAG),
+                timeout=CAP_S)
+            return got, False
+        except asyncio.TimeoutError:
+            # The Phase-1 handler (SCS :6644-6654): the cap fired -> the race-miss fallback.
+            return svc._price_fallback_on_miss("price", full, FRAG), True
+    got, timed_out = asyncio.run(_go())
+    return got, timed_out, full
+
+
+def msgs(caplog):
+    return [r.getMessage() for r in caplog.records]
+
+
+def reseller_line(caplog, typed, amount_text):
+    want = "Shopify reseller hit for %s parked as fallback: %s BHD via %s" % (typed, amount_text, HOUSE_HOST)
+    return any(want in m for m in msgs(caplog))
+
+
+def assert_house_hit(price, amount, url):
+    assert isinstance(price, dict), price
+    assert price.get("amount") == amount, price
+    assert price.get("source_method") == "shopify_json", price
+    assert price.get("retailer") == HOUSE_HOST and price.get("url") == url, price
+    assert price.get("currency") == "BHD", price
+
+
+# --------------------------------------------------------------------------- the pair build
+def scoring():
+    return {"winner_index": 0,
+            "scores": {"product_0": {"overall": 60.0}, "product_1": {"overall": 50.0}},
+            "tradeoff_pairs": [], "value_badges": [], "comparison_quality": "normal",
+            "personalization": {"applied_shifts": []}, "price_tiers": {},
+            "comparison_pair": ["product_a", "product_b"], "verdict_text": "Test.",
+            "key_differences": []}
+
+
+def prod(typed, price):
+    """The product dict the orchestrator hands the reconcile with the resolver OFF (INC-P2 pure
+    file `prod`): brand '', name = full_name = the typed half."""
+    d = {"brand": "", "name": typed, "full_name": typed, "variant": None, "category": FRAG,
+         "price": copy.deepcopy(price),
+         "best_price": price.get("amount") if isinstance(price, dict) else None,
+         "retailer": price.get("retailer") if isinstance(price, dict) else None,
+         "specs": {}, "reviews": None, "rating": 4.2, "rating_source": None,
+         "review_count": 5, "fact_check": {}}
+    return d
+
+
+def build_pair(a_typed, a_price, b_typed, b_price, cap=False, cands=None):
+    """reconcile_pair_fairness then build_comparison_response in one copied context (the SCS
+    order at :4788 and the builder), the capability token bound for cap=True."""
+    q = "%s vs %s" % (a_typed, b_typed)
+    pd = [prod(a_typed, a_price), prod(b_typed, b_price)]
+
+    def _go():
+        if cap:
+            ps.price_size_cap_bind(True)
+        ps.reconcile_pair_fairness(pd, q, FRAG, candidates_by_name=cands or {})
+        return rb.build_comparison_response(
+            query=q, product_data=pd, scoring_result=scoring(), comparison=None,
+            region="bahrain", api_calls=0, elapsed_seconds=0.0, total_cost=0.0, gpt_calls=0,
+            serper_calls=0, from_cache=False, verdict_validation={}, category_used=FRAG)
+    return contextvars.copy_context().run(_go)
+
+
+def ov(body):
+    return [p.get("price") for p in body["overview"]["products"]]
+
+
+def legacy(body):
+    return [p.get("price") for p in body["products"]]
+
+
+def shown(price):
+    return (isinstance(price, dict) and price.get("unavailable") is not True
+            and isinstance(price.get("amount"), (int, float)))
+
+
+def pending(price, reason=None):
+    ok = isinstance(price, dict) and price.get("unavailable") is True and price.get("amount") is None
+    return ok and (reason is None or price.get("reason") == reason)
+
+
+_KV = re.compile(r"(\w+)=(\S*)")
+
+
+def outcome(caplog):
+    """{slot: {field: value}} of the PRICE_OUTCOME lines (response_builder._p2_price_outcome)."""
+    out = {}
+    for m in msgs(caplog):
+        if m.startswith("PRICE_OUTCOME "):
+            fields = dict(_KV.findall(m))
+            out[int(fields["slot"])] = fields
+    return out
+
+
+def amounts_in(obj, acc):
+    """Every number under a price field (offsize_listing included), for the never-shown rows."""
+    if isinstance(obj, dict):
+        for k, val in obj.items():
+            if k in ("amount", "best_price") and isinstance(val, (int, float)):
+                acc.append(float(val))
+            amounts_in(val, acc)
+    elif isinstance(obj, list):
+        for val in obj:
+            amounts_in(val, acc)
+    return acc
+
+
+def house_hit(typed, available=True):
+    """What the REAL matcher returns for one typed half from the page-read catalog (the dict the
+    race-miss fallback returns: _p2_park_reseller parks it unchanged, method shopify_json)."""
+    return ps._match_shopify_product(house_catalog(available), typed, "BHD", HOUSE_HOST, FRAG)
+
+
+# =========================================================================== R01-R07 the price task
+@pytest.mark.parametrize("prio", PRIOCELLS)
+def test_r01_maheeb_flag_on_house_hit_replaces_the_5941_park(monkeypatch, caplog, prio):
+    """R01 PIN (PLAN 3.4 pin 1 and 2; SCS :8609 -> _p2_park_reseller :9805-9827, :7437-7444):
+    switch ON, the logged Maheeb run cut by the cap returns the house hit 29.900 BHD from the
+    product page, never the parked 59.41 row. Both values of ENABLE_GENUINE_PRICE_PRIORITY."""
+    setflags(monkeypatch, pnl="true", prio=prio)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={MAHEEB: maheeb_tier1_park()}, catalog=house_catalog())
+    got, timed_out, _ = run_price(svc, MAHEEB)
+    assert timed_out is True
+    assert reseller_line(caplog, MAHEEB, "29.900"), [m for m in msgs(caplog) if "Shopify" in m]
+    assert_house_hit(got, 29.9, MAHEEB_URL)
+
+
+@pytest.mark.parametrize("prio", PRIOCELLS)
+def test_r02_maheeb_flag_off_returns_the_logged_park(monkeypatch, caplog, prio):
+    """R02 PIN (flag-OFF identity, the 18 Nov run): switch OFF the same run logs the reseller
+    line and returns the parked converted 59.41 row on the cap miss (the logged race-miss
+    line); the house hit stays in the local variable."""
+    setflags(monkeypatch, pnl=None, prio=prio)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={MAHEEB: maheeb_tier1_park()}, catalog=house_catalog())
+    got, timed_out, full = run_price(svc, MAHEEB)
+    assert timed_out is True
+    assert reseller_line(caplog, MAHEEB, "29.900")
+    assert isinstance(got, dict) and got.get("amount") == 59.41, got
+    assert got.get("source_method") == "converted_usd", got
+    assert any("race miss for %s" % MAHEEB in m and "returning parked converted_usd price (never None)" in m
+               for m in msgs(caplog)), [m for m in msgs(caplog) if "race miss" in m]
+    assert svc._parked_price[full].get("amount") == 59.41
+
+
+@pytest.mark.parametrize("prio", PRIOCELLS)
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r03_mubeen_as_logged(monkeypatch, caplog, pnl, prio):
+    """R03 PIN (the logged Mubeen run: every shopping row refused, no adapter yield): switch ON
+    the cap miss returns the house hit 10.000 BHD; switch OFF it returns None (display_rule
+    none), as logged."""
+    setflags(monkeypatch, pnl=pnl, prio=prio)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={}, catalog=house_catalog())
+    got, timed_out, _ = run_price(svc, MUBEEN)
+    assert timed_out is True
+    assert reseller_line(caplog, MUBEEN, "10.000")
+    if pnl:
+        assert_house_hit(got, 10.0, MUBEEN_URL)
+    else:
+        assert got is None, got
+
+
+def _pnl3_run(monkeypatch, caplog, prio):
+    setflags(monkeypatch, pnl="true", prio=prio)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    calls = install_cascade(monkeypatch, svc, tier1={}, catalog=house_catalog(),
+                            gulf={MUBEEN: gulf_converted_row()})
+    got, timed_out, full = run_price(svc, MUBEEN)
+    assert timed_out is True
+    assert reseller_line(caplog, MUBEEN, "10.000")
+    # The adapter consume ran before the cap: the converted row was seeded as a candidate.
+    assert calls.woo == [full], calls.woo
+    seeded = [(c.get("raw_data") or {}).get("source_method") for c in svc._price_candidates.get(full, [])]
+    assert "converted_usd" in seeded and "shopify_json" in seeded, seeded
+    return svc, got, full
+
+
+def test_r04_pnl3_converted_yield_never_replaces_the_genuine_park(monkeypatch, caplog):
+    """R04 RED (PLAN 3.4 pin 6, PNL-3; SCS :8218-8231 at d2f49d8b): switch ON, a genuine Shopify
+    park (10.000) and then a converted-only adapter yield: the cap miss returns the GENUINE
+    park and the pair shows 10.000 BHD from the house page, never the converted row. Main
+    overwrites the park (the local converted_fallback is None for Mubeen) and returns 11.250."""
+    svc, got, full = _pnl3_run(monkeypatch, caplog, None)
+    assert_house_hit(got, 10.0, MUBEEN_URL)
+    assert svc._parked_price[full].get("source_method") == "shopify_json"
+    for cap in (False, True):
+        body = build_pair(MAHEEB, house_hit(MAHEEB), MUBEEN, got, cap=cap, cands=svc._price_candidates)
+        w = ov(body)[1]
+        assert shown(w) and w["amount"] == 10.0 and w.get("source_method") == "shopify_json", w
+        assert 11.25 not in amounts_in(ov(body), []) + amounts_in(legacy(body), [])
+
+
+def test_r04b_pnl3_priority_on_recovers_the_genuine_row(monkeypatch, caplog):
+    """R04b PIN (the same order with ENABLE_GENUINE_PRICE_PRIORITY on, SCS :7394-7436): the race-
+    miss recovery picks the seeded genuine Shopify row before the park, on main and after."""
+    _svc, got, _full = _pnl3_run(monkeypatch, caplog, "true")
+    assert_house_hit(got, 10.0, MUBEEN_URL)
+
+
+@pytest.mark.parametrize("seeded_park", [pytest.param(False, id="as_live"), pytest.param(True, id="genuine_preset")])
+def test_r05_pnl3_flag_off_identity(monkeypatch, caplog, seeded_park):
+    """R05 PIN (flag-OFF identity, B1 recorder): switch OFF the converted-only yield is parked
+    (the R5 terminal, SCS :8218-8231) and returned on the cap miss, also when a genuine park
+    was PRESET on the request (no Shopify source then): the PC1 check is read only with the
+    switch ON (an ungated GREEN keeps the preset park and fails this row)."""
+    setflags(monkeypatch, pnl=None, prio=None)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={}, catalog=None if seeded_park else house_catalog(),
+                    gulf={MUBEEN: gulf_converted_row()})
+    full = scs._shopping_cache_key("", MUBEEN, None)
+    if seeded_park:
+        svc._parked_price[full] = dict(house_hit(MUBEEN))
+    got, timed_out, _ = run_price(svc, MUBEEN)
+    assert timed_out is True
+    assert isinstance(got, dict) and got.get("source_method") == "converted_usd", got
+    assert got.get("amount") == 11.25 and got.get("retailer") == "store-kw.example.com", got
+
+
+def test_r06_maheeb_converted_yield_after_the_tier1_park(monkeypatch, caplog):
+    """R06 PIN (PNL-3's other half: Maheeb's local converted_fallback is set by the Tier-1 park,
+    so the adapter yield never writes the park): switch ON the cap miss returns the house
+    hit on main and after."""
+    setflags(monkeypatch, pnl="true", prio=None)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    calls = install_cascade(monkeypatch, svc, tier1={MAHEEB: maheeb_tier1_park()}, catalog=house_catalog(),
+                            gulf={MAHEEB: dict(gulf_converted_row(), title="Maheeb Edp 200ML",
+                                               url="https://store-kw.example.com/product/maheeb-edp-200ml")})
+    got, timed_out, full = run_price(svc, MAHEEB)
+    assert timed_out is True and calls.woo == [full]
+    assert_house_hit(got, 29.9, MAHEEB_URL)
+
+
+def test_r07_empty_park_converted_yield_is_still_parked(monkeypatch, caplog):
+    """R07 PIN (the GREEN boundary): switch ON with NO genuine park (no Shopify source), the
+    converted-only yield is still parked and returned on the cap miss (PC1 keeps a genuine
+    park only; the R5 terminal stays)."""
+    setflags(monkeypatch, pnl="true", prio=None)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={}, catalog=None, gulf={MUBEEN: gulf_converted_row()})
+    got, timed_out, _ = run_price(svc, MUBEEN)
+    assert timed_out is True
+    assert isinstance(got, dict) and got.get("source_method") == "converted_usd" and got.get("amount") == 11.25, got
+
+
+# =========================================================================== R08-R12 the display
+@pytest.mark.parametrize("fix", FIXCELLS)
+@pytest.mark.parametrize("cap", CAPCELLS)
+def test_r08_pair_each_side_keeps_its_typed_size(monkeypatch, caplog, cap, fix):
+    """R08 PIN (PLAN 3.4 pin 3; reconcile_pair_sizes_v2 PS :17769-17900, p2_wire_price
+    :17947-17986): switch ON, Maheeb 29.900 at 200 ml and Mubeen 10.000 at 100 ml are BOTH
+    shown with their own sizes in both capability cells (ORCH-P2-B rule 1), no offsize_listing;
+    PRICE_OUTCOME names the house host for both slots."""
+    setflags(monkeypatch, pnl="true", fix=fix)
+    caplog.set_level(logging.INFO)
+    a, b = house_hit(MAHEEB), house_hit(MUBEEN)
+    assert a and b, (a, b)
+    body = build_pair(MAHEEB, a, MUBEEN, b, cap=cap, cands={MAHEEB: [], MUBEEN: []})
+    w = ov(body)
+    assert shown(w[0]) and w[0]["amount"] == 29.9 and w[0].get("size_ml") == 200, w[0]
+    assert w[0].get("per_ml") == round(29.9 / 200, 4), w[0]
+    assert shown(w[1]) and w[1]["amount"] == 10.0 and w[1].get("size_ml") == 100, w[1]
+    assert "offsize_listing" not in w[0] and "offsize_listing" not in w[1]
+    assert [p.get("amount") for p in legacy(body)] == [29.9, 10.0]
+    o = outcome(caplog)
+    assert o[0]["shown"] == "yes" and o[0]["amount"] == "29.900" and o[0]["method"] == "shopify_json", o[0]
+    assert o[0]["retailer"] == HOUSE_HOST and o[0]["marketplace"] == "0" and o[0]["size_ml"] == "200", o[0]
+    assert o[1]["shown"] == "yes" and o[1]["amount"] == "10.000" and o[1]["size_ml"] == "100", o[1]
+
+
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r09_replay_end_to_end(monkeypatch, caplog, pnl):
+    """R09 PIN (PLAN 3.4 'replay with ENABLE_PRICE_NOT_LOST on and the cap firing'): both price
+    tasks cut by the cap on ONE request, then the pair build. Switch ON: 29.900 and 10.000
+    BHD shown from the house pages. Switch OFF: the two logged PRICE_OUTCOME lines (slot 0
+    shown=no size_ml=200 pending_genuine non_pdp_url; slot 1 shown=no size_ml=none
+    pending_genuine none)."""
+    setflags(monkeypatch, pnl=pnl, prio=None)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={MAHEEB: maheeb_tier1_park()}, catalog=house_catalog())
+    p0, t0, _ = run_price(svc, MAHEEB)
+    p1, t1, _ = run_price(svc, MUBEEN)
+    assert t0 is True and t1 is True
+    caplog.clear()
+    body = build_pair(MAHEEB, p0, MUBEEN, p1, cap=False, cands=svc._price_candidates)
+    w = ov(body)
+    o = outcome(caplog)
+    assert o[0]["product"] == "Maheeb_Edp_200ML" and o[1]["product"] == "Mubeen_Edp_100ml", o
+    if pnl:
+        assert shown(w[0]) and w[0]["amount"] == 29.9 and w[0].get("size_ml") == 200, w[0]
+        assert shown(w[1]) and w[1]["amount"] == 10.0 and w[1].get("size_ml") == 100, w[1]
+        assert o[0]["host"] == HOUSE_HOST and o[1]["host"] == HOUSE_HOST, o
+    else:
+        assert pending(w[0], "pending_genuine") and pending(w[1], "pending_genuine"), w
+        assert (o[0]["shown"], o[0]["size_ml"], o[0]["pend_reason"], o[0]["display_rule"]) == (
+            "no", "200", "pending_genuine", "non_pdp_url"), o[0]
+        assert (o[1]["shown"], o[1]["size_ml"], o[1]["pend_reason"], o[1]["display_rule"]) == (
+            "no", "none", "pending_genuine", "none"), o[1]
+    assert 59.41 not in amounts_in(ov(body), []) + amounts_in(legacy(body), [])
+
+
+@pytest.mark.parametrize("cap", CAPCELLS)
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r10_the_5941_row_is_never_shown(monkeypatch, caplog, pnl, cap):
+    """R10 PIN (PLAN 3.4 pin 4; the chokepoint PS :1963-1966, the wire's restore check
+    :17966-17972): the parked 59.41 row (a search link) as Maheeb's price is never shown, with
+    the switch OFF or ON, with or without the capability token; no price field of the body
+    carries 59.41 (no offsize_listing either)."""
+    setflags(monkeypatch, pnl=pnl)
+    caplog.set_level(logging.INFO)
+    mub = house_hit(MUBEEN) if pnl else None
+    body = build_pair(MAHEEB, maheeb_tier1_park(), MUBEEN, mub, cap=cap)
+    w = ov(body)
+    assert not shown(w[0]), w[0]
+    assert 59.41 not in amounts_in(ov(body), []) + amounts_in(legacy(body), [])
+    assert outcome(caplog)[0]["shown"] == "no"
+
+
+@pytest.mark.parametrize("cap", CAPCELLS)
+def test_r11_house_hit_out_of_stock_is_never_shown(monkeypatch, caplog, cap):
+    """R11 PIN (the stock flag was not read on 18 Nov, PNL-1/2/3; PS :15791, :1952-1954): switch
+    ON, a house hit whose variant is not available is never shown as a price."""
+    setflags(monkeypatch, pnl="true")
+    caplog.set_level(logging.INFO)
+    out = house_hit(MUBEEN, available=False)
+    assert out is not None and out.get("in_stock") is False, out
+    body = build_pair(MAHEEB, house_hit(MAHEEB), MUBEEN, out, cap=cap)
+    assert not shown(ov(body)[1]), ov(body)[1]
+    assert shown(ov(body)[0]) and ov(body)[0]["amount"] == 29.9
+
+
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r12_park_reseller_over_the_logged_park(monkeypatch, pnl):
+    """R12 PIN (SCS :9805-9827 with the logged values): switch ON the house hit replaces the
+    parked 59.41 converted search-link row and is what the race miss returns; switch OFF the
+    park is unchanged and nothing is seeded."""
+    setflags(monkeypatch, pnl=pnl)
+    svc = scs.StructuredComparisonService()
+    svc._parked_price[MAHEEB] = maheeb_tier1_park()
+    hit = house_hit(MAHEEB)
+    svc._p2_park_reseller(MAHEEB, dict(hit), [dict(hit)], "BHD")
+    got = svc._price_fallback_on_miss("price", MAHEEB, FRAG)
+    if pnl:
+        assert_house_hit(svc._parked_price[MAHEEB], 29.9, MAHEEB_URL)
+        assert_house_hit(got, 29.9, MAHEEB_URL)
+    else:
+        assert svc._parked_price[MAHEEB] == maheeb_tier1_park()
+        assert svc._price_candidates.get(MAHEEB, []) == []
+        assert got.get("amount") == 59.41
+
+
+# =========================================================================== R13-R14 side effects
+YSL_Y = "Yves Saint Laurent Y Eau de Parfum"   # the logged typed name (44.150 BHD, a marketplace)
+
+
+def ysl_row(seller, link, price="BHD 44.150"):
+    return {"title": "Yves Saint Laurent Y Eau de Parfum 100ml", "price": price, "source": seller,
+            "link": link}
+
+
+def test_r13_ysl_y_marketplace_seller_is_or_is_not_skipped(monkeypatch):
+    """R13 PIN (PLAN 3.4 pin 5; PS :17445-17481, :10601-10605): the 18 Nov seller of the YSL Y
+    price is not in the records, so both answers are pinned. Under the switch an auction /
+    peer seller is skipped (never the Tier-1 pick, never a converted park); a marketplace
+    that is not on the list (noon, Amazon) keeps its price. Switch OFF nothing is skipped."""
+    fn = ps.is_auction_marketplace_seller
+    for r, u in (("noon", "https://www.noon.com/bahrain-en/p/x"), ("Amazon.ae", "https://www.amazon.ae/dp/x"),
+                 ("store-m.example.com", "https://store-m.example.com/p/y")):
+        assert fn(r, u) is False, (r, u)
+    for r, u in (("Whatnot", "https://www.whatnot.com/listing/x"), ("eBay - seller", None)):
+        assert fn(r, u) is True, (r, u)
+    rows = [{"retailer": "noon", "url": "https://www.noon.com/bahrain-en/p/x", "amount": 44.15},
+            {"retailer": "Whatnot", "url": "https://www.whatnot.com/listing/x", "amount": 40.0}]
+    setflags(monkeypatch, pnl="true")
+    assert [r["amount"] for r in ps.p2_filter_marketplace_rows(rows)] == [44.15]
+    auction_only = [ysl_row("Whatnot", "https://www.whatnot.com/listing/x")]
+    assert ps.extract_price_from_shopping(YSL_Y, auction_only, "BHD", category=FRAG) is None
+    setflags(monkeypatch, pnl=None)
+    assert ps.p2_filter_marketplace_rows(rows) is rows
+    pick = ps.extract_price_from_shopping(YSL_Y, auction_only, "BHD", category=FRAG)
+    assert pick is not None and pick.get("retailer") == "Whatnot", pick
+
+
+@pytest.mark.parametrize("lmg", [pytest.param(None, id="lmg0"), pytest.param("true", id="lmg1")])
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r14_rasasi_hawas_row_only_with_the_listing_guard(monkeypatch, pnl, lmg):
+    """R14 PIN (PLAN 3.4 pin 5b; PS :7859-7880, :18018-18020; the INC-P2 G1 / G2 shapes): a
+    gender-free 'Rasasi Hawas' query refuses a 'for Her' listing ONLY with both the listing
+    guard and the switch on; a 'for Him' listing passes in every cell."""
+    setflags(monkeypatch, pnl=pnl, lmg=lmg, axes="true")
+    sel = lambda t: ps._selection_match("Rasasi Hawas", t, FRAG, candidate_brand="Rasasi")  # noqa: E731
+    assert sel("Rasasi Hawas for Him Eau de Parfum 100ml") is True
+    assert sel("Rasasi Hawas for Her Eau de Parfum 100ml") is (not (pnl and lmg))
+
+
+# =========================================================================== R15-R19 the size fix
+def lumen_hit(typed, variants, title="Lumen Edp 100ml"):
+    return ps._match_shopify_product(lumen_catalog(variants, title), typed, "BHD", LUMEN_HOST, FRAG)
+
+
+def count_binder(monkeypatch):
+    seen = []
+    real = ps._select_shopify_variant
+
+    def _spy(*a, **k):
+        seen.append(a[1] if len(a) > 1 else k.get("product_name"))
+        return real(*a, **k)
+    monkeypatch.setattr(ps, "_select_shopify_variant", _spy)
+    return seen
+
+
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r17_vg_on_path_unchanged(monkeypatch, pnl):
+    """R17 PIN (the existing ENABLE_VARIANT_MIN_PRICE_GUARD path, PS :15726-15731,
+    _select_shopify_variant :15489-15535; the shapes of tests/test_variant_min_price_guard.py):
+    VG ON binds the typed size (10.000, 100ml), refuses a typed size not offered (None), and
+    prefers the 100 ml flagship for an untyped fragrance (10.000), with the switch off or on."""
+    setflags(monkeypatch, pnl=pnl, vg="true")
+    out = lumen_hit(LUMEN_TYPED, LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
+    assert lumen_hit(LUMEN_TYPED, LUMEN_NO_100) is None
+    out = lumen_hit("Lumen Edp", LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
+
+
+def test_r18_size_fix_flag_off_identity(monkeypatch):
+    """R18 PIN (flag-OFF identity, B1 recorder): switch OFF and VG off, the matcher is main's
+    (variants[0], the string-sorted label) and the binder is never called."""
+    setflags(monkeypatch, pnl=None, vg=None)
+    seen = count_binder(monkeypatch)
+    out = lumen_hit(LUMEN_TYPED, LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 4.5 and out["size"] == "100ml", out
+    out = lumen_hit("Lumen Edp", LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 4.5 and out["size"] == "100ml", out
+    out = house_hit(MAHEEB)
+    assert out is not None and out["amount"] == 29.9 and out["size"] == "200ml", out
+    assert seen == [], seen
+
+
+@pytest.mark.parametrize("vg", [pytest.param(None, id="vg0"), pytest.param("true", id="vg1")])
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r18b_single_variant_house_products_unchanged(monkeypatch, pnl, vg):
+    """R18b PIN (the page-read shape: one variant, the size in the title): every switch cell
+    prices Maheeb 29.900 (200ml) and Mubeen 10.000 (100ml) from the house pages."""
+    setflags(monkeypatch, pnl=pnl, vg=vg)
+    a, b = house_hit(MAHEEB), house_hit(MUBEEN)
+    assert a is not None and a["amount"] == 29.9 and a["size"] == "200ml" and a["url"] == MAHEEB_URL, a
+    assert b is not None and b["amount"] == 10.0 and b["size"] == "100ml" and b["url"] == MUBEEN_URL, b
