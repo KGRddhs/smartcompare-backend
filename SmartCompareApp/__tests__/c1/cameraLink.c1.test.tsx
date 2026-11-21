@@ -750,8 +750,10 @@ describe('INC-C1 camera rows (ResultsScreen with HomeScreen, fake timers)', () =
       expect(selected(home, 'home-mode-scan')).toEqual({ selected: false });
       expect(home.getByTestId('mock-two-input-shell').props.mode).toBe('text');
 
-      // Once: a later focus does not re-apply it.
-      fireEvent.press(home.getByTestId('home-mode-scan'));
+      // Once: a later focus does not re-apply it (the tab's onPress in act: RNTL 13, as in L1).
+      await act(async () => {
+        home.getByTestId('home-mode-scan').props.onPress();
+      });
       await fireFocus();
       expect(selected(home, 'home-mode-scan')).toEqual({ selected: true });
       expect(selected(home, 'home-mode-type')).toEqual({ selected: false });
