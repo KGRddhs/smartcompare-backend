@@ -18,6 +18,11 @@ With the role flag ON the request's AI-consent version (S81-05
   entries refuse such a request BEFORE any provider work with the existing
   ``LLM_UNAVAILABLE`` envelope.
 
+CAM-2: with the vision role ON the camera route also refuses a photo bound for
+Claude, before the paid call and through the same envelope, unless
+``ENABLE_VISION_IDENTITY_V2`` is ON and ``X-Client-Capabilities`` lists
+``vision_anthropic`` (``camera_vision_gate_refuses``).
+
 One Sonnet escalation per compare (``ENABLE_SONNET_ESCALATION``, the S81-04
 ``escalation`` lane) on a refusal or a schema failure at a JSON site. The
 moderation role is a Haiku classifier that fails CLOSED (R-S06-6).
@@ -273,6 +278,14 @@ class AnthropicBreakerOpenError(_abs.LLMUnavailableError):
         )
 
 
+class VisionCapabilityRequiredError(_abs.LLMUnavailableError):
+    """CAM-2: the camera vision gate refused a Claude-bound photo (V1, or no
+    vision_anthropic capability) before any paid call."""
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__("vision gate refused; dispatch suppressed")
+
+
 # ---------------------------------------------------------------------------
 # Test seams and per-process state
 # ---------------------------------------------------------------------------
@@ -442,6 +455,50 @@ def camera_refuses_for_consent() -> bool:
     if not on_roles:
         return False
     return any(_refuses(role) for role in on_roles)
+
+
+# CAM-2 VISION-GATE: the camera route sends a photo to Claude only with V2 ON and the
+# client's vision_anthropic capability (no new flag; inert while the vision role is OFF).
+VISION_CAPABILITY = "vision_anthropic"
+VISION_CAPABILITY_MAX_CHARS = 512
+VISION_GATE_REASONS = ("v1_site", "capability_absent")
+
+
+def client_vision_capable(request: Any) -> bool:
+    """True iff X-Client-Capabilities lists vision_anthropic (comma tokens, stripped,
+    case-insensitive, at most 512 chars: the kb_serve parse). Never logs; an unreadable
+    header is no capability."""
+    try:
+        value = request.headers.get("x-client-capabilities")
+        if not isinstance(value, str) or len(value) > VISION_CAPABILITY_MAX_CHARS:
+            return False
+        return VISION_CAPABILITY in {
+            token.strip().lower() for token in value.split(",")
+        }
+    except Exception:  # noqa: BLE001 - an unreadable header is no capability
+        return False
+
+
+def camera_vision_gate_refuses(request: Any, vision_v2_enabled: Any) -> bool:
+    """CAM-2: True iff this camera photo would reach Claude while V2 is OFF (v1_site)
+    or the client lacks vision_anthropic (capability_absent). With the vision role
+    OFF: one getenv."""
+    if not role_enabled("vision"):
+        return False
+    if decide("vision") != "anthropic":
+        return False
+    try:
+        v2 = vision_v2_enabled() is True
+    except Exception:  # noqa: BLE001 - an unreadable V2 reader is V1
+        v2 = False
+    if not v2:
+        reason = "v1_site"
+    elif not client_vision_capable(request):
+        reason = "capability_absent"
+    else:
+        return False
+    logger.info("[VISION_GATE] refused reason=%s", reason)
+    return True
 
 
 # ---------------------------------------------------------------------------

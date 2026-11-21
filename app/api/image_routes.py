@@ -384,6 +384,10 @@ async def identify_and_compare(
         # both refunds. Every role flag OFF: five getenv reads.
         if _llm_router.camera_refuses_for_consent():
             raise _llm_router.ConsentUpdateRequiredError()
+        # CAM-2: a Claude-bound photo needs V2 ON and the vision_anthropic capability,
+        # else this exit's coded 503 and both refunds (inert while the vision role is OFF).
+        if _llm_router.camera_vision_gate_refuses(request, vision_identity_v2_enabled):
+            raise _llm_router.VisionCapabilityRequiredError()
         _t_vision = time.perf_counter()
         vision_result = await identify_products(image_data_list)
         vision_ms = int((time.perf_counter() - _t_vision) * 1000)
