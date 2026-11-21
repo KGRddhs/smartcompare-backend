@@ -7737,14 +7737,34 @@ def _vd_form_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> b
 #      core and the subset and variant-add steps run unchanged.
 #   3. The single-concentration default (_vd_candidate_missing_query_axis; the
 #      mode reaches it as a keyword from descriptor_verdict).
-#   4. The narrowing guard (M1bR-14): the existing sample, floor-word, 30 ml floor
-#      (unless the listing size is the typed size), product-form and counterfeit
-#      predicates refuse 1, 2 and 3 for the pair, and the base verdict stands.
+#   4. The narrowing guards refuse 1, 2 and 3 for the pair, and the base verdict
+#      stands (each one only restores the base verdict; none adds an accept):
+#      - M1bR-14 (_m1b_excluded): the existing sample, floor-word, 30 ml floor
+#        (unless the listing size is the typed size), product-form and counterfeit
+#        predicates, plus (FIX1 FA-1 / FA-3) a multipack the query does not ask
+#        for (the existing VariantDescriptor.packs) and a word of the existing
+#        _FORM_NOISE_TOKENS other than "spray" that the query lacks;
+#      - FX1-2 (_m1b_brand_other_house): the listing's own brand field
+#        (VariantDescriptor.brand_tokens, built from the candidate_brand the caller
+#        passes) names another house. A brand is the same house only when it holds
+#        a whole house alias form of the line, or a whole member of an alias group
+#        sharing a word with them (for the fold: a whole member of the triggered
+#        groups); no brand stated keeps the rules;
+#      - FX1-4 / FX2 (_m1b_gender_ok): condition (d) of 3 gates 1 and 2 too: the
+#        candidate states no gender, or the query's own (strict words, pronouns);
+#      - FX1-3 (_m1b_query_names_flanker): a query whose raw words hold every raw
+#        word of a flanker of the line ("for Her") takes neither 2 nor 3 for that
+#        line (the house-only exception of 1 keeps its reading);
+#      - FA-4: the fold is refused when the query core names two houses (two alias
+#        groups trigger, or the triggered group comes with a whole seeded house
+#        alias that shares no word with it).
 # The seeded lines come ONLY from product_resolver.seeded_line_profiles(),
-# imported lazily and read at most once per verdict, only when a rule needs them.
-# The flag read is the first statement of every gated path: OFF runs none of this
-# and never reads the accessor. The rules run in the verdict step; the one memo is
-# the bounded string tokenizer of the seeded-line words (a pure function).
+# imported lazily and read only when a rule needs them: at most once by the
+# default (the axis step) and at most once by _m1b_fold_cores (the selection
+# step), so up to twice per verdict. The flag read is the first statement of
+# every gated path: OFF runs none of this and never reads the accessor. The rules
+# run in the verdict step; the only memos are the two bounded string tokenizers
+# of the seeded-line words (pure functions).
 # ---------------------------------------------------------------------------
 _M1B_EXTRA_ALIAS_GROUPS = (
     frozenset({"mfk", "maison francis kurkdjian", "francis kurkdjian"}),
@@ -7752,6 +7772,9 @@ _M1B_EXTRA_ALIAS_GROUPS = (
 # A canonical house token holds a space; normalize_words splits on whitespace, so
 # no query or title word can ever equal one.
 _M1B_CANON_PREFIX = "m1b house "
+# FA-3: the one _FORM_NOISE_TOKENS word a genuine bottle title carries ("Eau de
+# Parfum Spray"); every other one the query lacks refuses the rules.
+_M1B_FORM_NOISE_KEPT = frozenset({"spray"})
 
 
 def match_fold_enabled() -> bool:
@@ -7867,14 +7890,101 @@ def _m1b_distinctive_forms(q: VariantDescriptor, p: Any, cat: str) -> List[Froze
     return out
 
 
+def _m1b_query_names_flanker(q: VariantDescriptor, p: Any) -> bool:
+    """FX1-3: the query's raw words hold every raw word of a flanker of the line `p`
+    (padding words such as "for" and "her" count: they are raw words even where the
+    identity core drops them), so the query asks for the flanker and neither the
+    houseless rule nor the default uses the line ("Creed Aventus for Her EDP"; "for
+    Him" is not "for Her")."""
+    return any(w and w <= q.fold_tokens for w in map(_m1b_raw_words, p.flankers))
+
+
+def _m1b_line_house_forms(p: Any) -> List[Tuple[str, ...]]:
+    """FX1-2 (R2-1): the word tuples that state the house of the line `p`: each house
+    alias form, and each member of the alias groups sharing a word with them."""
+    forms, words = [], set()
+    for alias in p.house_aliases:
+        form = _m1b_core_words(alias)
+        if form:
+            forms.append(form)
+            words.update(form)
+    for _canon, group_words, members in _M1B_FOLD_GROUPS:
+        if group_words & words:
+            forms.extend(members)
+    return forms
+
+
+def _m1b_brand_other_house(c: VariantDescriptor, forms: List[Tuple[str, ...]]) -> bool:
+    """FX1-2: the listing states a brand (VariantDescriptor.brand_tokens, built from the
+    candidate_brand its caller passes: candidate_brand, price["brand"], c["brand"])
+    that holds none of `forms` whole: the whole-form test of R2-1 (Maison Alhambra is
+    not Maison Francis Kurkdjian, Parfums Gres is not Parfums de Marly). No brand
+    stated: False, so the rules stay."""
+    brand = c.brand_tokens
+    return bool(brand) and not any(f and all(w in brand for w in f) for f in forms)
+
+
+def _m1b_brand_other_line(c: VariantDescriptor, p: Any) -> bool:
+    """FX1-2 for the houseless rule and the default: the listing's brand field names a
+    house other than the house of the line `p` (its forms are built only when a brand
+    is stated)."""
+    return bool(c.brand_tokens) and _m1b_brand_other_house(c, _m1b_line_house_forms(p))
+
+
+def _m1b_gender_ok(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """Condition (d) of M1bR-6, read by the default, the houseless rule (FX1-4) and the
+    fold (FX2): the candidate states no gender, or states the query's own (the strict
+    words and the pronouns, over the raw words). A title restating the line's own
+    gender under a gender-free query is refused too (stated limits G-2, R2-4, Q2)."""
+    men, women = _GENDER_LINE_MEN_WORDS, _GENDER_LINE_WOMEN_WORDS
+    c_side = (bool(c.fold_tokens & men), bool(c.fold_tokens & women))
+    return c_side == (False, False) or c_side == (bool(q.fold_tokens & men),
+                                                   bool(q.fold_tokens & women))
+
+
+def _m1b_seeded_house_beside(q_core: FrozenSet[str], group: Tuple[Any, ...],
+                             profiles: Tuple[Any, ...]) -> bool:
+    """FA-4 (the two-group test is at the call): the query core holds every word of a
+    seeded house alias that shares no word with the triggered alias group, so the
+    query names two houses ("Chanel Paris Deauville": paris is a Lancome-group word)."""
+    words = group[1]
+    for p in profiles:
+        for alias in p.house_aliases:
+            form = _m1b_core_words(alias)
+            if form and q_core.issuperset(form) and not words.intersection(form):
+                return True
+    return False
+
+
+def _m1b_fold_refused(c: VariantDescriptor, q_core: FrozenSet[str],
+                      triggered: Tuple[Any, ...], profiles: Tuple[Any, ...]) -> bool:
+    """FX1-2 (the fold) and FA-4: no group folds when the listing's brand field holds no
+    whole member of the triggered groups, or when the query core names two houses (two
+    alias groups trigger, or the one triggered group comes with a whole seeded house
+    alias sharing no word with it). The caller then compares the unfolded cores."""
+    if c.brand_tokens and _m1b_brand_other_house(c, [m for g in triggered for m in g[2]]):
+        return True
+    return len(triggered) > 1 or _m1b_seeded_house_beside(q_core, triggered[0], profiles)
+
+
 def _m1b_excluded(q: VariantDescriptor, c: VariantDescriptor) -> bool:
     """M1bR-14 / M1bR-6 (e): an EXISTING predicate marks the candidate as a sample,
     decant, tester or vial (_SAMPLE_LISTING_RE), a travel or mini size
     (_P2_FLOOR_WORDS_RE; under _P2_FLOOR_ML unless that is the typed size), a gift
     set, refill or body product (the descriptor form) or a dupe
-    (is_counterfeit_listing). Read over the candidate's raw words."""
+    (is_counterfeit_listing). Read over the candidate's raw words; the counterfeit
+    check reads them sorted, so its phrase keywords cannot match there (stated limit
+    m3; on the measured sets their words still reject as extra tokens). FIX1 adds,
+    from existing data only, a multipack the query does not ask for (the
+    VariantDescriptor.packs field, FA-1) and a _FORM_NOISE_TOKENS word other than
+    "spray" that the query lacks (a body or hair form the descriptor form misses,
+    FA-3)."""
     if c.form is not None:
         return True
+    if c.packs and not q.packs:
+        return True  # FA-1: a multipack the query does not ask for
+    if (c.fold_tokens & _FORM_NOISE_TOKENS) - _M1B_FORM_NOISE_KEPT - q.fold_tokens:
+        return True  # FA-3: a body or hair form word the query lacks
     size = c.size_ml_snapped
     if size is not None and size < _P2_FLOOR_ML and size != q.size_ml_snapped:
         return True
@@ -7888,7 +7998,8 @@ def _m1b_fold_cores(q: VariantDescriptor, c: VariantDescriptor, q_core: FrozenSe
                     t_core: FrozenSet[str], cat: str) -> Tuple[FrozenSet[str], FrozenSet[str]]:
     """INC-M1b rules 1, 2 and 4 (the caller read the flag and checked fragrances): the
     (query core, title core) the LEAK subset and the variant-add step then compare.
-    The accessor is read only for the house-only exception and the houseless rule."""
+    The accessor is read at most once here: for the house-only exception, the
+    two-house guard at the fold's accept point or the houseless rule."""
     profiles = None
     fq, ft, folded = q_core, t_core, False
     triggered = tuple(g for g in _M1B_FOLD_GROUPS
@@ -7902,11 +8013,18 @@ def _m1b_fold_cores(q: VariantDescriptor, c: VariantDescriptor, q_core: FrozenSe
                          for p in _m1b_named_lines(q, profiles))
         if folded:
             fq, ft = folded_q, _m1b_fold(t_core, triggered)
-            # M1bR-14: the guard refuses the fold. A fragrance SELECTION accepts only
-            # when the two cores end equal, so the guard is read only where the fold
-            # turns the verdict into an accept.
-            if fq == ft and q_core != t_core and _m1b_excluded(q, c):
-                return q_core, t_core
+            # The narrowing guards refuse the fold and the base verdict stands. A
+            # fragrance SELECTION accepts only when the two cores end equal, so they
+            # are read where the fold turns the verdict into an accept: M1bR-14 with
+            # FA-1 / FA-3, the gender condition (FX2), and the brand / two-house
+            # refusal (FX1-2, FA-4; read again before the houseless rule below).
+            if fq == ft and q_core != t_core:
+                if _m1b_excluded(q, c) or not _m1b_gender_ok(q, c):
+                    return q_core, t_core
+                if profiles is None:
+                    profiles = _m1b_profiles()
+                if _m1b_fold_refused(c, q_core, triggered, profiles):
+                    return q_core, t_core
     if fq <= ft or (ft - fq):
         # The subset holds, or an extra title token rejects at variant-add whatever
         # the query core keeps: the houseless rule cannot turn the verdict here.
@@ -7919,14 +8037,28 @@ def _m1b_fold_cores(q: VariantDescriptor, c: VariantDescriptor, q_core: FrozenSe
         # No named line can turn the verdict (dropping its house leaves a query token
         # the title lacks): skip the line-form tokens; the verdict is the same.
         return fq, ft
+    if folded and _m1b_fold_refused(c, q_core, triggered, profiles):
+        # FX1-2 / FA-4 refuse the fold, so the houseless rule reads the unfolded cores
+        # (a second house folded on both sides must not let it drop the first). Read
+        # only here: where no named line can turn the folded verdict, none can turn the
+        # unfolded one (the fold only merges members both cores hold).
+        fq, ft = q_core, t_core
+        if fq <= ft or (ft - fq):
+            return fq, ft
     for p, house, canons in named:
         if t_core & house:  # (c) the house is replaced or partly named, not omitted
             continue
         for tokens in _m1b_distinctive_forms(q, p, cat):
             if tokens and tokens <= t_core:  # (d) every token of the line form
                 houseless_q = fq - house - canons
-                # M1bR-14: the guard refuses the houseless rule (read where it would accept).
-                if houseless_q <= ft and _m1b_excluded(q, c):
+                # The narrowing guards refuse the houseless rule (read where it would
+                # accept): M1bR-14 with FA-1 / FA-3, the gender condition (FX1-4), a
+                # query naming a flanker of the line (FX1-3) and the listing's brand
+                # naming another house (FX1-2).
+                if houseless_q <= ft and (
+                        _m1b_excluded(q, c) or not _m1b_gender_ok(q, c)
+                        or _m1b_query_names_flanker(q, p)
+                        or _m1b_brand_other_line(c, p)):
                     return fq, ft
                 return houseless_q, ft
     return fq, ft
@@ -7936,10 +8068,7 @@ def _m1b_concentration_default(q: VariantDescriptor, c: VariantDescriptor) -> bo
     """M1bR-6 (the caller read the flag, is in SELECTION mode, fragrances, and saw a
     query concentration the candidate omits): True when the candidate counts as
     stating the query's concentration."""
-    men, women = _GENDER_LINE_MEN_WORDS, _GENDER_LINE_WOMEN_WORDS
-    c_side = (bool(c.fold_tokens & men), bool(c.fold_tokens & women))
-    if c_side != (False, False) and c_side != (bool(q.fold_tokens & men),
-                                               bool(q.fold_tokens & women)):
+    if not _m1b_gender_ok(q, c):
         return False  # (d) the candidate states a gender the query does not
     if _m1b_excluded(q, c):
         return False  # (e) sample, decant, tester, travel, mini, gift set, refill, body, dupe
@@ -7948,6 +8077,10 @@ def _m1b_concentration_default(q: VariantDescriptor, c: VariantDescriptor) -> bo
             continue  # (a) a single-concentration line, (b) its one concentration
         if not _m1b_named_lines(q, (p,)):
             continue  # (a) the query names the line (its house and the line)
+        if _m1b_query_names_flanker(q, p):
+            return False  # FX1-3: the query asks for a flanker of the line
+        if _m1b_brand_other_line(c, p):
+            return False  # FX1-2: the listing's brand field names another house
         for flanker in p.flankers:
             words = _m1b_raw_words(flanker)
             if words and words <= c.fold_tokens:

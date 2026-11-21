@@ -635,12 +635,18 @@ class SeededLineProfile(NamedTuple):
 def seeded_line_profiles() -> Tuple[SeededLineProfile, ...]:
     """INC-M1b (M1bR-7): immutable records of the seed lines, in file order, built
     per call from the lines _load_lines already validated and cached (no memo of its
-    own, no file read); () when the file is missing or fails to load or validate.
-    When the cache holds the current LINES_PATH it is read as it is, without the
-    os.stat and Path.resolve of _load_lines (about 0.35 ms per call on the Windows
-    box, and the matcher reads this per verdict); otherwise one _load_lines call.
-    Works whatever ENABLE_PRODUCT_RESOLVER is; never calls a model, the network or
-    the spend admit. price_service reads it lazily (ENABLE_MATCH_FOLD)."""
+    own, no file read); () when the file is missing or fails to load or validate
+    and the cache holds no lines of the current LINES_PATH. When the cache holds the
+    current LINES_PATH it is read as it is, without the os.stat and Path.resolve of
+    _load_lines (about 0.35 ms per call on the Windows box; the matcher reads this
+    up to twice per verdict); otherwise one _load_lines call. So an edit of the file
+    at the same path is seen at the next _load_lines call (the resolver's own read),
+    a reset or a restart, and after a delete at the same path the last validated
+    records are still served: _load_lines returns () on the failed stat without
+    clearing the cache (stated limit m1; production ships the file in the image, so
+    a change arrives with a new process). Works whatever ENABLE_PRODUCT_RESOLVER is;
+    never calls a model, the network or the spend admit. price_service reads it
+    lazily (ENABLE_MATCH_FOLD)."""
     path = os.fspath(LINES_PATH)
     with _LOCK:
         state, lines = _LINES_MEMO["state"], _LINES_MEMO["lines"]
