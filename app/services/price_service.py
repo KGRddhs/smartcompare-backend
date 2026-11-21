@@ -15135,7 +15135,7 @@ async def curl_fetch_html_same_site(
     except Exception as e:  # noqa: BLE001 — fetch must never raise
         if live_robots.live_robots_enabled():
             live_robots.record_url("curl_same_site", url, "fail")
-        logger.warning(f"[PRICE] curl_fetch_html_same_site failed for {url}: {e}")
+        logger.warning("[PRICE] curl_fetch_html_same_site failed for %s: %s", domain, type(e).__name__)
         return None
 
 
@@ -15398,6 +15398,126 @@ _SHOPIFY_NEG_TTL = 30 * 60
 _SHOPIFY_NEG_SENTINEL = {"_shopify_neg": True}
 
 
+# INC-SH1 (ENABLE_SHOPIFY_NAMED_LIVE_READ, default OFF, read per call): with the
+# switch ON the catalog read, the currency probe and the product-feed fetch
+# (shopify_pdp_service) send the named-agent headers of the nightly reader and let
+# the library follow no redirect, ask the persisted robots record before every
+# request (live_robots: no record, no read; never a robots fetch) and end a host
+# for the rest of the compare after a 429, 403, 503 or a challenge page, with no
+# retry. Switch OFF: one env read per call and no other change.
+_shopify_named_read_ended: "_contextvars.ContextVar[Optional[set]]" = _contextvars.ContextVar(
+    "shopify_named_read_ended", default=None,
+)
+
+
+def shopify_named_live_read_enabled() -> bool:
+    """True iff ``ENABLE_SHOPIFY_NAMED_LIVE_READ`` is truthy. Read PER CALL."""
+    return os.getenv("ENABLE_SHOPIFY_NAMED_LIVE_READ", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
+def bind_shopify_named_read_scope() -> None:
+    """Bind a fresh per-compare set of ended hosts (switch ON only; OFF: the env
+    read only). The product tasks of one compare share the set."""
+    if not shopify_named_live_read_enabled():
+        return
+    _shopify_named_read_ended.set(set())
+
+
+def _shopify_named_host_key(url: Any) -> str:
+    """The URL host, lower case, one leading www. stripped; empty when none."""
+    try:
+        host = (urlparse(url).hostname or "").strip().lower() if isinstance(url, str) else ""
+    except Exception:  # noqa: BLE001 - a malformed URL has no host
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def shopify_named_read_admit(url: Any) -> bool:
+    """True = the named read may request ``url`` (switch ON only). False when the
+    host was ended in this compare; else the persisted robots verdict of the URL
+    (live_robots.gate with ENABLE_LIVE_ROBOTS_REGISTRY ON, else url_verdict over
+    the memo row): no record, no read. Never a robots fetch; never raises."""
+    key = ""
+    try:
+        key = _shopify_named_host_key(url)
+        ended = _shopify_named_read_ended.get()
+        if isinstance(ended, set) and key and key in ended:
+            logger.info("[SHOPIFY_LIVE] skip host=%s reason=%s", key, "ended")
+            return False
+        if live_robots.live_robots_enabled():
+            return bool(live_robots.gate(url, "shopify"))
+        reason = live_robots.url_verdict(
+            url, live_robots.row_for_host(live_robots.host_of(url)), live_robots._now(),
+        )
+    except Exception:  # noqa: BLE001 - fail closed
+        reason = "bad_url"
+    if reason is None:
+        return True
+    logger.info("[SHOPIFY_LIVE] skip host=%s reason=%s", key or "-", reason)
+    return False
+
+
+def _shopify_named_header(headers: Any, name: str) -> str:
+    """The first header ``name`` (any case) as text; "" when absent or when the
+    header object cannot be read (the header read of the nightly challenge rule)."""
+    try:
+        items = headers.items() if hasattr(headers, "items") else []
+        want = name.lower()
+        for key, value in items:
+            if str(key).lower() == want:
+                return str(value)
+    except Exception:  # noqa: BLE001 - an odd header object reads as absent
+        return ""
+    return ""
+
+
+def shopify_named_read_refusal(status: Any, headers: Any, body: Any) -> Optional[str]:
+    """Why a response ends the host: "challenge" (the challenge rule of the
+    nightly reader: a ``cf-mitigated: challenge`` header, or a non-empty body that
+    is html-shaped, a text/html content type or a first non-blank character "<",
+    and that classify_capture, over its own scan span, calls walled), "throttled"
+    (429, 503), "refused" (403), else None. Never raises."""
+    try:
+        if _shopify_named_header(headers, "cf-mitigated").strip().lower() == "challenge":
+            return "challenge"
+        if body and (
+            "text/html" in _shopify_named_header(headers, "content-type").lower()
+            or (isinstance(body, str) and body.lstrip()[:1] == "<")
+        ):
+            if classify_capture(body, None, None) == CAPTURE_WALLED:
+                return "challenge"
+    except Exception:  # noqa: BLE001 - an odd response reads as no challenge
+        pass
+    if status in (429, 503):
+        return "throttled"
+    if status == 403:
+        return "refused"
+    return None
+
+
+def shopify_named_read_observe(url: Any, resp: Any) -> None:
+    """End the host of ``url`` for the rest of the compare when ``resp`` is a
+    refusal (one INFO line per host). Unbound (outside a compare): no memory.
+    Never raises."""
+    try:
+        status = getattr(resp, "status_code", None)
+        reason = shopify_named_read_refusal(
+            status, getattr(resp, "headers", None), getattr(resp, "text", None),
+        )
+        if reason is None:
+            return
+        ended = _shopify_named_read_ended.get()
+        key = _shopify_named_host_key(url)
+        if not isinstance(ended, set) or not key or key in ended:
+            return
+        ended.add(key)
+        logger.info("[SHOPIFY_LIVE] host ended host=%s reason=%s status=%s", key, reason, status)
+    except Exception:  # noqa: BLE001 - observation never breaks a fetch
+        return
+
+
 async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
     """Fetch + JSON-parse `https://{domain}/products.json` via curl_cffi.
 
@@ -15426,18 +15546,27 @@ async def _fetch_shopify_catalog(domain: str) -> Optional[Dict[str, Any]]:
         )
 
     url = f"https://{domain}{SHOPIFY_PRODUCTS_PATH}"
+    named = shopify_named_live_read_enabled()
+    if named and not shopify_named_read_admit(url):
+        return None
     try:
         from curl_cffi import requests as curl_requests
-        resp = await asyncio.to_thread(
-            lambda: curl_requests.get(
-                url, impersonate="chrome", timeout=PAGE_SCRAPE_TIMEOUT,
-                allow_redirects=True,
+        if named:
+            from app.services.shopify_pdp_service import _named_curl_get
+            resp = await asyncio.to_thread(_named_curl_get, url, PAGE_SCRAPE_TIMEOUT)
+        else:
+            resp = await asyncio.to_thread(
+                lambda: curl_requests.get(
+                    url, impersonate="chrome", timeout=PAGE_SCRAPE_TIMEOUT,
+                    allow_redirects=True,
+                )
             )
-        )
     except Exception as e:  # noqa: BLE001 — discovery is best-effort
         logger.info(f"[PRICE] Shopify catalog fetch failed for {domain}: {e}")
         await _negcache()
         return None
+    if named:
+        shopify_named_read_observe(url, resp)
 
     if resp.status_code != 200:
         logger.info(f"[PRICE] Shopify catalog HTTP {resp.status_code} for {domain}")
@@ -15469,14 +15598,23 @@ async def _fetch_shopify_currency(domain: str) -> Optional[str]:
 
     Graceful-None on any failure — the caller then skips the hit rather than
     stamping a fabricated currency (M1 Decision-F)."""
+    named = shopify_named_live_read_enabled()
+    meta_url = f"https://{domain}/meta.json"
+    if named and not shopify_named_read_admit(meta_url):
+        return None
     try:
         from curl_cffi import requests as curl_requests
-        resp = await asyncio.to_thread(
-            lambda: curl_requests.get(
-                f"https://{domain}/meta.json", impersonate="chrome",
-                timeout=PAGE_SCRAPE_TIMEOUT, allow_redirects=True,
+        if named:
+            from app.services.shopify_pdp_service import _named_curl_get
+            resp = await asyncio.to_thread(_named_curl_get, meta_url, PAGE_SCRAPE_TIMEOUT)
+            shopify_named_read_observe(meta_url, resp)
+        else:
+            resp = await asyncio.to_thread(
+                lambda: curl_requests.get(
+                    f"https://{domain}/meta.json", impersonate="chrome",
+                    timeout=PAGE_SCRAPE_TIMEOUT, allow_redirects=True,
+                )
             )
-        )
         if resp.status_code != 200:
             return None
         cur = resp.json().get("currency")
