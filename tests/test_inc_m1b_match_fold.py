@@ -2613,3 +2613,218 @@ def test_fx2_pin_fa4raw_keeps_paris_houseless(monkeypatch, row):
     """FX3-5 PIN: the right houseless "Paris Layton" title stays accepted under the
     short-word two-house refusal."""
     _fx2_off_on(monkeypatch, *row)
+
+
+# ==========================================================================================
+# FIX3 RED4 ROWS (INC-M1b FIX3, the last fix round; FIX3_RULINGS_INC_M1b.md: the relay ruling
+# ORCH-M1B-F and the orchestrator's sections 2 and 3). ROWS ADDED ONLY: everything below is
+# appended after the frozen bytes (blob e9bed172); no line above is edited or deleted, and
+# every name below is new (FX3_* / test_fx3_*), so no frozen row reads anything defined here.
+# Sources: the round-3 flag-mix re-verify report (B-EF, sections 8 and 9), the round-3
+# correctness re-verify report (M-1 = the real-line m-b, M-2, M-3 = OWN_HIM, M-4 = OWN_S1),
+# and the RED4 small probes at 85098c45 (the base axis of every row below was measured there
+# with the flag OFF in the production mix; the flag-ON verdicts in both mixes).
+# The guard these rows are written for, FX4-1 CONCPH (in or beside _m1b_excluded, so the
+# single-concentration default, the houseless rule, the fold and the fold's house-only
+# exception all read it): the rules are refused when the query and the candidate DIFFER in a
+# concentration-phrase flanker, either side, read on the raw words: (i) "eau fraiche";
+# (ii) "le parfum"; (iii) a bare "parfum" (not the side's "eau de parfum") beside another
+# concentration label (EDP, EDT, Eau de Parfum, Eau de Toilette, Cologne). A side whose only
+# label is a bare Parfum names none: a Parfum bottle keeps the base reading.
+# Row classes (the gate reads them by name):
+#   test_fx3_guard_*  GUARD: rejected with the flag OFF and with it ON, each pair through
+#                     _selection_match and the descriptor path (_fx1_guard, FX1_GUARD_MIXES).
+#                     85098c45 accepts every one with the flag ON, so each fails there on an
+#                     AssertionError (RED); FX4-1 closes it.
+#   test_fx3_e2e_*    end to end, hermetic: the converted terminal park (select_best over the
+#                     p2-filtered converted row, _fx1_parks_none) and should_cache_price.
+#   test_fx3_pin_*    PIN: today's verdicts at 85098c45, green there and after FIX3. A keep row
+#                     is a right pair (R4) accepted with the flag ON that FX4-1 must not
+#                     refuse; the OWN_HIM and OWN_S1 rows pin the refusal of a WRONG pair
+#                     (never a right one) that the widening mutant accepts (RG-2).
+# Nothing for a class the rulings keep a stated limit (m4 Eau de Cologne, m2 the YFLANK cost,
+# m3 the FX3-2 cost), and no Le Male row (ORCH-M1B-A keeps Le Male for INC-M1c).
+# Hermetic: no network, no .env, no credential; every row deletes every ENABLE_* name and
+# WARMER_CONTEXT and sets the flags it depends on (_clean / _on). Pure ASCII, LF. A hermetic
+# count is not the production proof: merged, NOT yet proven until the owner's phone shows it.
+# ==========================================================================================
+
+
+# ---------------------------------------------------------------- B-EF: an Eau Fraiche title
+# FX4-1 (i). "Eau Fraiche" is a NON-flagship pattern of _CONCENTRATION_PATTERNS, stripped from
+# identity like every concentration phrase, and extract_concentration reads EDT before it: beside
+# an EDT label the title states the query's EDT, and under a query that states no concentration
+# no axis applies. The Y house-only exception (M1bR-4) and the fold then take the real flanker
+# (YSL Y Eau Fraiche) for the base line in another house spelling; the base accepts only the
+# same spelling (pre-existing, outside M1b). "Yves Saint Laurent Y EDT" is the resolver's own
+# query for a typed "YSL Y". (rid, query, title, the listing's brand field, the base axis)
+FX3_BEF_HOUSE_ONLY_ROWS = (
+    ("bef_y_edt_house_only", "Yves Saint Laurent Y EDT", "YSL Y Eau Fraiche EDT 100ml", "", "identity_subset"),
+    ("bef_y_noconc_house_only", "Yves Saint Laurent Y", "YSL Y Eau Fraiche 100ml", "", "identity_subset"),
+)
+# The fold path, with no Le Male row (ORCH-M1B-A keeps Le Male for INC-M1c).
+FX3_BEF_FOLD_ROWS = (
+    ("bef_sauvage_edt_fold", "Dior Sauvage EDT", "Christian Dior Sauvage Eau Fraiche Eau de Toilette 100ml", "", "variant_add"),
+)
+
+
+@pytest.mark.parametrize("row", FX3_BEF_HOUSE_ONLY_ROWS, ids=[r[0] for r in FX3_BEF_HOUSE_ONLY_ROWS])
+def test_fx3_guard_bef_house_only(monkeypatch, row):
+    """FX4-1 CONCPH (i), B-EF on the house-only exception: a title naming Eau Fraiche that the
+    query does not name takes no rule; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+@pytest.mark.parametrize("row", FX3_BEF_FOLD_ROWS, ids=[r[0] for r in FX3_BEF_FOLD_ROWS])
+def test_fx3_guard_bef_fold(monkeypatch, row):
+    """FX4-1 CONCPH (i), B-EF on the fold: the same through the brand alias fold."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- m-b: a Parfum-named flanker
+# FX4-1 (ii) and (iii). A flanker named "Le Parfum", or a bare "Parfum" beside an EDP or EDT
+# label: extract_concentration reads EDP / EDT before a bare "parfum", so the flagship axis
+# (_vd_flagship_concentration_added) never sees the flanker, and every concentration phrase is
+# stripped from identity. The fold, the house-only exception and the houseless rule then took
+# the flanker for the base line, or the base line for the flanker, in another house spelling.
+# M-1, real lines that are not seeded: YSL L'Homme Le Parfum (an Eau de Parfum, so the title is
+# a correct store title of the flanker) and JPG Scandal Le Parfum.
+FX3_MB_REAL_ROWS = (
+    ("mb_lhomme_le_parfum_edp_title", "Yves Saint Laurent L'Homme", "YSL L'Homme Le Parfum Eau de Parfum 100ml", "", "identity_subset"),
+    ("mb_scandal_le_parfum_edp_title", "Jean Paul Gaultier Scandal EDP", "JPG Scandal Le Parfum EDP 80ml", "", "identity_subset"),
+)
+# The seeded lines (stated limit 17 at FIX2): the flanker on the title side (the houseless rule)
+# and on the query side (the fold).
+FX3_MB_SEEDED_ROWS = (
+    ("mb_swy_parfum_edp_title", "Emporio Armani Stronger With You", "Stronger With You Parfum EDP 100ml", "", "identity_subset"),
+    ("mb_libre_le_parfum_edp_query", "Yves Saint Laurent Libre Le Parfum EDP", "YSL Libre EDP 100ml", "", "identity_subset"),
+)
+# M-2: the query types the Parfum flanker AND EDT. The rulings' pair ("Emporio Armani Stronger
+# With You Parfum EDT" | "Stronger With You EDT 100ml") is rejected at 85098c45 (FX1-3 refuses
+# the houseless rule), so it is not red there; the measured equivalents take the fold, which
+# reads no FX1-3: the same query shape against the base line in another house spelling.
+FX3_M2_ROWS = (
+    ("m2_swy_parfum_edt_query_armani_title", "Emporio Armani Stronger With You Parfum EDT", "Armani Stronger With You EDT 100ml", "", "identity_subset"),
+    ("m2_armani_swy_parfum_edt_query_emporio_title", "Armani Stronger With You Parfum EDT", "Emporio Armani Stronger With You EDT 100ml", "", "variant_add"),
+)
+
+
+@pytest.mark.parametrize("row", FX3_MB_REAL_ROWS, ids=[r[0] for r in FX3_MB_REAL_ROWS])
+def test_fx3_guard_mb_real_line(monkeypatch, row):
+    """FX4-1 CONCPH (ii) / (iii), M-1: a title naming a Le Parfum flanker beside EDP that the
+    query does not name takes no rule on a real line; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+@pytest.mark.parametrize("row", FX3_MB_SEEDED_ROWS, ids=[r[0] for r in FX3_MB_SEEDED_ROWS])
+def test_fx3_guard_mb_seeded(monkeypatch, row):
+    """FX4-1 CONCPH (ii) / (iii), seeded m-b: the Parfum-named flanker on either side, the other
+    side naming none, takes no rule (the guard is symmetric); the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+@pytest.mark.parametrize("row", FX3_M2_ROWS, ids=[r[0] for r in FX3_M2_ROWS])
+def test_fx3_guard_m2_parfum_edt_query(monkeypatch, row):
+    """FX4-1 CONCPH (iii), M-2: a query naming the bare Parfum flanker beside EDT takes no fold
+    onto the base line's EDT title; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- end to end (hermetic)
+# The converted terminal park (select_best over ONE converted row after
+# p2_filter_marketplace_rows), in every ENABLE_PRICE_NOT_LOST x ENABLE_GENUINE_PRICE_PRIORITY
+# state the park reads, and should_cache_price over the walk's local BHD price (_price), for the
+# B-EF Y pair. (rid, query, title, brand field) / (rid, line, query, title)
+FX3_PARK_ROWS = (
+    ("park_bef_y_edt", "Yves Saint Laurent Y EDT", "YSL Y Eau Fraiche EDT 100ml", ""),
+)
+FX3_CACHE_ROWS = (
+    ("cache_bef_y_edt", "y", "Yves Saint Laurent Y EDT", "YSL Y Eau Fraiche EDT 100ml"),
+)
+
+
+@pytest.mark.parametrize("row", FX3_PARK_ROWS, ids=[r[0] for r in FX3_PARK_ROWS])
+def test_fx3_e2e_converted_park_takes_no_bef_row(monkeypatch, row):
+    """B-EF end to end: a converted row of the Y Eau Fraiche title parks nothing with the flag
+    ON, in every state the park reads."""
+    _fx1_parks_none(monkeypatch, (row,))
+
+
+@pytest.mark.parametrize("row", FX3_CACHE_ROWS, ids=[r[0] for r in FX3_CACHE_ROWS])
+def test_fx3_e2e_should_cache_price_refuses_bef(monkeypatch, row):
+    """B-EF end to end: should_cache_price refuses the Y Eau Fraiche title with the flag ON, as
+    with it OFF, in the production mix and with the four other matcher flags ON."""
+    rid, line, query, title = row
+    for extra in FX1_GUARD_MIXES:
+        mid = _fx1_mix_id(extra)
+        _clean(monkeypatch, **extra)
+        assert bool(ps.should_cache_price(query, _price(line, title), CAT)) is False, (rid, "flag OFF", mid)
+        _on(monkeypatch, **extra)
+        assert bool(ps.should_cache_price(query, _price(line, title), CAT)) is False, (
+            "%s [%s]: %s | %s cached with the flag ON" % (rid, mid, query, title))
+
+
+# ---------------------------------------------------------------- PIN rows
+# (rid, query, title, brand, flag OFF verdict, flag ON verdict): today's verdicts at 85098c45 in
+# both FX1_GUARD_MIXES (_fx2_off_on), kept by FIX3. Every keep row is a right pair by R4.
+# (i) the right Y EDT bottle in another house spelling: neither side names a phrase.
+FX3_KEEP_Y_EDT_ROWS = (
+    ("keep_y_edt_ysl_eau_de_toilette", "Yves Saint Laurent Y EDT", "YSL Y Eau de Toilette 100ml", "", False, True),
+    ("keep_y_edt_saint_laurent_eau_de_toilette", "Yves Saint Laurent Y EDT", "Saint Laurent Y Eau de Toilette 100ml", "", False, True),
+)
+# (ii) a right Parfum bottle under a Parfum query in another spelling. A bare Parfum as a side's
+# ONLY label names no phrase (the fold and the houseless rule), and a Parfum-named flanker that
+# the query names too keeps the rules (the guard refuses only when the two sides DIFFER).
+FX3_KEEP_PARFUM_ROWS = (
+    ("keep_sauvage_parfum_fold", "Dior Sauvage Parfum", "Christian Dior Sauvage Parfum 100ml", "", False, True),
+    ("keep_sauvage_parfum_houseless", "Dior Sauvage Parfum", "Sauvage Parfum 100ml", "", False, True),
+    ("keep_scandal_le_parfum_both_sides_fold", "Jean Paul Gaultier Scandal Le Parfum EDP", "JPG Scandal Le Parfum EDP 80ml", "", False, True),
+)
+
+
+@pytest.mark.parametrize("row", FX3_KEEP_Y_EDT_ROWS, ids=[r[0] for r in FX3_KEEP_Y_EDT_ROWS])
+def test_fx3_pin_keeps_y_edt(monkeypatch, row):
+    """FX4-1 PIN (i): the right Y EDT title in another house spelling keeps the house-only
+    exception (no concentration-phrase flanker on either side)."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+@pytest.mark.parametrize("row", FX3_KEEP_PARFUM_ROWS, ids=[r[0] for r in FX3_KEEP_PARFUM_ROWS])
+def test_fx3_pin_keeps_parfum_bottle(monkeypatch, row):
+    """FX4-1 PIN (ii): a Parfum bottle (Parfum its only label) and a Parfum-named flanker that
+    both sides name keep the rules."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+# (iii) M-3, OWN_HIM: _m1b_gender_side reading the men side from the strict words only (him and
+# gents dropped). Light Blue's default line is the women's: the men-pronoun query against the
+# gender-free title, and the gender-free query against a "Him" title, through the fold, are
+# WRONG (the other gender's twin). 85098c45 refuses them through the pronouns (FX3-2 GFOLD and
+# condition (d)); the mutant accepts them.
+FX3_OWN_HIM_ROWS = (
+    ("own_him_light_blue_him_query", "Dolce Gabbana Light Blue Him EDT", "D&G Light Blue EDT 100ml", "", False, False),
+    ("own_him_light_blue_for_gents_query", "Dolce Gabbana Light Blue for Gents EDT", "D&G Light Blue EDT 100ml", "", False, False),
+    ("own_him_light_blue_him_title", "Dolce Gabbana Light Blue EDT", "D&G Light Blue Him EDT 100ml", "", False, False),
+)
+# (iv) M-4, OWN_S1: FX3-5 only at the houseless call site. A PDM query carrying "Paris" (a word of
+# the Lancome alias group) against a garbled title naming Lancome on the PDM bottle: WRONG. It
+# is refused at the fold's accept point only because FX3-5 reads the query's raw words there
+# (the "de" of "parfums de marly"); the mutant (the accept point back to the query core) folds it.
+FX3_OWN_S1_ROWS = (
+    ("own_s1_pdm_paris_query_lancome_title", "Parfums de Marly Paris Layton EDP", "Parfums de Marly Lancome Layton EDP 125ml", "", False, False),
+    ("own_s1_pdm_paris_sized_query_lancome_title", "Parfums de Marly Paris Layton EDP 125ml", "Parfums de Marly Lancome Layton EDP 125ml", "", False, False),
+)
+
+
+@pytest.mark.parametrize("row", FX3_OWN_HIM_ROWS, ids=[r[0] for r in FX3_OWN_HIM_ROWS])
+def test_fx3_pin_own_him_men_pronoun(monkeypatch, row):
+    """OWN_HIM PIN (iii): a men pronoun (him, gents) states the men side for the fold's gender
+    checks, so the other gender's twin keeps the base verdict."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+@pytest.mark.parametrize("row", FX3_OWN_S1_ROWS, ids=[r[0] for r in FX3_OWN_S1_ROWS])
+def test_fx3_pin_own_s1_fold_accept_point(monkeypatch, row):
+    """OWN_S1 PIN (iv): FX3-5 at the fold's accept point too: a garbled Lancome-named PDM title
+    keeps the base verdict under a PDM Paris query."""
+    _fx2_off_on(monkeypatch, *row)
