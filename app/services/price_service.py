@@ -7717,12 +7717,259 @@ def _vd_form_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> b
     return bool(q.form and c.form and q.form != c.form)
 
 
+# ---------------------------------------------------------------------------
+# INC-M1b MATCHER FOLD (ENABLE_MATCH_FOLD, default OFF, read per call; the
+# incident data lane). SELECTION mode and fragrances only (the category after the
+# _selection_match "other" re-inference): EXACT and BACKSTOP never reach it.
+#   1. The brand alias fold (_m1b_fold_cores): a group of _BRAND_ALIAS_GROUPS
+#      (unchanged) or of the private _M1B_EXTRA_ALIAS_GROUPS folds only when the
+#      QUERY core holds one of its members (a multi-word member only with all of
+#      its words); every member then present on a side becomes ONE canonical token
+#      on that side, before the identity subset and the variant-add step. The
+#      house-only guard refuses the fold when the folded query core would hold
+#      house tokens only, unless the query names a seeded line whose whole name
+#      (one- and two-letter words included) is among the candidate's raw words.
+#   2. The houseless distinctive line: a title may omit the house of a seeded line
+#      the query names (a house alias and a line alias both among the query's raw
+#      words) when it carries every token of a distinctive alias form of that line
+#      (two or more tokens after padding, or one token of six or more letters) and
+#      no word of that house's alias group; the house tokens then leave the query
+#      core and the subset and variant-add steps run unchanged.
+#   3. The single-concentration default (_vd_candidate_missing_query_axis; the
+#      mode reaches it as a keyword from descriptor_verdict).
+#   4. The narrowing guard (M1bR-14): the existing sample, floor-word, 30 ml floor
+#      (unless the listing size is the typed size), product-form and counterfeit
+#      predicates refuse 1, 2 and 3 for the pair, and the base verdict stands.
+# The seeded lines come ONLY from product_resolver.seeded_line_profiles(),
+# imported lazily and read at most once per verdict, only when a rule needs them.
+# The flag read is the first statement of every gated path: OFF runs none of this
+# and never reads the accessor. The rules run in the verdict step; the one memo is
+# the bounded string tokenizer of the seeded-line words (a pure function).
+# ---------------------------------------------------------------------------
+_M1B_EXTRA_ALIAS_GROUPS = (
+    frozenset({"mfk", "maison francis kurkdjian", "francis kurkdjian"}),
+)
+# A canonical house token holds a space; normalize_words splits on whitespace, so
+# no query or title word can ever equal one.
+_M1B_CANON_PREFIX = "m1b house "
+
+
+def match_fold_enabled() -> bool:
+    """INC-M1b: ENABLE_MATCH_FOLD, read per call (house idiom)."""
+    return os.getenv("ENABLE_MATCH_FOLD", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+@functools.lru_cache(maxsize=512)
+def _m1b_core_words(text: str) -> Tuple[str, ...]:
+    """The identity-token words of a house or alias-group string (the normalize_words
+    split and strip over _fold_identity), so they compare with a SELECTION core.
+    Memoised: a pure function of the string (no flag, no state; _fold_identity costs
+    about 10 us and a verdict reads up to about 30 seeded-line strings)."""
+    out = []
+    for word in _APOSTROPHES_RE.sub("", _fold_identity(text or "")).split():
+        value = word.replace("-", "").strip(",.()&:;'\"")
+        if value:
+            out.append(value)
+    return tuple(out)
+
+
+@functools.lru_cache(maxsize=512)
+def _m1b_raw_words(text: str) -> FrozenSet[str]:
+    """The raw words of a seeded-line string, tokenized as VariantDescriptor.fold_tokens
+    (memoised like _m1b_core_words: a pure function of the string)."""
+    return frozenset(re.findall(r"[a-z0-9]+", _fold_identity(text or "")))
+
+
+def _m1b_compile_groups(
+    groups: Tuple[FrozenSet[str], ...],
+) -> Tuple[Tuple[str, FrozenSet[str], Tuple[Tuple[str, ...], ...]], ...]:
+    """Per alias group: (its canonical token, every member word, the members as word
+    tuples, longest first so "maison francis kurkdjian" folds before "francis
+    kurkdjian")."""
+    out = []
+    for group in groups:
+        members = sorted({w for w in (_m1b_core_words(m) for m in group) if w},
+                         key=lambda w: (-len(w), w))
+        if members:
+            out.append((_M1B_CANON_PREFIX + "/".join(sorted(group)),
+                        frozenset(x for m in members for x in m), tuple(members)))
+    return tuple(out)
+
+
+# The fold's groups, compiled once at import from the two constant tables (a
+# derived constant, not a cache: it never changes after import).
+_M1B_FOLD_GROUPS = _m1b_compile_groups(
+    tuple(_BRAND_ALIAS_GROUPS) + tuple(_M1B_EXTRA_ALIAS_GROUPS))
+
+
+def _m1b_fold(core: FrozenSet[str], groups: Tuple[Any, ...]) -> FrozenSet[str]:
+    """`core` with every member of `groups` it holds (all of the member's words)
+    replaced by that group's canonical token."""
+    out = set(core)
+    for canon, _words, members in groups:
+        for member in members:
+            if all(w in out for w in member):
+                out.difference_update(member)
+                out.add(canon)
+    return frozenset(out)
+
+
+def _m1b_profiles() -> Tuple[Any, ...]:
+    """The seeded lines, ONLY through product_resolver.seeded_line_profiles() (imported
+    here, lazily: product_resolver imports this module lazily too). () on failure."""
+    try:
+        from app.services.product_resolver import seeded_line_profiles
+
+        return tuple(seeded_line_profiles())
+    except Exception:  # noqa: BLE001 -- fail safe: no seeded line, the fold still works
+        return ()
+
+
+def _m1b_named_lines(q: VariantDescriptor, profiles: Tuple[Any, ...]) -> List[Any]:
+    """The seeded lines the query names: a house alias and a line alias of the line
+    both among the query's raw words (file order)."""
+    named = []
+    for p in profiles:
+        if not any(w and w <= q.fold_tokens for w in map(_m1b_raw_words, p.house_aliases)):
+            continue
+        if any(w and w <= q.fold_tokens for w in map(_m1b_raw_words, p.aliases)):
+            named.append(p)
+    return named
+
+
+def _m1b_house_words(p: Any) -> Tuple[FrozenSet[str], FrozenSet[str]]:
+    """(every word of the line's house aliases and of the alias groups sharing a word
+    with them, the canonical tokens of those groups)."""
+    house = set()
+    for alias in p.house_aliases:
+        house.update(_m1b_core_words(alias))
+    words, canons = set(house), set()
+    for canon, group_words, _members in _M1B_FOLD_GROUPS:
+        if group_words & house:
+            words |= group_words
+            canons.add(canon)
+    return frozenset(words), frozenset(canons)
+
+
+def _m1b_distinctive_forms(q: VariantDescriptor, p: Any, cat: str) -> List[FrozenSet[str]]:
+    """The core tokens of each alias form of `p` the query names that is distinctive:
+    two or more tokens after the padding, or one alphabetic token of six or more
+    letters (judged per alias form)."""
+    out = []
+    for alias in p.aliases:
+        raw = _m1b_raw_words(alias)
+        if not raw or not raw <= q.fold_tokens:
+            continue
+        tokens = frozenset(_identity_tokens_ps(alias, "", cat)) - _category_padding(cat)
+        one = next(iter(tokens)) if len(tokens) == 1 else ""
+        if len(tokens) >= 2 or (one.isalpha() and len(one) >= 6):
+            out.append(tokens)
+    return out
+
+
+def _m1b_excluded(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """M1bR-14 / M1bR-6 (e): an EXISTING predicate marks the candidate as a sample,
+    decant, tester or vial (_SAMPLE_LISTING_RE), a travel or mini size
+    (_P2_FLOOR_WORDS_RE; under _P2_FLOOR_ML unless that is the typed size), a gift
+    set, refill or body product (the descriptor form) or a dupe
+    (is_counterfeit_listing). Read over the candidate's raw words."""
+    if c.form is not None:
+        return True
+    size = c.size_ml_snapped
+    if size is not None and size < _P2_FLOOR_ML and size != q.size_ml_snapped:
+        return True
+    text = " ".join(sorted(c.fold_tokens))
+    if _SAMPLE_LISTING_RE.search(text) or _P2_FLOOR_WORDS_RE.search(text):
+        return True
+    return is_counterfeit_listing(text)
+
+
+def _m1b_fold_cores(q: VariantDescriptor, c: VariantDescriptor, q_core: FrozenSet[str],
+                    t_core: FrozenSet[str], cat: str) -> Tuple[FrozenSet[str], FrozenSet[str]]:
+    """INC-M1b rules 1, 2 and 4 (the caller read the flag and checked fragrances): the
+    (query core, title core) the LEAK subset and the variant-add step then compare.
+    The accessor is read only for the house-only exception and the houseless rule."""
+    profiles = None
+    fq, ft, folded = q_core, t_core, False
+    triggered = tuple(g for g in _M1B_FOLD_GROUPS
+                      if g[1] & q_core and any(all(w in q_core for w in m) for m in g[2]))
+    if triggered:
+        folded_q = _m1b_fold(q_core, triggered)
+        folded = bool(folded_q - frozenset(g[0] for g in triggered))
+        if not folded:  # the house-only guard and its seeded-line exception (M1bR-4)
+            profiles = _m1b_profiles()
+            folded = any(_m1b_raw_words(p.line) and _m1b_raw_words(p.line) <= c.fold_tokens
+                         for p in _m1b_named_lines(q, profiles))
+        if folded:
+            fq, ft = folded_q, _m1b_fold(t_core, triggered)
+            # M1bR-14: the guard refuses the fold. A fragrance SELECTION accepts only
+            # when the two cores end equal, so the guard is read only where the fold
+            # turns the verdict into an accept.
+            if fq == ft and q_core != t_core and _m1b_excluded(q, c):
+                return q_core, t_core
+    if fq <= ft or (ft - fq):
+        # The subset holds, or an extra title token rejects at variant-add whatever
+        # the query core keeps: the houseless rule cannot turn the verdict here.
+        return fq, ft
+    if profiles is None:
+        profiles = _m1b_profiles()
+    named = [(p,) + _m1b_house_words(p) for p in _m1b_named_lines(q, profiles)]
+    if not any(not (t_core & house) and (fq - house - canons) <= ft
+               for _p, house, canons in named):
+        # No named line can turn the verdict (dropping its house leaves a query token
+        # the title lacks): skip the line-form tokens; the verdict is the same.
+        return fq, ft
+    for p, house, canons in named:
+        if t_core & house:  # (c) the house is replaced or partly named, not omitted
+            continue
+        for tokens in _m1b_distinctive_forms(q, p, cat):
+            if tokens and tokens <= t_core:  # (d) every token of the line form
+                houseless_q = fq - house - canons
+                # M1bR-14: the guard refuses the houseless rule (read where it would accept).
+                if houseless_q <= ft and _m1b_excluded(q, c):
+                    return fq, ft
+                return houseless_q, ft
+    return fq, ft
+
+
+def _m1b_concentration_default(q: VariantDescriptor, c: VariantDescriptor) -> bool:
+    """M1bR-6 (the caller read the flag, is in SELECTION mode, fragrances, and saw a
+    query concentration the candidate omits): True when the candidate counts as
+    stating the query's concentration."""
+    men, women = _GENDER_LINE_MEN_WORDS, _GENDER_LINE_WOMEN_WORDS
+    c_side = (bool(c.fold_tokens & men), bool(c.fold_tokens & women))
+    if c_side != (False, False) and c_side != (bool(q.fold_tokens & men),
+                                               bool(q.fold_tokens & women)):
+        return False  # (d) the candidate states a gender the query does not
+    if _m1b_excluded(q, c):
+        return False  # (e) sample, decant, tester, travel, mini, gift set, refill, body, dupe
+    for p in _m1b_profiles():
+        if not p.single_concentration or tuple(p.concentrations) != (q.concentration,):
+            continue  # (a) a single-concentration line, (b) its one concentration
+        if not _m1b_named_lines(q, (p,)):
+            continue  # (a) the query names the line (its house and the line)
+        for flanker in p.flankers:
+            words = _m1b_raw_words(flanker)
+            if words and words <= c.fold_tokens:
+                return False  # (c) the candidate names a flanker of the line
+        return True
+    return False
+
+
 def _vd_candidate_missing_query_axis(q: VariantDescriptor, c: VariantDescriptor,
-                                     cat: str) -> bool:
+                                     cat: str, *, mode: Optional[str] = None) -> bool:
     """QUERY_STATED_REQUIRES_CANDIDATE (_candidate_missing_query_axis): the
-    candidate omitting a query-pinned axis is UNVERIFIED -> fail-closed."""
+    candidate omitting a query-pinned axis is UNVERIFIED -> fail-closed.
+    INC-M1b: under ENABLE_MATCH_FOLD and in SELECTION mode only (`mode`, passed on
+    by descriptor_verdict; every other caller passes none), a fragrance candidate
+    that omits the concentration counts as stating the query's when the query
+    names a single-concentration seeded line (_m1b_concentration_default). The
+    size branch is unchanged."""
     if cat == "fragrances":
-        if q.concentration and not c.concentration:
+        # INC-M1b: the base omission check, then the default (the flag read first).
+        if q.concentration and not c.concentration and not (
+                match_fold_enabled() and mode == DESCRIPTOR_MODE_SELECTION
+                and _m1b_concentration_default(q, c)):
             return True
         if q.size_ml_snapped is not None and c.size_ml_snapped is None:
             return True
@@ -7888,13 +8135,15 @@ def _vd_color_mismatch(q: VariantDescriptor, c: VariantDescriptor) -> bool:
 
 def _descriptor_axis_mismatch(q: VariantDescriptor, c: VariantDescriptor,
                               category: Optional[str], *,
-                              strict_extras: bool = True) -> Optional[str]:
+                              strict_extras: bool = True,
+                              mode: Optional[str] = None) -> Optional[str]:
     """The axis core of the comparator table — the descriptor form of the
     legacy _axis_mismatch body, check-for-check in the same order. Returns the
     FAILING AXIS name, or None when no explicit axis discriminates.
     `strict_extras=False` is the BACKSTOP contract (numeric-axis-only — no
     form / candidate-omits / category-type-add / gender / color / clothing /
-    vitamin enforcement)."""
+    vitamin enforcement). `mode` (INC-M1b) is the descriptor_verdict mode, passed
+    on only to _vd_candidate_missing_query_axis (None from _axis_mismatch)."""
     cat = (category or "").lower()
     # SET_EQUALITY — category variant qualifiers (electronics fe/se/pro/...).
     # Extraction already scoped the field to the category's qualifier set, so
@@ -7955,7 +8204,7 @@ def _descriptor_axis_mismatch(q: VariantDescriptor, c: VariantDescriptor,
     if strict_extras:
         if _vd_form_mismatch(q, c, cat):
             return "form"
-        if _vd_candidate_missing_query_axis(q, c, cat):
+        if _vd_candidate_missing_query_axis(q, c, cat, mode=mode):
             return "candidate_missing_query_axis"
         if _vd_category_type_added(q, c, cat):
             return "category_type_added"
@@ -8028,6 +8277,10 @@ def _descriptor_selection_verdict(q: VariantDescriptor, c: VariantDescriptor,
         if (q_nums and t_nums and (q_nums & t_nums) and not (t_nums - q_nums)
                 and (q_core - q_nums).issubset(t_core - t_nums)):
             return DescriptorVerdict(True)
+    # INC-M1b (ENABLE_MATCH_FOLD, read first; fragrances only): the alias fold and
+    # the houseless distinctive line (_m1b_fold_cores). OFF leaves both cores as they are.
+    if match_fold_enabled() and cat == "fragrances":
+        q_core, t_core = _m1b_fold_cores(q, c, q_core, t_core, cat)
     # LEAK direction — candidate must carry every query distinctive token.
     if not q_core.issubset(t_core):
         return DescriptorVerdict(False, "identity_subset")
@@ -8059,7 +8312,7 @@ def descriptor_verdict(q: VariantDescriptor, c: VariantDescriptor,
     if mode not in _DESCRIPTOR_MODES:
         raise ValueError(f"unknown descriptor mode: {mode!r}")
     axis = _descriptor_axis_mismatch(
-        q, c, category, strict_extras=(mode != DESCRIPTOR_MODE_BACKSTOP))
+        q, c, category, strict_extras=(mode != DESCRIPTOR_MODE_BACKSTOP), mode=mode)
     if axis is not None:
         return DescriptorVerdict(False, axis)
     if mode == DESCRIPTOR_MODE_BACKSTOP:
