@@ -63,6 +63,8 @@ SITES = {
     "usage_service.bonus_reset": ("app/services/usage_service.py", "_maybe_reset_referral_bonus"),
     "usage_service.lifetime_increment": ("app/services/usage_service.py", "record_lifetime_comparison"),
     "usage_service.comparison_increment": ("app/services/usage_service.py", "record_comparison"),
+    "structured_comparison_service.behavior_profile": ("app/services/structured_comparison_service.py",
+                                                       "_update_behavior_profile"),
 }
 
 
@@ -378,6 +380,24 @@ def _d_comparison_increment(mp, fake, uid):
     return _outcome(lambda: _run(us.record_comparison(uid, "t1c")))
 
 
+def _d_behavior_profile(mp, fake, uid):
+    """INC-T1d TD-9: fakes for get_supabase_client, run_db and
+    behavior_service.build_behavior_profile; the users update raises."""
+    import app.services.behavior_service as bs
+    import app.services.structured_comparison_service as scs
+    mp.delenv("ENABLE_BEHAVIOR_PROFILE_REBUILD", raising=False)
+    _ds(mp, fake)
+
+    async def _inline_run_db(call):
+        return call()
+
+    mp.setattr(scs, "run_db", _inline_run_db)
+    profile = {"category_affinity": {"fragrances": 1.0}}
+    mp.setattr(bs, "get_behavior_service",
+               lambda: SimpleNamespace(build_behavior_profile=AsyncMock(return_value=profile)))
+    return _outcome(lambda: _run(scs.StructuredComparisonService._update_behavior_profile(None, uid)))
+
+
 DRIVERS = {
     "auth_routes.register_device_fp": _d_register_device_fp,
     "auth_routes.legacy_device_fp": _d_legacy_device_fp,
@@ -400,6 +420,7 @@ DRIVERS = {
     "usage_service.bonus_reset": _d_bonus_reset,
     "usage_service.lifetime_increment": _d_lifetime_increment,
     "usage_service.comparison_increment": _d_comparison_increment,
+    "structured_comparison_service.behavior_profile": _d_behavior_profile,
 }
 
 
@@ -474,6 +495,8 @@ EXPECTED = {
     "usage_service.bonus_reset": (_bonus_zeroed, (logging.WARNING, "[usage] referral bonus reset failed for ")),
     "usage_service.lifetime_increment": (_returns(None), (logging.ERROR, "Failed to record lifetime comparison for ")),
     "usage_service.comparison_increment": (_returns(None), (logging.ERROR, "Failed to record comparison usage for ")),
+    "structured_comparison_service.behavior_profile": (_returns(None),
+                                                       (logging.WARNING, "Failed to update behavior profile: ")),
 }
 
 
@@ -497,7 +520,7 @@ def _drive(site, kind, monkeypatch, caplog):
 def test_t00_driver_and_expectation_tables_cover_every_site():
     """PIN: the in-file tables agree (a typo in a site name fails here, not silently)."""
     assert set(DRIVERS) == set(SITES) == set(EXPECTED)
-    assert len(SITES) == 21
+    assert len(SITES) == 22
 
 
 def _site_calls():
