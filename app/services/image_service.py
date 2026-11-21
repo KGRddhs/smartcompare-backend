@@ -488,6 +488,12 @@ _LATE_TRUTHY = ("true", "1", "yes", "on")
 #: A unit that edits any of them bumps this constant (pinned by the E22 row).
 PICK_GUARD_RULES = "7f9e0f4f"
 PICK_CACHE_PREFIX = "imgpick:v1:" + PICK_GUARD_RULES + ":"
+#: INC-I2c (ENABLE_IMAGE_GUARD_RECALL): the recall-rules version: sha256 over the
+#: source of the image_relevance recall code (the RECALL_SET) plus a deterministic text
+#: of its tables ("\n"-joined), first 8 hex (pinned by the INC-I2c E9 row). It joins
+#: the cache-name axis only where the second look runs, so every OFF name is unchanged.
+#: A unit that edits the recall code or tables bumps this constant.
+PICK_RECALL_RULES = "aaf6627d"
 _LATE_MAX_SECONDS_CEILING = 30.0
 
 
@@ -549,13 +555,19 @@ def _name_part(text: Any) -> str:
 def pick_cache_name(relevance: Any, variant: Any) -> str:
     """The cache name of a late pick: PICK_CACHE_PREFIX + 32 hex of sha256 over
     category|brand|line|conc|axis (each folded, sizes stripped; conc = the variant;
-    axis s1 / s0 by ENABLE_IMAGE_GUARD_SHORT_LINE); never the slot, never raw text."""
+    axis s1 / s0 by ENABLE_IMAGE_GUARD_SHORT_LINE, then w0 / w1:<typed labels> by
+    ENABLE_IMAGE_GUARD_WORDS, then r + PICK_RECALL_RULES only where the INC-I2c second
+    look runs: ENABLE_IMAGE_GUARD_RECALL and the short-line flag ON); never the slot,
+    never raw text."""
     rel = relevance if isinstance(relevance, dict) else {}
     parts = [_name_part(rel.get("category")), _name_part(rel.get("brand")),
              _name_part(rel.get("line")), _name_part(variant),
              ("s1" if _relevance.short_line_enabled() else "s0")
              + ("w1:" + ",".join(sorted(_relevance._conc_labels(rel.get("typed"))))
-                if _relevance.guard_words_enabled() else "w0")]
+                if _relevance.guard_words_enabled() else "w0")
+             + ("r" + PICK_RECALL_RULES
+                if _relevance.recall_enabled() and _relevance.short_line_enabled()
+                else "")]
     digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
     return PICK_CACHE_PREFIX + digest
 

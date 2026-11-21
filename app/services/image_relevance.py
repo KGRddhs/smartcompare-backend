@@ -41,11 +41,33 @@ concentration the user did not ask for (a free-standing flanker intense, or a TY
 concentration the title contradicts; reason ``concentration``). A word the user typed
 and a brand form never count. OFF: ``check`` returns ``_check_base``, the base code.
 
+INC-I2c GUARD-RECALL: ``ENABLE_IMAGE_GUARD_RECALL`` (default OFF; read once per
+``RelevanceCall`` construction, in ``RelevanceCall.__new__`` and only under the guard,
+and once per ``image_service.pick_cache_name``, whose only caller runs under the guard)
+makes ``RelevanceCall(...)`` build the recall subclass ``_RecallCall``. With the
+short-line flag ON, a candidate the base refused with ``fragrance_word`` for an
+empty-brand identity gets a second look. It reads the line without the
+RECALL_FRAGRANCE_WORDS words and is skipped when every remaining significant word is an
+audience word or intense (men, women, homme, femme, unisex ...), or when none remains
+and the line's one-character tokens are absent or not all in the candidate. Else it
+passes on a RECALL_FRAGRANCE_WORDS word (edc, the Arabic parfum, the Arabic
+eau-de-toilette phrase, four Arabic spellings of perfume and two of cologne) of its
+TITLE or knowledge-graph type (never its source text), or, for two remaining
+significant words or more, on a candidate host that is a perfume shop of the code
+registry (``source_router.SOURCE_REGISTRY`` rows whose categories are exactly
+fragrances, read as is: no refresh, and no I/O once source_router is imported). A
+rescued title naming a home-scent good is refused ``form``; then the words test runs
+whatever ENABLE_IMAGE_GUARD_WORDS reads. Every other reason stands. ``check`` and every
+base method are unchanged; OFF: the base class.
+
 A leaf: module level imports the stdlib, ``category_gate`` (the tokenizer),
 ``jsonld_widen`` (the image policy) and ``deny_hosts`` (the banned-site match functions)
-only; ``price_service`` (the alias groups, the JSON-LD image reader) is imported inside
-functions. No logger, no I/O, no host literal. Every public function is pure and total:
-it never raises.
+only; ``price_service`` (the alias groups, the JSON-LD image reader) and
+``source_router`` (the code registry of the INC-I2c second look) are imported inside
+functions. No logger, no host literal, and no I/O once those two are imported (the web
+process imports both at startup; in a cold process the first call imports them, and
+source_router then reads its catalog file when ENABLE_BH_GCC_CATALOG_SOURCES is ON).
+Every public function is pure and total: it never raises.
 """
 
 from __future__ import annotations
@@ -336,6 +358,87 @@ CONC_CLASS = {"Extrait": "Parfum"}
 #: The shopping thumbnail tier (never in TIERS: it never reaches [IMG_RELEVANCE]).
 SHOPPING_TIER = "shopping"
 
+#: INC-I2c GUARD-RECALL (default OFF; read once per RelevanceCall construction, only
+#: under the guard, and once per pick_cache_name, whose only caller runs under it).
+RECALL_FLAG_ENV = "ENABLE_IMAGE_GUARD_RECALL"
+#: The base reasons the second look reads again; every other reason stands.
+RECALL_REASONS = ("fragrance_word",)
+#: R1: words that name a perfume but are not in FRAGRANCE_WORDS: edc, the Arabic
+#: parfum, the Arabic toilette only joined to the de before it (U+062F 0648 or U+062F
+#: 064A: the eau-de-toilette phrase, as an adjacent-pair join or one token; alone the
+#: word also means toilet), four Arabic spellings of perfume and two of cologne. R1
+#: reads them in the title and the knowledge-graph types only, never in the source or
+#: a later text; in the second look they are not significant line words.
+RECALL_FRAGRANCE_WORDS = _fold(
+    "edc",
+    _AR_PARFUM,
+    _cps(0x062F, 0x0648) + _AR_TOILETTE,
+    _cps(0x062F, 0x064A) + _AR_TOILETTE,
+    _cps(0x0628, 0x064A, 0x0631, 0x0641, 0x064A, 0x0648, 0x0645),
+    _cps(0x0628, 0x0631, 0x0641, 0x064A, 0x0648, 0x0645),
+    _cps(0x0628, 0x0627, 0x0631, 0x0641, 0x064A, 0x0648, 0x0645),
+    _cps(0x0628, 0x0627, 0x0631, 0x0641, 0x0648, 0x0645),
+    _cps(0x0643, 0x0648, 0x0644, 0x0648, 0x0646),
+    _cps(0x0643, 0x0648, 0x0644, 0x0648, 0x0646, 0x064A, 0x0627),
+)
+#: R3: a perfume shop is a code-registry row whose categories are exactly these; it
+#: proves a line of at least RECALL_SHOP_MIN_WORDS significant words (the R1 words
+#: never count).
+RECALL_SHOP_CATEGORIES = (FRAGRANCE_CATEGORY,)
+RECALL_SHOP_MIN_WORDS = 2
+#: R-4: a RESCUED title naming a home-scent good is refused ``form``: bakhoor and its
+#: spellings, incense, burners, charcoal, chips, and the Arabic bakhoor, mabkhar and
+#: mabkhara (a burner), fahm (charcoal), dukhoon and mamoul.
+RECALL_HOME_WORDS = _fold(
+    "bakhoor",
+    "bakhour",
+    "bukhoor",
+    "bukhour",
+    "bakhur",
+    "bukhur",
+    "incense",
+    "burner",
+    "burners",
+    "charcoal",
+    "chips",
+    _cps(0x0628, 0x062E, 0x0648, 0x0631),
+    _cps(0x0645, 0x0628, 0x062E, 0x0631),
+    _cps(0x0645, 0x0628, 0x062E, 0x0631, 0x0629),
+    _cps(0x0641, 0x062D, 0x0645),
+    _cps(0x062F, 0x062E, 0x0648, 0x0646),
+    _cps(0x0645, 0x0639, 0x0645, 0x0648, 0x0644),
+)
+#: R-4: the home-scent word pairs: room spray, linen spray, air freshener (and the
+#: Arabic air freshener); FIX-1 (F1-6): home spray, car freshener, fabric spray, wax
+#: melt and wax melts.
+RECALL_HOME_JOINS = frozenset(
+    {
+        _phrase("room spray"),
+        _phrase("linen spray"),
+        _phrase("air freshener"),
+        _phrase(_cps(0x0645, 0x0639, 0x0637, 0x0631) + " " + _cps(0x062C, 0x0648)),
+        _phrase("home spray"),
+        _phrase("car freshener"),
+        _phrase("fabric spray"),
+        _phrase("wax melt"),
+        _phrase("wax melts"),
+    }
+)
+#: R-4: a weight is a number then a gram unit, or the two joined (36g, 500gr, 40gms);
+#: FIX-1 (F1-6): the units include the two Arabic spellings of gram (after a number
+#: only; the joined Arabic form is not read).
+RECALL_GRAM_UNITS = _fold(
+    "g",
+    "gm",
+    "gms",
+    "gr",
+    "gram",
+    "grams",
+    _cps(0x062C, 0x0631, 0x0627, 0x0645),
+    _cps(0x063A, 0x0631, 0x0627, 0x0645),
+)
+RECALL_WEIGHT = re.compile(r"[0-9]+(?:grams|gram|gms|gm|gr|g)")
+
 
 # ---------------------------------------------------------------------------
 # the flag and the knob (read per call)
@@ -358,6 +461,13 @@ def guard_words_enabled() -> bool:
 def shop_page_image_enabled() -> bool:
     """True iff ``ENABLE_SHOP_PAGE_IMAGE`` is set truthy. Read PER CALL."""
     return os.getenv(SHOP_PAGE_IMAGE_FLAG_ENV, "false").strip().lower() in _TRUTHY
+
+
+def recall_enabled() -> bool:
+    """True iff ``ENABLE_IMAGE_GUARD_RECALL`` is set truthy. Read once per
+    RelevanceCall construction (only under the guard) and once per pick_cache_name
+    (its only caller runs under the guard)."""
+    return os.getenv(RECALL_FLAG_ENV, "false").strip().lower() in _TRUTHY
 
 
 def candidates_knob() -> int:
@@ -897,6 +1007,19 @@ class RelevanceCall:
     shared). ``n`` counts every image URL the guard tested; the summary names the
     accepted tier, or the tier and reason of the LAST rejection."""
 
+    def __new__(cls, *args: Any, **kwargs: Any) -> RelevanceCall:
+        """INC-I2c (the pathlib.Path pattern): with the guard and
+        ENABLE_IMAGE_GUARD_RECALL ON, ``RelevanceCall(...)`` builds the recall subclass
+        ``_RecallCall``; the switch is read once per construction, only under the guard.
+        Every argument goes on to ``__init__`` unread (the constructor protocol is
+        kept). ``copy``, ``deepcopy`` and ``pickle`` (protocol 2 or later; 0 and 1 keep
+        the pickled class) call ``cls.__new__(cls)``: a copied or unpickled base call
+        re-reads the switch under the guard (ON, it becomes a ``_RecallCall``); a
+        ``_RecallCall`` stays one (no code copies or pickles a call today)."""
+        if cls is RelevanceCall and guard_enabled() and recall_enabled():
+            cls = _RecallCall
+        return super().__new__(cls)
+
     def __init__(self, product_name: Any, relevance: Any) -> None:
         self.product_name = _str(product_name)
         self.ident = identity(product_name, relevance)
@@ -1018,3 +1141,180 @@ class RelevanceCall:
         if self.n > 0:
             return (self.slot, self.last_tier, "rejected", self.n, self.last_reason)
         return (self.slot, "none", "none", 0, "none")
+
+
+# ---------------------------------------------------------------------------
+# INC-I2c GUARD-RECALL: the second look (reached only through _RecallCall)
+# ---------------------------------------------------------------------------
+def _perfume_domains() -> FrozenSet[str]:
+    """R3: the hosts of the code-registry rows whose categories are exactly
+    RECALL_SHOP_CATEGORIES; the categories are tested first, so only those rows are
+    parsed (FIX-1: the other rows never reach ``_host`` and its URL cache).
+    ``source_router.SOURCE_REGISTRY`` (built at its import) is read as is, never through
+    the merchant-registry memo, so no refresh is scheduled, and no I/O runs once
+    source_router is imported (the web process imports it at startup); source_router
+    is imported here (the leaf holds no host). Total: frozenset() on any fault."""
+    try:
+        from app.services import source_router
+
+        domains: Set[str] = set()
+        for row in _seq(source_router.SOURCE_REGISTRY):
+            categories = tuple(getattr(row, "categories", None) or ())
+            if categories != RECALL_SHOP_CATEGORIES:
+                continue
+            host = _host(getattr(row, "domain", None))
+            if host:
+                domains.add(host)
+        return frozenset(domains)
+    except Exception:  # noqa: BLE001 - a total function: no perfume shop
+        return frozenset()
+
+
+def _perfume_shop(hosts: Any) -> bool:
+    """R3: True when a candidate host is a perfume-shop host or one of its subdomains
+    (never its parent). The registry is read once, and only when there is a host."""
+    candidates = [host for host in map(_host, _seq(hosts)) if host]
+    if not candidates:
+        return False
+    domains = _perfume_domains()
+    return any(
+        host == domain or host.endswith("." + domain)
+        for host in candidates
+        for domain in domains
+    )
+
+
+def _recall_reason(
+    ident: Identity,
+    texts: Any,
+    hosts: Any,
+    fragrance_texts: Any,
+    reason: Optional[str],
+) -> Optional[str]:
+    """INC-I2c: the second look at a base refusal ``reason``. An empty-brand
+    RECALL_REASONS refusal with the short-line flag ON is read again with the line's
+    significant words WITHOUT the R1 words (``line_sig`` minus RECALL_FRAGRANCE_WORDS;
+    FIX-1). It stands when every one of them is an audience word or intense (the set
+    below), or when none remains and the line's one-character tokens are absent or not
+    all covered by the candidate keys, as the base covers a line with no significant
+    word (the base already covered every significant word). Otherwise it is rescued
+    (None) by R1, a RECALL_FRAGRANCE_WORDS word of the TITLE (the first text, never
+    the source or a later text) or of a knowledge-graph type, each read with its
+    adjacent-pair joins, or by R3, RECALL_SHOP_MIN_WORDS of those words and a
+    perfume-shop host. Any other reason, and a refusal neither rule rescues, is
+    returned as is."""
+    if (
+        reason not in RECALL_REASONS
+        or not ident.brand_empty
+        or not short_line_enabled()
+    ):
+        return reason
+    sig = ident.line_sig - RECALL_FRAGRANCE_WORDS
+    if sig and sig <= {
+        "men",
+        "women",
+        "man",
+        "woman",
+        "unisex",
+        "homme",
+        "femme",
+        "him",
+        "her",
+        "boys",
+        "girls",
+        "intense",
+    }:
+        return reason
+    if not sig and not (
+        ident.line_short and ident.line_short <= _candidate_keys(texts)
+    ):
+        return reason
+    words = _candidate_keys(_seq(texts)[:1]) | _candidate_keys(fragrance_texts)
+    if RECALL_FRAGRANCE_WORDS & words:
+        return None
+    if len(sig) >= RECALL_SHOP_MIN_WORDS and _perfume_shop(hosts):
+        return None
+    return reason
+
+
+def _home_reason(ident: Identity, texts: Any) -> Optional[str]:
+    """INC-I2c R-4: ``form`` when the FIRST text (the title) names a home-scent good: a
+    RECALL_HOME_WORDS word, a weight (RECALL_WEIGHT, or a number then a
+    RECALL_GRAM_UNITS word) or a RECALL_HOME_JOINS pair. A word the user typed and a
+    brand form never count; a pair counts unless both of its words are exempt. None
+    otherwise or when the first text is not a str."""
+    seq = _seq(texts)
+    title = seq[0] if seq else None
+    if not isinstance(title, str):
+        return None
+    toks = fold_numero(_cg.normalize(title[:TEXT_MAX_CHARS]))
+    exempt = ident.query_words | ident.brand_forms
+    for tok in toks:
+        if tok in exempt:
+            continue
+        if tok in RECALL_HOME_WORDS or RECALL_WEIGHT.fullmatch(tok):
+            return "form"
+    for a, b in zip(toks, toks[1:], strict=False):
+        if a in exempt and b in exempt:
+            continue
+        if (a, b) in RECALL_HOME_JOINS or (
+            _NUMBER.fullmatch(a) and b in RECALL_GRAM_UNITS
+        ):
+            return "form"
+    return None
+
+
+class _RecallCall(RelevanceCall):
+    """INC-I2c: ``RelevanceCall`` with the second look, built by
+    ``RelevanceCall.__new__`` (a direct ``_RecallCall(...)`` reads no flag; no code
+    builds one). ``accept`` and ``_organic_reason`` run the base method first and look
+    again only at its RECALL_REASONS refusal (``organic_passes``, ``accept_pick`` and
+    ``accept_thumb`` reach the second look through them). A rescued candidate takes the
+    home-scent test, then the words test whatever ENABLE_IMAGE_GUARD_WORDS reads (the
+    I-12 rule of ``accept_thumb``)."""
+
+    def _second_look(
+        self, texts: Any, hosts: Any, fragrance_texts: Any, reason: Optional[str]
+    ) -> Optional[str]:
+        """The verdict on a RECALL_REASONS refusal: the recall rules, then for a
+        rescue the home-scent test and the words test."""
+        reason = _recall_reason(self.ident, texts, hosts, fragrance_texts, reason)
+        if reason is not None:
+            return reason
+        return _home_reason(self.ident, texts) or _words_reason(self.ident, texts)
+
+    def accept(
+        self,
+        tier: str,
+        url: Any,
+        *,
+        texts: Any = (),
+        hosts: Any = (),
+        fragrance_texts: Any = (),
+        deny_only_hosts: Any = (),
+        deny_only_texts: Any = (),
+    ) -> bool:
+        """``RelevanceCall.accept``, then the second look at its RECALL_REASONS
+        refusal; the candidate is counted once."""
+        if super().accept(
+            tier,
+            url,
+            texts=texts,
+            hosts=hosts,
+            fragrance_texts=fragrance_texts,
+            deny_only_hosts=deny_only_hosts,
+            deny_only_texts=deny_only_texts,
+        ):
+            return True
+        if self.last_reason not in RECALL_REASONS:
+            return False
+        reason = self._second_look(texts, hosts, fragrance_texts, self.last_reason)
+        return self._record(tier, reason)
+
+    def _organic_reason(self, item: Dict[str, Any]) -> Optional[str]:
+        """``RelevanceCall._organic_reason``, then the second look at its
+        RECALL_REASONS refusal (the title and the link host)."""
+        reason = super()._organic_reason(item)
+        if reason not in RECALL_REASONS:
+            return reason
+        return self._second_look((item.get("title"),), (item.get("link"),), (), reason)

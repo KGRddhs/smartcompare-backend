@@ -31,7 +31,6 @@
 # passes lint untouched. The issue's "PRs are gated on formatting" is NOT yet
 # achieved — this is a ratchet pointed the right way, not the finished gate.
 # The whole-tree drift report in ci.yml keeps the remaining ~603 visible.
-
 app/__init__.py
 app/api/__init__.py
 app/core/__init__.py
@@ -79,3 +78,5 @@ tests/test_inc_i2b_addenda.py
 tests/test_inc_i2b_fix1.py
 tests/test_inc_sec1_app_user_access.py
 tests/test_inc_u1b_lift_rule_f.py
+tests/test_inc_i2c_guard_recall.py
+tests/test_inc_i2c_fix1.py
