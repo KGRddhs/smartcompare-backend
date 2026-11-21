@@ -2587,7 +2587,10 @@ def test_r10c_camera_scope_llm_merged_into_metadata(monkeypatch, consent, reques
     consent.set(3)
     monkeypatch.setenv("ENABLE_ANTHROPIC_VISION", "true")
     monkeypatch.setenv("ENABLE_LLM_LEDGER_V2", "true")
-    ANTH.default = c_msg(json.dumps({"products": V1_ITEMS}), usage=c_usage(1000, 100))
+    # CAM-2 E1: V2 ON and the vision_anthropic capability sent (else the camera vision gate
+    # refuses: W5 / W6); the V2 scan preferences read is faked below (hermetic, CR-1).
+    monkeypatch.setenv("ENABLE_VISION_IDENTITY_V2", "true")
+    ANTH.default = c_msg(V2_JSON, usage=c_usage(1000, 100))
     oai = []
     monkeypatch.setattr(osvc, "client", oai_fake(oai, json.dumps(V1_ITEMS)))
     monkeypatch.setattr(osvc, "get_client", lambda *a, **k: oai_fake([], mod_store=[]))
@@ -2597,6 +2600,11 @@ def test_r10c_camera_scope_llm_merged_into_metadata(monkeypatch, consent, reques
             return {"success": True, "metadata": {"total_cost": 0.0}, "products": [], "overview": {}}
 
     monkeypatch.setattr(image_routes, "StructuredComparisonService", _Svc)
+
+    async def _prefs(*a, **k):
+        return {"success": False}
+
+    monkeypatch.setattr(image_routes, "get_user_preferences", _prefs)
     client, led, user = _route_harness(monkeypatch, request)
     for mod in (image_routes,):
         monkeypatch.setattr(mod, "consume_comparison_credit", led.consume, raising=False)
@@ -2605,7 +2613,8 @@ def test_r10c_camera_scope_llm_merged_into_metadata(monkeypatch, consent, reques
         monkeypatch.setattr(mod, "save_comparison_and_track_cohort", led.save, raising=False)
     files = [("images", ("a.jpg", JPEG_BYTES + b"\x00" * 2048, "image/jpeg")),
              ("images", ("b.jpg", JPEG_BYTES + b"\x00" * 2048, "image/jpeg"))]
-    resp = client.post("/api/v1/image/identify", files=files)
+    resp = client.post("/api/v1/image/identify", files=files,
+                       headers={"X-Client-Capabilities": "vision_anthropic"})
     assert resp.status_code == 200, (resp.status_code, resp.text[:300])
     meta = (resp.json().get("comparison") or resp.json()).get("metadata") or resp.json().get("metadata") or {}
     llm = meta.get("llm") or {}
