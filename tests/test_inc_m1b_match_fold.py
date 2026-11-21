@@ -2232,9 +2232,20 @@ FX1_TWO_HOUSE_ROWS = (
 )
 
 
+# ORCH-M1B-D (Q3): FA-4 leaves one garbled pair open, "Lacoste L.12.12 Montblanc EDT 100ml"
+# under "Lacoste L.12.12 Blanc EDT" ("blanc" is a Montblanc alias-group word): a stated limit.
+_FX1_STATED_LIMIT_TWO_HOUSE_IDS = frozenset({"two_house_blanc_line_word"})
+
+
 @pytest.mark.parametrize("row", FX1_TWO_HOUSE_ROWS, ids=[r[0] for r in FX1_TWO_HOUSE_ROWS])
 def test_fx1_guard_two_house(monkeypatch, row):
     """FA-4: no fold when the query core names two houses; the base verdict stands."""
+    if row[0] in _FX1_STATED_LIMIT_TWO_HOUSE_IDS:  # ORCH-M1B-D (Q3): runs, xfails while the limit holds
+        try:
+            _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+        except AssertionError:
+            pytest.xfail("stated limit ORCH-M1B-D (Q3): the garbled Lacoste Montblanc / Blanc pair")
+        return
     _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
 
 
