@@ -2311,3 +2311,305 @@ def test_fx1_e2e_converted_park_keeps_right_rows(monkeypatch):
             assert _fx1_parks(query, title, brand) is expected_off, (rid, "flag OFF", _fx1_mix_id(extra))
             _on(monkeypatch, **extra)
             assert _fx1_parks(query, title, brand) is True, (rid, "flag ON", _fx1_mix_id(extra))
+
+
+# ==========================================================================================
+# FIX2 RED3 ROWS (INC-M1b FIX2; FIX2_RULINGS_INC_M1b.md: the relay ruling ORCH-M1B-E and the
+# orchestrator's sections 2 and 3). ROWS ADDED ONLY: everything below is appended after the
+# frozen bytes (blob bd68b370); no line above is edited or deleted, and every name below is
+# new (FX2_* / _fx2_* / test_fx2_*), so no frozen row reads anything defined here.
+# Sources: the correctness re-verify report (N1 = B-1, N2 = B-2, m-a = B-3, m-d = OWN-A,
+# m-e = OWN-N) and the flag-mix re-verify report (F2 = B-1, F1 = B-2, F3 = B-3, F4 = B-4,
+# FG-3), and the RED3 small probes at 3fb5a0a7 (the base axis of every row below was measured
+# there with the flag OFF in the production mix; the flag-ON verdicts in both mixes).
+# Row classes (the gate reads them by name):
+#   test_fx2_guard_*  GUARD: rejected with the flag OFF and with it ON, each pair through
+#                     _selection_match and the descriptor path (_fx1_guard, FX1_GUARD_MIXES).
+#                     3fb5a0a7 accepts every one with the flag ON, so each fails there on an
+#                     AssertionError (RED); the FIX2 guard of its class closes it.
+#   test_fx2_e2e_*    end to end, hermetic: the converted terminal park (select_best over the
+#                     p2-filtered converted row, _fx1_parks_none) and should_cache_price.
+#   test_fx2_pin_*    PIN: today's verdicts at 3fb5a0a7, green there and after FIX2. A keep row
+#                     is a right pair (R4) accepted with the flag ON that the new guards must
+#                     not refuse; the OWN-A and OWN-N rows pin the refusal of a WRONG pair
+#                     (never a right one) that the widening mutant accepts.
+# Classes: B-1 (FX3-1 PRONW), B-2 (FX3-2 GFOLD; its women half also FX3-1), B-3 (FX3-3 PACKC),
+# B-4 (FX3-4 YFLANK), FG-3 (FX3-5 FA4RAW). Nothing for a class the rulings make a stated
+# limit (FG-1, m-b, the FX3-2 cost, m-c and the restated-gender Y flanker of limit 8).
+# Hermetic: no network, no .env, no credential; every row deletes every ENABLE_* name and
+# WARMER_CONTEXT and sets the flags it depends on (_clean / _on). Pure ASCII, LF. A hermetic
+# count is not the production proof: merged, NOT yet proven until the owner's phone shows it.
+# ==========================================================================================
+
+
+def _fx2_off_on(monkeypatch, rid, query, title, brand, off, on, mixes=FX1_GUARD_MIXES):
+    """A PIN over _selection_match (candidate_brand) and the descriptor path: today's
+    verdicts at 3fb5a0a7, flag OFF and flag ON, in every mix given."""
+    for extra in mixes:
+        mid = _fx1_mix_id(extra)
+        _clean(monkeypatch, **extra)
+        assert _fx1_sel(query, title, brand) is off, (rid, "flag OFF", mid)
+        assert _fx1_verdict(query, title, brand).match is off, (rid, "flag OFF descriptor", mid)
+        _on(monkeypatch, **extra)
+        assert _fx1_sel(query, title, brand) is on, "%s [%s]: %s | %s | brand %r with the flag ON" % (
+            rid, mid, query, title, brand)
+        assert _fx1_verdict(query, title, brand).match is on, (rid, "flag ON descriptor", mid)
+
+
+# ---------------------------------------------------------------- B-1: a women-PRONOUN query
+# FX3-1 PRONW. A query that states women by a pronoun (her, ladies: the padding words of
+# _PRONOUN_WOMEN_TOKENS; "for her" and "for ladies" hold them) asks for the line's women's
+# twin, so a candidate stating no women word (strict or pronoun) is the men's base line.
+# FX1-3 needs EVERY raw word of the flanker "for Her" and condition (d) passes a gender-free
+# candidate, so 3fb5a0a7 hands these queries the men's listings through the concentration
+# default and the houseless rule (cached and parked too: the e2e rows below).
+# (rid, query, title, the listing's brand field, the base axis)
+FX2_B1_ROWS = (
+    ("n1_aventus_her_default", "Creed Aventus Her EDP", "Creed Aventus 100ml", "", "candidate_missing_query_axis"),
+    ("n1_aventus_ladies_default", "Creed Aventus Ladies EDP", "Creed Aventus 100ml", "", "candidate_missing_query_axis"),
+    ("n1_hawas_her_default", "Rasasi Hawas Her EDP", "Rasasi Hawas 100ml", "", "candidate_missing_query_axis"),
+    ("n1_aventus_her_houseless", "Creed Aventus Her EDP", "Aventus EDP 100ml", "", "identity_subset"),
+    ("n1_aventus_her_typed_houseless", "Creed Aventus Her", "Aventus 100ml", "", "identity_subset"),
+)
+
+
+@pytest.mark.parametrize("row", FX2_B1_ROWS, ids=[r[0] for r in FX2_B1_ROWS])
+def test_fx2_guard_b1_women_pronoun_query(monkeypatch, row):
+    """FX3-1 PRONW (B-1): a women-pronoun query takes neither the concentration default nor
+    the houseless rule for a candidate that states no women word; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- B-2: the reverse gender twin
+# A query that STATES a gender folds onto the gender-free title of the OTHER-gender twin,
+# spelled with another alias of the house (the mirror of FA-2, which FX2 closed). The base
+# accepts the same-spelling twin (pre-existing, outside M1b); the fold carried it across
+# spellings. The women half (pronoun queries of men's-default lines) is closed by FX3-1 and
+# FX3-2; the men half (strict men words on women's-default lines) by FX3-2 GFOLD alone.
+FX2_B2_WOMEN_ROWS = (
+    ("n2_eros_for_her_fold", "Versace Eros for Her EDT", "Gianni Versace Eros EDT 100ml", "", "variant_add"),
+    ("n2_legend_for_her_fold", "Montblanc Legend for Her EDP", "Mont Blanc Legend EDP 100ml", "", "identity_subset"),
+    ("n2_adg_for_her_fold", "Giorgio Armani Acqua di Gio for Her EDT", "Armani Acqua di Gio EDT 100ml", "", "identity_subset"),
+)
+FX2_B2_MEN_ROWS = (
+    ("n2_light_blue_pour_homme_fold", "Dolce Gabbana Light Blue Pour Homme EDT", "D&G Light Blue EDT 100ml", "", "identity_subset"),
+    ("n2_the_one_for_men_fold", "Dolce Gabbana The One for Men EDP", "D&G The One EDP 75ml", "", "identity_subset"),
+    ("n2_opium_pour_homme_fold", "Yves Saint Laurent Opium Pour Homme EDP", "YSL Opium EDP 90ml", "", "identity_subset"),
+)
+
+
+@pytest.mark.parametrize("row", FX2_B2_WOMEN_ROWS, ids=[r[0] for r in FX2_B2_WOMEN_ROWS])
+def test_fx2_guard_b2_reverse_twin_fold_women(monkeypatch, row):
+    """FX3-1 / FX3-2 (B-2, the women half): a women-pronoun query of a men's-default line
+    takes no fold onto the gender-free title of the men's line; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+@pytest.mark.parametrize("row", FX2_B2_MEN_ROWS, ids=[r[0] for r in FX2_B2_MEN_ROWS])
+def test_fx2_guard_b2_reverse_twin_fold_men(monkeypatch, row):
+    """FX3-2 GFOLD (B-2, the men half): at the fold's accept point a query that states a
+    gender side folds only onto a candidate stating the same side; a gender-free title of a
+    women's-default line keeps the base verdict."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- B-3: the pack count
+# FX3-3 PACKC. FA-1 keeps the rules whenever the query states a pack, so a pack query took
+# another count or a single bottle through the default, the fold and the houseless rule.
+FX2_B3_ROWS = (
+    ("n3_pack_count_default", "Lattafa Khamrah EDP Pack of 2", "Lattafa Khamrah 100ml Pack of 3", "", "candidate_missing_query_axis"),
+    ("n3_pack_single_bottle_default", "Lattafa Khamrah EDP Pack of 2", "Lattafa Khamrah 100ml", "", "candidate_missing_query_axis"),
+    ("n3_pack_count_fold", "Dior Sauvage EDP 2 Pack", "Christian Dior Sauvage EDP 100ml Pack of 3", "", "variant_add"),
+    ("n3_pack_count_houseless", "Creed Aventus EDP 2 Pack", "Aventus EDP 100ml 3 Pack", "", "identity_subset"),
+)
+
+
+@pytest.mark.parametrize("row", FX2_B3_ROWS, ids=[r[0] for r in FX2_B3_ROWS])
+def test_fx2_guard_b3_pack_count(monkeypatch, row):
+    """FX3-3 PACKC (B-3): a candidate whose pack count differs from the query's (a single
+    bottle under a pack query too) takes no rule; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- B-4: a Y title flanker
+# FX3-4 YFLANK. The house-only exception (M1bR-4) folded when the title held the raw line
+# word "y", reading no title flanker: a title naming Le Parfum next to EDP took the Y EDP
+# query (the concentration axis sees EDP on both sides).
+FX2_B4_ROWS = (
+    ("n4_y_le_parfum_edp_title", "Yves Saint Laurent Y EDP", "YSL Y Le Parfum EDP 100ml", "", "identity_subset"),
+    ("n4_y_edp_le_parfum_title", "Yves Saint Laurent Y EDP", "YSL Y EDP Le Parfum 100ml", "", "identity_subset"),
+)
+
+
+@pytest.mark.parametrize("row", FX2_B4_ROWS, ids=[r[0] for r in FX2_B4_ROWS])
+def test_fx2_guard_b4_y_title_flanker(monkeypatch, row):
+    """FX3-4 YFLANK (B-4): the house-only exception refuses a title that names a flanker of
+    the named line that the query does not name; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- FG-3: a short-word house alias
+# FX3-5 FA4RAW. FA-4 read the seeded house aliases over the identity core, which drops words
+# of one or two letters, so "parfums de marly" (de) never counted as the second house beside
+# the Lancome group a "Paris" word triggers: a Lancome title took the Layton query.
+FX2_FG3_ROWS = (
+    ("fg3_pdm_paris_lancome_title", "Parfums de Marly Paris Layton EDP", "Lancome Layton EDP 125ml", "", "identity_subset"),
+    ("fg3_pdm_paris_lancome_title_sized", "Parfums de Marly Paris Layton EDP 125ml", "Lancome Layton EDP 125ml", "", "identity_subset"),
+)
+
+
+@pytest.mark.parametrize("row", FX2_FG3_ROWS, ids=[r[0] for r in FX2_FG3_ROWS])
+def test_fx2_guard_fg3_short_word_house(monkeypatch, row):
+    """FX3-5 FA4RAW (FG-3): FA-4 also counts, as the second house, a seeded house alias whose
+    raw words are all among the query's raw words and share no word with the triggered
+    group, at both _m1b_fold_refused call sites; the base verdict stands."""
+    _fx1_guard(monkeypatch, *row, mixes=FX1_GUARD_MIXES)
+
+
+# ---------------------------------------------------------------- end to end (hermetic)
+# The converted terminal park: select_best over ONE converted row after
+# p2_filter_marketplace_rows (scs:8231 after #424), in every ENABLE_PRICE_NOT_LOST x
+# ENABLE_GENUINE_PRICE_PRIORITY state the park reads. (rid, query, title, brand field)
+FX2_PARK_ROWS = (
+    ("park_b2_light_blue_pour_homme", "Dolce Gabbana Light Blue Pour Homme EDT", "D&G Light Blue EDT 100ml", ""),
+    ("park_b1_aventus_her_default", "Creed Aventus Her EDP", "Creed Aventus 100ml", ""),
+)
+
+
+@pytest.mark.parametrize("row", FX2_PARK_ROWS, ids=[r[0] for r in FX2_PARK_ROWS])
+def test_fx2_e2e_converted_park_takes_no_twin_row(monkeypatch, row):
+    """B-2 / B-1 end to end: a converted row of the reverse twin (the B-2 Light Blue pair)
+    or of the women-pronoun query (a B-1 Aventus pair) parks nothing with the flag ON."""
+    _fx1_parks_none(monkeypatch, (row,))
+
+
+# should_cache_price over the local BHD price of the walk (_price). (rid, line, query, title)
+FX2_CACHE_ROWS = (
+    ("cache_b1_aventus_her_default", "aventus", "Creed Aventus Her EDP", "Creed Aventus 100ml"),
+)
+
+
+@pytest.mark.parametrize("row", FX2_CACHE_ROWS, ids=[r[0] for r in FX2_CACHE_ROWS])
+def test_fx2_e2e_should_cache_price_refuses_b1(monkeypatch, row):
+    """B-1 end to end: should_cache_price refuses the B-1 Aventus pair with the flag ON, as
+    with it OFF, in the production mix and with the four other matcher flags ON."""
+    rid, line, query, title = row
+    for extra in FX1_GUARD_MIXES:
+        mid = _fx1_mix_id(extra)
+        _clean(monkeypatch, **extra)
+        assert bool(ps.should_cache_price(query, _price(line, title), CAT)) is False, (rid, "flag OFF", mid)
+        _on(monkeypatch, **extra)
+        assert bool(ps.should_cache_price(query, _price(line, title), CAT)) is False, (
+            "%s [%s]: %s | %s cached with the flag ON" % (rid, mid, query, title))
+
+
+# ---------------------------------------------------------------- PIN rows
+# (rid, query, title, brand, flag OFF verdict, flag ON verdict): today's verdicts at
+# 3fb5a0a7 in both FX1_GUARD_MIXES, kept by FIX2. Every keep row is a right pair by R4.
+# (i) FX3-2 GFOLD keeps the same side: a men-stating query still folds onto a men-stating
+# title in another house spelling.
+FX2_GFOLD_KEEP_ROWS = (
+    ("gfold_same_side_light_blue_pour_homme", "Dolce Gabbana Light Blue Pour Homme EDT", "D&G Light Blue Pour Homme EDT 125ml", "", False, True),
+    ("gfold_same_side_the_one_for_men", "Dolce Gabbana The One for Men EDP", "D&G The One for Men EDP 100ml", "", False, True),
+)
+
+
+@pytest.mark.parametrize("row", FX2_GFOLD_KEEP_ROWS, ids=[r[0] for r in FX2_GFOLD_KEEP_ROWS])
+def test_fx2_pin_gfold_keeps_same_side(monkeypatch, row):
+    """FX3-2 PIN (i): a candidate stating the query's own gender side keeps the fold."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+# (ii) FX3-1 PRONW keeps a women candidate: a women-pronoun query against a title that states
+# women in another spelling (the fold: a strict women word; the houseless rule: the twin's own
+# "for Her"), both accepted at 3fb5a0a7.
+FX2_PRONW_KEEP_ROWS = (
+    ("pronw_women_title_fold_eros_pour_femme", "Versace Eros for Her EDP", "Gianni Versace Eros Pour Femme EDP 100ml", "", False, True),
+    ("pronw_for_her_title_houseless_aventus", "Creed Aventus Her EDP", "Aventus for Her EDP 75ml", "", False, True),
+)
+
+
+@pytest.mark.parametrize("row", FX2_PRONW_KEEP_ROWS, ids=[r[0] for r in FX2_PRONW_KEEP_ROWS])
+def test_fx2_pin_pronw_keeps_women_candidate(monkeypatch, row):
+    """FX3-1 PIN (ii): a candidate that states a women word keeps the rules under a
+    women-pronoun query."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+# (iii) a gender-free query still folds onto a gender-free title: the frozen rows hold it
+# (test_accept[fold_christian_dior_60], test_fx1_pin_same_house_brand[same_dior_christian_title],
+# test_fx1_e2e_converted_park_keeps_right_rows, test_red_reader_per_call), so none is added.
+# (iv) FX3-3 PACKC keeps a same-count pack. The ruling's example ("Lattafa Khamrah EDP Pack of
+# 2" | "Lattafa Khamrah EDP 100ml Pack of 2") is accepted with the flag OFF already (no rule is
+# read), so the measured equivalents are pairs a rule turns into an accept: the houseless
+# rule, and the default with another phrasing of the same count (the frozen
+# test_fx1_pin_pack_query_pack_title rows hold the fold and the default with the same phrasing).
+FX2_PACKC_KEEP_ROWS = (
+    ("packc_same_count_houseless", "Creed Aventus EDP Pack of 2", "Aventus EDP 100ml Pack of 2", "", False, True),
+    ("packc_same_count_other_phrasing_default", "Lattafa Khamrah EDP Pack of 2", "Lattafa Khamrah 100ml 2 Pack", "", False, True),
+)
+
+
+@pytest.mark.parametrize("row", FX2_PACKC_KEEP_ROWS, ids=[r[0] for r in FX2_PACKC_KEEP_ROWS])
+def test_fx2_pin_packc_keeps_same_count(monkeypatch, row):
+    """FX3-3 PIN (iv): a candidate with the query's own pack count keeps the rules."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+# (v) OWN-A (m-d): FA-4 without its two-group clause. Two alias groups trigger (a YSL or
+# MFK house and the Lancome group through the line word or branding word "Paris") and no
+# seeded house alias sits beside the first, so only len(triggered) > 1 refuses the fold. Each
+# title names Lancome for a line Lancome does not make: WRONG (another house; the FG-3 class),
+# so the refusal pinned here is not an over-refusal.
+FX2_OWN_A_ROWS = (
+    ("own_a_ysl_mon_paris_lancome_title", "Yves Saint Laurent Mon Paris EDP", "YSL Mon Lancome EDP 90ml", "", False, False),
+    ("own_a_mfk_paris_lancome_title", "Francis Kurkdjian Paris Baccarat Rouge 540 EDP", "MFK Lancome Baccarat Rouge 540 EDP 70ml", "", False, False),
+)
+
+
+@pytest.mark.parametrize("row", FX2_OWN_A_ROWS, ids=[r[0] for r in FX2_OWN_A_ROWS])
+def test_fx2_pin_own_a_two_group_clause(monkeypatch, row):
+    """OWN-A PIN (v): a two-group query keeps the base verdict against a garbled
+    other-house title (FA-4's two-group clause decides it)."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+# (vi) OWN-N (m-e): _m1b_gender_ok comparing the two gender sides by overlap. The title
+# states BOTH sides; the women-pronoun query asks for Aventus for Her and the title is the
+# men's base bottle (it names no "for Her"): WRONG by the B-1 truth. Equality refuses the
+# default and the houseless rule; an overlap comparison would accept.
+FX2_OWN_N_ROWS = (
+    ("own_n_her_query_both_gender_title_default", "Creed Aventus Her EDP", "Creed Aventus 100ml for Men and Women", "", False, False),
+    ("own_n_her_query_both_gender_title_houseless", "Creed Aventus Her EDP", "Aventus EDP 100ml for Men and Women", "", False, False),
+)
+
+
+@pytest.mark.parametrize("row", FX2_OWN_N_ROWS, ids=[r[0] for r in FX2_OWN_N_ROWS])
+def test_fx2_pin_own_n_gender_sides_equal(monkeypatch, row):
+    """OWN-N PIN (vi): condition (d) compares the gender sides by equality, so a both-sides
+    title under a one-side query keeps the base verdict."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+# Two keep rows beyond (i)-(vi) (RED3 additions, for the gate): FX3-4 keeps R2-5's right pair
+# (the query names the title's flanker), and FX3-5 keeps the right houseless PDM title that
+# carries "Paris" (the houseless rule then reads the unfolded cores).
+FX2_YFLANK_KEEP_ROWS = (
+    ("yflank_query_names_le_parfum", "Yves Saint Laurent Y Le Parfum", "YSL Y Le Parfum 100ml", "", False, True),
+)
+FX2_FA4RAW_KEEP_ROWS = (
+    ("fa4raw_pdm_paris_houseless_title", "Parfums de Marly Paris Layton EDP", "Paris Layton EDP 125ml", "", False, True),
+)
+
+
+@pytest.mark.parametrize("row", FX2_YFLANK_KEEP_ROWS, ids=[r[0] for r in FX2_YFLANK_KEEP_ROWS])
+def test_fx2_pin_yflank_keeps_named_flanker(monkeypatch, row):
+    """FX3-4 PIN: a title flanker the query names too keeps the house-only exception."""
+    _fx2_off_on(monkeypatch, *row)
+
+
+@pytest.mark.parametrize("row", FX2_FA4RAW_KEEP_ROWS, ids=[r[0] for r in FX2_FA4RAW_KEEP_ROWS])
+def test_fx2_pin_fa4raw_keeps_paris_houseless(monkeypatch, row):
+    """FX3-5 PIN: the right houseless "Paris Layton" title stays accepted under the
+    short-word two-house refusal."""
+    _fx2_off_on(monkeypatch, *row)
