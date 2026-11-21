@@ -779,6 +779,9 @@ _ID_NAMES = {"user_id", "comparison_id", "key", "label"}
 _SITE_NAMES = {
     "app/services/auth_service.py": {"context"},
     "app/services/llm_provider.py": {"_ENV"},
+    # INC-T1c (GC-2 E-row): the one DB_GUARD_REFUSED line of db_guard.note_refusal,
+    # a constant prefix plus the site name that note_refusal checks against a fixed pattern.
+    "app/utils/db_guard.py": {"LINE_PREFIX", "name"},
 }
 _SITE_CALLS = {"app/services/llm_provider.py": {"_redacted"}}
 
@@ -910,10 +913,11 @@ class TestR8SourceLines:
 
     def test_u8d_pin_r8_no_other_outside_except_error_line(self):
         """Every other module is already clean (positive control: the scan sees
-        the allowlisted llm_provider and auth_service sites)."""
+        the allowlisted llm_provider, auth_service and db_guard sites)."""
         calls = _outside_except_error_calls()
         seen_allowlisted = sorted({rel for rel, _, ok, _ in calls if ok and rel in _SITE_NAMES})
-        assert seen_allowlisted == ["app/services/auth_service.py", "app/services/llm_provider.py"], seen_allowlisted
+        assert seen_allowlisted == ["app/services/auth_service.py", "app/services/llm_provider.py",
+                                    "app/utils/db_guard.py"], seen_allowlisted
         rows = [r for r in _outside_except_offenders()
                 if r[0] not in ("app/services/structured_comparison_service.py", "app/api/image_routes.py")]
         assert rows == [], rows

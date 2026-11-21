@@ -17,6 +17,7 @@ from app.services.cache_service import redis_client, _redis_offload_enabled
 from app.services.database_service import get_admin_supabase_client
 from app.utils import request_context as _request_context  # S81-09: the S81-05 stdlib leaf
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
+from app.utils.db_guard import note_if_guard_refusal  # INC-T1c: a guard refusal made visible
 from app.utils.redis_offloop import run_redis_offloop_pool, usage_path_offloop_enabled  # S81 ST1
 
 logger = logging.getLogger(__name__)
@@ -876,6 +877,7 @@ async def record_lifetime_comparison(user_id: str, access_token: str) -> None:
         client = get_admin_supabase_client()
         await run_db(lambda: client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute())
     except Exception as e:
+        note_if_guard_refusal(e, "usage_service.lifetime_increment")
         logger.error(f"Failed to record lifetime comparison for {user_id}: {e}")
 
 
@@ -940,6 +942,7 @@ def _maybe_reset_referral_bonus(client, user_id: str, data: dict) -> dict:
             }
         ).eq("id", user_id).execute()
     except Exception as exc:  # noqa: BLE001
+        note_if_guard_refusal(exc, "usage_service.bonus_reset")
         logger.warning(
             "[usage] referral bonus reset failed for %s: %s", user_id, exc
         )
@@ -1130,6 +1133,7 @@ async def record_comparison(user_id: str, access_token: str) -> None:
         await run_db(lambda: client.rpc("increment_lifetime_comparisons", {"target_user_id": user_id}).execute())
 
     except Exception as e:
+        note_if_guard_refusal(e, "usage_service.comparison_increment")
         logger.error(f"Failed to record comparison usage for {user_id}: {e}")
 
 

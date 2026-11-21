@@ -24,6 +24,7 @@ from app.services.database_service import (
 )
 from app.services.feedback_service import feedback_v2_enabled
 from app.utils.db_offload import run_db  # M13-05 / #115 ENABLE_SYNC_DB_OFFLOAD
+from app.utils.db_guard import note_if_guard_refusal  # INC-T1c: a guard refusal made visible
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +270,7 @@ class ReferralService:
                 ).eq("id", user_id).execute()
                 return code
             except Exception as exc:  # noqa: BLE001 — Supabase wraps unique-violation as PostgrestAPIError
+                note_if_guard_refusal(exc, "referral_service.ensure_code")
                 if "duplicate key" not in str(exc).lower() and "unique" not in str(exc).lower():
                     raise
         raise RuntimeError("Failed to mint a unique referral code after 5 attempts")
@@ -576,9 +578,13 @@ class ReferralService:
         code = user_data.get("referral_code")
         if not code:
             code = generate_referral_code()
-            self.client.table("users").update({"referral_code": code}).eq(
-                "id", user_id
-            ).execute()
+            try:
+                self.client.table("users").update({"referral_code": code}).eq(
+                    "id", user_id
+                ).execute()
+            except Exception as exc:  # noqa: BLE001 -- INC-T1c: note a guard refusal, then raise as before
+                note_if_guard_refusal(exc, "referral_service.status_code")
+                raise
         monthly_bonus = user_data.get("referral_bonus_comparisons_this_month") or 0
 
         # 3. Available Deep Review credits (non-consumed AND non-expired)
@@ -745,6 +751,7 @@ class ReferralService:
             await self._update_invite_as_redeemed(invite["id"], comparison_id)
             await self._send_loop2_push(invite.get("referrer_user_id"), invitee, grant_amount)
         except Exception as exc:  # noqa: BLE001
+            note_if_guard_refusal(exc, "referral_service.loop2_rewards")
             # Loop 2 is fire-and-forget per the design — never let plumbing
             # errors propagate to the comparison endpoint.
             logger.warning(

@@ -363,6 +363,12 @@ def llm_credential_health_snapshot() -> dict:
     return _module_snapshot("app.services.llm_credential_health", "health_snapshot")
 
 
+def db_guard_health_snapshot() -> dict:
+    """INC-T1c (unflagged): `db_guard_refusals` {count, last_at}, the users entitlement
+    guard refusals this process saw (should stay 0). A dict read, no I/O."""
+    return _module_snapshot("app.utils.db_guard", "guard_snapshot")
+
+
 def serper_keys_health_snapshot() -> dict:
     """MON1 (unflagged): `serper_keys` {configured, marked_exhausted, none_left, at},
     present only once a multi-key Serper selection ran in this process. Counts
@@ -699,6 +705,7 @@ async def health_check():
         **anthropic_breaker_health_snapshot(),
         **llm_credential_health_snapshot(),
         **serper_keys_health_snapshot(),
+        **db_guard_health_snapshot(),
     }
 
 

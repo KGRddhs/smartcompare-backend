@@ -1035,6 +1035,9 @@ BASE_CHAINS = {'db:referral_redemptions:select': [['select', 'loop2_comparisons_
 # helper, the flag-gated quota branch and the stash refund block); their flag-OFF
 # behaviour stays pinned by BASE_CONSUME_SEQ / BASE_REFUND_SEQ / BASE_ROUTE here
 # and by tests/fixtures/s81_s09_flag_off_golden.json.
+# INC-T1c REFUSAL-VISIBLE (GC-2 E-row, deliberate): _maybe_reset_referral_bonus and
+# record_lifetime_comparison re-recorded on the INC-T1c bytes (each except arm gains
+# one note_if_guard_refusal call as its first statement; the rest of the arm is unchanged).
 BASE_DIGESTS = {('app/services/usage_service.py', 'TIER_LIMITS'): 'fc81-9562-9a71-7bc3-a6d3-d2a1-0298-d7ac',
  ('app/services/usage_service.py', '_atomic_consume'): '7469-c961-24b0-ce4e-174f-291a-5dda-e334',
  ('app/services/usage_service.py', '_atomic_consume_async'): '2708-af7b-03bc-a251-da04-cd93-00c6-a8c4',
@@ -1045,7 +1048,7 @@ BASE_DIGESTS = {('app/services/usage_service.py', 'TIER_LIMITS'): 'fc81-9562-9a7
  ('app/services/usage_service.py', '_get_redis_count'): '14f0-6465-a31c-293c-397c-2b8c-185b-6e64',
  ('app/services/usage_service.py', '_get_redis_count_async'): 'e06b-3012-6820-7c87-9dbf-1d07-c3da-f1fb',
  ('app/services/usage_service.py', '_get_user_tier_info'): 'd08d-f410-b0f2-54c5-c85b-2388-9e26-6afa',
- ('app/services/usage_service.py', '_maybe_reset_referral_bonus'): '0e22-0a05-bfef-8cc6-4330-1c0b-5461-dbe2',
+ ('app/services/usage_service.py', '_maybe_reset_referral_bonus'): 'ec94-a845-0567-fe02-adb8-4950-efa2-5a7f',
  ('app/services/usage_service.py', '_monthly_key'): '5b47-fefd-c62c-d7ad-e908-04b1-c10b-0d1c',
  ('app/services/usage_service.py', '_previous_daily_key'): '7b80-8f15-cdc0-2b56-45d2-845d-0e70-c56f',
  ('app/services/usage_service.py', '_previous_monthly_key'): '9e40-493a-0952-a30e-7ecd-27a2-d8f9-1d5b',
@@ -1053,7 +1056,7 @@ BASE_DIGESTS = {('app/services/usage_service.py', 'TIER_LIMITS'): 'fc81-9562-9a7
  ('app/services/usage_service.py', '_refund_one_window'): '7eec-f1d0-72cc-e151-d097-ecc3-4e58-b286',
  ('app/services/usage_service.py', 'check_anon_usage_allowed'): '839e-d955-09d4-647b-23ec-e2ce-5a84-d5f0',
  ('app/services/usage_service.py', 'consume_comparison_credit'): 'f772-92f5-5a40-3797-ce72-9fff-137b-d98c',
- ('app/services/usage_service.py', 'record_lifetime_comparison'): 'f8ae-429c-bd5b-a91f-d6cf-c342-11bb-01af',
+ ('app/services/usage_service.py', 'record_lifetime_comparison'): '8470-4bc7-2ba2-c507-5851-f3dd-c590-09d1',
  ('app/services/usage_service.py', 'refund_comparison_credit'): '67a6-7f8d-c18b-bde6-e2cf-49b4-8d30-81be',
  ('app/utils/db_offload.py', 'run_db'): 'a193-babb-9590-f520-dc2c-86c2-f38e-39b0',
  ('app/utils/db_offload.py', 'sync_db_offload_enabled'): '8cf1-4184-edf5-ed67-d7b2-4950-8337-e1b4',

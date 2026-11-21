@@ -39,6 +39,7 @@ from app.services.database_service import (
     supabase_client_reuse_enabled,
 )
 from app.utils.async_utils import fire_and_forget
+from app.utils.db_guard import note_if_guard_refusal  # INC-T1c: a guard refusal made visible
 from app.utils.db_offload import run_db  # M13-05 ENABLE_SYNC_DB_OFFLOAD
 from app.services import apple_siwa_service  # B3-B ENABLE_APPLE_TOKEN_REVOCATION
 
@@ -435,6 +436,7 @@ async def register_user(email: str, password: str, *, consent: Optional[Dict] = 
             }
             
     except Exception as e:
+        note_if_guard_refusal(e, "auth_service.register_user")
         return _categorize_auth_error(e, "register")
 
 
@@ -863,6 +865,7 @@ async def sign_in_with_social(
         result = await _enrich_response_with_profile(result, result["user"]["id"])
         return result
     except Exception as e:
+        note_if_guard_refusal(e, "auth_service.social_login")
         return _categorize_auth_error(e, "social_login")
 
 
@@ -911,6 +914,7 @@ async def update_user_profile(user_id: str, display_name: str) -> Dict:
         }).eq("id", user_id).execute()
         return {"success": True, "message": "Profile updated"}
     except Exception as e:
+        note_if_guard_refusal(e, "auth_service.update_profile")
         return _categorize_auth_error(e, "update_profile")
 
 
@@ -971,6 +975,7 @@ async def save_user_preferences(
         # Bundle D Task 1.B.2 — log exception class + repr so Sentry shows
         # the actual cause (DB CHECK rejection vs network vs RLS) instead
         # of just str(e) which can collapse to a generic message.
+        note_if_guard_refusal(e, "auth_service.save_preferences")
         logger.error(
             "[AUTH] save_user_preferences failed for user %s: %s: %r",
             user_id,
