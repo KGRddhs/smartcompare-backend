@@ -693,6 +693,48 @@ def count_binder(monkeypatch):
     return seen
 
 
+def test_r15_first_variant_not_the_typed_size_flag_on(monkeypatch):
+    """R15 RED (PLAN 3.4 pin 7, the size fix; PS :15723-15734, :15762-15763): switch ON, VG off
+    (as on web): a house product titled at the typed size whose FIRST variant is 30 ml is
+    priced at its 100 ml variant (10.000) and labelled 100ml. Main prices variants[0]
+    (4.500) under the 100ml label (the string sort of {'100', '30'})."""
+    setflags(monkeypatch, pnl="true", vg=None)
+    out = lumen_hit(LUMEN_TYPED, LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
+
+
+def test_r15b_typed_size_not_offered_gives_no_hit(monkeypatch):
+    """R15b RED (the size fix, the binder's refusal branch): switch ON, VG off: a product titled
+    at the typed size with no variant of that size gives no hit. Main returns variants[0]
+    (4.500) labelled 100ml."""
+    setflags(monkeypatch, pnl="true", vg=None)
+    assert lumen_hit(LUMEN_TYPED, LUMEN_NO_100) is None
+
+
+def test_r16_numeric_size_label(monkeypatch):
+    """R16 RED (the size fix, 'sort sizes as numbers'; PS :15762-15763): switch ON, VG off, an
+    UNTYPED query keeps variants[0] (4.500, no binding without a typed size) and its label is
+    the smallest size by number (30ml). Main labels it 100ml (string sort)."""
+    setflags(monkeypatch, pnl="true", vg=None)
+    out = lumen_hit("Lumen Edp", LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 4.5, out
+    assert out["size"] == "30ml", out
+
+
+LUMEN_OZ = [v("1 oz", "4.500"), v("3.4 oz", "10.000")]  # fl oz only: 1 oz is 30 ml, 3.4 oz is 100 ml
+
+
+def test_r15c_typed_oz_size_binds_and_labels_the_typed_size(monkeypatch):
+    """R15c RED (added at GREEN for the mutation table, rows added only; the size fix, J1 and the
+    J2 label of a bound variant): switch ON, VG off: a query typed in fl oz ("3.4 oz", the 100 ml
+    bottle) on a product sized in fl oz only binds the 3.4 oz variant (10.000, never the 1 oz
+    4.500) and its label is the typed size, 100ml. Main prices variants[0] (4.500) with no size
+    label (no ml token in the title or the variant title)."""
+    setflags(monkeypatch, pnl="true", vg=None)
+    out = lumen_hit("Lumen Edp 3.4 oz", LUMEN_OZ, title="Lumen Edp 3.4 oz")
+    assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
+
+
 @pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
 def test_r17_vg_on_path_unchanged(monkeypatch, pnl):
     """R17 PIN (the existing ENABLE_VARIANT_MIN_PRICE_GUARD path, PS :15726-15731,
@@ -704,6 +746,20 @@ def test_r17_vg_on_path_unchanged(monkeypatch, pnl):
     assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
     assert lumen_hit(LUMEN_TYPED, LUMEN_NO_100) is None
     out = lumen_hit("Lumen Edp", LUMEN_FIRST_30)
+    assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
+
+
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl0"), pytest.param("true", id="pnl1")])
+def test_r17b_vg_on_keeps_its_own_label(monkeypatch, pnl):
+    """R17b PIN (added at GREEN for the mutation table, rows added only): VG ON, the switch off or
+    on: the size fix leaves VG's path whole, its label included. An fl-oz typed query binds the
+    3.4 oz variant with VG's own label (None: no ml token in the title or the variant title), and
+    an untyped query on a title that states 30 ml keeps VG's flagship 100 ml variant with VG's
+    string-sorted label 100ml (a numeric sort would say 30ml)."""
+    setflags(monkeypatch, pnl=pnl, vg="true")
+    out = lumen_hit("Lumen Edp 3.4 oz", LUMEN_OZ, title="Lumen Edp 3.4 oz")
+    assert out is not None and out["amount"] == 10.0 and out["size"] is None, out
+    out = lumen_hit("Lumen Edp", [v("30ml", "4.500"), v("100ml", "10.000")], title="Lumen Edp 30ml")
     assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
 
 
@@ -730,3 +786,24 @@ def test_r18b_single_variant_house_products_unchanged(monkeypatch, pnl, vg):
     a, b = house_hit(MAHEEB), house_hit(MUBEEN)
     assert a is not None and a["amount"] == 29.9 and a["size"] == "200ml" and a["url"] == MAHEEB_URL, a
     assert b is not None and b["amount"] == 10.0 and b["size"] == "100ml" and b["url"] == MUBEEN_URL, b
+
+
+@pytest.mark.parametrize("cap", CAPCELLS)
+@pytest.mark.parametrize("shape", [pytest.param("first_30", id="first_30"), pytest.param("no_100", id="no_100")])
+def test_r19_never_shown_at_the_typed_size_with_another_variants_price(monkeypatch, caplog, shape, cap):
+    """R19 RED (PLAN 3.4 pin 7 at the display): switch ON, VG off, the pair 'Lumen Edp 100ml vs
+    Mubeen Edp 100ml': the Lumen side is never shown at 100 ml with the 30 ml variant's 4.500;
+    it shows its 100 ml price (first_30) or stays pending (no_100). Main shows 4.500 at
+    100 ml in both shapes and both capability cells."""
+    setflags(monkeypatch, pnl="true", vg=None)
+    caplog.set_level(logging.INFO)
+    variants = LUMEN_FIRST_30 if shape == "first_30" else LUMEN_NO_100
+    lum = lumen_hit(LUMEN_TYPED, variants)
+    body = build_pair(LUMEN_TYPED, lum, MUBEEN, house_hit(MUBEEN), cap=cap)
+    w = ov(body)[0]
+    assert not (shown(w) and w["amount"] == 4.5), w
+    if shape == "first_30":
+        assert shown(w) and w["amount"] == 10.0 and w.get("size_ml") == 100, w
+    else:
+        assert not shown(w), w
+    assert shown(ov(body)[1]) and ov(body)[1]["amount"] == 10.0
