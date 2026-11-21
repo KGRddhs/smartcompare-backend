@@ -168,7 +168,20 @@ describe('S69 U7 T3 — camera engine outage shows the R1 copy, not "still gathe
     );
     const { rendered, navigation } = await renderCamera();
     expect(mockIdentifyFromImages).toHaveBeenCalled();
-    expectEngineUnavailable(rendered, navigation);
+    // INC-C1 (C1-4): this refusal now shows the photo state (its copy, Type the names, Back), not the engine copy.
+    expect(rendered.getByTestId('results-photo-unavailable-state')).toBeTruthy();
+    expect(rendered.getByText('results.photoUnavailable.title')).toBeTruthy();
+    expect(rendered.getByText('results.photoUnavailable.body')).toBeTruthy();
+    expect(rendered.getByText('common.typeNames')).toBeTruthy();
+    expect(rendered.queryByText(ENGINE_TITLE)).toBeNull();
+    expect(rendered.queryByText(ENGINE_BODY)).toBeNull();
+    expect(rendered.queryByTestId('results-timeout-state')).toBeNull();
+    expect(rendered.queryByTestId('results-timeout-retry')).toBeNull();
+    expect(rendered.queryByText('results.emptyState.visionFailed')).toBeNull();
+    expect(rendered.queryByText('results.emptyState.cta')).toBeNull();
+    fireEvent.press(rendered.getByText('common.back'));
+    expect(navigation.goBack).toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalledWith('Paywall', expect.anything());
   });
 
   it('thrown bare 500 (non-JSON body) from /image/identify', async () => {
@@ -263,7 +276,8 @@ describe('S69 U7 T3 — camera engine outage shows the R1 copy, not "still gathe
       thrownIdentify(503, { success: false, code: 'LLM_UNAVAILABLE', error: 'x' }),
     );
     const first = await renderCamera();
-    expect(first.rendered.getByText(ENGINE_TITLE)).toBeTruthy();
+    // INC-C1 (C1-4): a 503 LLM_UNAVAILABLE now lands on the photo state, the anchor that exists.
+    expect(first.rendered.getByTestId('results-photo-unavailable-state')).toBeTruthy();
     first.rendered.unmount();
 
     // Control: api.ts:365-368 synthesizes this on the 2-minute abort.

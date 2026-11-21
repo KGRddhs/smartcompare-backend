@@ -60,6 +60,7 @@ import { useTranslation } from 'react-i18next';
 import { colors, spacing, radii } from '../../theme';
 import type { Product, ComparisonResult } from '../../types';
 import {
+  calendarDaysAgo,
   formatAsOfDate,
   priceProvenance,
   productFieldStatus,
@@ -156,6 +157,26 @@ export const ResultsContent = React.memo(function ResultsContent({
       nowMs,
       resultOrigin === 'stored' ? 'stored' : 'live',
     );
+  // INC-C1 C1-2 (Q4): one wording for a live dated price, fresh or stale alike:
+  // "Last checked today / yesterday / N days ago", in whole calendar days of the
+  // phone's clock (nowMs above). A stored body keeps its listed date.
+  const lastCheckedLine = (dateIso: string, store: string | null): string => {
+    const days = calendarDaysAgo(dateIso, nowMs);
+    if (days === 0) {
+      return store
+        ? t('results.price.checkedToday', { store })
+        : t('results.price.checkedTodayNoStore');
+    }
+    if (days === 1) {
+      return store
+        ? t('results.price.checkedYesterday', { store })
+        : t('results.price.checkedYesterdayNoStore');
+    }
+    const figure = formatNumber(days, { maxFraction: 0, grouping: false });
+    return store
+      ? t('results.price.checkedDaysAgo', { count: days, days: figure, store })
+      : t('results.price.checkedDaysAgoNoStore', { count: days, days: figure });
+  };
   const renderProvenanceLine = (prov: PriceProvenance, idx: number) => {
     if (prov.kind === 'staleNoDate') {
       return (
@@ -169,21 +190,24 @@ export const ResultsContent = React.memo(function ResultsContent({
       );
     }
     if (prov.kind !== 'fresh' && prov.kind !== 'stale' && prov.kind !== 'listed') return null;
-    const date = formatAsOfDate(prov.dateIso, lang);
     const store = prov.store;
-    const KEYS = {
-      fresh: ['results.price.asOf', 'results.price.asOfNoStore', 'asof'],
-      stale: ['results.price.lastSeen', 'results.price.lastSeenNoStore', 'lastseen'],
-      listed: ['results.price.listedOn', 'results.price.listedOnNoStore', 'listed'],
-    } as const;
-    const [withStore, noStore, tid] = KEYS[prov.kind];
+    const tid = prov.kind === 'fresh' ? 'asof' : prov.kind === 'stale' ? 'lastseen' : 'listed';
+    let line: string;
+    if (prov.kind === 'listed') {
+      const date = formatAsOfDate(prov.dateIso, lang);
+      line = store
+        ? t('results.price.listedOn', { store, date })
+        : t('results.price.listedOnNoStore', { date });
+    } else {
+      line = lastCheckedLine(prov.dateIso, store);
+    }
     return (
       <Text
         testID={`results-product-${tid}-${idx}`}
         style={styles.convertedCaption}
         numberOfLines={1}
       >
-        {store ? t(withStore, { store, date }) : t(noStore, { date })}
+        {line}
       </Text>
     );
   };
@@ -204,7 +228,8 @@ export const ResultsContent = React.memo(function ResultsContent({
     // Provenance honesty (deep-review HIGH) — a converted (USD→BHD) figure is NOT
     // a genuine Bahrain shelf price; label it so it is never read as a local price
     // (the backend contract at price_service.py: "the UI says indicative/reference").
-    if (price.source_method === 'converted_usd') return `${base} ${t('results.convertedUSD')}`;
+    // INC-C1 T7-08: that label is the caption under the price
+    // (results-product-converted-<i>), printed once; this line is the bare amount.
     return base;
   };
 

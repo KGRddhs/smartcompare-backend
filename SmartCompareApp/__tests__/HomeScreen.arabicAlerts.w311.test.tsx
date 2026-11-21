@@ -296,8 +296,17 @@ describe('W3-11 RTL-05 — URL compare success:false (HomeScreen.tsx:540) — th
     await submitUrlCompare(rendered);
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    // INC-C1 (T7-04): a codeless link failure reads the generic link sentence under the link title, with the buttons.
+    expect(alertSpy.mock.calls[0]).toEqual([
+      AR['home.errors.link.title'],
+      AR['home.errors.link.generic'],
+      [
+        { text: AR['common.cancel'], style: 'cancel' },
+        { text: AR['common.typeNames'], onPress: expect.any(Function) },
+      ],
+    ]);
     const body = String(alertSpy.mock.calls[0][1]);
-    expect(body).toBe(AR['home.errors.comparison']);
+    expect(body).toBe(AR['home.errors.link.generic']);
     expect(body).not.toMatch(ASCII_LETTER);
     expect(body).not.toMatch(/Could not/);
     alertSpy.mockRestore();

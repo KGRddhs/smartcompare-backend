@@ -16,7 +16,10 @@
  *                          and passed in; never derived from a path list.
  *   X-Client-Capabilities  CLIENT_CAPABILITIES joined with ','. INC-C1a
  *                          declares 'price_size' (the card draws the bottle
- *                          size); 'price_asof' is not declared here (INC-C1).
+ *                          size); INC-C1 adds 'price_asof' (the card words a
+ *                          dated price as "Last checked ..."). This build
+ *                          never declares 'vision_anthropic': the server's
+ *                          camera vision gate reads that token.
  *
  * X-Device-Fingerprint-Legacy is NOT built here: it rides register and the two
  * social sign-ins only (authService), never a metered request.
@@ -34,8 +37,8 @@
 import * as Crypto from 'expo-crypto';
 import { getDeviceFingerprint } from './deviceFingerprint';
 
-/** The capabilities this client renders (R-S08-6; INC-C1a: the bottle size). */
-export const CLIENT_CAPABILITIES: readonly string[] = ['price_size'];
+/** The capabilities this client renders (R-S08-6; INC-C1a: the bottle size; INC-C1: the price date). */
+export const CLIENT_CAPABILITIES: readonly string[] = ['price_size', 'price_asof'];
 
 /** The request-config key a call site sets to put a request on the metered allowlist. */
 export const REQUEST_CONTEXT_MARKER = 'qarenRequestContext';

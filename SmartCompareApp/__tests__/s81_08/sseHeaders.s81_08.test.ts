@@ -196,7 +196,8 @@ describe('S81-08 D - stream compare headers and the compare id', () => {
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': String(consent.AI_CONSENT_VERSION),
       'x-compare-request-id': h['x-compare-request-id'],
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
   });
 
@@ -256,7 +257,8 @@ describe('S81-08 D - stream compare headers and the compare id', () => {
     expect(lowerHeaders(expoFetchMock.mock.calls[0][1].headers)).toEqual({
       accept: 'text/event-stream',
       authorization: 'Bearer bearer-synthetic-1',
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     expect(restCalls()).toHaveLength(0);
     expect(cbs.onComplete).toHaveBeenCalledTimes(1);

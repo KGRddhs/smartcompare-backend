@@ -356,7 +356,8 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': consentVersion(w),
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     }));
 
@@ -434,7 +435,8 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     };
     const w = world();
     const h = await usageHeaders(w);
-    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-client-capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-client-capabilities': 'price_size,price_asof' });
     }));
 
   it('B8 at the cutoff: register drops the legacy header (no legacy read) and usage still carries the device id', () =>
@@ -454,9 +456,11 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     iso(async () => {
     const w = world();
     expect(w.rc).not.toBeNull();
-    expect(w.rc?.CLIENT_CAPABILITIES).toEqual(['price_size']);
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(w.rc?.CLIENT_CAPABILITIES).toEqual(['price_size', 'price_asof']);
     const h = await usageHeaders(w);
-    expect(h['x-client-capabilities']).toBe('price_size');
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(h['x-client-capabilities']).toBe('price_size,price_asof');
     }));
 
   it('B10 (PIN, full config) no header value, hash or id is ever logged or sent to Sentry', () =>
@@ -513,7 +517,8 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': consentVersion(w),
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     const reg = await registerSent(w);
     expect(reg.headers['x-device-fingerprint']).toBe(NEW);
@@ -529,7 +534,8 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     expect(h).toEqual({
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-ai-consent-version': consentVersion(w),
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     }));
 
@@ -538,11 +544,13 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
     const w = world();
     mockAuth.getSavedUser.mockRejectedValue(new Error('user'));
     const thrown = await usageHeaders(w);
-    expect(thrown).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW, 'x-client-capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(thrown).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW, 'x-client-capabilities': 'price_size,price_asof' });
     mockAuth.getSavedUser.mockResolvedValue({ id: USER_A });
     mockAsync.failKeys = [CONSENT_KEY];
     const h = await usageHeaders(w);
-    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW, 'x-client-capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(h).toEqual({ authorization: 'Bearer ' + BEARER_VALUE, 'x-device-fingerprint': NEW, 'x-client-capabilities': 'price_size,price_asof' });
     }));
 
   it('B14c (PIN, full config) the legacy hash failing ALONE: register is still sent with the device header', () =>
@@ -566,7 +574,8 @@ describe('S81-08 B - request context headers (axios interceptor + call-site mark
       authorization: 'Bearer ' + BEARER_VALUE,
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': consentVersion(w),
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     expect(sent.arg && Object.prototype.hasOwnProperty.call(sent.arg, 'headers')).toBe(false);
     }));

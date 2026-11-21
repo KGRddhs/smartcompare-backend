@@ -73,7 +73,9 @@ import api from '../services/api';
 // A11 — code->copy map for failed comparisons. Deliberately NOT re-exported
 // from services/api so this stays importable (and testable) without the
 // network surface.
-import { friendlyErrorKey, friendlyErrorTitleKey } from '../services/errorCopy';
+import { friendlyErrorKey, friendlyErrorTitleKey, linkErrorKey } from '../services/errorCopy';
+// INC-C1 C1-4: the one-shot mode the camera's photo state hands to Home.
+import { consumeHomeMode } from '../services/homeEntryIntent';
 import { getSavedUser, User } from '../services/authService';
 import { isUsageLimitError, getUsageLimitDetail } from '../services/usageService';
 import CategorySelector from '../components/CategorySelector';
@@ -285,7 +287,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // backgrounding the app.
   //
   // Deliberately NOT paired with a client watchdog: M18 MB-perf-03 already
-  // bounds every compare path (COMPARE_TIMEOUT_MS 35s on the REST GET and the
+  // bounds every compare path (COMPARE_TIMEOUT_MS 50s on the REST GET and the
   // url/compare POST, STREAM_WATCHDOG_MS 60s on the flag-ON stream,
   // IDENTIFY_TIMEOUT_MS 120s on camera identify). A second timer here would
   // only race COMPARE_TIMEOUT_MS and could fire a false timeout on a compare
@@ -329,6 +331,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       });
       loadUser();
       loadRecentSearches();
+    }, [])
+  );
+
+  // INC-C1 C1-4: "Type the names" on the camera's photo state pops back to
+  // Main with a one-shot intent; this focus reads it once, so a later focus
+  // keeps whatever mode the user picked since.
+  useFocusEffect(
+    useCallback(() => {
+      if (consumeHomeMode() === 'type') setInputMode('type');
     }, [])
   );
 
@@ -587,6 +598,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     });
   };
 
+  // INC-C1 T7-04: a refused link reads its own sentence (linkErrorKey) under the
+  // link title, with Cancel and a second button that switches Home to typing
+  // the names. The text path never comes here.
+  const showLinkRefusal = (key: string) => {
+    Alert.alert(t('home.errors.link.title'), t(key), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.typeNames'), onPress: () => setInputMode('type') },
+    ]);
+  };
+
   const runUrlCompare = async (url1: string, url2: string) => {
     trackEvent('compare_entry_submit', {
       mode: 'url',
@@ -646,8 +667,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         // W3-11 RTL-05 — the sync /url/compare envelope carries English
         // prose in `error` ("We don't compare this category", "Could not
         // identify ..."); route by code like the catch branch, never render it.
+        const linkKey = linkErrorKey(response.data.code);
         if (response.data.code === 'CONTENT_UNAVAILABLE') {
           handleContentUnavailable('url', response.data.layer ?? 'unknown');
+        } else if (linkKey) {
+          // INC-C1 T7-04: a link refusal code, or none at all; TIMEOUT and
+          // every other code keep the alert below.
+          showLinkRefusal(linkKey);
         } else {
           const isTimeout =
             response.data.code === 'TIMEOUT' || response.data.code === 'STREAM_TIMEOUT';
@@ -674,6 +700,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // theatrical floor.
       setLoading(false);
       const parsed = parseApiError(error);
+      const linkKey = linkErrorKey(parsed.code);
       if (parsed.code === 'CONTENT_UNAVAILABLE') {
         const layer = error?.response?.data?.layer ?? 'unknown';
         handleContentUnavailable('url', layer);
@@ -683,6 +710,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       } else if (parsed.code === 'TIMEOUT') {
         // Genuine-BH bundle (D2) — soft timeout copy, never the backend string.
         Alert.alert(t('common.error'), t('home.errors.timeout'));
+      } else if (linkKey) {
+        // INC-C1 T7-04: a link refusal code (STORE_UNREADABLE,
+        // NOT_PRODUCT_PAGE, UNRESOLVED_PRODUCT, BAD_REQUEST) or none at all.
+        showLinkRefusal(linkKey);
       } else {
         // A11 — was `Alert.alert(t('common.error'), parsed.message)`, i.e.
         // UNCONDITIONALLY the parsed message. That made the URL path the

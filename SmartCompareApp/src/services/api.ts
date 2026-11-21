@@ -52,8 +52,13 @@ export const api = axios.create({
 // (ENABLE_FULL_STREAM_DEADLINE is default OFF server-side).
 // ---------------------------------------------------------------------------
 
-/** Compare-class per-request deadline: 30s server hard cap + margin. */
-export const COMPARE_TIMEOUT_MS = 35000;
+/**
+ * Compare-class per-request deadline: the server cap (STREAM_HARD_CAP_SECONDS,
+ * 30 s on web) plus at least 15 s. INC-C1: the cap starts only after the
+ * route's pre-work, and a capped partial still pays the cancel tail, the
+ * persist and the network, so a 35 s deadline cut off answers already sent.
+ */
+export const COMPARE_TIMEOUT_MS = 50000;
 /** Camera identify (multipart upload + vision + auto-compare) deadline. */
 export const IDENTIFY_TIMEOUT_MS = 120000;
 /** SSE stream watchdog: covers connect + Phase 1 + the verdict tail. */

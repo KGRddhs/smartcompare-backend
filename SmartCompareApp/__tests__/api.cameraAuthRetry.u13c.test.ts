@@ -330,7 +330,8 @@ describe('S71 U13c -- camera /image/identify 401: one single-flight refresh, one
     expect(mockRefreshSession).toHaveBeenCalledTimes(1);
     const [first, second] = fetchMock.mock.calls;
     expect(first[1].headers.Authorization).toBe('Bearer OLD-TOKEN');
-    expect(second[1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(second[1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size,price_asof' });
     expect(first[0]).toBe(IDENTIFY_URL);
     expect(second[0]).toBe(first[0]);
     expect(second[1].method).toBe('POST');
@@ -483,7 +484,8 @@ describe('S71 U13c -- camera /image/identify 401: one single-flight refresh, one
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(refreshCallsWhilePending).toBe(1);
     expect(mockRefreshSession).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size,price_asof' });
     expect(box.outcome).toEqual({ status: 'resolved', value: OK_DATA });
   });
 
@@ -580,10 +582,12 @@ describe('S71 U13c -- camera /image/identify 401: one single-flight refresh, one
 
     const { value, error } = await settle(api.identifyFromImages(URIS, 'bahrain'));
 
-    expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'X-Client-Capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'X-Client-Capabilities': 'price_size,price_asof' });
     expect(mockRefreshSession).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size,price_asof' });
     expect(error).toBeUndefined();
     expect(value).toEqual(OK_DATA);
   });
@@ -596,7 +600,8 @@ describe('S71 U13c -- camera /image/identify 401: one single-flight refresh, one
 
     expect(mockRefreshSession).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer NEW-TOKEN', 'X-Client-Capabilities': 'price_size,price_asof' });
     expect(error).toBeUndefined();
     expect(value).toEqual(OK_DATA);
   });
@@ -722,8 +727,9 @@ describe('S71 U13c -- camera /image/identify 401: one single-flight refresh, one
       expect(opts.body.getAll('images')).toHaveLength(2);
       expect(opts.signal).toBeInstanceOf(AbortSignal);
     }
-    expect(noToken[1].headers).toEqual({ 'X-Client-Capabilities': 'price_size' });
-    expect(withToken[1].headers).toEqual({ Authorization: 'Bearer OLD-TOKEN', 'X-Client-Capabilities': 'price_size' });
+    // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+    expect(noToken[1].headers).toEqual({ 'X-Client-Capabilities': 'price_size,price_asof' });
+    expect(withToken[1].headers).toEqual({ Authorization: 'Bearer OLD-TOKEN', 'X-Client-Capabilities': 'price_size,price_asof' });
     expect(mockRefreshSession).not.toHaveBeenCalled();
   });
 
