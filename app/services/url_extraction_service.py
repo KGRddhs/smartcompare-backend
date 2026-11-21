@@ -138,6 +138,16 @@ def url_link_result_enabled() -> bool:
     )
 
 
+def _link_foreign_history_ok() -> bool:
+    """INC-U1b LIFT-RULE-F (no new flag): ENABLE_SMART_PICK_BHD_ONLY by the house
+    idiom (the value set of the Home smart-pick guard reader), read PER CALL: once
+    per link compare, inside ``if link_result:``. ON lifts rule F for a kept
+    foreign price; the Home smart pick skips such a row only while it is ON."""
+    return os.getenv("ENABLE_SMART_PICK_BHD_ONLY", "false").strip().lower() in (
+        "true", "1", "yes", "on",
+    )
+
+
 # S95-LG (GATE GL-3): the scorer reads these top-level keys, normalize_product_data
 # nests the same values under "reviews" (top-level key, nested key).
 _URL_GUARD_LIFTED_KEYS = (("rating", "rating"), ("review_count", "count"))
@@ -2006,7 +2016,8 @@ async def compare_from_urls(
         "source_urls": [url1, url2]
     }
     if link_result:
-        body = _link_result_adapt(body, link_extras, degraded)
+        body = _link_result_adapt(body, link_extras, degraded,
+                                  foreign_history=_link_foreign_history_ok())
     return body
 
 
@@ -2064,22 +2075,29 @@ def _link_price(price: Any, facts: Dict[str, Any]) -> Tuple[Dict[str, Any], str]
 
 
 def _link_result_adapt(body: Dict[str, Any], extras: List[Dict[str, Any]],
-                       degraded: bool) -> Dict[str, Any]:
+                       degraded: bool, *,
+                       foreign_history: bool = False) -> Dict[str, Any]:
     """INC-U1 section 1: the pure adapter over the legacy body (never writes
-    `overview`). An exception logs ONE WARNING by type and returns the body as is."""
+    `overview`). An exception logs ONE WARNING by type and returns the body as is.
+    INC-U1b: ``foreign_history`` (keyword-only; the default False keeps rule F)
+    lifts rule F for a kept foreign price."""
     try:
-        return _link_result_adapt_inner(body, extras, degraded)
+        return _link_result_adapt_inner(body, extras, degraded,
+                                        foreign_history=foreign_history)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[URL_LINK] adapter failed type=%s", type(exc).__name__)
         return body
 
 
 def _link_result_adapt_inner(body: Dict[str, Any], extras: List[Dict[str, Any]],
-                             degraded: bool) -> Dict[str, Any]:
+                             degraded: bool, *,
+                             foreign_history: bool = False) -> Dict[str, Any]:
     from app.services.text_sanitize import dedup_brand_name
     comparison = body.get("comparison") if isinstance(body.get("comparison"), dict) else {}
     products = body.get("products") or []
-    history_ok = True  # U-6 rule F: no metadata.query when a product is kept foreign
+    # U-6 rule F: no metadata.query when a product is kept foreign, unless INC-U1b
+    # lifts it (foreign_history: ENABLE_SMART_PICK_BHD_ONLY ON for this compare).
+    history_ok = True
     for i, product in enumerate(products):
         facts = extras[i] if i < len(extras) and isinstance(extras[i], dict) else {}
         product["pros"] = [] if degraded else _link_str_items(comparison.get(f"product_{i}_pros"))
@@ -2094,7 +2112,8 @@ def _link_result_adapt_inner(body: Dict[str, Any], extras: List[Dict[str, Any]],
             product.get("image_url"), facts.get("final_url") or product.get("source_url"))
         price, kind = _link_price(product.get("price"), facts)
         product["price"] = price
-        if kind == "foreign" or (kind == "pending" and price.get("reason") == "currency_unknown"):
+        if (kind == "foreign" and not foreign_history) or (
+                kind == "pending" and price.get("reason") == "currency_unknown"):
             history_ok = False  # FX-1: an amount in an unknown currency stays out too
         if not is_usable_title(product.get("name"), ()):
             history_ok = False  # FX-3: never a History row for a placeholder name
