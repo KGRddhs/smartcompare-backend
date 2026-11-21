@@ -1593,6 +1593,7 @@ from app.services.price_service import (
     curl_fetch_html,
     fetch_page_price,
     fetch_shopify_price,
+    bind_shopify_named_read_scope,
     fetch_bolo_price,
     fetch_boutiqaat_price,
     fetch_nasser_price,
@@ -3748,6 +3749,9 @@ class StructuredComparisonService:
         _PROVIDER_ATTEMPTS_CTX.set(self._provider_attempts)
         # D14: the robots-skip / outcome aggregator (flag OFF: one env read).
         live_robots.bind_attempts()
+        # INC-SH1: the per-compare set of ended hosts of the named live read (OFF:
+        # one env read).
+        bind_shopify_named_read_scope()
 
     def _attach_provider_attempts(self, source_trace: Dict[str, Any]) -> Dict[str, Any]:
         """Attach the collected provider attempts under the EXISTING

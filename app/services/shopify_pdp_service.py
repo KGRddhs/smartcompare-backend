@@ -64,6 +64,12 @@ SAFETY
 * **503.** Retry exactly once, then ``None`` so the caller falls through to the
   HTML cascade. No other status is retried.
 * The adapter NEVER raises: every network/parse/validation failure is ``None``.
+* **Named live read** (``ENABLE_SHOPIFY_NAMED_LIVE_READ``, default OFF). ON, every
+  hop goes through :func:`_named_curl_get` (the named-agent headers of the nightly
+  reader, no library-followed redirect) and asks
+  ``price_service.shopify_named_read_admit`` (the persisted robots record: no
+  record, no read) after the SSRF gate; a 429, 403, 503 or a challenge page ends
+  the host for the rest of the compare and the 503 is not retried.
 
 FLAG — ``ENABLE_SHOPIFY_PDP_JSON``, DEFAULT **OFF**
 --------------------------------------------------
@@ -103,6 +109,8 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse, urlunparse
+
+from app.services.robots_eval import QARENBOT_UA
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +266,8 @@ async def _await_domain_slot(domain: str) -> None:
 
 
 def _curl_get(url: str, timeout: int):
-    """The ONLY place this module touches the network.
+    """With ENABLE_SHOPIFY_NAMED_LIVE_READ OFF, the ONLY place this module touches
+    the network (ON: :func:`_named_curl_get`).
 
     Kept as a one-line module-level seam so the whole SSRF / redirect / retry /
     spacing machinery above it is exercised offline in tests by replacing this
@@ -272,6 +281,32 @@ def _curl_get(url: str, timeout: int):
     return curl_requests.get(
         url, impersonate="chrome", timeout=timeout, allow_redirects=False,
     )
+
+
+#: The named-agent request headers of the nightly reader, sent by the named live
+#: read (ENABLE_SHOPIFY_NAMED_LIVE_READ ON).
+NAMED_READ_HEADERS: Dict[str, str] = {"User-Agent": QARENBOT_UA, "Accept": "*/*"}
+
+
+def _named_curl_get(url: str, timeout: int):
+    """The network seam of the named live read (switch ON; the catalog read and the
+    currency probe of price_service use it too): the named-agent headers and
+    ``allow_redirects=False`` (the caller validates and asks every hop)."""
+    from curl_cffi import requests as curl_requests
+
+    return curl_requests.get(
+        url, headers=dict(NAMED_READ_HEADERS), timeout=timeout, allow_redirects=False,
+    )
+
+
+def _named_read_on() -> bool:
+    """The INC-SH1 switch, read through price_service (function-local import: this
+    module is imported by price_service); an import failure reads OFF."""
+    try:
+        from app.services.price_service import shopify_named_live_read_enabled
+    except Exception:  # noqa: BLE001 - no reader: the switch-off path
+        return False
+    return shopify_named_live_read_enabled()
 
 
 def _hop_is_allowed(url: str, domain: str) -> bool:
@@ -330,6 +365,9 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
     swallowed because the 503 retry policy needs to see it — this is the one
     reason we do not just call ``curl_fetch_html_same_site``, which collapses
     every non-200 into ``None``."""
+    named = _named_read_on()
+    if named:
+        from app.services import price_service as _ps
     current = js_url
     for _ in range(MAX_REDIRECTS + 1):
         if not await _hop_is_allowed_async(current, domain):
@@ -338,11 +376,16 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
         # D14 (ENABLE_LIVE_ROBOTS_REGISTRY): the persisted robots verdict per hop,
         # after the SSRF / same-site gate (function-local: this module's importers).
         from app.services import live_robots
-        if live_robots.live_robots_enabled() and not live_robots.gate(current, "shopify"):
+        if named:
+            if not _ps.shopify_named_read_admit(current):
+                return None, None
+        elif live_robots.live_robots_enabled() and not live_robots.gate(current, "shopify"):
             return None, None
         await _await_domain_slot(domain)
         try:
-            resp = await asyncio.to_thread(_curl_get, current, HTTP_TIMEOUT)
+            resp = await asyncio.to_thread(
+                _named_curl_get if named else _curl_get, current, HTTP_TIMEOUT,
+            )
         except Exception as e:  # noqa: BLE001 — a fetch never raises outward
             if live_robots.live_robots_enabled():
                 live_robots.record_url("shopify", current, "fail")
@@ -353,6 +396,8 @@ async def _fetch_once(js_url: str, domain: str) -> Tuple[Optional[int], Optional
         if live_robots.live_robots_enabled() and not (
                 isinstance(status, int) and 300 <= status < 400):
             live_robots.record_response("shopify", current, resp)
+        if named:
+            _ps.shopify_named_read_observe(current, resp)
         if isinstance(status, int) and 300 <= status < 400:
             headers = getattr(resp, "headers", None) or {}
             location = headers.get("Location") or headers.get("location")
@@ -607,7 +652,7 @@ async def _fetch_feed_body(
     of ONE storefront, behind one rate limiter and one redirect/SSRF policy, so
     a second copy of this loop would be a second place for those rules to drift."""
     status, body = await _fetch_once(feed_url, domain)
-    if status == 503:
+    if status == 503 and not _named_read_on():
         logger.info("[%s] 503 for %s — retrying once", log_tag, domain)
         status, body = await _fetch_once(feed_url, domain)
     if status != 200 or not body:
