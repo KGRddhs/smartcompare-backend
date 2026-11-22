@@ -8219,7 +8219,10 @@ class StructuredComparisonService:
                     # b207bfa baseline never had). ENABLE_EXACT_PRICE_GATE=false
                     # restores the legacy terminal exactly: seed + return None.
                     nonlocal converted_fallback
-                    if exact_gate_enabled() and converted_fallback is None:
+                    # PC1 PARK-KEEP-GENUINE: under ENABLE_PRICE_NOT_LOST a converted-only yield
+                    # never replaces a genuine park on the request (switch OFF: _pc1_genuine_park
+                    # is False before it reads any state, so this is main's two conditions).
+                    if exact_gate_enabled() and converted_fallback is None and not self._pc1_genuine_park(full_name):
                         # INC-P2 P2-10: flag ON never parks an auction / marketplace
                         # seller (flag OFF: the same list object).
                         _conv_best = select_best(
@@ -9829,6 +9832,32 @@ class StructuredComparisonService:
             )
         except Exception as _p2e:  # noqa: BLE001
             logger.warning("INC-P2 reseller park skipped: %s", type(_p2e).__name__)
+
+    def _pc1_genuine_park(self, full_name: str) -> bool:
+        """PC1 PARK-KEEP-GENUINE: True iff the request already holds a GENUINE park for
+        `full_name`: a dict with a positive amount whose source_method is in
+        _GENUINE_BH_SOURCE_METHODS and holds neither 'converted' nor 'estimate', not
+        estimated, not a listing url (the complement of the replaceable test of
+        _p2_park_reseller). The converted park of the adapter consume then keeps it.
+        Switch OFF: False before any state is read; any fault: False (main's park
+        write)."""
+        if not _ps_mod.price_not_lost_enabled():
+            return False
+        try:
+            parked = self._parked_price.get(full_name)
+            if not isinstance(parked, dict):
+                return False
+            amount = parked.get("amount")
+            if isinstance(amount, bool) or not isinstance(amount, (int, float)) or not amount > 0:
+                return False
+            method = str(parked.get("source_method") or "")
+            if method not in _GENUINE_BH_SOURCE_METHODS or "converted" in method or "estimate" in method:
+                return False
+            if parked.get("estimated") is True:
+                return False
+            return not _ps_mod._is_listing_url(parked.get("url") or "")
+        except Exception:  # noqa: BLE001 - a fault keeps main's park write
+            return False
 
     async def _p2_cache_reselected(self, products: Any, product_data: Any, region: str) -> None:
         """P2-7 / P2R-5: write a side's re-selected SHOWN price under the key the next

@@ -4849,6 +4849,39 @@ def variant_min_guard_enabled() -> bool:
     )
 
 
+def _pc1_typed_variant_bind(product_name: str, variants: Any, product_title: str = "") -> bool:
+    """PC1 J1 (S98-FIX): True iff the Shopify matcher binds the variant of the TYPED size with
+    the ENABLE_VARIANT_MIN_PRICE_GUARD binder (_select_shopify_variant) while that switch is
+    off. Reads ENABLE_PRICE_NOT_LOST first, then the exact gate; then the query must state a
+    size (extract_size_ml_any) and at least one variant must have a readable size (its own
+    title, else the product title plus its title: the binder's own reading, done for every
+    variant so a True never meets a binder fault). Switch OFF or any fault: False
+    (variants[0], main's path)."""
+    if not price_not_lost_enabled():
+        return False
+    try:
+        if not exact_gate_enabled() or not extract_size_ml_any(product_name):
+            return False
+        readable = False
+        for v in variants:
+            if isinstance(v, dict):
+                vt = v.get("title") or ""
+                if extract_size_ml_any(vt) or extract_size_ml_any(f"{product_title} {vt}"):
+                    readable = True
+        return readable
+    except Exception:  # noqa: BLE001 - a fault keeps main's variants[0]
+        return False
+
+
+def _pc1_size_fix_enabled() -> bool:
+    """PC1 J2 (S98-FIX): Shopify size labels sort as NUMBERS ("30" before "100") only under
+    ENABLE_PRICE_NOT_LOST (read first) and the exact gate while ENABLE_VARIANT_MIN_PRICE_GUARD
+    is off (its path stays main's). Switch OFF: main's string sort."""
+    if not price_not_lost_enabled():
+        return False
+    return exact_gate_enabled() and not variant_min_guard_enabled()
+
+
 def _budget_fragrance_floor_enabled() -> bool:
     """True iff the BUDGET Arabic/Gulf-house fragrance floor is active (default ON).
 
@@ -16345,12 +16378,23 @@ def _match_shopify_product(
         # Variant-min decant guard (audit 2026-07-08): bind the queried size to a specific
         # variant instead of blindly pricing variants[0] (usually the smallest = a decant
         # served as the full bottle). Flag OFF → variants[0] (byte-identical).
+        _pc1_typed_ml = None  # PC1 J1: the typed size the variant was bound to (None: not bound)
         if variant_min_guard_enabled():
             variant = _select_shopify_variant(
                 variants, product_name, title, resolved_category, _is_lux,
             )
             if variant is None:
                 continue  # unbindable size/spread → pend this product (don't serve a decant)
+        elif _pc1_typed_variant_bind(product_name, variants, title):
+            # PC1 J1 (S98-FIX): under ENABLE_PRICE_NOT_LOST, while the guard above is off, price
+            # the variant of the TYPED size with the guard's own binder; no variant of that
+            # size -> no hit from this product (never another size's price at the typed size).
+            variant = _select_shopify_variant(
+                variants, product_name, title, resolved_category, _is_lux,
+            )
+            if variant is None:
+                continue
+            _pc1_typed_ml = extract_size_ml_any(product_name)
         else:
             variant = variants[0] if isinstance(variants[0], dict) else {}
         amount = parse_price_string(str(variant.get("price", "")))
@@ -16382,7 +16426,14 @@ def _match_shopify_product(
             # Flag OFF: exactly the pre-change expressions, on exactly the
             # pre-change input (`_signal_text`) — byte-identical.
             _sizes = extract_sizes_ml(_signal_text)
-            _size = (sorted(_sizes)[0] + "ml") if _sizes else None
+            if _pc1_typed_ml:
+                # PC1 J2: the variant was bound to the typed size, so that size is the label.
+                _size = "%dml" % _pc1_typed_ml
+            elif _sizes and _pc1_size_fix_enabled():
+                # PC1 J2: the sizes sort as numbers ("30" before "100"), only under the switch.
+                _size = sorted(_sizes, key=int)[0] + "ml"
+            else:
+                _size = (sorted(_sizes)[0] + "ml") if _sizes else None
             _conc = extract_concentration(_signal_text)
             if wide_signal_text_enabled() and (_size is None or _conc is None):
                 # NARROW-FIRST. The title/variant title is authoritative: the
