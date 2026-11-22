@@ -552,3 +552,70 @@ def test_limit_l1_light_blue_mens_direction(monkeypatch, lmg):
     _cell(monkeypatch, lmg, SWITCH_ON)
     assert _sel(L1_QUERY, L1_TITLE) is False, (
         "L-1 [%s]: %s | %s accepted (the stated limit)" % (_cell_id(lmg, SWITCH_ON), L1_QUERY, L1_TITLE))
+
+
+# ---------------------------------------------------------------- P-D1s / P-D1n: G1's two bounds
+# Appended at GREEN, before G1 (the relay's GREEN word of 22 Nov 11:40): the two sides of
+# spec section 2 / RED gate condition (b) G1 must never fire on. The 16th D1 pair (probeset2
+# brand_a3 i=471) is RED already: d1_s13 and d1_e11.
+#   P-D1s  a store-name brand field that shares no word with the query house, on a right
+#          title (a G1 without the shared-word condition refuses it);
+#   P-D1n  no brand field (empty, or null), on a right title.
+# (rid, line, query, title, brand, typed size, what is read, source), read as in P-D1: "all" =
+# the four end-to-end verdicts of _e2e accept; "consumers" = should_cache_price, select_best and
+# the park accept (reconcile_pair_sizes refuses the 90 ml and 75 ml titles for their 100 ml
+# partner at the base). Measured at the base d062bad1 by the GREEN author's small probe
+# (accepted in both cells, the switch unset and "true" alike).
+PD1S_ROWS = (
+    ("pd1s_perfume_palace_dior_sauvage", "sauvage", "Dior Sauvage EDP 100ml", "Dior Sauvage EDP 100ml", "Perfume Palace", 100, "all", "GREEN probe"),
+    ("pd1s_bahrain_fragrance_store_lancome", "lveb", "Lancome La Vie Est Belle EDP", "Lancome La Vie Est Belle EDP 100ml", "Bahrain Fragrance Store", None, "all", "GREEN probe"),
+    ("pd1s_perfume_palace_ysl_libre", "libre", "Yves Saint Laurent Libre EDP", "Yves Saint Laurent Libre EDP 90ml", "Perfume Palace", None, "consumers", "GREEN probe"),
+    ("pd1s_bahrain_fragrance_store_armani", "adgp", "Giorgio Armani Acqua di Gio Profumo", "Giorgio Armani Acqua di Gio Profumo 75ml", "Bahrain Fragrance Store", None, "consumers", "GREEN probe"),
+    ("pd1s_perfume_palace_emporio_armani", "swy", "Emporio Armani Stronger With You EDT", "Emporio Armani Stronger With You EDT 100ml", "Perfume Palace", None, "all", "GREEN probe"),
+)
+PD1N_ROWS = (
+    ("pd1n_dior_sauvage", "sauvage", "Dior Sauvage EDP 100ml", "Dior Sauvage EDP 100ml", "", 100, "all", "GREEN probe"),
+    ("pd1n_lancome_la_vie_est_belle", "lveb", "Lancome La Vie Est Belle EDP", "Lancome La Vie Est Belle EDP 100ml", "", None, "all", "GREEN probe"),
+    ("pd1n_ysl_libre", "libre", "Yves Saint Laurent Libre EDP", "Yves Saint Laurent Libre EDP 90ml", "", None, "consumers", "GREEN probe"),
+    ("pd1n_armani_acqua_di_gio_profumo", "adgp", "Giorgio Armani Acqua di Gio Profumo", "Giorgio Armani Acqua di Gio Profumo 75ml", "", None, "consumers", "GREEN probe"),
+    ("pd1n_emporio_armani", "swy", "Emporio Armani Stronger With You EDT", "Emporio Armani Stronger With You EDT 100ml", "", None, "all", "GREEN probe"),
+    # a null brand field (a price dict holding brand None reaches the matcher as None)
+    ("pd1n_null_brand_dior_sauvage", "sauvage", "Dior Sauvage EDP 100ml", "Dior Sauvage EDP 100ml", None, 100, "all", "GREEN probe"),
+)
+
+
+def _pin_accepted(monkeypatch, row, lmg):
+    """The P-D1 read (test_pin_d1_same_house_brand) for the appended rows: _selection_match
+    with the listing's brand, then the end-to-end verdicts the row reads, the switch ON."""
+    rid, line, query, title, brand, qsize, read, src = row
+    _cell(monkeypatch, lmg, SWITCH_ON)
+    assert _sel(query, title, brand) is True, (
+        "%s (%s) [%s]: %s | %s | brand %r refused by _selection_match; wanted: accepted" % (
+            rid, src, _cell_id(lmg, SWITCH_ON), query, title, brand))
+    keys = E2E_KEYS if read == "all" else CONSUMER_KEYS
+    got = _e2e(query, line, title, qsize, brand)
+    assert {k: got[k] for k in keys} == dict.fromkeys(keys, True), (
+        "%s (%s) [%s]: %s | %s | brand %r end to end %r; wanted: accepted" % (
+            rid, src, _cell_id(lmg, SWITCH_ON), query, title, brand, got))
+
+
+@pytest.mark.parametrize("lmg", LMG_CELLS, ids=LMG_IDS)
+@pytest.mark.parametrize("row", PD1S_ROWS, ids=[r[0] for r in PD1S_ROWS])
+def test_pin_d1s_store_name_brand(monkeypatch, row, lmg):
+    """Spec id P-D1s (PIN; the relay's GREEN word, 22 Nov 11:40). Source: the GREEN author's
+    probe at d062bad1. A store-name brand field that shares no word with the query house
+    ("Perfume Palace", "Bahrain Fragrance Store") on a right title of the D1 houses. Wanted
+    with the switch ON: accepted by _selection_match and by the end-to-end verdicts the row
+    reads (G1 never fires on a brand that shares no word with the house). Expected at base
+    d062bad1: accepted (passes)."""
+    _pin_accepted(monkeypatch, row, lmg)
+
+
+@pytest.mark.parametrize("lmg", LMG_CELLS, ids=LMG_IDS)
+@pytest.mark.parametrize("row", PD1N_ROWS, ids=[r[0] for r in PD1N_ROWS])
+def test_pin_d1n_no_brand_field(monkeypatch, row, lmg):
+    """Spec id P-D1n (PIN; the relay's GREEN word, 22 Nov 11:40). Source: the GREEN author's
+    probe at d062bad1. No brand field, on a right title of the D1 houses. Wanted with the
+    switch ON: accepted by _selection_match and by the end-to-end verdicts the row reads (G1
+    never fires without a brand field). Expected at base d062bad1: accepted (passes)."""
+    _pin_accepted(monkeypatch, row, lmg)
