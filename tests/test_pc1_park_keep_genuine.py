@@ -966,3 +966,28 @@ def test_pc1b_p1_unitless_titles_at_one_price_still_bind(monkeypatch):
     out = lumen_hit(LUMEN_TYPED, [v("Small", "10.000"), v("Large", "10.000")])
     assert seen == [LUMEN_TYPED], seen
     assert out is not None and out["amount"] == 10.0 and out["size"] == "100ml", out
+
+
+# PC1b VG PIN (gate condition (b), a RED amendment, rows added only): base's answer on VG's own
+# path for every unit-less shape, the literal measured at base 7e2e317c (the code of C1 e120439c).
+PC1B_VG_BASE = {
+    "amount": 4.5, "currency": "BHD", "original_currency": "BHD", "retailer": LUMEN_HOST,
+    "url": "https://house-b.example.com/products/lumen-edp", "in_stock": True, "confidence": 1.0,
+    "estimated": False, "source_method": "shopify_json", "concentration": "EDP", "size": "100ml",
+    "title": LUMEN_TYPED, "match_score": 1.0,
+}
+
+
+def test_pc1b_vg_pin_the_guard_stays_off_the_vg_path(monkeypatch):
+    """PC1b VG PIN, passes at base 7e2e317c (gate condition (b), a RED amendment): VG ON
+    (ENABLE_VARIANT_MIN_PRICE_GUARD, its own path), the switch unset or on, every unit-less shape
+    of this block, typed 'Lumen Edp 100ml' and untyped 'Lumen Edp': the matcher returns exactly
+    base's answer, PC1B_VG_BASE (the 30-unit variant's 4.500 labelled 100ml: VG's binder reads
+    the product title; the gap PC1b leaves on VG's path is a stated limit). Kills a guard that
+    also runs on VG's path (R17 and R17b use unit-bearing variant titles only)."""
+    for pnl in (None, "true"):
+        for shape in PC1B_SHAPES:
+            for typed in (LUMEN_TYPED, "Lumen Edp"):
+                setflags(monkeypatch, pnl=pnl, vg="true")
+                out = lumen_hit(typed, pc1b_variants(shape))
+                assert out == PC1B_VG_BASE, (pnl, shape, typed, out)
