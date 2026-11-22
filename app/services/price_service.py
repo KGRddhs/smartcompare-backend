@@ -8237,6 +8237,92 @@ def _m1b_concentration_default(q: VariantDescriptor, c: VariantDescriptor) -> bo
     return False
 
 
+# ---------------------------------------------------------------------------
+# INC-M1d BASE MATCHER GUARDS (ENABLE_MATCH_BASE_GUARDS, default OFF, read per
+# call; the incident data lane, ruling ORCH-M1D-A). Pre-existing wrong accepts of
+# the BASE matcher path (ENABLE_MATCH_FOLD off), one guard each, SELECTION mode
+# and fragrances only (the category after the _selection_match "other"
+# re-inference). The switch read is the FIRST statement of every guard: OFF runs
+# none of this, so every verdict is byte-identical. A guard only refuses (none
+# adds an accept), and none adds a log line, a response key, a cache write or a
+# network call.
+#   G1 (_m1d_brand_names_other_house, read in _selection_match, where the
+#      listing's brand field is known): the brand field shares a word with an
+#      alias group of _BRAND_ALIAS_GROUPS whose house the query names, but holds
+#      none of that house's whole alias forms (another house: "Christian Lacroix"
+#      for Dior), so the base strip of the group and of the brand's own words
+#      would pass its listing.
+# ---------------------------------------------------------------------------
+def match_base_guards_enabled() -> bool:
+    """INC-M1d: ENABLE_MATCH_BASE_GUARDS, read per call (house idiom)."""
+    return os.getenv("ENABLE_MATCH_BASE_GUARDS", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def _m1d_words(text: str) -> FrozenSet[str]:
+    """G1: the words of a query or a brand field for the whole-form test: the base's own
+    split (normalize_words over _fold_identity, as the brand strip reads a brand) and the
+    same split with each hyphen read as a space, so "Yves Saint-Laurent" holds every word
+    of the Yves Saint Laurent form."""
+    folded = _fold_identity(text)
+    return frozenset(normalize_words(folded)) | frozenset(normalize_words(folded.replace("-", " ")))
+
+
+def _m1d_house_forms(group: FrozenSet[str], profiles: Tuple[Any, ...]) -> List[Tuple[str, ...]]:
+    """G1: the whole house forms of one base alias group: each seeded house alias (the
+    INC-M1b accessor, product_resolver.seeded_line_profiles() through _m1b_profiles) whose
+    words all lie in the group: "dior" and "christian dior" for {dior, christian}; "ysl",
+    "yves saint laurent" and "saint laurent" for the YSL group; "giorgio armani",
+    "armani", "emporio armani" and "emporio" for the Armani group. A member word that is
+    only part of a house name (christian, paris, giorgio, yves, laurent) is not a form. A
+    group no seeded house names has no form, so G1 never fires for it."""
+    forms: List[Tuple[str, ...]] = []
+    for p in profiles:
+        for alias in p.house_aliases:
+            form = _m1b_core_words(alias)
+            if form and all(w in group for w in form) and form not in forms:
+                forms.append(form)
+    return forms
+
+
+def _m1d_brand_names_other_house(query_name: str, candidate_brand: str,
+                                 category: Optional[str]) -> bool:
+    """G1 (D1): True when the listing's brand field names another house that shares a
+    word with the house the query names; _selection_match then refuses the pair. The base
+    strips the brand's own words from both sides, and with them every alias group one of
+    those words belongs to (_identity_tokens_ps), so "Christian Lacroix" took "dior" out
+    of "Dior Sauvage EDP" and "Sauvage EDP 100ml" passed. Fires only when the switch is
+    on, the category is fragrances, a brand field is stated, the brand's words (as the base
+    strip reads them) share a word with a base alias group, the query holds one of that
+    group's whole house forms (_m1d_house_forms: the query names the house), and the brand
+    holds none of them (INC-M1b's whole-form test, R2-1 and FX1-2): "Christian Dior",
+    "Dior Paris", "Lancome Paris", "Giorgio Armani", "YSL" and "Saint Laurent" are the
+    house; "Christian Lacroix", "Paris Corner", "Giorgio Beverly Hills", "Yves Rocher"
+    and "Laurent Mazzone" are not. A store name that shares no word with such a group
+    ("Perfume Palace") and an empty brand field never fire."""
+    if not match_base_guards_enabled():
+        return False
+    if (category or "").lower() != "fragrances":
+        return False
+    if not isinstance(candidate_brand, str) or not candidate_brand.strip():
+        return False
+    stripped = normalize_words(_fold_identity(candidate_brand))
+    if " " in candidate_brand.strip():
+        stripped = stripped | {re.sub(r"\s+", "", _fold_identity(candidate_brand))}
+    groups = [g for g in _BRAND_ALIAS_GROUPS if stripped & g]
+    if not groups:
+        return False  # no alias group shares a word with the brand: no group strip
+    query_words = _m1d_words(query_name)
+    brand_words = _m1d_words(candidate_brand)
+    profiles = _m1b_profiles()
+    for group in groups:
+        forms = _m1d_house_forms(group, profiles)
+        if not any(all(w in query_words for w in f) for f in forms):
+            continue  # the query names no house of this group
+        if not any(all(w in brand_words for w in f) for f in forms):
+            return True  # the brand field names another house
+    return False
+
+
 def _vd_candidate_missing_query_axis(q: VariantDescriptor, c: VariantDescriptor,
                                      cat: str, *, mode: Optional[str] = None) -> bool:
     """QUERY_STATED_REQUIRES_CANDIDATE (_candidate_missing_query_axis): the
@@ -8938,6 +9024,11 @@ def _selection_match(
     # direct off-path/unit call, where lenient subset matching avoids mass over-rejection.
     if (category or "").lower() == "other":
         category = _infer_category_from_query(query_name) or category
+    # INC-M1d G1 (ENABLE_MATCH_BASE_GUARDS, read first; fragrances only): a listing whose
+    # brand field names another house sharing a word with the query's house is refused
+    # before the base brand strip can pass it (_m1d_brand_names_other_house).
+    if _m1d_brand_names_other_house(query_name, candidate_brand, category):
+        return False
     q_vd = extract_variant_descriptor(query_name, category, candidate_brand)
     c_vd = extract_variant_descriptor(candidate_title, category, candidate_brand)
     return descriptor_verdict(q_vd, c_vd, category, DESCRIPTOR_MODE_SELECTION).match
