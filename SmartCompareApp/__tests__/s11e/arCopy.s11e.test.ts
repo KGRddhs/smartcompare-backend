@@ -137,7 +137,8 @@ describe('S81-11e AR-COPY PIN rows (green at base)', () => {
     expect(TWELVE.filter((k) => !(k in EN)).map((k) => `en:${k}`)).toEqual([]);
     expect(arKeys.filter((k) => !(k in EN))).toEqual([]);
     expect(enKeys.filter((k) => !(k in AR))).toEqual([]);
-    expect({ ar: arKeys.length, en: enKeys.length }).toEqual({ ar: 1014, en: 1014 });
+    // INC-C1 adds 24 keys.
+    expect({ ar: arKeys.length, en: enKeys.length }).toEqual({ ar: 1038, en: 1038 });
   });
 
   it('P4 the twelve AR values: no diacritic, no Arabic-Indic digit, no bidi control, no stray ASCII digit', () => {

@@ -91,8 +91,11 @@ import {
   classifyUnsuccessfulCameraComparison,
   isCameraEngineOutage,
   isCameraEngineOutageResponse,
+  isCameraVisionUnavailable,
 } from '../services/failureClassification';
 import { settingsErrorKey } from '../services/errorCopy';
+// INC-C1 C1-4: the photo state's "Type the names" hands Home its mode.
+import { requestHomeMode } from '../services/homeEntryIntent';
 import { LoadingRings } from '../components/hero/LoadingRings';
 // Faithful-results Phase 2.1 — HeroRings pruned from the render path (the
 // score-rings card is not in the Qaren design-system Results layout).
@@ -167,6 +170,7 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     | 'vision_failed'
     | 'timeout'
     | 'engine_unavailable'
+    | 'photo_unavailable'
     | 'auth'
     | 'generic'
     | 'category_not_live'
@@ -382,6 +386,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
         if (err?.code === 'USAGE_LIMIT') {
           setLoadingResult(false);
           navigation.navigate('Paywall', { initialUsage: err.detail ?? undefined });
+          return;
+        }
+        // INC-C1 C1-4: a 503 LLM_UNAVAILABLE from /image/identify is photo
+        // compare being unavailable (vision refused or out of service): say
+        // so and offer typing the names, ahead of the engine-outage copy below.
+        if (isCameraVisionUnavailable(err)) {
+          setLoadError('photo_unavailable');
+          setLoadingResult(false);
           return;
         }
         // M18 MB-flows-05 — explicit matrix (failureClassification.ts).
@@ -809,6 +821,14 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
     const isTimeout = loadError === 'timeout';
     // S69 U7 R3 — engine outage: its own title + body (R1 copy), back CTA.
     const isEngineUnavailable = loadError === 'engine_unavailable';
+    // INC-C1 C1-4: photo compare unavailable. Its own title and body, "Type
+    // the names" as the CTA (back to Main, where Home opens in type mode, once)
+    // and Back as a second button; the header back stays as it is.
+    const isPhotoUnavailable = loadError === 'photo_unavailable';
+    const handleTypeNames = () => {
+      requestHomeMode('type');
+      navigation.popTo('Main');
+    };
     // S71 U13c — camera sign-in state: the one retry answered 401 again, or
     // the one refresh failed and nothing was re-sent (UR1/UR2).
     // The CTA mirrors HistoryScreen's: clear the stored session, then tell
@@ -847,6 +867,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ? 'results-category-not-live-state'
               : reasonKey
               ? 'results-reason-state'
+              : isPhotoUnavailable
+              ? 'results-photo-unavailable-state'
               : undefined
           }
         >
@@ -868,6 +890,8 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
               ? t('home.categories.fragrancesOnly')
               : reasonKey
               ? t(reasonKey)
+              : isPhotoUnavailable
+              ? t('results.photoUnavailable.title')
               : t('results.emptyState.title')}
           </Text>
           {isCategoryNotLive ? (
@@ -877,18 +901,22 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
             <Text style={styles.emptyStateBody}>{t('results.timeout.body')}</Text>
           ) : isEngineUnavailable ? (
             <Text style={styles.emptyStateBody}>{t('home.errors.engineUnavailable.body')}</Text>
+          ) : isPhotoUnavailable ? (
+            <Text style={styles.emptyStateBody}>{t('results.photoUnavailable.body')}</Text>
           ) : null}
           <TouchableOpacity
-            onPress={isTimeout ? handleRetry : isAuth ? handleSignIn : () => navigation.goBack()}
+            onPress={isTimeout ? handleRetry : isAuth ? handleSignIn : isPhotoUnavailable ? handleTypeNames : () => navigation.goBack()}
             style={styles.emptyStateCta}
             accessibilityRole="button"
-            testID={isTimeout ? 'results-timeout-retry' : isAuth ? 'results-auth-signin' : undefined}
+            testID={isTimeout ? 'results-timeout-retry' : isAuth ? 'results-auth-signin' : isPhotoUnavailable ? 'results-photo-type-names' : undefined}
           >
             <Text style={styles.emptyStateCtaText}>
               {isTimeout
                 ? t('results.timeout.retry')
                 : isAuth
                 ? t('auth.signIn')
+                : isPhotoUnavailable
+                ? t('common.typeNames')
                 : isEngineUnavailable || isCategoryNotLive || reasonKey
                 ? // S69 U7 R3 — the camera user did not come from History:
                   // a neutral "Back", not "Back to history".
@@ -896,6 +924,16 @@ export default function ResultsScreen({ route, navigation }: ResultsScreenProps)
                 : t('results.emptyState.cta')}
             </Text>
           </TouchableOpacity>
+          {isPhotoUnavailable ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.emptyStateSecondaryCta}
+              accessibilityRole="button"
+              testID="results-empty-back"
+            >
+              <Text style={styles.emptyStateSecondaryCtaText}>{t('common.back')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     );
@@ -1085,6 +1123,16 @@ const styles = StyleSheet.create({
   },
   emptyStateCtaText: {
     color: colors.cta.onPrimary,
+    ...typography.bodyEmphasis,
+  },
+  // INC-C1 C1-4: the photo state's second button (Back), a text button under the CTA.
+  emptyStateSecondaryCta: {
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+  },
+  emptyStateSecondaryCtaText: {
+    color: colors.text.primary,
     ...typography.bodyEmphasis,
   },
   // Header — loading + empty-state branches reuse this row.

@@ -76,7 +76,8 @@ describe('getComparison — comparison_id surfacing (M18 MB-contract-03)', () =>
     // M18 MB-perf-03: the history detail fetch now carries a per-call
     // compare-class deadline instead of riding the global 120s timeout.
     expect(axiosInstance.get).toHaveBeenCalledWith(`/api/v1/comparisons/${ROW_ID}`, {
-      timeout: 35000,
+      // INC-C1: COMPARE_TIMEOUT_MS is 50000 (was 35000).
+      timeout: 50000,
     });
     expect(result.products).toHaveLength(2);
     expect(result.metadata.query).toBe('iPhone 15 vs Galaxy S24');

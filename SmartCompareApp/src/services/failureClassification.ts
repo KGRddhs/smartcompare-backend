@@ -95,6 +95,19 @@ export function isCameraEngineOutage(err: any): boolean {
 }
 
 /**
+ * INC-C1 C1-4: a THROWN identify failure that means "photo compare is not
+ * available right now": HTTP 503 with code LLM_UNAVAILABLE, top level or under
+ * detail, which the identify route sends when vision is refused or out of
+ * service. The camera path checks it after USAGE_LIMIT and before
+ * isCameraEngineOutage (which would show the engine copy for it); a 500, a
+ * 502, a bare 503 and a 200 comparison_failed keep their own rows.
+ */
+export function isCameraVisionUnavailable(err: any): boolean {
+  const data = err?.response?.data;
+  return err?.response?.status === 503 && (data?.code ?? data?.detail?.code) === 'LLM_UNAVAILABLE';
+}
+
+/**
  * A 200 identify RESPONSE that carries an engine outage: either
  * `action: 'comparison_failed'` (ENABLE_CAMERA_FAILURE_ENVELOPE, or the
  * route's exit-6 INTERNAL_ERROR), or — envelope flag OFF — an

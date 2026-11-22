@@ -50,7 +50,13 @@ jest.mock('react-i18next', () => {
   const ar = require('../../src/i18n/ar.json') as Record<string, string>;
   const t = (key: string, opts?: Record<string, unknown>) => {
     const cat = mockLang === 'ar' ? ar : en;
-    let str = cat[key] ?? ((opts?.defaultValue as string) ?? key);
+    // INC-C1: plural-aware like i18next (a count picks key_<form> when the bare key is absent).
+    const count = opts?.count;
+    const plural =
+      typeof count === 'number' && cat[key] === undefined
+        ? cat[`${key}_${new Intl.PluralRules(mockLang).select(count)}`]
+        : undefined;
+    let str = plural ?? cat[key] ?? ((opts?.defaultValue as string) ?? key);
     if (opts) {
       for (const [k, v] of Object.entries(opts)) {
         if (k === 'defaultValue') continue;
@@ -422,13 +428,13 @@ describe('S81-11 E2r / E3r -- the card price under field_status / as_of', () => 
     ];
     const m = fsv();
     expect(typeof m?.formatAsOfDate).toBe('function');
-    const fmt = (age: number) => m?.formatAsOfDate?.(iso(NOW - age), 'en');
 
     const r1 = render(<ResultsContent {...makeProps(at(2 * DAY), {})} />);
     const asof = r1.queryByTestId('results-product-asof-0');
     expect(asof).not.toBeNull();
+    // INC-C1 (Q4): the fresh line reads "last checked 2 days ago" (plural form, same testID).
     expect(allText(asof?.children ?? []).join('')).toBe(
-      tEn('results.price.asOf', { store: HOST, date: fmt(2 * DAY) }),
+      tEn('results.price.checkedDaysAgo_other', { store: HOST, days: '2' }),
     );
     expect(r1.queryByText(formatAmountWithCurrency(45, 'BHD', tEn))).not.toBeNull();
     r1.unmount();
@@ -436,8 +442,9 @@ describe('S81-11 E2r / E3r -- the card price under field_status / as_of', () => 
     const r2 = render(<ResultsContent {...makeProps(at(10 * DAY), {})} />);
     const seen = r2.queryByTestId('results-product-lastseen-0');
     expect(seen).not.toBeNull();
+    // INC-C1 (Q4): the stale line reads "last checked 10 days ago" (plural form, same testID).
     expect(allText(seen?.children ?? []).join('')).toBe(
-      tEn('results.price.lastSeen', { store: HOST, date: fmt(10 * DAY) }),
+      tEn('results.price.checkedDaysAgo_other', { store: HOST, days: '10' }),
     );
     r2.unmount();
 
@@ -563,9 +570,9 @@ describe('S81-11 PIN P1 / R-S11-16 -- absent metadata = today, per surface (gree
       r.unmount();
       const r2 = render(<ResultsContent {...makeProps(pending, {}, extra)} />);
       expect(r2.queryByText(EN['results.price.pending'])).not.toBeNull();
-      expect(
-        r2.queryByText(`${formatAmountWithCurrency(12.5, 'BHD', tEn)} ${EN['results.convertedUSD']}`),
-      ).not.toBeNull();
+      // INC-C1 (T7-08): the price line is the bare amount; the caption is the one label.
+      expect(r2.queryByText(formatAmountWithCurrency(12.5, 'BHD', tEn))).not.toBeNull();
+      expect(r2.queryAllByText(EN['results.convertedUSD'])).toHaveLength(1);
       expect(r2.queryByTestId('results-product-converted-1')).not.toBeNull();
       expect(honestIds(r2)).toEqual([]);
     });

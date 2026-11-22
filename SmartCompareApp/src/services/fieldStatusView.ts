@@ -98,3 +98,20 @@ export function formatAsOfDate(dateIso: string, language: 'en' | 'ar'): string {
     return d.toISOString().slice(0, 10);
   }
 }
+
+/**
+ * INC-C1 C1-2: the whole calendar days from the local day of `dateIso` to the
+ * local day of `nowMs` (the caller's clock; nothing here reads the device
+ * clock). Counted between local starts of day, so 23:50 yesterday is 1 and
+ * 00:10 today is 0; Math.round absorbs a 23 h or 25 h daylight-saving day. A
+ * date ahead of now (the server allows a few minutes of skew) or an unparsable
+ * one clamps to 0, i.e. today.
+ */
+export function calendarDaysAgo(dateIso: string, nowMs: number): number {
+  const startOfDay = (ms: number) => {
+    const d = new Date(ms);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+  const days = Math.round((startOfDay(nowMs) - startOfDay(Date.parse(dateIso))) / DAY_MS);
+  return Number.isFinite(days) && days > 0 ? days : 0;
+}

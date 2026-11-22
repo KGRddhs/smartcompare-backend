@@ -195,7 +195,8 @@ describe('S81-08 C - camera identify headers', () => {
       'x-device-fingerprint': NEW,
       'x-ai-consent-version': String(consent.AI_CONSENT_VERSION),
       'x-compare-request-id': h['x-compare-request-id'],
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     expect(h['x-device-fingerprint-legacy']).toBeUndefined();
   });
@@ -253,11 +254,13 @@ describe('S81-08 C - camera identify headers', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(lowerHeaders(fetchMock.mock.calls[0][1].headers)).toEqual({
       authorization: 'Bearer bearer-old-synthetic',
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
     expect(lowerHeaders(fetchMock.mock.calls[1][1].headers)).toEqual({
       authorization: 'Bearer bearer-new-synthetic',
-      'x-client-capabilities': 'price_size',
+      // INC-C1: price_asof joins price_size in X-Client-Capabilities.
+      'x-client-capabilities': 'price_size,price_asof',
     });
   });
 

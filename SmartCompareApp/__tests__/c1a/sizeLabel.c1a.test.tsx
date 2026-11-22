@@ -318,13 +318,13 @@ describe('INC-C1a C rows (fail at base)', () => {
       rc = require('../../src/services/requestContext');
     });
     expect(rc).not.toBeNull();
-    expect(rc.CLIENT_CAPABILITIES).toEqual(['price_size']);
+    // INC-C1: price_asof joins price_size; the exact value replaces the not-price_asof check.
+    expect(rc.CLIENT_CAPABILITIES).toEqual(['price_size', 'price_asof']);
     const headers = await rc.buildContextHeaders({});
-    expect(headers['X-Client-Capabilities']).toBe('price_size');
-    expect(String(headers['X-Client-Capabilities'])).not.toMatch(/price_asof/);
+    expect(headers['X-Client-Capabilities']).toBe('price_size,price_asof');
     const config: any = { headers: {} };
     rc.mergeContextHeaders(config, headers);
-    expect(config.headers['X-Client-Capabilities']).toBe('price_size');
+    expect(config.headers['X-Client-Capabilities']).toBe('price_size,price_asof');
   });
 
   it('C2 size label EN and AR: BHD 58.11 with size_ml 100 renders "58.110 BHD . 100 ml" (and the as-of line stays)', () => {
@@ -419,15 +419,17 @@ describe('INC-C1a C rows (fail at base)', () => {
     ];
     for (const lang of ['en', 'ar'] as const) {
       const label = conv(lang);
-      const today = `${money('58.110', 'BHD', lang)} ${label}`;
+      // INC-C1 (T7-08): the size label wraps the bare amount; the caption is the one label.
+      const today = money('58.110', 'BHD', lang);
       const s = show(products, {}, lang);
       const line = withSize(today, '100', lang);
       expect(s.card0).toContain(line);
-      expect(line.split(label).length - 1).toBe(1);
+      expect(line.split(label).length - 1).toBe(0);
       // the caption under the price stays as today: same count of the label
       const base = show(strip(products), {}, lang);
       const count = (texts: string[]) => texts.join('\n').split(label).length - 1;
       expect(count(s.card0)).toBe(count(base.card0));
+      expect(count(s.card0)).toBe(1);
       s.r.unmount();
       base.r.unmount();
     }
@@ -522,9 +524,10 @@ const P1_BODIES: Record<string, any[]> = {
 
 // Recorded at base b0ad2603 (2026-11-16, run s96c-red-base1); Arabic as escapes.
 const P1_GOLDEN: Record<string, string[]> = {
-  'converted-ar-0': ['Fragrance A', 'Brand A', '58.110 \u062f.\u0628 (\u0645\u062d\u0648\u0644 \u0645\u0646 \u0627\u0644\u062f\u0648\u0644\u0627\u0631)', '(\u0645\u062d\u0648\u0644 \u0645\u0646 \u0627\u0644\u062f\u0648\u0644\u0627\u0631)'],
+  // INC-C1 (T7-08): the converted rows show the bare amount; the caption keeps the one label.
+  'converted-ar-0': ['Fragrance A', 'Brand A', '58.110 \u062f.\u0628', '(\u0645\u062d\u0648\u0644 \u0645\u0646 \u0627\u0644\u062f\u0648\u0644\u0627\u0631)'],
   'converted-ar-1': ['Fragrance B', 'Brand A', '\u0644\u0627 \u064a\u0648\u062c\u062f \u0633\u0639\u0631 \u0645\u0624\u0643\u062f \u0628\u0639\u062f.'],
-  'converted-en-0': ['Fragrance A', 'Brand A', '58.110 BHD (converted from USD)', '(converted from USD)'],
+  'converted-en-0': ['Fragrance A', 'Brand A', '58.110 BHD', '(converted from USD)'],
   'converted-en-1': ['Fragrance B', 'Brand A', 'No confirmed price yet.'],
   'mixed-ar-0': ['Fragrance A', 'Brand A', '\u0627\u0644\u0633\u0639\u0631 \u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631'],
   'mixed-ar-1': ['Fragrance B', 'Brand A', '12.50 \u0631.\u0633'],

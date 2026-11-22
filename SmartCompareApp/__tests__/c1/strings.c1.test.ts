@@ -1,0 +1,379 @@
+/**
+ * INC-C1 OTA-BATCH RED -- strings (INC_C1_UNIT_SPEC_V2.md section 7.4, rows
+ * S1, C3 and the pin P2; gate rulings F5 and F6).
+ *
+ * The contract this file fixes for GREEN:
+ *  - en.json / ar.json gain the 24 keys of section 6 (rows 2-25) and
+ *    results.partial.note takes the row 1 words, EN literal and AR decoded
+ *    from the table's code points (S1).
+ *  - Rows 18-25 (the camera and link words) exist non-empty in both catalogs
+ *    (the F5 control), carry no digit (ASCII, U+0660-0669, U+06F0-06F9) and no
+ *    time promise (C3).
+ *  - P2 (passes at base and after GREEN): equal key sets; every plural family
+ *    has the six Arabic forms and at least _one and _other in English; equal
+ *    {{vars}} per key in both catalogs (so EN _one / _two take a literal 1 / 2,
+ *    correction a); no .copy-policy.json hit on the section 6 keys.
+ *
+ * Arabic is built from code points (String.fromCodePoint); this source stays
+ * ASCII. F1: catalogs and the policy file only, no app import.
+ */
+
+import enCatalog from '../../src/i18n/en.json';
+import arCatalog from '../../src/i18n/ar.json';
+import policyFile from '../../src/i18n/.copy-policy.json';
+
+const EN = enCatalog as unknown as Record<string, string>;
+const AR = arCatalog as unknown as Record<string, string>;
+const POLICY = policyFile as unknown as {
+  banned_en?: { pattern: string; label: string }[];
+  banned_ar?: { pattern: string; label: string }[];
+  scary_vocab_en?: string[];
+  scary_vocab_ar?: string[];
+};
+
+const u = (...cps: number[]) => String.fromCodePoint(...cps);
+
+// Section 6 of the unit spec: [row, key, EN literal, AR from the code points].
+const ROWS: [number, string, string, string][] = [
+  [
+    1,
+    'results.partial.note',
+    'Some details did not arrive in time, so a few may be missing.',
+    u(
+      0x644, 0x645, 0x20, 0x62a, 0x635, 0x644, 0x20, 0x628, 0x639, 0x636, 0x20, 0x627,
+      0x644, 0x62a, 0x641, 0x627, 0x635, 0x64a, 0x644, 0x20, 0x641, 0x64a, 0x20, 0x627,
+      0x644, 0x648, 0x642, 0x62a, 0x20, 0x627, 0x644, 0x645, 0x646, 0x627, 0x633, 0x628,
+      0x60c, 0x20, 0x644, 0x630, 0x627, 0x20, 0x642, 0x62f, 0x20, 0x64a, 0x646, 0x642,
+      0x635, 0x20, 0x628, 0x639, 0x636, 0x647, 0x627, 0x2e,
+    ),
+  ],
+  [
+    2,
+    'results.price.checkedToday',
+    '{{store}}, last checked today',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x627,
+      0x644, 0x64a, 0x648, 0x645,
+    ),
+  ],
+  [
+    3,
+    'results.price.checkedTodayNoStore',
+    'Last checked today',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x627, 0x644, 0x64a,
+      0x648, 0x645,
+    ),
+  ],
+  [
+    4,
+    'results.price.checkedYesterday',
+    '{{store}}, last checked yesterday',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x623,
+      0x645, 0x633,
+    ),
+  ],
+  [
+    5,
+    'results.price.checkedYesterdayNoStore',
+    'Last checked yesterday',
+    u(0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x623, 0x645, 0x633),
+  ],
+  [
+    6,
+    'results.price.checkedDaysAgo_zero',
+    '{{store}}, last checked {{days}} days ago',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642,
+      0x628, 0x644, 0x20,
+    ) + '{{days}}' + u(0x20, 0x64a, 0x648, 0x645),
+  ],
+  [
+    7,
+    'results.price.checkedDaysAgo_one',
+    '{{store}}, last checked 1 day ago',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642,
+      0x628, 0x644, 0x20, 0x64a, 0x648, 0x645, 0x20, 0x648, 0x627, 0x62d, 0x62f,
+    ),
+  ],
+  [
+    8,
+    'results.price.checkedDaysAgo_two',
+    '{{store}}, last checked 2 days ago',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642,
+      0x628, 0x644, 0x20, 0x64a, 0x648, 0x645, 0x64a, 0x646,
+    ),
+  ],
+  [
+    9,
+    'results.price.checkedDaysAgo_few',
+    '{{store}}, last checked {{days}} days ago',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642,
+      0x628, 0x644, 0x20,
+    ) + '{{days}}' + u(0x20, 0x623, 0x64a, 0x627, 0x645),
+  ],
+  [
+    10,
+    'results.price.checkedDaysAgo_many',
+    '{{store}}, last checked {{days}} days ago',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642,
+      0x628, 0x644, 0x20,
+    ) + '{{days}}' + u(0x20, 0x64a, 0x648, 0x645, 0x64b, 0x627),
+  ],
+  [
+    11,
+    'results.price.checkedDaysAgo_other',
+    '{{store}}, last checked {{days}} days ago',
+    '{{store}}' + u(
+      0x60c, 0x20, 0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642,
+      0x628, 0x644, 0x20,
+    ) + '{{days}}' + u(0x20, 0x64a, 0x648, 0x645),
+  ],
+  [
+    12,
+    'results.price.checkedDaysAgoNoStore_zero',
+    'Last checked {{days}} days ago',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642, 0x628, 0x644,
+      0x20,
+    ) + '{{days}}' + u(0x20, 0x64a, 0x648, 0x645),
+  ],
+  [
+    13,
+    'results.price.checkedDaysAgoNoStore_one',
+    'Last checked 1 day ago',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642, 0x628, 0x644,
+      0x20, 0x64a, 0x648, 0x645, 0x20, 0x648, 0x627, 0x62d, 0x62f,
+    ),
+  ],
+  [
+    14,
+    'results.price.checkedDaysAgoNoStore_two',
+    'Last checked 2 days ago',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642, 0x628, 0x644,
+      0x20, 0x64a, 0x648, 0x645, 0x64a, 0x646,
+    ),
+  ],
+  [
+    15,
+    'results.price.checkedDaysAgoNoStore_few',
+    'Last checked {{days}} days ago',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642, 0x628, 0x644,
+      0x20,
+    ) + '{{days}}' + u(0x20, 0x623, 0x64a, 0x627, 0x645),
+  ],
+  [
+    16,
+    'results.price.checkedDaysAgoNoStore_many',
+    'Last checked {{days}} days ago',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642, 0x628, 0x644,
+      0x20,
+    ) + '{{days}}' + u(0x20, 0x64a, 0x648, 0x645, 0x64b, 0x627),
+  ],
+  [
+    17,
+    'results.price.checkedDaysAgoNoStore_other',
+    'Last checked {{days}} days ago',
+    u(
+      0x622, 0x62e, 0x631, 0x20, 0x62a, 0x62d, 0x642, 0x642, 0x20, 0x642, 0x628, 0x644,
+      0x20,
+    ) + '{{days}}' + u(0x20, 0x64a, 0x648, 0x645),
+  ],
+  [
+    18,
+    'results.photoUnavailable.title',
+    'Photo compare is not available right now',
+    u(
+      0x627, 0x644, 0x645, 0x642, 0x627, 0x631, 0x646, 0x629, 0x20, 0x628, 0x627, 0x644,
+      0x635, 0x648, 0x631, 0x20, 0x63a, 0x64a, 0x631, 0x20, 0x645, 0x62a, 0x627, 0x62d,
+      0x629, 0x20, 0x62d, 0x627, 0x644, 0x64a, 0x64b, 0x627,
+    ),
+  ],
+  [
+    19,
+    'results.photoUnavailable.body',
+    'You can type the two names instead.',
+    u(
+      0x64a, 0x645, 0x643, 0x646, 0x643, 0x20, 0x643, 0x62a, 0x627, 0x628, 0x629, 0x20,
+      0x627, 0x633, 0x645, 0x64a, 0x20, 0x627, 0x644, 0x639, 0x637, 0x631, 0x64a, 0x646,
+      0x20, 0x628, 0x62f, 0x644, 0x64b, 0x627, 0x20, 0x645, 0x646, 0x20, 0x630, 0x644,
+      0x643, 0x2e,
+    ),
+  ],
+  [
+    20,
+    'common.typeNames',
+    'Type the names',
+    u(0x627, 0x643, 0x62a, 0x628, 0x20, 0x627, 0x644, 0x623, 0x633, 0x645, 0x627, 0x621),
+  ],
+  [
+    21,
+    'home.errors.link.title',
+    'Let\'s try another way',
+    u(
+      0x644, 0x646, 0x62c, 0x631, 0x651, 0x628, 0x20, 0x637, 0x631, 0x64a, 0x642, 0x629,
+      0x20, 0x623, 0x62e, 0x631, 0x649,
+    ),
+  ],
+  [
+    22,
+    'home.errors.link.storeUnreadable',
+    'This shop\'s page did not open for us. You can type the two names instead.',
+    u(
+      0x635, 0x641, 0x62d, 0x629, 0x20, 0x647, 0x630, 0x627, 0x20, 0x627, 0x644, 0x645,
+      0x62a, 0x62c, 0x631, 0x20, 0x644, 0x645, 0x20, 0x62a, 0x64f, 0x641, 0x62a, 0x62d,
+      0x20, 0x644, 0x62f, 0x64a, 0x646, 0x627, 0x2e, 0x20, 0x64a, 0x645, 0x643, 0x646,
+      0x643, 0x20, 0x643, 0x62a, 0x627, 0x628, 0x629, 0x20, 0x627, 0x633, 0x645, 0x64a,
+      0x20, 0x627, 0x644, 0x639, 0x637, 0x631, 0x64a, 0x646, 0x20, 0x628, 0x62f, 0x644,
+      0x64b, 0x627, 0x20, 0x645, 0x646, 0x20, 0x630, 0x644, 0x643, 0x2e,
+    ),
+  ],
+  [
+    23,
+    'home.errors.link.notProductPage',
+    'That link opens a shop page, not a product. Open the perfume\'s own page and copy its link.',
+    u(
+      0x647, 0x630, 0x627, 0x20, 0x627, 0x644, 0x631, 0x627, 0x628, 0x637, 0x20, 0x64a,
+      0x641, 0x62a, 0x62d, 0x20, 0x635, 0x641, 0x62d, 0x629, 0x20, 0x645, 0x62a, 0x62c,
+      0x631, 0x20, 0x648, 0x644, 0x64a, 0x633, 0x20, 0x635, 0x641, 0x62d, 0x629, 0x20,
+      0x645, 0x646, 0x62a, 0x62c, 0x2e, 0x20, 0x627, 0x641, 0x62a, 0x62d, 0x20, 0x635,
+      0x641, 0x62d, 0x629, 0x20, 0x627, 0x644, 0x639, 0x637, 0x631, 0x20, 0x646, 0x641,
+      0x633, 0x647, 0x20, 0x648, 0x627, 0x646, 0x633, 0x62e, 0x20, 0x631, 0x627, 0x628,
+      0x637, 0x647, 0x627, 0x2e,
+    ),
+  ],
+  [
+    24,
+    'home.errors.link.unresolved',
+    'We did not find a perfume on that page. Copy the link of the perfume\'s own page.',
+    u(
+      0x644, 0x645, 0x20, 0x646, 0x62c, 0x62f, 0x20, 0x639, 0x637, 0x631, 0x64b, 0x627,
+      0x20, 0x641, 0x64a, 0x20, 0x62a, 0x644, 0x643, 0x20, 0x627, 0x644, 0x635, 0x641,
+      0x62d, 0x629, 0x2e, 0x20, 0x627, 0x646, 0x633, 0x62e, 0x20, 0x631, 0x627, 0x628,
+      0x637, 0x20, 0x635, 0x641, 0x62d, 0x629, 0x20, 0x627, 0x644, 0x639, 0x637, 0x631,
+      0x20, 0x646, 0x641, 0x633, 0x647, 0x2e,
+    ),
+  ],
+  [
+    25,
+    'home.errors.link.generic',
+    'One of those links did not open for us. Paste a link from another shop, or type the two names.',
+    u(
+      0x623, 0x62d, 0x62f, 0x20, 0x627, 0x644, 0x631, 0x627, 0x628, 0x637, 0x64a, 0x646,
+      0x20, 0x644, 0x645, 0x20, 0x64a, 0x64f, 0x641, 0x62a, 0x62d, 0x20, 0x644, 0x62f,
+      0x64a, 0x646, 0x627, 0x2e, 0x20, 0x627, 0x644, 0x635, 0x642, 0x20, 0x631, 0x627,
+      0x628, 0x637, 0x64b, 0x627, 0x20, 0x645, 0x646, 0x20, 0x645, 0x62a, 0x62c, 0x631,
+      0x20, 0x622, 0x62e, 0x631, 0x60c, 0x20, 0x623, 0x648, 0x20, 0x627, 0x643, 0x62a,
+      0x628, 0x20, 0x627, 0x633, 0x645, 0x64a, 0x20, 0x627, 0x644, 0x639, 0x637, 0x631,
+      0x64a, 0x646, 0x2e,
+    ),
+  ],
+];
+const PLURAL = /^(.*)_(zero|one|two|few|many|other)$/;
+const vars = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
+const visibleCopy = (s: string) => s.replace(/\{\{[^}]+\}\}/g, '');
+
+describe('INC-C1 strings (fail at base)', () => {
+  it('S1 the 24 new keys and the changed results.partial.note equal the section 6 table (EN, decoded AR)', () => {
+    expect(ROWS.map(([n]) => n)).toEqual(Array.from({ length: 25 }, (_, i) => i + 1));
+    const got: Record<string, unknown> = {};
+    const want: Record<string, unknown> = {};
+    for (const [n, key, en, ar] of ROWS) {
+      got[`${n} ${key}`] = { en: EN[key], ar: AR[key] };
+      want[`${n} ${key}`] = { en, ar };
+    }
+    expect(got).toEqual(want);
+  });
+
+  it('C3 rows 18-25 exist non-empty in both catalogs (control), with no digit and no time promise', () => {
+    const rows = ROWS.filter(([n]) => n >= 18);
+    expect(rows).toHaveLength(8);
+    const present = rows.map(([n, key]) => ({
+      n,
+      key,
+      en: typeof EN[key] === 'string' && EN[key].length > 0,
+      ar: typeof AR[key] === 'string' && AR[key].length > 0,
+    }));
+    expect(present).toEqual(rows.map(([n, key]) => ({ n, key, en: true, ar: true })));
+
+    const DIGIT = new RegExp('[0-9' + u(0x660) + '-' + u(0x669) + u(0x6f0) + '-' + u(0x6f9) + ']');
+    const EN_TIME = /update|soon|shortly|next|minute|hour/i;
+    const AR_TIME = [
+      u(0x62a, 0x62d, 0x62f, 0x64a, 0x62b),
+      u(0x642, 0x631, 0x64a, 0x628),
+      u(0x628, 0x639, 0x62f, 0x20, 0x642, 0x644, 0x64a, 0x644),
+    ];
+    const hits: string[] = [];
+    for (const [n, key] of rows) {
+      const en = String(EN[key]);
+      const ar = String(AR[key]);
+      if (DIGIT.test(en)) hits.push(`${n} ${key} EN digit`);
+      if (DIGIT.test(ar)) hits.push(`${n} ${key} AR digit`);
+      if (EN_TIME.test(en)) hits.push(`${n} ${key} EN time word`);
+      AR_TIME.forEach((w, i) => {
+        if (ar.includes(w)) hits.push(`${n} ${key} AR time word ${i}`);
+      });
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
+describe('INC-C1 strings pin (passes at base)', () => {
+  it('P2 equal key sets; six AR forms and EN _one/_other per plural family; equal {{vars}} per key; no copy-policy hit on the section 6 keys', () => {
+    const enKeys = Object.keys(EN).sort();
+    const arKeys = Object.keys(AR).sort();
+    expect(arKeys).toEqual(enKeys);
+
+    const families = (keys: string[]) => {
+      const out: Record<string, string[]> = {};
+      for (const k of keys) {
+        const m = PLURAL.exec(k);
+        if (m) (out[m[1]] = out[m[1]] ?? []).push(m[2]);
+      }
+      return out;
+    };
+    const arFam = families(arKeys);
+    const enFam = families(enKeys);
+    const arShort = Object.entries(arFam)
+      .filter(([, forms]) => forms.length !== 6)
+      .map(([fam, forms]) => `${fam}: ${forms.sort().join(',')}`);
+    expect(arShort).toEqual([]);
+    const enShort = Object.entries(enFam)
+      .filter(([, forms]) => !forms.includes('one') || !forms.includes('other'))
+      .map(([fam, forms]) => `${fam}: ${forms.sort().join(',')}`);
+    expect(enShort).toEqual([]);
+
+    const varDiff = enKeys.filter((k) => vars(EN[k]).join(',') !== vars(String(AR[k])).join(','));
+    expect(varDiff).toEqual([]);
+
+    const bannedEn = (POLICY.banned_en ?? []).map((e) => ({ re: new RegExp(e.pattern, 'i'), label: e.label }));
+    const bannedAr = (POLICY.banned_ar ?? []).map((e) => ({ re: new RegExp(e.pattern), label: e.label }));
+    const scaryEn = POLICY.scary_vocab_en ?? [];
+    const scaryAr = POLICY.scary_vocab_ar ?? [];
+    expect(bannedEn.length).toBeGreaterThan(0);
+    expect(scaryAr.length).toBeGreaterThan(0);
+    const offenders: string[] = [];
+    for (const [n, key] of ROWS) {
+      if (typeof EN[key] === 'string') {
+        const v = visibleCopy(EN[key]);
+        for (const b of bannedEn) if (b.re.test(v)) offenders.push(`${n} ${key} EN ${b.label}`);
+        for (const w of scaryEn) if (v.toLowerCase().includes(w.toLowerCase())) offenders.push(`${n} ${key} EN ${w}`);
+      }
+      if (typeof AR[key] === 'string') {
+        const v = visibleCopy(AR[key]);
+        for (const b of bannedAr) if (b.re.test(v)) offenders.push(`${n} ${key} AR ${b.label}`);
+        for (const w of scaryAr) if (v.includes(w)) offenders.push(`${n} ${key} AR scary ${scaryAr.indexOf(w)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

@@ -111,6 +111,32 @@ export function friendlyErrorKey(code: string | null | undefined, reason?: unkno
 }
 
 /**
+ * INC-C1 T7-04 -- the LINK compare's refusal code -> the sentence shown under
+ * home.errors.link.title, in an alert whose second button switches Home to
+ * typing the names. The link path only; the text path keeps friendlyErrorKey.
+ * BAD_REQUEST and a codeless failure (null, undefined, '') read the generic
+ * sentence; every other code returns null and the caller keeps today's alert
+ * (AUTH_REQUIRED, VALIDATION_ERROR, TIMEOUT, USAGE_LIMIT, ...).
+ */
+export function linkErrorKey(code: string | null | undefined): string | null {
+  switch (code) {
+    case 'STORE_UNREADABLE':
+      return 'home.errors.link.storeUnreadable';
+    case 'NOT_PRODUCT_PAGE':
+      return 'home.errors.link.notProductPage';
+    case 'UNRESOLVED_PRODUCT':
+      return 'home.errors.link.unresolved';
+    case 'BAD_REQUEST':
+    case null:
+    case undefined:
+    case '':
+      return 'home.errors.link.generic';
+    default:
+      return null;
+  }
+}
+
+/**
  * W3-14 — the same code -> key contract for the SETTINGS surfaces (Profile
  * toggles, password, EditProfile delete, Results demographics).
  *
