@@ -296,6 +296,10 @@ export interface ComparisonResult {
   // into the share/referral Loop-1 flow. Optional: fresh compares omit it,
   // and JSON.stringify drops the undefined so event batches still pass.
   comparison_id?: string;
+  // INC-C1b T7-11: the comparisons row's created_at, set only on a body
+  // re-opened by id (getComparison) when Date.parse reads it. A stored
+  // result prints "Saved on <date>" from it; fresh compares omit it.
+  saved_at?: string;
   products: Product[];
   comparison: Comparison;
   winner_index: number;

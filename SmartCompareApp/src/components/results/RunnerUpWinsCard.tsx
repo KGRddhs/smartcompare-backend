@@ -11,8 +11,12 @@
  *   - runner-up product name
  *   - the verdict prompt's `overview.winner.key_tradeoff` prose as the caption
  *   - one row per dimension the RUNNER-UP leads (derived from scoring_v2
- *     dimensions: score[runnerUp] > score[winner], excluding the no-data
- *     `caption_key:'limited_data'` placeholders). Each row shows the QUALITATIVE
+ *     dimensions, excluding the no-data `caption_key:'limited_data'`
+ *     placeholders). INC-C1b (RU-2, RU-15): a row follows the server's
+ *     per-dim `winner` when one is sent (0 / 1: listed only when it is the
+ *     runner-up; null, no side won: never listed); only a dim without the key
+ *     (saved before F2.4) falls back to score[runnerUp] > score[winner].
+ *     Each row shows the QUALITATIVE
  *     delta_text when it isn't raw point-math, otherwise just the clean dim
  *     LABEL — NO "+Npt" (pt is an internal 0-100 unit shown nowhere else; the
  *     dimension bars already carry magnitude visually).
@@ -46,6 +50,9 @@ export interface RunnerUpWinsCardProps {
  * Dimensions the runner-up leads — score[runnerUp] strictly greater than
  * score[winner], excluding no-data placeholders and any dim missing a real
  * numeric pair. Exported for direct unit testing of the derivation.
+ * INC-C1b: the server's per-dim `winner` decides when it is sent (null: no
+ * side won, not listed; 0 / 1: listed only when it is the runner-up); the
+ * score comparison is for dims without the key only.
  */
 export function runnerUpWinningDims(
   dimensions: Dimension[] | undefined,
@@ -58,6 +65,8 @@ export function runnerUpWinningDims(
     const sw = winnerIndex === 0 ? d.score_a : d.score_b;
     const sr = runnerUp === 0 ? d.score_a : d.score_b;
     if (typeof sw !== 'number' || typeof sr !== 'number') return false;
+    if (d.winner === null) return false;
+    if (d.winner === 0 || d.winner === 1) return d.winner === runnerUp;
     return sr > sw;
   });
 }

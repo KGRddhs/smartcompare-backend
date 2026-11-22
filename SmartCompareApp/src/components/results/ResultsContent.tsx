@@ -62,6 +62,7 @@ import type { Product, ComparisonResult } from '../../types';
 import {
   calendarDaysAgo,
   formatAsOfDate,
+  formatSavedOnDate,
   priceProvenance,
   productFieldStatus,
   sectionNeedsHonestLine,
@@ -341,6 +342,15 @@ export const ResultsContent = React.memo(function ResultsContent({
       ? specsComparisonRaw.rows
       : undefined;
 
+  // INC-C1b T7-11 (RU-9): a result re-opened from History says when it was
+  // saved (getComparison's saved_at). A live result, a missing origin or a
+  // saved_at Date.parse cannot read renders nothing, as before.
+  const savedAt = result?.saved_at;
+  const savedOnDate =
+    resultOrigin === 'stored' && typeof savedAt === 'string' && Number.isFinite(Date.parse(savedAt))
+      ? formatSavedOnDate(savedAt, lang)
+      : '';
+
   return (
     <View style={styles.container} testID="results-content">
       {/* ─── # 1 Header — back + TopMatchBadge + share (JSX 297-311) ─── */}
@@ -376,6 +386,13 @@ export const ResultsContent = React.memo(function ResultsContent({
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* INC-C1b T7-11: "Saved on <date>" on a stored result, above the pair. */}
+        {savedOnDate !== '' ? (
+          <Text testID="results-saved-on" style={styles.savedOn} numberOfLines={1}>
+            {t('results.savedOn', { date: savedOnDate })}
+          </Text>
+        ) : null}
+
         {/* ─── # 2 Hero — product pair with "vs" pill divider (JSX 316-333) ─── */}
         <Animated.View
           entering={FadeIn.duration(400)}
@@ -790,6 +807,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingTop: spacing.sm,
     paddingBottom: spacing['3xl'],
+  },
+  // INC-C1b T7-11: the "Saved on <date>" caption of a stored result.
+  savedOn: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
   },
 
   // Product pair hero

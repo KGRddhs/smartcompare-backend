@@ -100,6 +100,31 @@ export function formatAsOfDate(dateIso: string, language: 'en' | 'ar'): string {
 }
 
 /**
+ * INC-C1b T7-11: the "Saved on" date of a stored result. Month, day and the
+ * year (a saved result can come from an earlier year), gregorian in both
+ * locales, the app's digit policy. '' when Date.parse cannot read `dateIso`
+ * (never toISOString on an Invalid Date); the ISO date when the phone's ICU
+ * lacks the locale.
+ */
+export function formatSavedOnDate(dateIso: string, language: 'en' | 'ar'): string {
+  const ms = Date.parse(dateIso);
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  try {
+    const locale = language === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US';
+    const s = d.toLocaleDateString(locale, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      calendar: 'gregory',
+    } as any);
+    return applyDigitSystem(toAsciiDigits(s));
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+/**
  * INC-C1 C1-2: the whole calendar days from the local day of `dateIso` to the
  * local day of `nowMs` (the caller's clock; nothing here reads the device
  * clock). Counted between local starts of day, so 23:50 yesterday is 1 and

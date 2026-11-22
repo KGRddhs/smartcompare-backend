@@ -85,6 +85,14 @@ interface ResultsAccordionProps {
 
 const HIDDEN_FIELDS = new Set(['brand', 'model', 'variant', 'category']);
 const NA_VALUES = new Set(['n/a', 'na', 'null', 'none', 'unknown', '']);
+// INC-C1b B-f (RU-5): a one-word spec label wider than its 96-pt column
+// ("CONCENTRATION") shrinks to fit one line instead of breaking inside the
+// word; the 0.85 floor is StatBlock's (never below caption tier).
+const ONE_WORD_LABEL_FIT = {
+  numberOfLines: 1,
+  adjustsFontSizeToFit: true,
+  minimumFontScale: 0.85,
+} as const;
 
 function filterSpecs(specs: Record<string, any>): Array<[string, any]> {
   return Object.entries(specs).filter(([key, value]) => {
@@ -194,6 +202,19 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
     const sum = rated.reduce((acc: number, p: any) => acc + p.rating, 0);
     return sum / rated.length;
   })();
+  // INC-C1b B-d: when some products carry a rating (or a count) and others
+  // do not, an average or a total "across both" would spread one side's
+  // figures over both, so the header names no figure ("Shown per product").
+  const ratedCount = reviewSrc.filter(
+    (p: any) => typeof p.rating === 'number' && p.rating > 0
+  ).length;
+  const countedCount = reviewSrc.filter(
+    (p: any) => typeof p.review_count === 'number' && p.review_count > 0
+  ).length;
+  const reviewsOneSided =
+    reviewSrc.length >= 2 &&
+    ((ratedCount > 0 && ratedCount < reviewSrc.length) ||
+      (countedCount > 0 && countedCount < reviewSrc.length));
 
   // Specs section data — merged keys, diff detection
   const specsSrc = specsProducts ?? products;
@@ -263,8 +284,10 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
       // Reference sub: "4.8★ avg · 1,240 reviews across both".
       // Prepend the weighted-avg rating when available; always include the
       // total-reviews phrase. Falls back to the bare phrase when neither
-      // a rating nor a count is present.
+      // a rating nor a count is present. INC-C1b B-d: one-sided figures
+      // name none ("Shown per product").
       sub: (() => {
+        if (reviewsOneSided) return t('results.accordion.reviewsEach');
         const tail =
           totalReviews > 0
             ? `${formatNumber(totalReviews)} ${t('results.accordion.reviewsSub')}`
@@ -613,6 +636,10 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
                             ? [styles.specsCellValue, sideStyle, styles.specsCellWinner]
                             : [styles.specsCellValue, sideStyle];
                         };
+                        const label = t(`results.spec.${key}`, { defaultValue: key.replace(/_/g, ' ') });
+                        // INC-C1b B-f: a one-word label fits one line; a label
+                        // of several words keeps breaking at its space.
+                        const oneWord = !/\s/.test(String(label).trim());
                         return (
                           <View
                             key={key}
@@ -634,8 +661,11 @@ export const ResultsAccordion = React.memo(function ResultsAccordion({
                             >
                               {values[0] ?? '—'}
                             </Text>
-                            <Text style={styles.specsCellKey}>
-                              {t(`results.spec.${key}`, { defaultValue: key.replace(/_/g, ' ') })}
+                            <Text
+                              style={styles.specsCellKey}
+                              {...(oneWord ? ONE_WORD_LABEL_FIT : {})}
+                            >
+                              {label}
                             </Text>
                             <Text
                               testID={

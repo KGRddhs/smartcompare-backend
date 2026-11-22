@@ -267,6 +267,63 @@ export function addSseFallbackBreadcrumb(err: unknown): void {
   }
 }
 
+// INC-C1b T7-09: the host of a product image url, never its path, query,
+// scheme, user info or port (scrubString redacts neither user info nor a
+// port, so the extraction drops them). INC-C1b FIX1 (relay ruling
+// ORCH-C1B-C): the host is the authority after its last "@", without the
+// port, and only a parsed host name (letters, digits, dots and hyphens) is
+// ever sent; anything else (no "//" as in a data: uri, an empty authority as
+// in file:///, user info with no host, an IPv6 literal, an authority holding
+// a backslash, which WHATWG parsers end at, FIX1b) gives the fixed word
+// 'unknown', never a piece of the url.
+const IMAGE_AUTHORITY_RE = /^[a-z][a-z0-9+.-]*:[/][/]([^/?#]*)/i;
+const IMAGE_HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:[.][a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/i;
+const IMAGE_HOST_MAX_LENGTH = 253;
+const IMAGE_LABEL_MAX_LENGTH = 63;
+const IMAGE_BREADCRUMB_MAX_HOSTS = 20;
+const _imageBreadcrumbHosts = new Set<string>();
+
+/** The parsed host name of an image url, lower case, or 'unknown'. */
+function imageHostOf(imageUrl: string): string {
+  const match = IMAGE_AUTHORITY_RE.exec(String(imageUrl).trim());
+  if (!match) return 'unknown';
+  const authority = match[1];
+  if (authority.indexOf(String.fromCharCode(92)) !== -1) return 'unknown';
+  const host = authority.slice(authority.lastIndexOf('@') + 1).replace(/:[0-9]*$/, '');
+  // FIX1b (relay ruling ORCH-C1B-D): the strict host shape, by construction:
+  // a sane length (at most 253 characters, labels of at most 63), then only
+  // letters, digits, dots and hyphens; anything else sends the fixed word.
+  if (host.length === 0 || host.length > IMAGE_HOST_MAX_LENGTH) return 'unknown';
+  if (host.split('.').some((label) => label.length > IMAGE_LABEL_MAX_LENGTH)) return 'unknown';
+  return IMAGE_HOSTNAME_RE.test(host) ? host.toLowerCase() : 'unknown';
+}
+
+/**
+ * INC-C1b T7-09 -- a product image that did not load after its one retry.
+ * At most one breadcrumb per host per app session (20 hosts at most), host
+ * only; scrubBeforeBreadcrumb still runs at creation. Never throws.
+ */
+export function addImageLoadBreadcrumb(imageUrl: string): void {
+  try {
+    const host = imageHostOf(imageUrl);
+    if (
+      _imageBreadcrumbHosts.has(host) ||
+      _imageBreadcrumbHosts.size >= IMAGE_BREADCRUMB_MAX_HOSTS
+    ) {
+      return;
+    }
+    _imageBreadcrumbHosts.add(host);
+    Sentry.addBreadcrumb({
+      category: 'image',
+      level: 'warning',
+      message: 'product image did not load after one retry',
+      data: { host },
+    });
+  } catch {
+    // A breadcrumb must never break an image tile.
+  }
+}
+
 let _initialized = false;
 
 export function initSentry(dsn?: string): void {

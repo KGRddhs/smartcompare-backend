@@ -513,6 +513,11 @@ export async function deleteComparison(comparisonId: string) {
  * share/referral Loop-1 flow was unreachable) and pushed the screen onto
  * metadata.query as its comparison id — a raw query string the backend's
  * M13-29 UUID validators 422-reject on /events and /feedback.
+ *
+ * INC-C1b T7-11: also surface `wrapper.comparison.created_at` as `saved_at`
+ * (additive) when it is a string Date.parse reads, with or without an id;
+ * the server's string is passed as is. ResultsContent prints "Saved on
+ * <date>" from it on a stored result. With neither field, `full` as before.
  */
 export async function getComparison(comparisonId: string) {
   // M18 MB-perf-03 — per-call deadline (history tap held the loader 120s).
@@ -527,7 +532,11 @@ export async function getComparison(comparisonId: string) {
       response: { status: 404, data: wrapper },
     });
   }
-  return comparison?.id ? { ...full, comparison_id: comparison.id } : full;
+  const createdAt = comparison?.created_at;
+  const savedAt =
+    typeof createdAt === 'string' && Number.isFinite(Date.parse(createdAt)) ? createdAt : null;
+  const withId = comparison?.id ? { ...full, comparison_id: comparison.id } : full;
+  return savedAt !== null ? { ...withId, saved_at: savedAt } : withId;
 }
 
 /**

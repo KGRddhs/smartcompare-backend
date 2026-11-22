@@ -189,7 +189,8 @@ describe('S81-11 F1 -- ADD / CHANGE / DELETE (both catalogs)', () => {
     expect(e.filter((k) => !a.has(k))).toEqual([]);
     expect([...a].filter((k) => !(k in EN))).toEqual([]);
     // INC-C1 adds 24 keys (1,038 leaves).
-    expect(e.length).toBe(1013 - DELETED.length + Object.keys(ADD_EXACT).length + Object.keys(ADD_RULING).length + 3 + 24);
+    // INC-C1b adds 2 keys (1,040 leaves).
+    expect(e.length).toBe(1013 - DELETED.length + Object.keys(ADD_EXACT).length + Object.keys(ADD_RULING).length + 3 + 24 + 2);
   });
 });
 

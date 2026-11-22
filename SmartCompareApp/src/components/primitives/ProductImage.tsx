@@ -15,6 +15,12 @@
  *   3. imageUrl is undefined          → placeholder
  *   4. <Image> onError fires          → swap to placeholder, preserve tone
  *
+ * INC-C1b T7-09: the first onError shows the placeholder at once and arms ONE
+ * retry 1.5 s later (a fresh <Image> of the same uri; a slow first byte or a
+ * CDN blip no longer leaves the placeholder for the life of the mount). An
+ * error on the retry is final and leaves one host-only Sentry breadcrumb.
+ * A url change or an unmount clears a pending retry; a new url gets its own.
+ *
  * Visual spec from ResultsScreen.jsx:39-66 + HomeScreen.jsx:503-525:
  *   - aspectRatio default 1 (square tile)
  *   - borderRadius default 14 (Results); SmartPick uses 12, History row tile 12
@@ -37,8 +43,11 @@ import {
 import Svg, { Line, Rect } from 'react-native-svg';
 
 import { colors } from '../../theme';
+import { addImageLoadBreadcrumb } from '../../services/sentry';
 
 const DEFAULT_TONE = '#EEEFF4';
+// INC-C1b T7-09: the one retry of a failed image waits this long.
+const RETRY_DELAY_MS = 1500;
 
 interface Props {
   imageUrl?: string | null;
@@ -71,12 +80,47 @@ export function ProductImage({
   style,
 }: Props) {
   const [errored, setErrored] = React.useState(false);
+  // INC-C1b T7-09: 0 = the first load, 1 = the one retry; the pending retry
+  // timer (one at most). Refs, so a late or doubled onError reads them live.
+  const attemptRef = React.useRef(0);
+  const retryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset error state when the imageUrl prop changes — a new URL deserves
   // a fresh attempt (race: a SSE update arrives after an earlier broken URL).
+  // INC-C1b: the new URL gets its own retry; the cleanup (a url change or an
+  // unmount) clears a pending retry timer.
   React.useEffect(() => {
     setErrored(false);
+    attemptRef.current = 0;
+    const timerRef = retryTimerRef;
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
   }, [imageUrl]);
+
+  const onImageError = () => {
+    // A doubled native error while the retry is pending arms nothing more.
+    if (retryTimerRef.current !== null) return;
+    setErrored(true);
+    if (attemptRef.current === 0) {
+      // The placeholder shows now; one fresh <Image> of the same uri later.
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        attemptRef.current = 1;
+        setErrored(false);
+      }, RETRY_DELAY_MS);
+      return;
+    }
+    // The retry failed too: the placeholder stays for good.
+    try {
+      addImageLoadBreadcrumb(imageUrl as string);
+    } catch {
+      // A breadcrumb (or a test mock without it) must never break the tile.
+    }
+  };
 
   const usable = isUsableUrl(imageUrl) && !errored;
   const tileStyle = { aspectRatio, borderRadius };
@@ -100,7 +144,7 @@ export function ProductImage({
           testID={testID ? `${testID}-img` : undefined}
           source={{ uri: imageUrl as string }}
           accessibilityRole="image"
-          onError={() => setErrored(true)}
+          onError={onImageError}
           resizeMode={resizeMode}
           // M21 MB-perf-08 — og:image sources are routinely 1000-2400px
           // while every consumer renders a 64-160px tile. On Android,
