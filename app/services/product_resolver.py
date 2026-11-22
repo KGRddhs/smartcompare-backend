@@ -34,7 +34,7 @@ import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from app.services import api_budget_service as _llm_breaker
 from app.services import llm_router as _llm_router
@@ -611,6 +611,60 @@ def _load_lines() -> Tuple[Any, Tuple[Dict[str, Any], ...]]:
     with _LOCK:
         _LINES_MEMO.update({"state": state, "lines": lines})
     return state, lines
+
+
+# ---------------------------------------------------------------------------
+# INC-M1b: the one read-only view of the validated seed lines (the matcher fold)
+# ---------------------------------------------------------------------------
+class SeededLineProfile(NamedTuple):
+    """One seed line of data/fragrance_lines.json as _load_lines validated it
+    (immutable; the lists become tuples; single_concentration absent = False). A
+    NamedTuple, not a frozen dataclass: the matcher builds the records per verdict
+    and the tuple build costs about half."""
+
+    house: str
+    line: str
+    house_aliases: Tuple[str, ...]
+    aliases: Tuple[str, ...]
+    concentrations: Tuple[str, ...]
+    base: Optional[str]
+    single_concentration: bool
+    flankers: Tuple[str, ...]
+
+
+def seeded_line_profiles() -> Tuple[SeededLineProfile, ...]:
+    """INC-M1b (M1bR-7): immutable records of the seed lines, in file order, built
+    per call from the lines _load_lines already validated and cached (no memo of its
+    own, no file read); () when the file is missing or fails to load or validate
+    and the cache holds no lines of the current LINES_PATH. When the cache holds the
+    current LINES_PATH it is read as it is, without the os.stat and Path.resolve of
+    _load_lines (about 0.35 ms per call on the Windows box; the matcher reads this
+    up to twice per verdict); otherwise one _load_lines call. So an edit of the file
+    at the same path is seen at the next _load_lines call (the resolver's own read),
+    a reset or a restart, and after a delete at the same path the last validated
+    records are still served: _load_lines returns () on the failed stat without
+    clearing the cache (stated limit m1; production ships the file in the image, so
+    a change arrives with a new process). Works whatever ENABLE_PRODUCT_RESOLVER is;
+    never calls a model, the network or the spend admit. price_service reads it
+    lazily (ENABLE_MATCH_FOLD)."""
+    path = os.fspath(LINES_PATH)
+    with _LOCK:
+        state, lines = _LINES_MEMO["state"], _LINES_MEMO["lines"]
+    if state is None or state[0] != path:
+        _state, lines = _load_lines()
+    return tuple(
+        SeededLineProfile(  # positional, in field order (cheaper than keywords)
+            item["house"],
+            item["line"],
+            tuple(item["house_aliases"]),
+            tuple(item["aliases"]),
+            tuple(item["concentrations"]),
+            item["base"],
+            bool(item.get("single_concentration", False)),
+            tuple(item["flankers"]),
+        )
+        for item in lines
+    )
 
 
 def _flanker_label(flanker: str) -> Optional[str]:
