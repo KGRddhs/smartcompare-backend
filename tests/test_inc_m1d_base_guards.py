@@ -10,7 +10,8 @@ sections 0, 1 and 3 (relay ruling ORCH-M1D-A: D1, D2 and D3 in one unit, one new
       Beverly Hills" for Armani, "Yves Rocher" for Yves Saint Laurent).
   D2  the same-spelling gender twin, the pronoun half. A query holding a women's pronoun
       ("her", "ladies") is accepted against the gender-free title of the men's twin in the same
-      house spelling (the base femme asymmetry reads the strict women words only).
+      house spelling (the base femme asymmetry reads the strict women words only). NOT guarded
+      here: D2 moved whole to INC-M1c with L-1 (ruling ORCH-M1D-B); its rows are a strict xfail.
   D3  the same-spelling concentration-phrase flanker. A base query is accepted against its
       Le Parfum / Eau Fraiche / Eau de Cologne flanker title, and the flanker query against the
       base title: every concentration phrase is stripped from identity and
@@ -269,8 +270,8 @@ D2_ROWS = (
 def test_red_d2_women_pronoun_same_spelling_twin(monkeypatch, row, lmg):
     """Spec id D2 (RED, _selection_match). Source: probeset2 class rtwin_hl, the three
     same-spelling pairs with truth WRONG (a women's pronoun query, the men's gender-free title);
-    saved verdicts base_p2.json. Wanted with the switch ON: refused (spec section 2, G2: the FX3-1
-    PRONW rule on the base path, a women's pronoun query needs a women's word in the candidate).
+    saved verdicts base_p2.json. Wanted, in INC-M1c: refused. Here a strict-xfail limit (ruling
+    ORCH-M1D-B): no guard of this unit reads it, so with the switch ON it stays accepted.
     Expected at base d062bad1: accepted in both cells, so the row fails on an AssertionError."""
     rid, query, title, src = row
     _cell(monkeypatch, lmg, SWITCH_ON)
