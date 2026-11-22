@@ -699,6 +699,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // Drop loader immediately on error — errors should never wait the
       // theatrical floor.
       setLoading(false);
+      // INC-C1 F3 (ORCH-C1-B): a cancelled request ends here, with no alert.
+      // Home's unmount cleanup aborts an in-flight link compare without
+      // bumping compareRunRef, so its CanceledError gets past the guard
+      // above; runRestCompare in services/api drops it the same way.
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
       const parsed = parseApiError(error);
       const linkKey = linkErrorKey(parsed.code);
       if (parsed.code === 'CONTENT_UNAVAILABLE') {

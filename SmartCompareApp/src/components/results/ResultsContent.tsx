@@ -201,11 +201,14 @@ export const ResultsContent = React.memo(function ResultsContent({
     } else {
       line = lastCheckedLine(prov.dateIso, store);
     }
+    // INC-C1 A2-1 (ORCH-C1-B): the dated "Last checked ..." line may take a
+    // second line, so a narrow card keeps room for the age it states; the
+    // listed line keeps one.
     return (
       <Text
         testID={`results-product-${tid}-${idx}`}
         style={styles.convertedCaption}
-        numberOfLines={1}
+        numberOfLines={prov.kind === 'listed' ? 1 : 2}
       >
         {line}
       </Text>
