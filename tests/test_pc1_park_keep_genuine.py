@@ -526,6 +526,25 @@ def test_r07_empty_park_converted_yield_is_still_parked(monkeypatch, caplog):
     assert isinstance(got, dict) and got.get("source_method") == "converted_usd" and got.get("amount") == 11.25, got
 
 
+def test_r07b_listing_url_park_is_still_replaced(monkeypatch, caplog):
+    """R07b PIN (added at GREEN for the mutation table, rows added only; the G1 boundary of the
+    listing-url clause): switch ON, a genuine-method park on a LISTING url preset on the request
+    (no Shopify source): the converted-only yield still replaces it, as on main (PC1 keeps only a
+    genuine park on a product page, the complement of _p2_park_reseller's replaceable test), so
+    the cap miss returns the converted row."""
+    setflags(monkeypatch, pnl="true", prio=None)
+    caplog.set_level(logging.INFO)
+    svc = scs.StructuredComparisonService()
+    install_cascade(monkeypatch, svc, tier1={}, catalog=None, gulf={MUBEEN: gulf_converted_row()})
+    full = scs._shopping_cache_key("", MUBEEN, None)
+    svc._parked_price[full] = dict(house_hit(MUBEEN), retailer="store-g.example.com",
+                                   url="https://store-g.example.com/search?q=mubeen+edp")
+    got, timed_out, _ = run_price(svc, MUBEEN)
+    assert timed_out is True
+    assert isinstance(got, dict) and got.get("source_method") == "converted_usd", got
+    assert got.get("amount") == 11.25 and got.get("retailer") == "store-kw.example.com", got
+
+
 # =========================================================================== R08-R12 the display
 @pytest.mark.parametrize("fix", FIXCELLS)
 @pytest.mark.parametrize("cap", CAPCELLS)
