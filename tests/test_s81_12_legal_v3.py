@@ -239,8 +239,9 @@ NEW_CLAUSES = {"COMPARE_RUNS_CLAUSE": "COMPARE_RUN_RETENTION", "AUTH_THROTTLE_CL
 # Recorded base values (98d85433). Re-record ONLY with a ruling (see each row's docstring).
 # INC-C1a (2026-11-16) re-recorded: + results.price.withSize, results.price.perMl, results.price.differentSizes (CC-8)
 # INC-C1 (2026-11-22) re-recorded: + its 24 keys; the other 1,014 names still hash to INC-C1a's cd5995fb... (CC-8)
-BASE_I18N_KEY_COUNT = 1038
-BASE_I18N_NAMESET_SHA256 = "8e8b2a2c07848340d557cd70d34ee954bb" "4dcb3d04fb944d364daf77f99077ec"
+# INC-C1b (2026-11-22) re-recorded: + results.savedOn, results.accordion.reviewsEach; the other 1,038 names still hash to INC-C1's 8e8b2a2c... (CC-8)
+BASE_I18N_KEY_COUNT = 1040
+BASE_I18N_NAMESET_SHA256 = "53bb907f581a61c8e52f3b35648af4673f" "f36c15c8d24d4f5ffaa2c15c515c6a"
 BASE_S7_SHA256 = {
     "en": "b7563dae1cfba69a0fa5b9da7ee7cdd207b166ccc8d818537" "813f7751a9e303c",
     "ar": "96e3a8db7853e618147" "aae0c5cc112cc9ac14508cf967c2e771b7a39e2f35f0b",

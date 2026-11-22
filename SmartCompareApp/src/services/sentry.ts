@@ -267,6 +267,42 @@ export function addSseFallbackBreadcrumb(err: unknown): void {
   }
 }
 
+// INC-C1b T7-09: the host of a product image url, never its path, query,
+// scheme, user info or port (scrubString redacts neither user info nor a
+// port, so the extraction drops them). User info runs to the last "@" before
+// the path, as URL parsers read it; no "//" (a data: or file: uri) gives
+// 'unknown'.
+const IMAGE_HOST_RE = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/?#]*@)?([^/?#:]+)/i;
+const IMAGE_BREADCRUMB_MAX_HOSTS = 20;
+const _imageBreadcrumbHosts = new Set<string>();
+
+/**
+ * INC-C1b T7-09 -- a product image that did not load after its one retry.
+ * At most one breadcrumb per host per app session (20 hosts at most), host
+ * only; scrubBeforeBreadcrumb still runs at creation. Never throws.
+ */
+export function addImageLoadBreadcrumb(imageUrl: string): void {
+  try {
+    const match = IMAGE_HOST_RE.exec(String(imageUrl).trim());
+    const host = match ? match[1].toLowerCase() : 'unknown';
+    if (
+      _imageBreadcrumbHosts.has(host) ||
+      _imageBreadcrumbHosts.size >= IMAGE_BREADCRUMB_MAX_HOSTS
+    ) {
+      return;
+    }
+    _imageBreadcrumbHosts.add(host);
+    Sentry.addBreadcrumb({
+      category: 'image',
+      level: 'warning',
+      message: 'product image did not load after one retry',
+      data: { host },
+    });
+  } catch {
+    // A breadcrumb must never break an image tile.
+  }
+}
+
 let _initialized = false;
 
 export function initSentry(dsn?: string): void {

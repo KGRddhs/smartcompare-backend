@@ -267,6 +267,12 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
         ? false
         : score_a > score_b ||
           (score_a === score_b && winnerIndex === 0);
+  // INC-C1b B-b (RU-2): an explicit `winner: null` is the server saying no
+  // side won this dim (one side's signal missing, or a margin under 3 points):
+  // paint NO side (no accent fill, hero delta in text.primary). The bar keeps
+  // its proportions. `undefined` (a row saved before F2.4) keeps the score
+  // rule above.
+  const noWinner = dimension.winner === null;
   const fillA = aWins ? colors.accent : colors.text.secondary;
   const fillB = aWins ? colors.text.secondary : colors.accent;
 
@@ -277,7 +283,7 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
   // § 4c — cross-tier framing suppresses the winner emerald + replaces
   // delta_text with neutral "Different tier — held to higher bar".
   const isCrossTier = dimension.is_cross_tier === true && key === 'value';
-  const heroDeltaColor = isCrossTier
+  const heroDeltaColor = isCrossTier || noWinner
     ? colors.text.primary
     : (aWins ? colors.accent : colors.text.primary);
   // Defense-in-depth (WS-B Task B3): never surface raw "+Npt" point-math in
@@ -301,9 +307,11 @@ function DimensionRow({ dimension, winnerIndex, productAName, productBName, test
   // right of the label reads "{A} · {B}".
   const winnerSide: 'left' | 'right' | null = isCrossTier
     ? null // cross-tier suppresses the emerald winner paint (§ 4c)
-    : aWins
-      ? 'left'
-      : 'right';
+    : noWinner
+      ? null // INC-C1b: the server crowned no side
+      : aWins
+        ? 'left'
+        : 'right';
 
   return (
     <View style={[styles.row, { opacity: rowOpacity }]} testID={testID}>

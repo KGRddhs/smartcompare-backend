@@ -435,6 +435,9 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
               6.1" OLED
             </Text>
             <Text
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.85}
+              numberOfLines={1}
               style={
                 {
                   "color": "#6B7280",
@@ -499,6 +502,9 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
               3,349 mAh
             </Text>
             <Text
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.85}
+              numberOfLines={1}
               style={
                 {
                   "color": "#6B7280",
@@ -563,6 +569,9 @@ exports[`ResultsAccordion — edge cases (idle-policy coverage) expanded specs b
               128 GB
             </Text>
             <Text
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.85}
+              numberOfLines={1}
               style={
                 {
                   "color": "#6B7280",
