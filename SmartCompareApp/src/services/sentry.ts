@@ -272,11 +272,11 @@ export function addSseFallbackBreadcrumb(err: unknown): void {
 // port, so the extraction drops them). INC-C1b FIX1 (relay ruling
 // ORCH-C1B-C): the host is the authority after its last "@", without the
 // port, and only a parsed host name (letters, digits, dots and hyphens) is
-// ever sent; anything else (no "//" as in a data: uri, an empty authority as
-// in file:///, user info with no host, an IPv6 literal, an authority holding
-// a backslash, which WHATWG parsers end at, FIX1b) gives the fixed word
-// 'unknown', never a piece of the url.
-const IMAGE_AUTHORITY_RE = /^[a-z][a-z0-9+.-]*:[/][/]([^/?#]*)/i;
+// ever sent; anything else (a scheme other than http or https, INC-C1c; user
+// info with no host; an IPv6 literal; an authority holding a backslash,
+// which WHATWG parsers end at, FIX1b) gives the fixed word 'unknown', never
+// a piece of the url.
+const IMAGE_AUTHORITY_RE = /^https?:[/][/]([^/?#]*)/i;
 const IMAGE_HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:[.][a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/i;
 const IMAGE_HOST_MAX_LENGTH = 253;
 const IMAGE_LABEL_MAX_LENGTH = 63;
