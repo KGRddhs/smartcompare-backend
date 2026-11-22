@@ -272,11 +272,14 @@ export function addSseFallbackBreadcrumb(err: unknown): void {
 // port, so the extraction drops them). INC-C1b FIX1 (relay ruling
 // ORCH-C1B-C): the host is the authority after its last "@", without the
 // port, and only a parsed host name (letters, digits, dots and hyphens) is
-// ever sent; anything else (no "//" as in a data: or file: uri, user info
-// with no host, an IPv6 literal) gives the fixed word 'unknown', never a
-// piece of the url.
+// ever sent; anything else (no "//" as in a data: uri, an empty authority as
+// in file:///, user info with no host, an IPv6 literal, an authority holding
+// a backslash, which WHATWG parsers end at, FIX1b) gives the fixed word
+// 'unknown', never a piece of the url.
 const IMAGE_AUTHORITY_RE = /^[a-z][a-z0-9+.-]*:[/][/]([^/?#]*)/i;
 const IMAGE_HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:[.][a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/i;
+const IMAGE_HOST_MAX_LENGTH = 253;
+const IMAGE_LABEL_MAX_LENGTH = 63;
 const IMAGE_BREADCRUMB_MAX_HOSTS = 20;
 const _imageBreadcrumbHosts = new Set<string>();
 
@@ -285,7 +288,13 @@ function imageHostOf(imageUrl: string): string {
   const match = IMAGE_AUTHORITY_RE.exec(String(imageUrl).trim());
   if (!match) return 'unknown';
   const authority = match[1];
+  if (authority.indexOf(String.fromCharCode(92)) !== -1) return 'unknown';
   const host = authority.slice(authority.lastIndexOf('@') + 1).replace(/:[0-9]*$/, '');
+  // FIX1b (relay ruling ORCH-C1B-D): the strict host shape, by construction:
+  // a sane length (at most 253 characters, labels of at most 63), then only
+  // letters, digits, dots and hyphens; anything else sends the fixed word.
+  if (host.length === 0 || host.length > IMAGE_HOST_MAX_LENGTH) return 'unknown';
+  if (host.split('.').some((label) => label.length > IMAGE_LABEL_MAX_LENGTH)) return 'unknown';
   return IMAGE_HOSTNAME_RE.test(host) ? host.toLowerCase() : 'unknown';
 }
 
