@@ -7770,7 +7770,14 @@ def _vd_form_mismatch(q: VariantDescriptor, c: VariantDescriptor, cat: str) -> b
 #        groups trigger, or the triggered group comes with a seeded house alias
 #        that shares no word with it: whole in the query core, or, FIX2 FX3-5,
 #        with every word among the query's raw words, as "parfums de marly",
-#        whose "de" the identity core drops).
+#        whose "de" the identity core drops);
+#      - FX4-1 (FIX3 CONCPH, _m1b_concentration_phrases, the first check of
+#        _m1b_excluded, so the fold, its house-only exception, the houseless
+#        rule and the default all read it): the query and the candidate differ
+#        in a concentration-phrase flanker, whichever side names it (Eau
+#        Fraiche; Le Parfum; a bare Parfum beside another concentration label;
+#        Eau de Cologne), read on the raw words and the existing
+#        extract_concentration label.
 # The seeded lines come ONLY from product_resolver.seeded_line_profiles(),
 # imported lazily and read only when a rule needs them: at most once by the
 # default (the axis step) and at most once by _m1b_fold_cores (the selection
@@ -8009,6 +8016,42 @@ def _m1b_fold_refused(c: VariantDescriptor, q_words: FrozenSet[str],
     return len(triggered) > 1 or _m1b_seeded_house_beside(q_words, triggered[0], profiles)
 
 
+def _m1b_concentration_phrases(d: VariantDescriptor) -> FrozenSet[str]:
+    """FX4-1 (FIX3 CONCPH): the concentration-phrase flankers one side names. Every
+    concentration phrase is stripped from identity, and extract_concentration keeps only
+    its first match, so a flanker named by such a phrase reads as the base line beside
+    its EDT or EDP word ("YSL Y Eau Fraiche EDT 100ml", "JPG Scandal Le Parfum EDP 80ml",
+    "Stronger With You Parfum EDP 100ml"). Read on the side's raw words
+    (VariantDescriptor.fold_tokens) and its existing label (VariantDescriptor.concentration,
+    the first match of _CONCENTRATION_PATTERNS; no new pattern list):
+      (i) "fraiche": Eau Fraiche, a flanker name, also as the side's only label;
+      (ii) "parfum": Le Parfum, "le" and "parfum" both raw words, a flanker name, also
+          as the side's only label;
+      (iii) "parfum": a bare Parfum beside another label that shows the "parfum" is not
+          the side's Eau de Parfum, Extrait de Parfum or Parfum Intense: the label is EDT
+          or EDC, or EDP read from "edp" while "eau" and "de" are not both raw words.
+          A bare Parfum as the side's ONLY label names none (a Parfum bottle keeps the
+          base reading);
+      (iv) "cologne": Eau de Cologne (m4), the label is EDC.
+    (ii) and (iii) give one value, so "Le Parfum EDP" and "Le Parfum Eau de Parfum" name
+    the same flanker. The descriptor holds the raw words as a set, with no word order:
+    (ii) is read as both words present, so a line name holding "le" (Le Male, Le Beau,
+    Le Gemme Tygar) beside "Eau de Parfum" names it too, and a bare Parfum beside a
+    spelled-out "Eau de Parfum" has the very descriptor of that Eau de Parfum title,
+    so it names none (stated limits, measured by FIX3)."""
+    words = d.fold_tokens
+    label = d.concentration
+    out = set()
+    if "fraiche" in words:
+        out.add("fraiche")  # (i) Eau Fraiche
+    if "parfum" in words and ("le" in words or label in ("EDT", "EDC") or (
+            label == "EDP" and "edp" in words and not ("eau" in words and "de" in words))):
+        out.add("parfum")  # (ii) Le Parfum, or (iii) a bare Parfum beside another label
+    if label == "EDC":
+        out.add("cologne")  # (iv) Eau de Cologne (m4)
+    return frozenset(out)
+
+
 def _m1b_excluded(q: VariantDescriptor, c: VariantDescriptor) -> bool:
     """M1bR-14 / M1bR-6 (e): an EXISTING predicate marks the candidate as a sample,
     decant, tester or vial (_SAMPLE_LISTING_RE), a travel or mini size
@@ -8021,7 +8064,11 @@ def _m1b_excluded(q: VariantDescriptor, c: VariantDescriptor) -> bool:
     VariantDescriptor.packs field, FA-1; FIX2 FX3-3 widens it to every pack count
     other than the query's, a single bottle under a pack query too) and a
     _FORM_NOISE_TOKENS word other than "spray" that the query lacks (a body or hair
-    form the descriptor form misses, FA-3)."""
+    form the descriptor form misses, FA-3). FIX3 FX4-1 (CONCPH), read first: the query
+    and the candidate differ in a concentration-phrase flanker
+    (_m1b_concentration_phrases), whichever side names it."""
+    if _m1b_concentration_phrases(c) != _m1b_concentration_phrases(q):
+        return True  # FX4-1 CONCPH: a concentration-phrase flanker only one side names
     if c.form is not None:
         return True
     if c.packs != q.packs:
@@ -8061,7 +8108,7 @@ def _m1b_fold_cores(q: VariantDescriptor, c: VariantDescriptor, q_core: FrozenSe
             # The narrowing guards refuse the fold and the base verdict stands. A
             # fragrance SELECTION accepts only when the two cores end equal, so they
             # are read where the fold turns the verdict into an accept: M1bR-14 with
-            # FA-1 / FA-3 / FX3-3, the gender condition (FX2 with FX3-1), the gender
+            # FA-1 / FA-3 / FX3-3 / FX4-1, the gender condition (FX2 with FX3-1), the gender
             # side (FX3-2), and the brand / two-house refusal (FX1-2, FA-4 with FX3-5;
             # read again before the houseless rule below).
             if fq == ft and q_core != t_core:
@@ -8103,7 +8150,7 @@ def _m1b_fold_cores(q: VariantDescriptor, c: VariantDescriptor, q_core: FrozenSe
             if tokens and tokens <= t_core:  # (d) every token of the line form
                 houseless_q = fq - house - canons
                 # The narrowing guards refuse the houseless rule (read where it would
-                # accept): M1bR-14 with FA-1 / FA-3 / FX3-3, the gender condition (FX1-4
+                # accept): M1bR-14 with FA-1 / FA-3 / FX3-3 / FX4-1, the gender condition (FX1-4
                 # with FX3-1), a query naming a flanker of the line (FX1-3) and the
                 # listing's brand naming another house (FX1-2).
                 if houseless_q <= ft and (
