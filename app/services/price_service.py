@@ -8252,6 +8252,8 @@ def _m1b_concentration_default(q: VariantDescriptor, c: VariantDescriptor) -> bo
 #      none of that house's whole alias forms (another house: "Christian Lacroix"
 #      for Dior), so the base strip of the group and of the brand's own words
 #      would pass its listing.
+#   G3 (_m1d_concentration_phrase_differs, beside the concentration axis):
+#      INC-M1b's FX4-1 CONCPH test on the base path, symmetric.
 # ---------------------------------------------------------------------------
 def match_base_guards_enabled() -> bool:
     """INC-M1d: ENABLE_MATCH_BASE_GUARDS, read per call (house idiom)."""
@@ -8321,6 +8323,24 @@ def _m1d_brand_names_other_house(query_name: str, candidate_brand: str,
         if not any(all(w in brand_words for w in f) for f in forms):
             return True  # the brand field names another house
     return False
+
+
+def _m1d_concentration_phrase_differs(q: VariantDescriptor, c: VariantDescriptor,
+                                      cat: str, mode: Optional[str]) -> bool:
+    """G3 (D3): INC-M1b's FX4-1 CONCPH test on the base path, symmetric: the query and
+    the candidate differ in a concentration-phrase flanker (_m1b_concentration_phrases:
+    Eau Fraiche, Le Parfum, a bare Parfum beside another label, Eau de Cologne), whichever
+    side names it. Every concentration phrase is stripped from identity and
+    extract_concentration keeps the first label, so the base took "Jean Paul Gaultier
+    Scandal Le Parfum EDP 100ml" for "Jean Paul Gaultier Scandal EDP" and "Yves Saint
+    Laurent Y Eau Fraiche Eau de Toilette 100ml" for "Yves Saint Laurent Y EDT".
+    SELECTION mode, fragrances. FX4-1's stated limits stand (a line name holding "le"
+    beside a spelled-out Eau de Parfum reads as Le Parfum)."""
+    if not match_base_guards_enabled():
+        return False
+    if cat != "fragrances" or mode != DESCRIPTOR_MODE_SELECTION:
+        return False
+    return _m1b_concentration_phrases(q) != _m1b_concentration_phrases(c)
 
 
 def _vd_candidate_missing_query_axis(q: VariantDescriptor, c: VariantDescriptor,
@@ -8520,6 +8540,8 @@ def _descriptor_axis_mismatch(q: VariantDescriptor, c: VariantDescriptor,
         return "variant_qualifier"
     # Universal numeric axes (any category, both-stated-different).
     if _vd_scalar_differs(q.concentration, c.concentration):
+        return "concentration"
+    if _m1d_concentration_phrase_differs(q, c, cat, mode):  # INC-M1d G3 (switch read first)
         return "concentration"
     if _vd_size_ml_mismatch(q, c, cat):
         return "size_ml"
