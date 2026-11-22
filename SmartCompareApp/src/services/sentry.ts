@@ -269,12 +269,25 @@ export function addSseFallbackBreadcrumb(err: unknown): void {
 
 // INC-C1b T7-09: the host of a product image url, never its path, query,
 // scheme, user info or port (scrubString redacts neither user info nor a
-// port, so the extraction drops them). User info runs to the last "@" before
-// the path, as URL parsers read it; no "//" (a data: or file: uri) gives
-// 'unknown'.
-const IMAGE_HOST_RE = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/?#]*@)?([^/?#:]+)/i;
+// port, so the extraction drops them). INC-C1b FIX1 (relay ruling
+// ORCH-C1B-C): the host is the authority after its last "@", without the
+// port, and only a parsed host name (letters, digits, dots and hyphens) is
+// ever sent; anything else (no "//" as in a data: or file: uri, user info
+// with no host, an IPv6 literal) gives the fixed word 'unknown', never a
+// piece of the url.
+const IMAGE_AUTHORITY_RE = /^[a-z][a-z0-9+.-]*:[/][/]([^/?#]*)/i;
+const IMAGE_HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:[.][a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/i;
 const IMAGE_BREADCRUMB_MAX_HOSTS = 20;
 const _imageBreadcrumbHosts = new Set<string>();
+
+/** The parsed host name of an image url, lower case, or 'unknown'. */
+function imageHostOf(imageUrl: string): string {
+  const match = IMAGE_AUTHORITY_RE.exec(String(imageUrl).trim());
+  if (!match) return 'unknown';
+  const authority = match[1];
+  const host = authority.slice(authority.lastIndexOf('@') + 1).replace(/:[0-9]*$/, '');
+  return IMAGE_HOSTNAME_RE.test(host) ? host.toLowerCase() : 'unknown';
+}
 
 /**
  * INC-C1b T7-09 -- a product image that did not load after its one retry.
@@ -283,8 +296,7 @@ const _imageBreadcrumbHosts = new Set<string>();
  */
 export function addImageLoadBreadcrumb(imageUrl: string): void {
   try {
-    const match = IMAGE_HOST_RE.exec(String(imageUrl).trim());
-    const host = match ? match[1].toLowerCase() : 'unknown';
+    const host = imageHostOf(imageUrl);
     if (
       _imageBreadcrumbHosts.has(host) ||
       _imageBreadcrumbHosts.size >= IMAGE_BREADCRUMB_MAX_HOSTS
