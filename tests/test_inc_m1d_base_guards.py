@@ -261,6 +261,9 @@ D2_ROWS = (
 )
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "D2 moved whole to INC-M1c with L-1 and its line-gender data (ruling ORCH-M1D-B, 22 Nov): a "
+    "pronoun-only guard lost 381 right pairs on the women-default lines; a stated limit here"))
 @pytest.mark.parametrize("lmg", LMG_CELLS, ids=LMG_IDS)
 @pytest.mark.parametrize("row", D2_ROWS, ids=[r[0] for r in D2_ROWS])
 def test_red_d2_women_pronoun_same_spelling_twin(monkeypatch, row, lmg):
