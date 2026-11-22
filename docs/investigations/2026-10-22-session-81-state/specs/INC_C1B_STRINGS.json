@@ -1,0 +1,26 @@
+{
+ "_note": "INC-C1b owner-read strings, spec V2 section 9 (rulings RU-10); same source as the V2 table; the spec table rules.",
+ "rows": [
+  {
+   "n": 1,
+   "item": "T7-11",
+   "key": "results.savedOn",
+   "en": "Saved on {{date}}",
+   "ar": "\u0645\u062d\u0641\u0648\u0638\u0629 \u0628\u062a\u0627\u0631\u064a\u062e {{date}}",
+   "read": "[NATIVE READ]; the year in the date is accepted (RU-10)"
+  },
+  {
+   "n": 2,
+   "item": "B-d",
+   "key": "results.accordion.reviewsEach",
+   "en": "Shown per product",
+   "ar": "\u0645\u0639\u0631\u0648\u0636\u0629 \u0644\u0643\u0644 \u0645\u0646\u062a\u062c",
+   "read": "[NATIVE READ], the primary (RU-10)",
+   "alternative": {
+    "en": "For each product separately",
+    "ar": "\u0644\u0643\u0644 \u0645\u0646\u062a\u062c \u0639\u0644\u0649 \u062d\u062f\u0629",
+    "read": "the alternative for the owner's read (V1's row 2)"
+   }
+  }
+ ]
+}
