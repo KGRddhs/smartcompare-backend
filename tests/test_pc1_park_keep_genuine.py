@@ -991,3 +991,59 @@ def test_pc1b_vg_pin_the_guard_stays_off_the_vg_path(monkeypatch):
                 setflags(monkeypatch, pnl=pnl, vg="true")
                 out = lumen_hit(typed, pc1b_variants(shape))
                 assert out == PC1B_VG_BASE, (pnl, shape, typed, out)
+
+
+# PC1b AR rows (ruling ORCH-PC1B-A, a RED amendment, rows added only): the PC1b adversary's AR1 to
+# AR3, adapted to this file's helpers. AR1 pins the switch-OFF answer on the guard's own shapes (a
+# guard leaking into main's variants[0] branch fails it); AR2 and AR3 pin a unit-less bound variant
+# that is NOT variants[0] (a guard reading the first variant's title fails them).
+PC1B_MAINS_ANSWER = {"amount": 4.5, "size": "100ml", "source_method": "shopify_json"}
+PC1B_AR2_VARIANTS = (("30ml", "4.500"), ("Small", "6.500"), ("Large", "10.000"))
+
+
+def pc1b_ar2_variants():
+    """Fresh variant dicts of the AR2 product (30ml first, then two unit-less titles)."""
+    return [v(size, price) for size, price in PC1B_AR2_VARIANTS]
+
+
+@pytest.mark.parametrize("lmg", PC1B_LMGCELLS)
+@pytest.mark.parametrize("pnl", [pytest.param(None, id="pnl_unset"), pytest.param("false", id="pnl_false"),
+                                 pytest.param(" Off ", id="pnl_padded_off")])
+def test_pc1b_ar1_switch_off_unitless_shapes_keep_mains_answer(monkeypatch, pnl, lmg):
+    """PC1b AR1 PIN (ORCH-PC1B-A; switch-OFF identity on the guard's own shapes): ENABLE_PRICE_NOT_LOST
+    unset, 'false' or ' Off ', VG off, the exact gate on, ENABLE_LISTING_MATCH_GUARD unset or on:
+    every unit-less shape of the PC1b block, typed and untyped, prices main's variants[0] (4.500,
+    '100ml', shopify_json) and the binder is never called. Kills a guard placed where the switch
+    does not reach (main's variants[0] branch)."""
+    setflags(monkeypatch, pnl=pnl, vg=None, lmg=lmg)
+    seen = count_binder(monkeypatch)
+    for shape in PC1B_SHAPES:
+        for typed in (LUMEN_TYPED, "Lumen Edp"):
+            out = lumen_hit(typed, pc1b_variants(shape))
+            got = None if out is None else {k: out.get(k) for k in PC1B_MAINS_ANSWER}
+            assert got == PC1B_MAINS_ANSWER, (shape, typed, out)
+    assert seen == [], seen
+
+
+def test_pc1b_ar2_unitless_bound_variant_that_is_not_the_first_gives_no_hit(monkeypatch):
+    """PC1b AR2 (ORCH-PC1B-A; switch ON, VG off): 'Lumen Edp 100ml' with variants [30ml 4.500,
+    Small 6.500, Large 10.000], typed 100 ml: the binder skips the unit-bearing 30ml and binds
+    'Small' through the product title; the product gives no hit (never 6.500 at the typed 100 ml).
+    Main binds 'Small'. Kills a guard that reads the first variant's title instead of the bound
+    variant's own title."""
+    setflags(monkeypatch, pnl="true", vg=None)
+    out = lumen_hit(LUMEN_TYPED, pc1b_ar2_variants())
+    assert out is None, out
+
+
+@pytest.mark.parametrize("cap", CAPCELLS)
+def test_pc1b_ar3_unitless_bound_variant_not_first_never_shown_on_the_wire(monkeypatch, caplog, cap):
+    """PC1b AR3 (ORCH-PC1B-A; switch ON, VG off, ENABLE_LISTING_MATCH_GUARD on as on web): the pair
+    'Lumen Edp 100ml vs Mubeen Edp 100ml' with the AR2 product: the Lumen side is never SHOWN at
+    6.500."""
+    setflags(monkeypatch, pnl="true", vg=None, lmg="true")
+    caplog.set_level(logging.INFO)
+    lum = lumen_hit(LUMEN_TYPED, pc1b_ar2_variants())
+    body = build_pair(LUMEN_TYPED, lum, MUBEEN, house_hit(MUBEEN), cap=cap)
+    w = ov(body)[0]
+    assert not (shown(w) and w.get("amount") == 6.5), w
