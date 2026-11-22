@@ -4873,6 +4873,23 @@ def _pc1_typed_variant_bind(product_name: str, variants: Any, product_title: str
         return False
 
 
+def _pc1b_title_only_bind(variant: Any, variants: Any) -> bool:
+    """PC1b (S98-FIX, PC1's stated limit L10): True iff the variant PC1 J1 bound was bound only
+    through the PRODUCT title, on a product whose variants carry more than one distinct price.
+    Its OWN title states no size (no ml or oz token for extract_size_ml_any: "Small" / "Large",
+    a bare "30"), so the binder read every variant's size from the product title and took the
+    first one; the caller then gives no hit from that product (a lost price, never another
+    bottle's price at the typed size). One variant, or every variant at one price, keeps the
+    bind. Called only in J1, after its None check; reads no switch and no state, logs nothing.
+    Any fault: False (the guard does not fire and PC1's bind is kept)."""
+    try:
+        if extract_size_ml_any(str(variant.get("title") or "")):
+            return False
+        return len({str(x.get("price", "")) for x in variants if isinstance(x, dict)}) > 1
+    except Exception:  # noqa: BLE001 - a fault keeps PC1's bind
+        return False
+
+
 def _pc1_size_fix_enabled() -> bool:
     """PC1 J2 (S98-FIX): Shopify size labels sort as NUMBERS ("30" before "100") only under
     ENABLE_PRICE_NOT_LOST (read first) and the exact gate while ENABLE_VARIANT_MIN_PRICE_GUARD
@@ -16394,6 +16411,8 @@ def _match_shopify_product(
             )
             if variant is None:
                 continue
+            if _pc1b_title_only_bind(variant, variants):
+                continue  # PC1b: bound through the product title only, the prices differ
             _pc1_typed_ml = extract_size_ml_any(product_name)
         else:
             variant = variants[0] if isinstance(variants[0], dict) else {}
