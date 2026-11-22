@@ -1,0 +1,155 @@
+{
+ "_note": "INC-C1 V2 owner-read strings; same source as section 6 of INC_C1_UNIT_SPEC_V2.md; the spec table rules.",
+ "rows": [
+  {
+   "n": 1,
+   "key": "results.partial.note",
+   "en": "Some details did not arrive in time, so a few may be missing.",
+   "ar": "\u0644\u0645 \u062a\u0635\u0644 \u0628\u0639\u0636 \u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0641\u064a \u0627\u0644\u0648\u0642\u062a \u0627\u0644\u0645\u0646\u0627\u0633\u0628\u060c \u0644\u0630\u0627 \u0642\u062f \u064a\u0646\u0642\u0635 \u0628\u0639\u0636\u0647\u0627."
+  },
+  {
+   "n": 2,
+   "key": "results.price.checkedToday",
+   "en": "{{store}}, last checked today",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0627\u0644\u064a\u0648\u0645"
+  },
+  {
+   "n": 3,
+   "key": "results.price.checkedTodayNoStore",
+   "en": "Last checked today",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0627\u0644\u064a\u0648\u0645"
+  },
+  {
+   "n": 4,
+   "key": "results.price.checkedYesterday",
+   "en": "{{store}}, last checked yesterday",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0623\u0645\u0633"
+  },
+  {
+   "n": 5,
+   "key": "results.price.checkedYesterdayNoStore",
+   "en": "Last checked yesterday",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0623\u0645\u0633"
+  },
+  {
+   "n": 6,
+   "key": "results.price.checkedDaysAgo_zero",
+   "en": "{{store}}, last checked {{days}} days ago",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u064a\u0648\u0645"
+  },
+  {
+   "n": 7,
+   "key": "results.price.checkedDaysAgo_one",
+   "en": "{{store}}, last checked 1 day ago",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 \u064a\u0648\u0645 \u0648\u0627\u062d\u062f"
+  },
+  {
+   "n": 8,
+   "key": "results.price.checkedDaysAgo_two",
+   "en": "{{store}}, last checked 2 days ago",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 \u064a\u0648\u0645\u064a\u0646"
+  },
+  {
+   "n": 9,
+   "key": "results.price.checkedDaysAgo_few",
+   "en": "{{store}}, last checked {{days}} days ago",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u0623\u064a\u0627\u0645"
+  },
+  {
+   "n": 10,
+   "key": "results.price.checkedDaysAgo_many",
+   "en": "{{store}}, last checked {{days}} days ago",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u064a\u0648\u0645\u064b\u0627"
+  },
+  {
+   "n": 11,
+   "key": "results.price.checkedDaysAgo_other",
+   "en": "{{store}}, last checked {{days}} days ago",
+   "ar": "{{store}}\u060c \u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u064a\u0648\u0645"
+  },
+  {
+   "n": 12,
+   "key": "results.price.checkedDaysAgoNoStore_zero",
+   "en": "Last checked {{days}} days ago",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u064a\u0648\u0645"
+  },
+  {
+   "n": 13,
+   "key": "results.price.checkedDaysAgoNoStore_one",
+   "en": "Last checked 1 day ago",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 \u064a\u0648\u0645 \u0648\u0627\u062d\u062f"
+  },
+  {
+   "n": 14,
+   "key": "results.price.checkedDaysAgoNoStore_two",
+   "en": "Last checked 2 days ago",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 \u064a\u0648\u0645\u064a\u0646"
+  },
+  {
+   "n": 15,
+   "key": "results.price.checkedDaysAgoNoStore_few",
+   "en": "Last checked {{days}} days ago",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u0623\u064a\u0627\u0645"
+  },
+  {
+   "n": 16,
+   "key": "results.price.checkedDaysAgoNoStore_many",
+   "en": "Last checked {{days}} days ago",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u064a\u0648\u0645\u064b\u0627"
+  },
+  {
+   "n": 17,
+   "key": "results.price.checkedDaysAgoNoStore_other",
+   "en": "Last checked {{days}} days ago",
+   "ar": "\u0622\u062e\u0631 \u062a\u062d\u0642\u0642 \u0642\u0628\u0644 {{days}} \u064a\u0648\u0645"
+  },
+  {
+   "n": 18,
+   "key": "results.photoUnavailable.title",
+   "en": "Photo compare is not available right now",
+   "ar": "\u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0629 \u0628\u0627\u0644\u0635\u0648\u0631 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d\u0629 \u062d\u0627\u0644\u064a\u064b\u0627"
+  },
+  {
+   "n": 19,
+   "key": "results.photoUnavailable.body",
+   "en": "You can type the two names instead.",
+   "ar": "\u064a\u0645\u0643\u0646\u0643 \u0643\u062a\u0627\u0628\u0629 \u0627\u0633\u0645\u064a \u0627\u0644\u0639\u0637\u0631\u064a\u0646 \u0628\u062f\u0644\u064b\u0627 \u0645\u0646 \u0630\u0644\u0643."
+  },
+  {
+   "n": 20,
+   "key": "common.typeNames",
+   "en": "Type the names",
+   "ar": "\u0627\u0643\u062a\u0628 \u0627\u0644\u0623\u0633\u0645\u0627\u0621"
+  },
+  {
+   "n": 21,
+   "key": "home.errors.link.title",
+   "en": "Let's try another way",
+   "ar": "\u0644\u0646\u062c\u0631\u0651\u0628 \u0637\u0631\u064a\u0642\u0629 \u0623\u062e\u0631\u0649"
+  },
+  {
+   "n": 22,
+   "key": "home.errors.link.storeUnreadable",
+   "en": "This shop's page did not open for us. You can type the two names instead.",
+   "ar": "\u0635\u0641\u062d\u0629 \u0647\u0630\u0627 \u0627\u0644\u0645\u062a\u062c\u0631 \u0644\u0645 \u062a\u064f\u0641\u062a\u062d \u0644\u062f\u064a\u0646\u0627. \u064a\u0645\u0643\u0646\u0643 \u0643\u062a\u0627\u0628\u0629 \u0627\u0633\u0645\u064a \u0627\u0644\u0639\u0637\u0631\u064a\u0646 \u0628\u062f\u0644\u064b\u0627 \u0645\u0646 \u0630\u0644\u0643."
+  },
+  {
+   "n": 23,
+   "key": "home.errors.link.notProductPage",
+   "en": "That link opens a shop page, not a product. Open the perfume's own page and copy its link.",
+   "ar": "\u0647\u0630\u0627 \u0627\u0644\u0631\u0627\u0628\u0637 \u064a\u0641\u062a\u062d \u0635\u0641\u062d\u0629 \u0645\u062a\u062c\u0631 \u0648\u0644\u064a\u0633 \u0635\u0641\u062d\u0629 \u0645\u0646\u062a\u062c. \u0627\u0641\u062a\u062d \u0635\u0641\u062d\u0629 \u0627\u0644\u0639\u0637\u0631 \u0646\u0641\u0633\u0647 \u0648\u0627\u0646\u0633\u062e \u0631\u0627\u0628\u0637\u0647\u0627."
+  },
+  {
+   "n": 24,
+   "key": "home.errors.link.unresolved",
+   "en": "We did not find a perfume on that page. Copy the link of the perfume's own page.",
+   "ar": "\u0644\u0645 \u0646\u062c\u062f \u0639\u0637\u0631\u064b\u0627 \u0641\u064a \u062a\u0644\u0643 \u0627\u0644\u0635\u0641\u062d\u0629. \u0627\u0646\u0633\u062e \u0631\u0627\u0628\u0637 \u0635\u0641\u062d\u0629 \u0627\u0644\u0639\u0637\u0631 \u0646\u0641\u0633\u0647."
+  },
+  {
+   "n": 25,
+   "key": "home.errors.link.generic",
+   "en": "One of those links did not open for us. Paste a link from another shop, or type the two names.",
+   "ar": "\u0623\u062d\u062f \u0627\u0644\u0631\u0627\u0628\u0637\u064a\u0646 \u0644\u0645 \u064a\u064f\u0641\u062a\u062d \u0644\u062f\u064a\u0646\u0627. \u0627\u0644\u0635\u0642 \u0631\u0627\u0628\u0637\u064b\u0627 \u0645\u0646 \u0645\u062a\u062c\u0631 \u0622\u062e\u0631\u060c \u0623\u0648 \u0627\u0643\u062a\u0628 \u0627\u0633\u0645\u064a \u0627\u0644\u0639\u0637\u0631\u064a\u0646."
+  }
+ ]
+}
